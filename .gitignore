@@ -1,0 +1,13 @@
+models/
+input/
+output/
+processed/
+failed/
+extracted/
+__pycache__/
+*.pyc
+daemon.log
+daemon.pid
+config.json
+*.flag
+runtime/

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>germano.ai | Daemon Controller</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        
+        <!-- TOP SECTION (2 COLUMNS) -->
+        <div class="main-grid">
+            
+            <!-- LEFT COLUMN: OPERATIONAL CONTROLS -->
+            <div class="left-col">
+                <section class="settings-panel card" style="height: 100%;">
+                    <h2>Impostazioni di Censura</h2>
+                    
+                    <div class="compliance-profiles" style="margin-bottom: 1.5rem; background: #1e293b; padding: 1rem; border-radius: 8px; border: 1px solid #334155;">
+                        <p style="margin-top: 0; margin-bottom: 0.8rem; font-weight: 600; color: #f8fafc;">Profilo di Conformità:</p>
+                        <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+                            <label style="display: flex; align-items: flex-start; cursor: pointer; color: #e2e8f0;">
+                                <input type="radio" name="compliance_mode" id="mode_pa" value="PA" style="margin-top: 3px; margin-right: 10px;">
+                                <div>
+                                    <strong>Germano PA</strong> (Pubblica Amministrazione)<br>
+                                    <span style="font-size: 0.85rem; color: #94a3b8;">Preset bloccato a norma CAD/GDPR. Minimizzazione forzata (0% Soglia, Tutti i filtri attivi).</span>
+                                </div>
+                            </label>
+                            <label style="display: flex; align-items: flex-start; cursor: pointer; color: #e2e8f0;">
+                                <input type="radio" name="compliance_mode" id="mode_pd" value="PD" checked style="margin-top: 3px; margin-right: 10px;">
+                                <div>
+                                    <strong>Germano PD</strong> (Pubblico Dominio)<br>
+                                    <span style="font-size: 0.85rem; color: #94a3b8;">Uso privato/aziendale libero. Disattivazione filtri e soglie configurabili a piacimento.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="slider-container" style="margin-bottom: 2rem;">
+                        <label for="setting_ai_threshold">Soglia Affidabilità IA (Nomi/Luoghi): <span id="threshold_val">0% (Tutto)</span></label>
+                        <input type="range" id="setting_ai_threshold" min="0" max="100" value="0">
+                        <small>Aumenta per censurare solo le parole di cui l'IA è assolutamente sicura (riduce falsi positivi).</small>
+                    </div>
+
+                    <div class="daemon-control" style="margin-top: auto;">
+                        <button id="toggle-daemon" class="btn-toggle off">
+                            <span class="status-indicator"></span>
+                            <span id="toggle-text">START DAEMON</span>
+                        </button>
+                        <p id="daemon-status-text" class="status-text-off">System is offline. AI model is not loaded.</p>
+                        
+                        <div id="loading-container" class="loading-container hidden">
+                            <p class="loading-text">Caricamento Modelli Neurali in RAM (Attendi...)</p>
+                            <div class="progress-bar">
+                                <div class="progress-bar-inner"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- RIGHT COLUMN: HARDWARE & FILTERS -->
+            <div class="right-col">
+                <div class="card" style="height: 100%;">
+                    <header style="margin-bottom: 2rem; padding: 0;">
+                        <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #60a5fa;">germano.ai</h1>
+                        <p style="color: #94a3b8; margin: 0;">Daemon Controller (Persistent Model)</p>
+                    </header>
+                    
+                    <div class="settings-grid" style="display: flex; flex-direction: column; gap: 1.5rem; background: #1e293b; padding: 1.5rem; border-radius: 8px; border: 1px solid #334155; margin-bottom: 2rem;">
+                        <label class="switch-container">
+                            <input type="checkbox" id="setting_faces" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Censura Biometrica (Volti)</span>
+                        </label>
+                        
+                        <label class="switch-container">
+                            <input type="checkbox" id="setting_ocr" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Abilita OCR (Scansioni/Immagini)</span>
+                        </label>
+                        
+                        <label class="switch-container">
+                            <input type="checkbox" id="setting_regex" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Filtro Dati Contatto (Email, Telefoni, CF)</span>
+                        </label>
+                    </div>
+                    
+                    <div class="slider-container" style="margin-top: auto;">
+                        <label for="setting_hardware" style="font-weight: 600;">Accelerazione Hardware (Motore IA):</label>
+                        <select id="setting_hardware" style="width: 100%; padding: 0.8rem; background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; margin-top: 0.8rem; font-size: 1rem;">
+                            <option value="gpu_fallback">GPU con Fallback CPU di sicurezza (Consigliato)</option>
+                            <option value="gpu">Solo GPU (Massime Prestazioni)</option>
+                            <option value="cpu">Solo CPU (Massima Compatibilità)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- BOTTOM SECTION -->
+        <div class="bottom-grid">
+            
+            <!-- BOTTOM LEFT: STATS -->
+            <div class="left-col-bottom" style="display: flex; flex-direction: column; gap: 1rem;">
+                <section id="pre-flight-stats" class="card" style="height: auto; padding: 1.5rem; text-align: left; border-left: 4px solid #3b82f6;">
+                    <p style="font-size: 1.1rem; color: #f8fafc; margin: 0;">
+                        <i class="fas fa-folder-open"></i> <strong>Coda di Lavoro (Input):</strong> <br>
+                        <span id="lbl_input_files" style="font-weight:bold; color:#60a5fa; font-size: 1.5rem;">0</span> file in 
+                        <span id="lbl_input_folders" style="font-weight:bold; color:#60a5fa; font-size: 1.5rem;">0</span> cartelle 
+                        (<span id="lbl_input_size" style="color:#94a3b8;">0 B</span>)
+                    </p>
+                </section>
+
+                <section id="session-progress-container" class="card hidden" style="height: auto; padding: 1.5rem; text-align: left; border-left: 4px solid #10b981;">
+                    <p style="margin-top: 0; margin-bottom: 1rem; font-weight: 600; color: #f8fafc; font-size: 1.1rem;">Progresso Sessione Attuale</p>
+                    <div class="progress-bar-wrap" style="width: 100%; height: 28px; background: #1e293b; border-radius: 14px; overflow: hidden; border: 1px solid #334155; position: relative;">
+                        <div id="session-progress-fill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #34d399); transition: width 0.5s ease-out;"></div>
+                        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.95rem; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">
+                            <span id="lbl_progress_percent">0</span>%
+                        </div>
+                    </div>
+                    <p style="margin-bottom: 0; margin-top: 1rem; color: #94a3b8; font-size: 1rem;">
+                        <span id="lbl_progress_done" style="color: #f8fafc; font-weight:bold;">0</span> / <span id="lbl_progress_total">0</span> file completati
+                    </p>
+                </section>
+
+                <section class="stats-panel card" style="height: auto; display: flex; flex-direction: row; justify-content: space-between; padding: 1.5rem;">
+                    <div class="stat-box" style="text-align: center;">
+                        <span class="stat-label" style="display: block; font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.5rem;">Pending Files (Input)</span>
+                        <span class="stat-value" id="stat-input" style="font-size: 2rem;">0</span>
+                    </div>
+                    <div class="stat-box" style="text-align: center;">
+                        <span class="stat-label" style="display: block; font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.5rem;">Processed Files</span>
+                        <span class="stat-value success-text" id="stat-processed" style="font-size: 2rem; color: #10b981;">0</span>
+                    </div>
+                    <div class="stat-box" style="text-align: center;">
+                        <span class="stat-label" style="display: block; font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.5rem;">Outputs Generated</span>
+                        <span class="stat-value" id="stat-output" style="font-size: 2rem;">0</span>
+                    </div>
+                </section>
+            </div>
+
+            <!-- BOTTOM RIGHT: LOGS -->
+            <div class="right-col-bottom">
+                <main class="dashboard" style="grid-template-columns: 1fr; height: 100%;">
+                    <div class="card log-card" style="height: 100%; min-height: 400px;">
+                        <h2>
+                            <i class="fas fa-terminal" style="color: #60a5fa;"></i>
+                            Live Daemon Logs
+                        </h2>
+                        <div class="log-container" id="log-container">
+[SYSTEM] Waiting for daemon to start...
+</div>
+                    </div>
+                </main>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
