@@ -7,7 +7,7 @@ import time
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-APP_VERSION = "0.10-alpha"
+APP_VERSION = "0.11-alpha"
 
 DAEMON_PID_FILE = "daemon.pid"
 STOP_FLAG = "stop.flag"

@@ -111,6 +111,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const regex = document.getElementById('setting_regex');
         const slider = document.getElementById('setting_ai_threshold');
         
+        const tooltipText = "Passa a Germano PD per sbloccare questa funzionalità";
+        
         if (isPA) {
             ocr.checked = true;
             faces.checked = true;
@@ -122,11 +124,53 @@ document.addEventListener('DOMContentLoaded', () => {
             faces.disabled = true;
             regex.disabled = true;
             slider.disabled = true;
+            
+            [ocr, faces, regex].forEach(el => {
+                if(el) {
+                    const parent = el.closest('.switch-container');
+                    if (parent) {
+                        parent.style.opacity = '0.5';
+                        parent.style.cursor = 'not-allowed';
+                        parent.title = tooltipText;
+                        const sl = parent.querySelector('.slider');
+                        if(sl) sl.style.cursor = 'not-allowed';
+                    }
+                }
+            });
+            if(slider) {
+                const sliderParent = slider.closest('.slider-container');
+                if (sliderParent) {
+                    sliderParent.style.opacity = '0.5';
+                    sliderParent.title = tooltipText;
+                    slider.style.cursor = 'not-allowed';
+                }
+            }
         } else {
             ocr.disabled = false;
             faces.disabled = false;
             regex.disabled = false;
             slider.disabled = false;
+            
+            [ocr, faces, regex].forEach(el => {
+                if(el) {
+                    const parent = el.closest('.switch-container');
+                    if (parent) {
+                        parent.style.opacity = '1';
+                        parent.style.cursor = 'pointer';
+                        parent.removeAttribute('title');
+                        const sl = parent.querySelector('.slider');
+                        if(sl) sl.style.cursor = 'pointer';
+                    }
+                }
+            });
+            if(slider) {
+                const sliderParent = slider.closest('.slider-container');
+                if (sliderParent) {
+                    sliderParent.style.opacity = '1';
+                    sliderParent.removeAttribute('title');
+                    slider.style.cursor = 'pointer';
+                }
+            }
         }
     }
 

@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.11-alpha] - 2026-05-12
+### Modificato
+- **Miglioramento UI/UX nella Dashboard**: Quando viene selezionato il profilo "Germano PA", i filtri (OCR, Biometrica, Dati Sensibili e Soglia) vengono automaticamente disabilitati. Ora l'interfaccia rispecchia questo blocco "ingrigendo" visivamente i toggle (opacity: 0.5) e mostrando un cursore `not-allowed`. Al passaggio del mouse viene visualizzato un tooltip informativo che spiega all'utente di passare al profilo "Germano PD" per sbloccare le funzionalità.
+
 ## [0.10-alpha] - 2026-05-12
 ### Aggiunto
 - **Suite di Sviluppo (Dev Tools)**: Creata la cartella `DEV_TOOLS` esterna al pacchetto dell'utente finale. Contiene lo script `update_and_test.py` che permette agli sviluppatori di aggiornare automaticamente le dipendenze, avviare il backend locale, e stressare l'API `/api/v1/anonymize` inviando documenti mock (generati in `test_files`). Valida infine che i dati sensibili siano stati censurati correttamente nel flusso binario di risposta.
