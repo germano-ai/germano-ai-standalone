@@ -28,6 +28,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }).catch(e => console.error("Error checking orphans", e));
 
+    // Check for updates
+    fetch('/api/check_update').then(res => res.json()).then(data => {
+        if (data.update_available) {
+            document.getElementById('update-version').innerText = data.latest_version;
+            document.getElementById('update-banner').style.display = 'block';
+        }
+    }).catch(e => console.error("Error checking updates", e));
+
     const preFlightStats = document.getElementById('pre-flight-stats');
     const progressContainer = document.getElementById('session-progress-container');
     const lblInputFiles = document.getElementById('lbl_input_files');

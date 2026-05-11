@@ -1,8 +1,10 @@
 from flask import Flask, render_template, jsonify
 import subprocess
 import os
+import requests
 
 app = Flask(__name__)
+APP_VERSION = "0.08-alpha"
 
 DAEMON_PID_FILE = "daemon.pid"
 STOP_FLAG = "stop.flag"
@@ -104,13 +106,43 @@ def start_daemon():
     return jsonify({'status': 'success', 'message': 'Daemon started'})
 
 @app.route('/api/stop')
-def stop_daemon():
+def stop():
     with open(STOP_FLAG, "w") as f:
         f.write("1")
     if os.path.exists(READY_FLAG):
         try: os.remove(READY_FLAG)
         except: pass
     return jsonify({'status': 'success', 'message': 'Stop flag set'})
+
+@app.route('/api/stop_daemon', methods=['POST'])
+def stop_daemon():
+    # Cerca il demone tramite pid o nome
+    try:
+        import subprocess
+        subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/FI", f"WINDOWTITLE eq germano_daemon*"], shell=True)
+        return jsonify({"status": "success", "message": "Demone fermato (se era in esecuzione)."})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/check_update', methods=['GET'])
+def check_update():
+    try:
+        response = requests.get("https://raw.githubusercontent.com/germano-ai/germano-ai-standalone/master/VERSION", timeout=5)
+        if response.status_code == 200:
+            latest_version = response.text.strip()
+            return jsonify({
+                "current_version": APP_VERSION,
+                "latest_version": latest_version,
+                "update_available": latest_version != APP_VERSION
+            })
+    except Exception as e:
+        app.logger.error(f"Errore controllo aggiornamenti: {e}")
+    
+    return jsonify({
+        "current_version": APP_VERSION,
+        "latest_version": "unknown",
+        "update_available": False
+    })
 
 @app.route('/api/logs')
 def get_logs():

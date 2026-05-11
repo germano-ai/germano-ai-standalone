@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">Germano AI - Documentazione e Guida all'Uso</title>
+    <meta id="meta-desc" name="description" content="Guida all'uso di Germano AI: scopri come anonimizzare i tuoi documenti, i requisiti di sistema e la struttura del software.">
+    
+    <link rel="alternate" hreflang="it" href="https://germano.ai/guide.html?lang=it" />
+    <link rel="alternate" hreflang="en" href="https://germano.ai/guide.html?lang=en" />
+    <link rel="alternate" hreflang="x-default" href="https://germano.ai/guide.html" />
+    
+    <meta id="og-title" property="og:title" content="Germano AI - Documentazione">
+    <meta id="og-desc" property="og:description" content="Manuale utente e specifiche tecniche per l'installazione e l'uso di Germano AI.">
+    
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        .guide-section { padding: 4rem 0; }
+        .guide-content { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 3rem; margin-bottom: 2rem; }
+        .guide-content h2 { font-family: 'Outfit', sans-serif; color: var(--primary); border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 2rem; margin-top: 3rem; }
+        .guide-content h2:first-child { margin-top: 0; }
+        .guide-content h3 { color: #f8fafc; margin-top: 2rem; margin-bottom: 1rem; }
+        .guide-content p, .guide-content li { color: #94a3b8; margin-bottom: 1rem; }
+        .guide-content ul { padding-left: 1.5rem; margin-bottom: 1.5rem; }
+        .code-block { background: #0f172a; border: 1px solid #334155; padding: 1rem; border-radius: 8px; font-family: monospace; color: #a7f3d0; margin-bottom: 1.5rem; }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="logo">
+            <a href="index.html" style="color: inherit; display: flex; align-items: center; gap: 0.5rem;"><i class="fas fa-shield-alt"></i> germano.ai</a>
+        </div>
+        <div class="lang-switcher">
+            <button id="btn-it" class="lang-btn active">🇮🇹 IT</button>
+            <button id="btn-en" class="lang-btn">🇬🇧 EN</button>
+        </div>
+        <ul class="nav-links">
+            <li><a href="index.html" class="nav-link" data-i18n="nav_home" style="font-weight: 800; color: #cbd5e1;">Home</a></li>
+            <li><a href="index.html#download" class="nav-cta" data-i18n="nav_download">Download</a></li>
+        </ul>
+    </nav>
+
+    <!-- Header -->
+    <header class="hero" style="min-height: 40vh; padding-top: 120px;">
+        <div class="hero-content">
+            <h1 class="hero-title"><span data-i18n="guide_title">Manuale e</span> <span class="gradient-text">Documentazione</span></h1>
+            <p class="hero-subtitle" data-i18n="guide_subtitle">Tutto ciò che devi sapere per installare, configurare e padroneggiare Germano AI sul tuo computer.</p>
+        </div>
+        <div class="hero-glow"></div>
+    </header>
+
+    <main class="container guide-section">
+        <div class="guide-content">
+            <h2 data-i18n="guide_h2_1">1. Come si usa (Primi Passi)</h2>
+            <p data-i18n="guide_p_1">Germano AI Standalone è stato progettato per essere "Plug & Play". Non richiede installazione, server web o configurazioni di sistema complesse.</p>
+            <ol style="color: #94a3b8; padding-left: 1.5rem; margin-bottom: 2rem;">
+                <li data-i18n="guide_step_1">Scarica l'archivio ZIP dal link in homepage e scompattalo in una cartella a tua scelta.</li>
+                <li data-i18n="guide_step_2">Fai doppio clic sul file <code>START.bat</code> (su Windows). Questo avvierà il motore in background e aprirà automaticamente la Dashboard nel tuo browser.</li>
+                <li data-i18n="guide_step_3">Copia i tuoi documenti da anonimizzare dentro la cartella <code>input/</code>.</li>
+                <li data-i18n="guide_step_4">Dalla Dashboard, assicurati di aver selezionato il "Profilo di Conformità" desiderato (PA o PD) e clicca su <strong>START DAEMON</strong>.</li>
+                <li data-i18n="guide_step_5">Attendi l'elaborazione. Troverai i file puliti nella cartella <code>output/</code>.</li>
+            </ol>
+
+            <h2 data-i18n="guide_h2_2">2. Struttura delle Cartelle</h2>
+            <p data-i18n="guide_p_2">Il sistema organizza il lavoro automaticamente spostando i file in base al loro stato:</p>
+            <ul>
+                <li><strong style="color: var(--primary);">/input:</strong> <span data-i18n="guide_folder_1">La cartella di partenza. Inserisci qui i file. Il sistema supporta anche sottocartelle (che verranno replicate fedelmente nell'output).</span></li>
+                <li><strong style="color: var(--success);">/output:</strong> <span data-i18n="guide_folder_2">Dove finiscono i documenti anonimizzati. Se il file era un DOCX, troverai un DOCX, formattato e impaginato come l'originale.</span></li>
+                <li><strong style="color: #a7f3d0;">/processed:</strong> <span data-i18n="guide_folder_3">Dove vengono parcheggiati i file originali dopo essere stati elaborati, per evitare di sovrascriverli o perderli.</span></li>
+                <li><strong style="color: #ef4444;">/failed:</strong> <span data-i18n="guide_folder_4">Se un documento è protetto da password, corrotto, o genera errori imprevisti, viene spostato qui per l'analisi manuale.</span></li>
+                <li><strong style="color: var(--accent);">/extracted:</strong> <span data-i18n="guide_folder_5">Contiene un file <code>.json</code> per ogni documento processato, con la mappa esatta (log) di cosa è stato trovato e sostituito (utile a fini di audit e controllo).</span></li>
+            </ul>
+
+            <h2 data-i18n="guide_h2_3">3. Tecnologie Utilizzate</h2>
+            <p data-i18n="guide_p_3">Dietro le quinte, Germano AI orchestra i migliori modelli Open Source disponibili per garantire massima affidabilità:</p>
+            <ul>
+                <li><strong style="color: white;">Transformers (Hugging Face):</strong> <span data-i18n="guide_tech_1">Utilizza il modello NLP `openai/privacy-filter` per la "Named Entity Recognition" (NER), per intercettare nomi di persona e luoghi all'interno del contesto di una frase.</span></li>
+                <li><strong style="color: white;">Espressioni Regolari (RegEx):</strong> <span data-i18n="guide_tech_2">Un solido dizionario di RegEx italiane per catturare inequivocabilmente Codici Fiscali, Partite IVA, Numeri di Telefono e Indirizzi Email.</span></li>
+                <li><strong style="color: white;">EasyOCR:</strong> <span data-i18n="guide_tech_3">L'Optical Character Recognition entra in azione quando elabori scansioni, PDF immagini o foto di documenti d'identità. Legge il testo "pixelato" per permettere ai motori NLP di censurarlo disegnando dei rettangoli neri.</span></li>
+                <li><strong style="color: white;">OpenCV:</strong> <span data-i18n="guide_tech_4">Rilevamento facciale biometrico automatico tramite classificatori di Haar per l'oscuramento visivo delle fototessere sui documenti.</span></li>
+                <li><strong style="color: white;">PyTorch con DirectML:</strong> <span data-i18n="guide_tech_5">Consente di accelerare l'AI non solo su GPU Nvidia (CUDA), ma anche su GPU AMD e Intel.</span></li>
+            </ul>
+
+            <h2 data-i18n="guide_h2_4">4. Requisiti di Sistema Hardware</h2>
+            <p data-i18n="guide_p_4">Poiché il sistema esegue l'Intelligenza Artificiale localmente, richiede potenza di calcolo. Un PC lento riuscirà comunque ad anonimizzare i file, ma impiegherà più tempo.</p>
+            <div class="code-block">
+                <strong>Minimi:</strong><br>
+                - CPU: Intel Core i5 / AMD Ryzen 5 (di 8° generazione o superiore)<br>
+                - RAM: 8 GB<br>
+                - OS: Windows 10/11 64-bit<br>
+                - Spazio: 5 GB liberi su disco
+            </div>
+            <div class="code-block">
+                <strong>Consigliati (per elaborazioni massive):</strong><br>
+                - CPU: Intel Core i7 / AMD Ryzen 7<br>
+                - RAM: 16 GB o più<br>
+                - GPU: Scheda Video Dedicata (Nvidia RTX, AMD Radeon) con almeno 4GB di VRAM<br>
+                - Storage: SSD NVMe
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+        <div class="made-in">
+            <p data-i18n="footer_madein">Orgogliosamente sviluppato a Sassari, Italia 🇮🇹</p>
+        </div>
+        <p>&copy; 2026 germano.ai - <span data-i18n="footer_copy">Un progetto Open Source di <a href='https://www.yesc.it/' target='_blank' style='color: var(--primary); font-weight: bold;'>Yes Consulting</a> per proteggere i tuoi dati.</span></p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
