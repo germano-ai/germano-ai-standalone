@@ -2,6 +2,14 @@
 
 Germano AI è una potente suite open-source progettada per **l'anonimizzazione intelligente** e massiva di documenti aziendali e della Pubblica Amministrazione. Basata su motori di Intelligenza Artificiale locale, garantisce la totale privacy dei dati elaborando i file offline.
 
+## 📥 Download Versione Standalone (Plug & Play)
+
+Per scaricare la versione pre-compilata e pronta all'uso (inclusiva di interfaccia web, ambiente Python preconfigurato e tutti i pesanti modelli IA pre-scaricati), utilizza il seguente link a Google Drive:
+
+👉 **[SCARICA GERMANO AI STANDALONE (Google Drive)](https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD)**
+
+Una volta estratto l'archivio ZIP, sarà sufficiente fare doppio clic su `START.bat` per avviare il demone e la dashboard di controllo.
+
 ## 🚀 Funzionalità Principali
 
 *   **100% Offline & Standalone:** Non richiede XAMPP o altri server web. Il server Flask e il demone Python girano in totale autonomia sul tuo computer senza mai inviare dati all'esterno.
