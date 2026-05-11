@@ -1,5 +1,9 @@
 const translations = {
     "it": {
+        "seo_title": "Germano AI - Anonimizzazione Documentale Intelligente",
+        "seo_desc": "Germano AI è una potente suite open-source per l'anonimizzazione intelligente di documenti aziendali e della Pubblica Amministrazione.",
+        "og_title": "Germano AI - Anonimizzazione Documentale",
+        "og_desc": "Proteggi i tuoi dati offline con la potente suite AI open-source per Pubbliche Amministrazioni e aziende.",
         "nav_about": "Cos'è",
         "nav_modes": "PA vs PD",
         "nav_usecases": "Casi d'Uso",
@@ -51,6 +55,10 @@ const translations = {
         "footer_copy": "Sviluppato per proteggere i tuoi dati."
     },
     "en": {
+        "seo_title": "Germano AI - Smart Document Anonymization",
+        "seo_desc": "Germano AI is a powerful open-source suite for intelligent document anonymization, built for Public Administrations and Enterprise.",
+        "og_title": "Germano AI - Document Anonymization",
+        "og_desc": "Protect your data offline with the powerful open-source AI suite for enterprise and public sector.",
         "nav_about": "About",
         "nav_modes": "PA vs PD",
         "nav_usecases": "Use Cases",
@@ -105,7 +113,7 @@ const translations = {
 
 let currentLang = 'it';
 
-function setLanguage(lang) {
+function setLanguage(lang, updateUrl = true) {
     if (!translations[lang]) return;
     currentLang = lang;
     
@@ -117,19 +125,42 @@ function setLanguage(lang) {
         }
     });
 
+    // Update SEO Meta Tags dynamically
+    document.getElementById('page-title').innerText = translations[lang]['seo_title'];
+    document.getElementById('meta-desc').setAttribute('content', translations[lang]['seo_desc']);
+    document.getElementById('og-title').setAttribute('content', translations[lang]['og_title']);
+    document.getElementById('og-desc').setAttribute('content', translations[lang]['og_desc']);
+
     // Update buttons state
     document.querySelectorAll('.lang-btn').forEach(btn => {
         btn.classList.remove('active');
     });
     document.getElementById(`btn-${lang}`).classList.add('active');
     document.documentElement.lang = lang;
+
+    // Update URL parameter without reloading (for shareability and SEO hints)
+    if (updateUrl) {
+        const url = new URL(window.location);
+        url.searchParams.set('lang', lang);
+        window.history.pushState({}, '', url);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Detect User Agent Language
-    const userLang = navigator.language || navigator.userLanguage;
-    if (!userLang.toLowerCase().startsWith('it')) {
-        setLanguage('en');
+    // Check URL parameters first
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlLang = urlParams.get('lang');
+
+    if (urlLang === 'en' || urlLang === 'it') {
+        setLanguage(urlLang, false);
+    } else {
+        // Detect User Agent Language if no URL parameter
+        const userLang = navigator.language || navigator.userLanguage;
+        if (!userLang.toLowerCase().startsWith('it')) {
+            setLanguage('en', false);
+        } else {
+            setLanguage('it', false);
+        }
     }
 
     // Language Buttons Event Listeners
