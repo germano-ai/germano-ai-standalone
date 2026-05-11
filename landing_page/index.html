@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Germano AI - Anonimizzazione Documentale Intelligente</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="logo">
+            <i class="fas fa-shield-alt"></i> germano.ai
+        </div>
+        <ul class="nav-links">
+            <li><a href="#about">Cos'è</a></li>
+            <li><a href="#modes">PA vs PD</a></li>
+            <li><a href="#usecases">Casi d'Uso</a></li>
+            <li><a href="#download" class="nav-cta">Download</a></li>
+        </ul>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="hero-content">
+            <div class="badge">Open Source & 100% Offline</div>
+            <h1 class="hero-title">La Privacy Documentale,<br><span class="gradient-text">nell'Era dell'Intelligenza Artificiale.</span></h1>
+            <p class="hero-subtitle">Anonimizza contratti, sentenze e documenti sensibili direttamente sul tuo computer. Nessun cloud, nessuna fuga di dati. Gratuito per sempre.</p>
+            <div class="hero-buttons">
+                <a href="#download" class="btn btn-primary"><i class="fas fa-download"></i> Scarica Standalone</a>
+                <a href="https://github.com/germano-ai/germano-ai-standalone" target="_blank" class="btn btn-secondary"><i class="fab fa-github"></i> Sorgente su GitHub</a>
+            </div>
+        </div>
+        <div class="hero-glow"></div>
+    </header>
+
+    <!-- About Section -->
+    <section id="about" class="section about-section">
+        <div class="container">
+            <h2 class="section-title">Cos'è <span class="gradient-text">Germano AI?</span></h2>
+            <div class="about-grid">
+                <div class="about-card fade-in">
+                    <i class="fas fa-microchip icon"></i>
+                    <h3>Intelligenza Artificiale Locale</h3>
+                    <p>Sfrutta potenti modelli Transformer e OCR (EasyOCR) che girano direttamente sulla tua CPU o GPU. I tuoi dati non lasciano mai il tuo ufficio.</p>
+                </div>
+                <div class="about-card fade-in">
+                    <i class="fas fa-file-pdf icon"></i>
+                    <h3>Multi-Formato e "In-Place"</h3>
+                    <p>Elabora PDF, DOCX, XLSX mantenendo intatto il layout originale, la formattazione, le tabelle e persino le macro VBA.</p>
+                </div>
+                <div class="about-card fade-in">
+                    <i class="fas fa-user-secret icon"></i>
+                    <h3>Censura Testuale & Visiva (Biometria)</h3>
+                    <p>Intercetta dati sensibili nel testo. Nei PDF o nelle immagini (es. <strong>Carta di Identità</strong>), utilizza il riconoscimento facciale OpenCV per offuscare automaticamente le fototessere e l'OCR per leggere e censurare i dati anagrafici stampati.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Modes Section (PA vs PD) -->
+    <section id="modes" class="section modes-section">
+        <div class="container">
+            <h2 class="section-title">Profili di Conformità</h2>
+            <p class="section-desc">Germano AI è progettato per adattarsi sia ad ambienti altamente regolamentati che a professionisti privati.</p>
+            
+            <div class="modes-grid">
+                <div class="mode-card pa-mode slide-in-left">
+                    <div class="mode-header">
+                        <i class="fas fa-landmark"></i>
+                        <h3>Germano PA (Pubblica Amministrazione)</h3>
+                        <span class="mode-badge">A Norma CAD/GDPR</span>
+                    </div>
+                    <ul class="feature-list">
+                        <li><i class="fas fa-lock"></i> Filtri di censura bloccati e attivi al 100%.</li>
+                        <li><i class="fas fa-shield-virus"></i> Nessuna possibilità di disabilitare l'OCR o la biometria facciale per garantire sicurezza assoluta.</li>
+                        <li><i class="fas fa-gavel"></i> Garantisce il rispetto del <strong>GDPR (Regolamento UE 2016/679)</strong> sulla minimizzazione dei dati e del <strong>CAD (Codice dell'Amministrazione Digitale)</strong> per la gestione documentale.</li>
+                    </ul>
+                </div>
+
+                <div class="mode-card pd-mode slide-in-right">
+                    <div class="mode-header">
+                        <i class="fas fa-user-tie"></i>
+                        <h3>Germano PD (Pubblico Dominio)</h3>
+                        <span class="mode-badge">Configurazione Libera</span>
+                    </div>
+                    <ul class="feature-list">
+                        <li><i class="fas fa-sliders-h"></i> Totale controllo su quali filtri (nomi, email, ecc.) attivare.</li>
+                        <li><i class="fas fa-tachometer-alt"></i> Soglia di affidabilità dell'Intelligenza Artificiale regolabile a piacimento.</li>
+                        <li><i class="fas fa-bolt"></i> Ideale per aziende private, avvocati e ricercatori che necessitano di flessibilità operativa.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Use Cases Section -->
+    <section id="usecases" class="section usecases-section">
+        <div class="container">
+            <div class="usecase-content fade-in">
+                <h2 class="section-title">Sblocca il potere di <span class="gradient-text">ChatGPT e Claude</span> (in sicurezza)</h2>
+                <p>Molte Pubbliche Amministrazioni e aziende esitano a utilizzare i Large Language Models commerciali per paura di caricare documenti contenenti **Dati Personali Identificabili (PII)** su server cloud esteri.</p>
+                <div class="step-flow">
+                    <div class="step">
+                        <div class="step-icon"><i class="fas fa-file-alt"></i></div>
+                        <h4>Documento Originale</h4>
+                        <span>Contiene nomi, codici fiscali...</span>
+                    </div>
+                    <i class="fas fa-arrow-right step-arrow"></i>
+                    <div class="step">
+                        <div class="step-icon germano-step"><i class="fas fa-shield-alt"></i></div>
+                        <h4>Germano AI (Offline)</h4>
+                        <span>Anonimizza in locale</span>
+                    </div>
+                    <i class="fas fa-arrow-right step-arrow"></i>
+                    <div class="step">
+                        <div class="step-icon llm-step"><i class="fas fa-robot"></i></div>
+                        <h4>LLM (Cloud)</h4>
+                        <span>Elaborazione sicura</span>
+                    </div>
+                </div>
+                <p class="usecase-conclusion">Con Germano AI, anonimizzi prima tutto offline. Una volta "ripulito", il documento può essere inviato a qualsiasi LLM commerciale per riassunti, traduzioni o estrazioni, mantenendo la totale compliance al GDPR.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download & Collaborate Section -->
+    <section id="download" class="section download-section">
+        <div class="container">
+            <div class="download-box fade-in">
+                <h2>Inizia Subito (Gratis e Open Source)</h2>
+                <p>Nessun installer complesso, nessuna configurazione. Estrai lo ZIP, fai doppio clic su <code>START.bat</code> e aprirai la fantastica **Dashboard di Controllo** locale nel tuo browser.</p>
+                
+                <div class="download-actions">
+                    <a href="https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD" class="btn btn-primary btn-large">
+                        <i class="fab fa-google-drive"></i> Download Versione Standalone (~4 GB)
+                    </a>
+                    <a href="https://github.com/germano-ai/germano-ai-standalone" class="btn btn-secondary btn-large">
+                        <i class="fab fa-github"></i> Codice Sorgente su GitHub
+                    </a>
+                </div>
+                
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 2rem 0;">
+                
+                <h3>🤝 Collabora al Progetto!</h3>
+                <p style="margin-top: 1rem;">Germano AI è un progetto guidato dalla community. Sei uno sviluppatore Python, un esperto legale o un appassionato di AI? Unisciti a noi! Fai un fork del repository su GitHub, apri una Pull Request e aiutaci a migliorare l'algoritmo, aggiungere nuovi formati supportati o ottimizzare l'interfaccia utente.</p>
+                <p class="license-info" style="margin-top: 1.5rem;">Rilasciato sotto licenza <strong>GNU GPL v3</strong>.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2026 germano.ai - Sviluppato per proteggere i tuoi dati.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
