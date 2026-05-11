@@ -2,6 +2,9 @@
 
 Germano AI è una potente suite open-source progettada per **l'anonimizzazione intelligente** e massiva di documenti aziendali e della Pubblica Amministrazione. Basata su motori di Intelligenza Artificiale locale, garantisce la totale privacy dei dati elaborando i file offline.
 
+> **Sviluppato da [Yes Consulting](https://www.yesc.it/)**
+
+
 ## 📥 Download Versione Standalone (Plug & Play)
 
 Per scaricare la versione pre-compilata e pronta all'uso (inclusiva di interfaccia web, ambiente Python preconfigurato e tutti i pesanti modelli IA pre-scaricati), utilizza il seguente link a Google Drive:

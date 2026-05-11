@@ -52,7 +52,7 @@ const translations = {
         "collab_title": "🤝 Collabora al Progetto!",
         "collab_desc": "Germano AI è un progetto guidato dalla community. Sei uno sviluppatore Python, un esperto legale o un appassionato di AI? Unisciti a noi! Fai un fork del repository su GitHub, apri una Pull Request e aiutaci a migliorare l'algoritmo, aggiungere nuovi formati supportati o ottimizzare l'interfaccia utente.",
         "footer_madein": "Orgogliosamente sviluppato a Sassari, Italia 🇮🇹",
-        "footer_copy": "Sviluppato per proteggere i tuoi dati."
+        "footer_copy": "Un progetto Open Source di <a href='https://www.yesc.it/' target='_blank' style='color: var(--primary); font-weight: bold;'>Yes Consulting</a> per proteggere i tuoi dati."
     },
     "en": {
         "seo_title": "Germano AI - Smart Document Anonymization",
@@ -107,7 +107,7 @@ const translations = {
         "collab_title": "🤝 Collaborate with the Project!",
         "collab_desc": "Germano AI is a community-driven project. Are you a Python developer, a legal expert, or an AI enthusiast? Join us! Fork the repository on GitHub, open a Pull Request, and help us improve the algorithm, add new supported formats, or optimize the user interface.",
         "footer_madein": "Proudly developed in Sassari, Italy 🇮🇹",
-        "footer_copy": "Developed to protect your data."
+        "footer_copy": "An Open Source project by <a href='https://www.yesc.it/' target='_blank' style='color: var(--primary); font-weight: bold;'>Yes Consulting</a> to protect your data."
     }
 };
 
