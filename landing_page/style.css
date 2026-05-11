@@ -36,7 +36,7 @@ a { text-decoration: none; color: inherit; }
     border-bottom: 1px solid var(--border-color);
 }
 .logo { font-family: 'Outfit', sans-serif; font-size: 1.5rem; font-weight: 900; color: var(--primary); display: flex; align-items: center; gap: 0.5rem; }
-.nav-links { list-style: none; display: flex; gap: 2rem; align-items: center; margin: 0 auto; }
+.nav-links { list-style: none; display: flex; gap: 2rem; align-items: center; margin-left: auto; margin-right: 2rem; }
 .nav-links a { font-weight: 600; color: #cbd5e1; transition: color 0.3s; }
 .nav-links a:hover { color: white; }
 .nav-cta { background: var(--primary); padding: 0.5rem 1rem; border-radius: 6px; color: white !important; }
