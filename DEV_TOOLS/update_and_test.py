@@ -7,7 +7,7 @@ import json
 import psutil
 
 # Costanti
-STANDALONE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "STANDALONE"))
+STANDALONE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 TEST_FILES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "test_files"))
 API_BASE_URL = "http://127.0.0.1:8000"
 
