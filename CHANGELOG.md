@@ -3,6 +3,13 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.03-alpha] - 2026-05-12
+### Aggiunto
+- **Supporto Multilingua (IT/EN)**: Implementata architettura JSON `data-i18n` con rilevamento automatico della lingua via `navigator.language` e selettore bandierine (🇮🇹/🇬🇧).
+- **SEO Optimization**: Aggiunti tag meta e Open Graph per una perfetta indicizzazione e condivisione sui social.
+- **Spiegazione Licenza GNU GPL v3**: Aggiunto paragrafo esplicativo sui diritti e doveri del software libero.
+- **Made in Sassari**: Aggiunto badge nel footer per evidenziare l'origine del progetto in Italia.
+
 ## [0.02-alpha] - 2026-05-12
 ### Aggiunto
 - Aggiornamento della Landing Page con specifiche di legge (CAD e GDPR).
