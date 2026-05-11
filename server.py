@@ -2,9 +2,12 @@ from flask import Flask, render_template, jsonify
 import subprocess
 import os
 import requests
+import uuid
+import time
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-APP_VERSION = "0.08-alpha"
+APP_VERSION = "0.09-alpha"
 
 DAEMON_PID_FILE = "daemon.pid"
 STOP_FLAG = "stop.flag"
@@ -143,6 +146,52 @@ def check_update():
         "latest_version": "unknown",
         "update_available": False
     })
+
+@app.route('/api/v1/anonymize', methods=['POST'])
+def api_anonymize():
+    if not is_daemon_running():
+        return jsonify({"error": "Il demone IA non è in esecuzione."}), 503
+        
+    if 'file' not in request.files:
+        return jsonify({"error": "Nessun file fornito. Usa multipart/form-data con la chiave 'file'."}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "Nessun file selezionato."}), 400
+        
+    # Crea un identificatore unico
+    uid = str(uuid.uuid4())[:8]
+    original_name = secure_filename(file.filename)
+    base_name, ext = os.path.splitext(original_name)
+    safe_name = f"{base_name}_{uid}{ext}"
+    
+    input_path = os.path.join("input", safe_name)
+    output_path = os.path.join("output", safe_name)
+    failed_path = os.path.join("failed", safe_name)
+    
+    os.makedirs("input", exist_ok=True)
+    os.makedirs("output", exist_ok=True)
+    
+    # Salva il file nella cartella input
+    file.save(input_path)
+    
+    # Attendi fino a 60 secondi
+    timeout = 60
+    start_time = time.time()
+    
+    while time.time() - start_time < timeout:
+        if os.path.exists(output_path):
+            from flask import send_file
+            # Aspetta un secondo in più per sicurezza (per evitare file lock)
+            time.sleep(1)
+            return send_file(output_path, as_attachment=True, download_name=original_name)
+            
+        if os.path.exists(failed_path):
+            return jsonify({"error": "Errore durante l'elaborazione del file."}), 500
+            
+        time.sleep(1)
+        
+    return jsonify({"error": "Timeout: l'elaborazione ha impiegato troppo tempo."}), 504
 
 @app.route('/api/logs')
 def get_logs():

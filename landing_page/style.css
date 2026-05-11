@@ -131,8 +131,99 @@ footer { text-align: center; padding: 2rem; border-top: 1px solid var(--border-c
 .slide-in-right { opacity: 0; transform: translateX(50px); transition: opacity 0.8s ease-out, transform 0.8s ease-out; }
 .visible { opacity: 1; transform: translate(0); }
 
+/* =========================================
+   Knowledge Base Layout
+========================================= */
+.kb-container {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 3rem;
+    max-width: 1200px;
+    margin: 4rem auto;
+    padding: 0 2rem;
+    align-items: start;
+}
+
+.kb-sidebar {
+    position: sticky;
+    top: 100px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+}
+
+.kb-sidebar h3 {
+    font-family: 'Outfit', sans-serif;
+    color: var(--primary);
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.kb-nav {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.kb-nav li {
+    margin-bottom: 0.5rem;
+}
+
+.kb-nav a {
+    color: #cbd5e1;
+    text-decoration: none;
+    font-size: 0.95rem;
+    display: block;
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.kb-nav a:hover, .kb-nav a.active {
+    background: rgba(59, 130, 246, 0.15);
+    color: white;
+}
+
+.kb-content {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 3rem;
+}
+
+.kb-content h2 {
+    font-family: 'Outfit', sans-serif;
+    color: var(--primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1rem;
+    margin-bottom: 2rem;
+    margin-top: 3rem;
+}
+.kb-content h2:first-child { margin-top: 0; }
+.kb-content h3 { color: #f8fafc; margin-top: 2rem; margin-bottom: 1rem; }
+.kb-content p, .kb-content li { color: #94a3b8; margin-bottom: 1rem; line-height: 1.6; }
+.kb-content ul, .kb-content ol { padding-left: 1.5rem; margin-bottom: 1.5rem; }
+
+.code-block {
+    background: #0f172a;
+    border: 1px solid #334155;
+    padding: 1.2rem;
+    border-radius: 8px;
+    font-family: monospace;
+    color: #a7f3d0;
+    margin-bottom: 1.5rem;
+    overflow-x: auto;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
+    .kb-container { grid-template-columns: 1fr; gap: 2rem; }
+    .kb-sidebar { position: static; max-height: none; }
     .navbar { flex-wrap: wrap; gap: 1rem; justify-content: center; }
     .lang-switcher { margin-left: 0; margin-right: 0; }
     .nav-links { order: 3; width: 100%; justify-content: center; }

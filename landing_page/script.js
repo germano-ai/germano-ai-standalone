@@ -65,21 +65,30 @@ const translations = {
         "guide_step_3": "Copia i tuoi documenti da anonimizzare dentro la cartella <code>input/</code>.",
         "guide_step_4": "Dalla Dashboard, assicurati di aver selezionato il \"Profilo di Conformità\" desiderato (PA o PD) e clicca su <strong>START DAEMON</strong>.",
         "guide_step_5": "Attendi l'elaborazione. Troverai i file puliti nella cartella <code>output/</code>.",
-        "guide_h2_2": "2. Struttura delle Cartelle",
+        
+        "guide_nav_title": "Indice Argomenti",
+        "guide_nav_api": "2. Integrazione API REST",
+        "guide_api_desc": "Germano AI Standalone include un endpoint API locale che ti permette di inviare documenti in modo programmatico dal tuo software (es. Gestionale, CRM o Portale Web PA) e ricevere immediatamente il file anonimizzato in risposta.",
+        "guide_api_endpoint": "Endpoint",
+        "guide_api_req": "Esempio di Richiesta (cURL)",
+        "guide_api_res": "Risposta",
+        "guide_api_res_desc": "L'API è sincrona. Attenderà l'elaborazione del demone IA in background (fino a 60 secondi) e restituirà direttamente il <strong>flusso binario del file anonimizzato</strong> come allegato scaricabile.",
+        
+        "guide_h2_2": "3. Struttura delle Cartelle",
         "guide_p_2": "Il sistema organizza il lavoro automaticamente spostando i file in base al loro stato:",
         "guide_folder_1": "La cartella di partenza. Inserisci qui i file. Il sistema supporta anche sottocartelle (che verranno replicate fedelmente nell'output).",
         "guide_folder_2": "Dove finiscono i documenti anonimizzati. Se il file era un DOCX, troverai un DOCX, formattato e impaginato come l'originale.",
         "guide_folder_3": "Dove vengono parcheggiati i file originali dopo essere stati elaborati, per evitare di sovrascriverli o perderli.",
         "guide_folder_4": "Se un documento è protetto da password, corrotto, o genera errori imprevisti, viene spostato qui per l'analisi manuale.",
         "guide_folder_5": "Contiene un file <code>.json</code> per ogni documento processato, con la mappa esatta (log) di cosa è stato trovato e sostituito (utile a fini di audit e controllo).",
-        "guide_h2_3": "3. Tecnologie Utilizzate",
+        "guide_h2_3": "4. Tecnologie Utilizzate",
         "guide_p_3": "Dietro le quinte, Germano AI orchestra i migliori modelli Open Source disponibili per garantire massima affidabilità:",
         "guide_tech_1": "Utilizza il modello NLP `openai/privacy-filter` per la \"Named Entity Recognition\" (NER), per intercettare nomi di persona e luoghi all'interno del contesto di una frase.",
         "guide_tech_2": "Un solido dizionario di RegEx italiane per catturare inequivocabilmente Codici Fiscali, Partite IVA, Numeri di Telefono e Indirizzi Email.",
         "guide_tech_3": "L'Optical Character Recognition entra in azione quando elabori scansioni, PDF immagini o foto di documenti d'identità. Legge il testo \"pixelato\" per permettere ai motori NLP di censurarlo disegnando dei rettangoli neri.",
         "guide_tech_4": "Rilevamento facciale biometrico automatico tramite classificatori di Haar per l'oscuramento visivo delle fototessere sui documenti.",
         "guide_tech_5": "Consente di accelerare l'AI non solo su GPU Nvidia (CUDA), ma anche su GPU AMD e Intel.",
-        "guide_h2_4": "4. Requisiti di Sistema Hardware",
+        "guide_h2_4": "5. Requisiti di Sistema Hardware",
         "guide_p_4": "Poiché il sistema esegue l'Intelligenza Artificiale localmente, richiede potenza di calcolo. Un PC lento riuscirà comunque ad anonimizzare i file, ma impiegherà più tempo."
     },
     "en": {
@@ -148,21 +157,30 @@ const translations = {
         "guide_step_3": "Copy the documents you want to anonymize into the <code>input/</code> folder.",
         "guide_step_4": "From the Dashboard, make sure you have selected the desired \"Compliance Profile\" (PA or PD) and click <strong>START DAEMON</strong>.",
         "guide_step_5": "Wait for the processing. You will find the cleaned files in the <code>output/</code> folder.",
-        "guide_h2_2": "2. Folder Structure",
+        
+        "guide_nav_title": "Table of Contents",
+        "guide_nav_api": "2. REST API Integration",
+        "guide_api_desc": "Germano AI Standalone includes a local API endpoint that allows you to programmatically send documents from your software (e.g. ERP, CRM or Web Portal) and immediately receive the anonymized file in response.",
+        "guide_api_endpoint": "Endpoint",
+        "guide_api_req": "Request Example (cURL)",
+        "guide_api_res": "Response",
+        "guide_api_res_desc": "The API is synchronous. It will wait for the AI daemon to process the file in the background (up to 60 seconds) and will directly return the <strong>binary stream of the anonymized file</strong> as a downloadable attachment.",
+        
+        "guide_h2_2": "3. Folder Structure",
         "guide_p_2": "The system automatically organizes the work by moving files based on their status:",
         "guide_folder_1": "The starting folder. Place your files here. The system also supports subfolders (which will be faithfully replicated in the output).",
         "guide_folder_2": "Where the anonymized documents end up. If the file was a DOCX, you will find a DOCX, formatted and paginated like the original.",
         "guide_folder_3": "Where original files are parked after being processed, to avoid overwriting or losing them.",
         "guide_folder_4": "If a document is password-protected, corrupted, or generates unexpected errors, it is moved here for manual analysis.",
         "guide_folder_5": "Contains a <code>.json</code> file for each processed document, with the exact map (log) of what was found and replaced (useful for audit and control purposes).",
-        "guide_h2_3": "3. Technologies Used",
+        "guide_h2_3": "4. Technologies Used",
         "guide_p_3": "Behind the scenes, Germano AI orchestrates the best Open Source models available to ensure maximum reliability:",
         "guide_tech_1": "Uses the NLP model `openai/privacy-filter` for \"Named Entity Recognition\" (NER), to intercept names of people and places within the context of a sentence.",
         "guide_tech_2": "A solid dictionary of Italian RegEx to unequivocally capture Fiscal Codes, VAT Numbers, Phone Numbers, and Email Addresses.",
         "guide_tech_3": "Optical Character Recognition kicks in when you process scans, PDF images, or photos of identity documents. It reads the \"pixelated\" text to allow NLP engines to censor it by drawing black rectangles.",
         "guide_tech_4": "Automatic biometric facial detection via Haar classifiers for the visual obscuration of passport photos on documents.",
         "guide_tech_5": "Allows accelerating AI not only on Nvidia GPUs (CUDA), but also on AMD and Intel GPUs.",
-        "guide_h2_4": "4. Hardware System Requirements",
+        "guide_h2_4": "5. Hardware System Requirements",
         "guide_p_4": "Since the system runs Artificial Intelligence locally, it requires computing power. A slower PC will still be able to anonymize files, but it will take more time."
     }
 };
@@ -255,4 +273,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const elementsToAnimate = document.querySelectorAll('.fade-in, .slide-in-left, .slide-in-right');
     elementsToAnimate.forEach(el => observer.observe(el));
+});
+
+
+// KB Scroll Spy
+document.addEventListener('DOMContentLoaded', () => {
+    const sections = document.querySelectorAll('.kb-content section');
+    const navLinks = document.querySelectorAll('.kb-nav a');
+    
+    if (sections.length > 0 && navLinks.length > 0) {
+        const observerOptions = { root: null, rootMargin: '0px', threshold: 0.5 };
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.getAttribute('id');
+                    navLinks.forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === '#' + id) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            });
+        }, observerOptions);
+        sections.forEach(section => observer.observe(section));
+    }
 });
