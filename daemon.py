@@ -472,7 +472,7 @@ def main():
             aggregation_strategy="simple",
             trust_remote_code=True,
             device=device,
-            model_kwargs={"torch_dtype": torch.float32}
+            model_kwargs={"dtype": torch.float32}
         )
         
         # Wrapper per intercettare gli errori critici di DirectML su GPU AMD e scalare a CPU
