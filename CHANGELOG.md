@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.14-alpha] - 2026-05-12
+### Modificato
+- **Design Logo**: Rimossa l'icona a forma di scudo (`fas fa-shield-alt`) e impostato il font a `Pixelify Sans` per un look più pulito, su richiesta esplicita.
+
 ## [0.13-alpha] - 2026-05-12
 ### Modificato
 - **Responsività Mobile Completa**: Riscritta intera sezione responsive del CSS con tre breakpoint (900px, 768px, 400px). Navbar, Hero, Griglie PA/PD, Step Flow, Sezione API, Download e Footer ora si adattano perfettamente a smartphone e tablet. La pagina Guida (Knowledge Base) collassa sidebar sopra il contenuto su schermi piccoli.
