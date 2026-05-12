@@ -74,23 +74,71 @@
                         <p style="color: #94a3b8; margin: 0;">Daemon Controller (Persistent Model)</p>
                     </header>
                     
-                    <div class="settings-grid" style="display: flex; flex-direction: column; gap: 1.5rem; background: #1e293b; padding: 1.5rem; border-radius: 8px; border: 1px solid #334155; margin-bottom: 2rem;">
-                        <label class="switch-container">
-                            <input type="checkbox" id="setting_faces" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Censura Biometrica (Volti)</span>
-                        </label>
-                        
-                        <label class="switch-container">
+                    <div class="settings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: #1e293b; padding: 1.5rem; border-radius: 8px; border: 1px solid #334155; margin-bottom: 2rem;">
+                        <label class="switch-container" style="grid-column: 1 / -1; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #334155;">
                             <input type="checkbox" id="setting_ocr" checked>
                             <span class="slider round"></span>
                             <span class="label-text">Abilita OCR (Scansioni/Immagini)</span>
                         </label>
                         
                         <label class="switch-container">
-                            <input type="checkbox" id="setting_regex" checked>
+                            <input type="checkbox" id="setting_faces" checked>
                             <span class="slider round"></span>
-                            <span class="label-text">Filtro Dati Contatto (Email, Telefoni, CF)</span>
+                            <span class="label-text">Volti (Biometria)</span>
+                        </label>
+                        
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_person" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Nomi e Cognomi</span>
+                        </label>
+
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_address" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Indirizzi Fisici</span>
+                        </label>
+
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_email" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Indirizzi Email</span>
+                        </label>
+
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_phone" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Numeri di Telefono</span>
+                        </label>
+
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_cf_iva" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Cod. Fiscale / P.IVA</span>
+                        </label>
+
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_account" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">IBAN e Carte</span>
+                        </label>
+
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_secret" checked>
+                            <span class="slider round"></span>
+                            <span class="label-text">Password e Segreti</span>
+                        </label>
+
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_url">
+                            <span class="slider round"></span>
+                            <span class="label-text">URL / Siti Web</span>
+                        </label>
+
+                        <label class="switch-container">
+                            <input type="checkbox" id="censor_date">
+                            <span class="slider round"></span>
+                            <span class="label-text">Date di nascita</span>
                         </label>
                     </div>
                     

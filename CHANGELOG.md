@@ -3,6 +3,11 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.15-alpha] - 2026-05-12
+### Aggiunto
+- **Anonimizzazione Contestuale**: Sostituita l'etichetta fissa `redacted` con tag contestuali dinamici forniti da `privacy-filter` e dalle regex (es. `[PERSONA]`, `[EMAIL]`, `[CODICE_FISCALE]`).
+- **Censura Selettiva**: Introdotti 9 switch nella UI della Dashboard per permettere la scelta granulare di cosa anonimizzare e cosa lasciare in chiaro (Nomi, Indirizzi, Email, Telefoni, Carte, Segreti, ecc.).
+
 ## [0.14-alpha] - 2026-05-12
 ### Modificato
 - **Design Logo**: Rimossa l'icona a forma di scudo (`fas fa-shield-alt`) e impostato il font a `Pixelify Sans` per un look più pulito, su richiesta esplicita.

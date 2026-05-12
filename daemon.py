@@ -36,27 +36,27 @@ except Exception:
     pass
 
 def get_regex_spans(text):
-    if not SETTINGS["enable_regex"]:
+    if not SETTINGS.get("enable_regex", True):
         return []
     patterns = [
         # Indirizzi generici
-        r'(?i)\b(?:Via|Viale|Piazza|Corso|Largo|Vicolo|P\.zza|C\.so)\s+[A-Za-z0-9\s\'\.,]+\d{1,5}\b',
+        (r'(?i)\b(?:Via|Viale|Piazza|Corso|Largo|Vicolo|P\.zza|C\.so)\s+[A-Za-z0-9\s\'\.,]+\d{1,5}\b', 'private_address'),
         # CAP + Città
-        r'\b\d{5}\s+[A-Za-z]+\b',
+        (r'\b\d{5}\s+[A-Za-z]+\b', 'private_address'),
         # Codice Fiscale
-        r'\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b',
+        (r'\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b', 'cf_iva'),
         # Partita IVA
-        r'\bIT\d{11}\b',
+        (r'\bIT\d{11}\b', 'cf_iva'),
         # Email
-        r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b',
+        (r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b', 'private_email'),
         # Telefoni italiani
-        r'\b(?:\+39|0039)?\s?(?:3\d{2}[\s\-\.]?\d{6,7}|0\d{1,3}[\s\-\.]?\d{5,8})\b'
+        (r'\b(?:\+39|0039)?\s?(?:3\d{2}[\s\-\.]?\d{6,7}|0\d{1,3}[\s\-\.]?\d{5,8})\b', 'private_phone')
     ]
     spans = []
     if not isinstance(text, str):
         return spans
         
-    for pattern in patterns:
+    for pattern, entity_group in patterns:
         try:
             for match in re.finditer(pattern, text):
                 spans.append({
@@ -64,11 +64,37 @@ def get_regex_spans(text):
                     "start": match.start(),
                     "end": match.end(),
                     "score": 1.0,
-                    "entity": "REGEX_PII",
-                    "entity_group": "REGEX_PII"
+                    "entity": entity_group,
+                    "entity_group": entity_group
                 })
         except: pass
     return spans
+
+CATEGORY_MAP = {
+    "private_person": ("[PERSONA]", "censor_person"),
+    "private_address": ("[INDIRIZZO]", "censor_address"),
+    "private_email": ("[EMAIL]", "censor_email"),
+    "private_phone": ("[TELEFONO]", "censor_phone"),
+    "cf_iva": ("[COD.FISCALE/P.IVA]", "censor_cf_iva"),
+    "account_number": ("[CONTO/CARTA]", "censor_account"),
+    "secret": ("[SEGRETO]", "censor_secret"),
+    "private_url": ("[URL]", "censor_url"),
+    "private_date": ("[DATA]", "censor_date")
+}
+
+def filter_and_format_spans(spans):
+    filtered = []
+    for span in spans:
+        group = span.get("entity_group", span.get("entity", "PII"))
+        if group in CATEGORY_MAP:
+            label, config_key = CATEGORY_MAP[group]
+            if not SETTINGS.get(config_key, True):
+                continue
+            span["replacement_label"] = label
+        else:
+            span["replacement_label"] = "[DATI_SENSIBILI]"
+        filtered.append(span)
+    return filtered
 
 def merge_and_sort_spans(spans, text):
     if not spans: return []
@@ -96,14 +122,12 @@ def process_txt(input_file, output_file, classifier, extracted_data):
         return
 
     spans = classifier(text) + get_regex_spans(text)
-    spans = merge_and_sort_spans(spans, text)
+    spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
     
     anonymized_text = text
     for span in spans:
         extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-        length = span['end'] - span['start']
-        base_str = "redacted"
-        replacement = (base_str * ((length // len(base_str)) + 1))[:length]
+        replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
         anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
         
     with open(output_file, 'w', encoding='utf-8') as f:
@@ -197,11 +221,9 @@ def process_pdf(input_file, output_file, classifier, extracted_data, ocr_reader=
                             
                             rect = fitz.Rect(x0, y0, x1, y1)
                             
-                            length = max(len(word), 8)
-                            base_str = "redacted"
-                            replacement = (base_str * ((length // len(base_str)) + 1))[:length]
+                            replacement = span.get("replacement_label", "[DATI_SENSIBILI]")
                             
-                            annot = page.add_redact_annot(rect, text=replacement, text_color=(0,0,0), fill=(0,0,0), cross_out=False)
+                            annot = page.add_redact_annot(rect, text=replacement, text_color=(1,1,1), fill=(0,0,0), cross_out=False)
                             annot.set_colors(stroke=None, fill=(0,0,0))
                             annot.update()
                             
@@ -235,9 +257,8 @@ def process_pdf(input_file, output_file, classifier, extracted_data, ocr_reader=
                     continue
                 processed_words.add(word)
                 
-                length = max(len(word), 8) # Avoid too short replacements for formatting
-                base_str = "redacted"
-                replacement = (base_str * ((length // len(base_str)) + 1))[:length]
+                base_str = span.get("replacement_label", "[DATI_SENSIBILI]")
+                replacement = base_str
                 
                 rects = page.search_for(word)
                 for rect in rects:
@@ -276,13 +297,11 @@ def process_docx(input_file, output_file, classifier, extracted_data):
             if not spans:
                 continue
                 
-            spans = merge_and_sort_spans(spans, text)
+            spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
             anonymized_text = text
             for span in spans:
                 extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                length = span['end'] - span['start']
-                base_str = "redacted"
-                replacement = (base_str * ((length // len(base_str)) + 1))[:length]
+                replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
                 anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
                 
             para.text = anonymized_text
@@ -326,13 +345,11 @@ def process_xlsx(input_file, output_file, classifier, extracted_data):
             spans = classifier(text) + get_regex_spans(text)
             if not spans:
                 return text
-            spans = merge_and_sort_spans(spans, text)
+            spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
             anonymized_text = text
             for span in spans:
                 extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                length = span['end'] - span['start']
-                base_str = "redacted"
-                replacement = (base_str * ((length // len(base_str)) + 1))[:length]
+                replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
                 anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
             return anonymized_text
 
@@ -376,13 +393,11 @@ def process_xls(input_file, output_file, classifier, extracted_data):
                     if not spans:
                         continue
                         
-                    spans = merge_and_sort_spans(spans, val)
+                    spans = merge_and_sort_spans(filter_and_format_spans(spans), val)
                     anonymized_text = val
                     for span in spans:
                         extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                        length = span['end'] - span['start']
-                        base_str = "redacted"
-                        replacement = (base_str * ((length // len(base_str)) + 1))[:length]
+                        replacement = span.get("replacement_label", "[DATI_SENSIBILI]")
                         anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
                     
                     w_sheet.write(rowx, colx, anonymized_text)
@@ -399,14 +414,12 @@ def process_rtf(input_file, output_file, classifier, extracted_data):
         return
 
     spans = classifier(text) + get_regex_spans(text)
-    spans = merge_and_sort_spans(spans, text)
+    spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
     
     anonymized_text = text
     for span in spans:
         extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-        length = span['end'] - span['start']
-        base_str = "redacted"
-        replacement = (base_str * ((length // len(base_str)) + 1))[:length]
+        replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
         anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
         
     with open(output_file, 'w', encoding='utf-8') as f:

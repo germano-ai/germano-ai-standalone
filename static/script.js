@@ -108,24 +108,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const isPA = modePA.checked;
         const ocr = document.getElementById('setting_ocr');
         const faces = document.getElementById('setting_faces');
-        const regex = document.getElementById('setting_regex');
         const slider = document.getElementById('setting_ai_threshold');
+        
+        const filterIds = [
+            'censor_person', 'censor_address', 'censor_email', 'censor_phone', 
+            'censor_cf_iva', 'censor_account', 'censor_secret', 'censor_url', 'censor_date'
+        ];
+        const filterEls = filterIds.map(id => document.getElementById(id));
         
         const tooltipText = "Passa a Germano PD per sbloccare questa funzionalità";
         
         if (isPA) {
             ocr.checked = true;
             faces.checked = true;
-            regex.checked = true;
+            filterEls.forEach(el => { if(el) el.checked = true; });
+            
             slider.value = 0;
             updateThresholdText(0);
             
             ocr.disabled = true;
             faces.disabled = true;
-            regex.disabled = true;
+            filterEls.forEach(el => { if(el) el.disabled = true; });
             slider.disabled = true;
             
-            [ocr, faces, regex].forEach(el => {
+            [ocr, faces, ...filterEls].forEach(el => {
                 if(el) {
                     const parent = el.closest('.switch-container');
                     if (parent) {
@@ -148,10 +154,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             ocr.disabled = false;
             faces.disabled = false;
-            regex.disabled = false;
+            filterEls.forEach(el => { if(el) el.disabled = false; });
             slider.disabled = false;
             
-            [ocr, faces, regex].forEach(el => {
+            [ocr, faces, ...filterEls].forEach(el => {
                 if(el) {
                     const parent = el.closest('.switch-container');
                     if (parent) {
@@ -184,14 +190,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getSettingsFromUI() {
-        // Se PA è attivo, forza i valori al massimo livello di restrizione, altrimenti leggi i controlli
         const isPA = modePA ? modePA.checked : false;
         
         return {
             compliance_mode: isPA ? "PA" : "PD",
             enable_ocr: isPA ? true : document.getElementById('setting_ocr').checked,
             enable_faces: isPA ? true : document.getElementById('setting_faces').checked,
-            enable_regex: isPA ? true : document.getElementById('setting_regex').checked,
+            enable_regex: true,
+            censor_person: isPA ? true : document.getElementById('censor_person').checked,
+            censor_address: isPA ? true : document.getElementById('censor_address').checked,
+            censor_email: isPA ? true : document.getElementById('censor_email').checked,
+            censor_phone: isPA ? true : document.getElementById('censor_phone').checked,
+            censor_cf_iva: isPA ? true : document.getElementById('censor_cf_iva').checked,
+            censor_account: isPA ? true : document.getElementById('censor_account').checked,
+            censor_secret: isPA ? true : document.getElementById('censor_secret').checked,
+            censor_url: isPA ? true : document.getElementById('censor_url').checked,
+            censor_date: isPA ? true : document.getElementById('censor_date').checked,
             ai_threshold: isPA ? 0.0 : parseInt(document.getElementById('setting_ai_threshold').value) / 100.0,
             hardware_mode: document.getElementById('setting_hardware').value
         };
@@ -206,7 +220,17 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (s.enable_ocr !== undefined) document.getElementById('setting_ocr').checked = s.enable_ocr;
         if (s.enable_faces !== undefined) document.getElementById('setting_faces').checked = s.enable_faces;
-        if (s.enable_regex !== undefined) document.getElementById('setting_regex').checked = s.enable_regex;
+        
+        if (s.censor_person !== undefined) document.getElementById('censor_person').checked = s.censor_person;
+        if (s.censor_address !== undefined) document.getElementById('censor_address').checked = s.censor_address;
+        if (s.censor_email !== undefined) document.getElementById('censor_email').checked = s.censor_email;
+        if (s.censor_phone !== undefined) document.getElementById('censor_phone').checked = s.censor_phone;
+        if (s.censor_cf_iva !== undefined) document.getElementById('censor_cf_iva').checked = s.censor_cf_iva;
+        if (s.censor_account !== undefined) document.getElementById('censor_account').checked = s.censor_account;
+        if (s.censor_secret !== undefined) document.getElementById('censor_secret').checked = s.censor_secret;
+        if (s.censor_url !== undefined) document.getElementById('censor_url').checked = s.censor_url;
+        if (s.censor_date !== undefined) document.getElementById('censor_date').checked = s.censor_date;
+
         if (s.ai_threshold !== undefined) {
             const val = Math.round(s.ai_threshold * 100);
             document.getElementById('setting_ai_threshold').value = val;
