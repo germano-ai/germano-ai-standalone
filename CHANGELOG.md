@@ -3,6 +3,12 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.13-alpha] - 2026-05-12
+### Modificato
+- **Responsività Mobile Completa**: Riscritta intera sezione responsive del CSS con tre breakpoint (900px, 768px, 400px). Navbar, Hero, Griglie PA/PD, Step Flow, Sezione API, Download e Footer ora si adattano perfettamente a smartphone e tablet. La pagina Guida (Knowledge Base) collassa sidebar sopra il contenuto su schermi piccoli.
+- **Testi aggiornati**: Pulsante API rinominato in "Manuale e Documentazione" (centrato), titolo download cambiato in "Provalo! (è completamente gratis e Open Source)".
+- **Navigazione**: Rimosso tasto Home dal menu, il logo è ora cliccabile e rimanda alla homepage.
+
 ## [0.12-alpha] - 2026-05-12
 ### Risolto
 - **Deprecation Warning Transformers**: Risolto un warning a console generato dalla libreria `transformers` sostituendo il parametro deprecato `torch_dtype` con `dtype` durante l'inizializzazione del modello matematico in `daemon.py`.
