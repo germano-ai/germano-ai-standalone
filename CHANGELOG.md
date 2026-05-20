@@ -3,6 +3,26 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.18-alpha] - 2026-05-20
+### Modificato
+- **Aggiornamento Librerie**: Aggiornate le dipendenze core a versioni stabili più recenti (`openpyxl` a `3.1.5`, `PyMuPDF` a `1.27.2.3`, `transformers` a `5.9.0`, `requests` a `2.34.2`, `numpy` a `2.4.6`, e `pandas` a `3.0.3`) per miglioramenti delle prestazioni e stabilità del demone.
+- **Allineamento Versioni**: Allineata la variabile `APP_VERSION` nel backend `server.py` alla versione globale del rilascio (`0.18-alpha`).
+
+## [0.17-alpha] - 2026-05-19
+### Aggiunto
+- **Supporto Esteso Dati e Web**: Implementata elaborazione nativa per file `.csv` (celle), `.xml` (nodi di testo e tail) e `.html`/`.htm` (manipolazione DOM tramite BeautifulSoup).
+- **Archivi Compressi `.zip`**: Il demone ora decomprime automaticamente gli archivi `.zip`, processa iterativamente tutti i file supportati all'interno (immagini, documenti, ecc.) e li ri-assembla in un nuovo archivio `.zip` censurato, mantenendo intatta la struttura delle cartelle interne.
+- **Supporto Email (`.eml`)**: Elaborazione nativa dei file email. Censurati gli header (`Oggetto`, `Mittente`, `Destinatario`) e il corpo del messaggio, sia esso in `text/plain` o formattato in `html`.
+- **Supporto OpenDocument (`.odt`, `.ods`, `.odp`)**: Accesso diretto agli archivi OpenOffice/LibreOffice tramite modifica nativa del file `content.xml` interno all'archivio, evitando corruzioni o dipendenze esterne.
+- **Supporto Legacy Word (`.doc`)**: Aggiunto supporto a documenti Word 97-2003 tramite conversione bidirezionale temporanea in background con `win32com`.
+
+## [0.16-alpha] - 2026-05-19
+### Aggiunto
+- **Supporto Presentazioni PPTX e PPT**: Aggiunto il pieno supporto alle presentazioni PowerPoint (`.pptx`). Implementata inoltre una logica di conversione automatica "al volo" tramite `win32com` per i vecchi file `.ppt` binari.
+- **Supporto Avanzato RTF**: Inserita la logica di fallback tramite `win32com` per convertire i file testuali `.rtf` in formato nativo `.docx` prima dell'anonimizzazione, azzerando le corruzioni della formattazione causate da regex dirette sui tag nativi.
+- **PDF Incapsulati e Portfolio**: Implementata, tramite la libreria `PyMuPDF`, l'estrazione e l'anonimizzazione ricorsiva dei documenti `.pdf` allegati all'interno di altri documenti `.pdf` (Portfolio/Embfiles).
+- **Oggetti OLE in Office**: Sviluppato l'accesso nativo agli archivi ZIP interni dei file `.docx` e `.xlsx` per individuare, estrarre e oscurare automaticamente i file `.pdf` trascinati o incorporati nelle pagine ("Oggetti OLE/Embeddings"), ri-assemblando poi il documento in modo trasparente.
+
 ## [0.15-alpha] - 2026-05-12
 ### Aggiunto
 - **Anonimizzazione Contestuale**: Sostituita l'etichetta fissa `redacted` con tag contestuali dinamici forniti da `privacy-filter` e dalle regex (es. `[PERSONA]`, `[EMAIL]`, `[CODICE_FISCALE]`).

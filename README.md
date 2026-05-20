@@ -6,9 +6,15 @@ Germano AI è una potente suite open-source progettata per **l'anonimizzazione i
 
 ---
 
-## 📥 Inizia Subito (Gratis e Open Source)
+## ⚡ Quickstart (Come funziona)
 
-Nessun installer complesso o configurazione. Estrai lo ZIP, fai doppio clic su `START.bat` e aprirai la fantastica **Dashboard di Controllo** locale nel tuo browser.
+Germano AI lavora in modo completamente autonomo "ascoltando" le sue cartelle. Il funzionamento base è semplicissimo:
+1. Inserisci i documenti (e le eventuali sottocartelle) che vuoi anonimizzare all'interno della cartella **`input`**.
+2. Fai doppio clic sul file **`START.bat`** per avviare il motore IA e aprire la Dashboard nel browser.
+3. Dalla Dashboard, clicca su "START DAEMON". Il software prenderà i file da `input`, li censurerà, e salverà i documenti puliti nella cartella **`output`**, preservando intatta l'eventuale struttura delle tue cartelle e sottocartelle interne.
+4. I file originali verranno parcheggiati in **`processed`**, mentre eventuali file non supportati andranno in **`failed`**. 
+
+💡 **Tip Produttività:** Puoi tranquillamente trascinare nuovi file o intere cartelle dentro `input` *mentre il software sta già lavorando*! Verranno messi in coda ed elaborati in tempo reale senza dover riavviare nulla.
 
 👉 **[SCARICA GERMANO AI STANDALONE (~4 GB)](https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD)**
 
@@ -64,3 +70,9 @@ Restituisce direttamente il flusso binario del file "pulito". Consulta la **[Doc
 ## 📜 Licenza e Contribuzione
 Questo progetto è orgogliosamente distribuito sotto licenza **GNU GPL v3**. Puoi usarlo gratuitamente anche per scopi commerciali, a patto di mantenere Open Source le tue eventuali modifiche. 
 Sei uno sviluppatore? Apri una Pull Request! Vogliamo che la privacy sia un diritto accessibile a tutti.
+
+## 📞 Contatti
+Hai bisogno di supporto Enterprise, integrazioni personalizzate o assistenza?
+- **Sito Web**: [germano.ai](https://germano.ai)
+- **Sviluppato da**: [Yes Consulting](https://www.yesc.it/)
+- **Email**: [info@germano.ai](mailto:info@germano.ai)

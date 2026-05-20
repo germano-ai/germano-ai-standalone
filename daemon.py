@@ -112,6 +112,36 @@ def merge_and_sort_spans(spans, text):
     return merged
 
 # --- COPY of all process_* functions from anonymizer.py ---
+
+def process_embedded_files(file_path, classifier, extracted_data):
+    import zipfile
+    import tempfile
+    import shutil
+    import os
+    if not zipfile.is_zipfile(file_path): return
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp_zip = os.path.join(tmpdir, "new_arch.zip")
+        has_modified = False
+        with zipfile.ZipFile(file_path, 'r') as zin:
+            with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if 'embeddings/' in item.filename and (item.filename.lower().endswith('.pdf') or item.filename.lower().endswith('.bin')):
+                        ext_file = os.path.join(tmpdir, "embed_" + os.path.basename(item.filename))
+                        with open(ext_file, 'wb') as f: f.write(data)
+                        out_ext_file = ext_file + ".out.pdf"
+                        try:
+                            process_pdf(ext_file, out_ext_file, classifier, extracted_data)
+                            with open(out_ext_file, 'rb') as f: new_data = f.read()
+                            zout.writestr(item, new_data)
+                            has_modified = True
+                        except Exception as e:
+                            zout.writestr(item, data)
+                    else:
+                        zout.writestr(item, data)
+        if has_modified:
+            shutil.copy2(temp_zip, file_path)
+
 def process_txt(input_file, output_file, classifier, extracted_data):
     with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
         text = f.read()
@@ -279,6 +309,25 @@ def process_pdf(input_file, output_file, classifier, extracted_data, ocr_reader=
             # Applica preservando le immagini intatte
             page.apply_redactions(images=0, graphics=0)
             
+        try:
+            emb_count = doc.embfile_count()
+            if emb_count > 0:
+                print(f"[{time.strftime('%H:%M:%S')}] Rilevati {emb_count} PDF incapsulati in {os.path.basename(input_file)}. Elaborazione...", flush=True)
+                import tempfile
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    for i in range(emb_count):
+                        emb_name = doc.embfile_names()[i]
+                        emb_data = doc.embfile_get(emb_name)
+                        if emb_name.lower().endswith('.pdf') or emb_name.lower().endswith('.bin'):
+                            tmp_in = os.path.join(tmpdir, "in_" + emb_name)
+                            tmp_out = os.path.join(tmpdir, "out_" + emb_name)
+                            with open(tmp_in, 'wb') as f: f.write(emb_data)
+                            process_pdf(tmp_in, tmp_out, classifier, extracted_data) # OCR passed globally isn't feasible here without full rebuild, rely on regex/AI
+                            with open(tmp_out, 'rb') as f: new_emb_data = f.read()
+                            doc.embfile_upd(emb_name, new_emb_data)
+        except Exception as e:
+            print(f"Errore incapsulamento PDF in {input_file}: {e}", flush=True)
+            
         doc.save(output_file, garbage=4, deflate=True, clean=True)
     finally:
         if doc:
@@ -329,6 +378,7 @@ def process_docx(input_file, output_file, classifier, extracted_data):
 
 
     doc.save(output_file)
+    process_embedded_files(output_file, classifier, extracted_data)
 
 def process_xlsx(input_file, output_file, classifier, extracted_data):
     import os
@@ -373,6 +423,8 @@ def process_xlsx(input_file, output_file, classifier, extracted_data):
     finally:
         if wb and hasattr(wb, 'close'):
             wb.close()
+            
+    process_embedded_files(output_file, classifier, extracted_data)
 
 def process_xls(input_file, output_file, classifier, extracted_data):
     try:
@@ -404,26 +456,343 @@ def process_xls(input_file, output_file, classifier, extracted_data):
                     
     wb.save(output_file)
 
-def process_rtf(input_file, output_file, classifier, extracted_data):
-    with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
-        text = f.read()
-    
-    if not text.strip():
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(text)
-        return
+def process_doc(input_file, output_file, classifier, extracted_data):
+    import os
+    try:
+        import win32com.client
+    except ImportError:
+        raise Exception("Manca pywin32 o Office non installato. File .doc ignorato.")
+    import tempfile
+    abs_in = os.path.abspath(input_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        abs_out_docx = os.path.join(tmpdir, "converted.docx")
+        try:
+            word = win32com.client.Dispatch("Word.Application")
+            word.DisplayAlerts = False
+            doc = word.Documents.Open(abs_in, ConfirmConversions=False, ReadOnly=True)
+            doc.SaveAs(abs_out_docx, 16)
+            doc.Close()
+            word.Quit()
+        except Exception as e:
+            try: word.Quit()
+            except: pass
+            raise Exception(f"Conversione win32com fallita per vecchi .doc: {e}")
+            
+        process_docx(abs_out_docx, abs_out_docx, classifier, extracted_data)
+        
+        try:
+            word = win32com.client.Dispatch("Word.Application")
+            word.DisplayAlerts = False
+            doc2 = word.Documents.Open(abs_out_docx, ConfirmConversions=False, ReadOnly=True)
+            doc2.SaveAs(os.path.abspath(output_file), 0)
+            doc2.Close()
+            word.Quit()
+        except Exception as e:
+            try: word.Quit()
+            except: pass
+            raise Exception(f"Salvataggio win32com fallita per vecchi .doc: {e}")
 
+def anonymize_string(text, classifier, extracted_data):
+    if not isinstance(text, str) or not text.strip():
+        return text
     spans = classifier(text) + get_regex_spans(text)
+    if not spans: return text
     spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
-    
     anonymized_text = text
     for span in spans:
         extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
         replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
         anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
+    return anonymized_text
+
+def process_csv(input_file, output_file, classifier, extracted_data):
+    import csv
+    with open(input_file, 'r', encoding='utf-8', errors='ignore') as fin, open(output_file, 'w', encoding='utf-8', newline='') as fout:
+        sample = fin.read(1024)
+        fin.seek(0)
+        try:
+            dialect = csv.Sniffer().sniff(sample)
+        except Exception:
+            dialect = csv.excel
         
+        reader = csv.reader(fin, dialect)
+        writer = csv.writer(fout, dialect)
+        
+        for row in reader:
+            new_row = [anonymize_string(cell, classifier, extracted_data) for cell in row]
+            writer.writerow(new_row)
+
+def process_xml(input_file, output_file, classifier, extracted_data):
+    import xml.etree.ElementTree as ET
+    try:
+        tree = ET.parse(input_file)
+        root = tree.getroot()
+        
+        def recurse_node(node):
+            if node.text and node.text.strip():
+                node.text = anonymize_string(node.text, classifier, extracted_data)
+            if node.tail and node.tail.strip():
+                node.tail = anonymize_string(node.tail, classifier, extracted_data)
+            for child in node:
+                recurse_node(child)
+                
+        recurse_node(root)
+        tree.write(output_file, encoding='utf-8', xml_declaration=True)
+    except Exception as e:
+        process_txt(input_file, output_file, classifier, extracted_data)
+
+def process_html(input_file, output_file, classifier, extracted_data):
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:
+        raise Exception("Manca beautifulsoup4. File HTML ignorato.")
+    
+    with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
+        html = f.read()
+    soup = BeautifulSoup(html, 'html.parser')
+    for script in soup(["script", "style"]):
+        script.extract()
+    for text_node in soup.find_all(string=True):
+        if text_node.parent.name not in ['script', 'style']:
+            new_text = anonymize_string(str(text_node), classifier, extracted_data)
+            if new_text != str(text_node):
+                text_node.replace_with(new_text)
     with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(anonymized_text)
+        f.write(str(soup))
+
+def process_eml(input_file, output_file, classifier, extracted_data):
+    import email
+    from email import policy
+    with open(input_file, 'rb') as f:
+        msg = email.message_from_binary_file(f, policy=policy.default)
+    
+    for header in ['Subject', 'From', 'To', 'Cc']:
+        if msg[header]:
+            new_val = anonymize_string(str(msg[header]), classifier, extracted_data)
+            try: msg.replace_header(header, new_val)
+            except: pass
+            
+    for part in msg.walk():
+        if part.get_content_maintype() == 'multipart': continue
+        if part.get_filename(): continue
+        
+        content_type = part.get_content_type()
+        try:
+            payload = part.get_payload(decode=True)
+            if not payload: continue
+            text = payload.decode(part.get_content_charset('utf-8') or 'utf-8', errors='ignore')
+            
+            if content_type == 'text/plain':
+                new_text = anonymize_string(text, classifier, extracted_data)
+                part.set_payload(new_text.encode('utf-8'))
+                part.set_charset('utf-8')
+            elif content_type == 'text/html':
+                try:
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(text, 'html.parser')
+                    for text_node in soup.find_all(string=True):
+                        if text_node.parent.name not in ['script', 'style']:
+                            new_t = anonymize_string(str(text_node), classifier, extracted_data)
+                            if new_t != str(text_node): text_node.replace_with(new_t)
+                    part.set_payload(str(soup).encode('utf-8'))
+                    part.set_charset('utf-8')
+                except ImportError:
+                    pass
+        except Exception:
+            pass
+
+    with open(output_file, 'wb') as f:
+        f.write(msg.as_bytes())
+
+def process_opendocument(input_file, output_file, classifier, extracted_data):
+    import zipfile
+    import tempfile
+    import shutil
+    import os
+    if not zipfile.is_zipfile(input_file): raise Exception("Invalid OpenDocument")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp_zip = os.path.join(tmpdir, "new_arch.zip")
+        with zipfile.ZipFile(input_file, 'r') as zin:
+            with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if item.filename == 'content.xml':
+                        ext_file = os.path.join(tmpdir, "content.xml")
+                        with open(ext_file, 'wb') as f: f.write(data)
+                        process_xml(ext_file, ext_file, classifier, extracted_data)
+                        with open(ext_file, 'rb') as f: new_data = f.read()
+                        zout.writestr(item, new_data)
+                    else:
+                        zout.writestr(item, data)
+        shutil.copy2(temp_zip, output_file)
+
+def process_zip(input_file, output_file, classifier, extracted_data):
+    import zipfile
+    import tempfile
+    import shutil
+    import os
+    if not zipfile.is_zipfile(input_file): raise Exception("Invalid ZIP")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        temp_zip = os.path.join(tmpdir, "new_arch.zip")
+        with zipfile.ZipFile(input_file, 'r') as zin:
+            with zipfile.ZipFile(temp_zip, 'w', zipfile.ZIP_DEFLATED) as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if item.filename.endswith('/'): 
+                        zout.writestr(item, data)
+                        continue
+                    
+                    ext_file = os.path.join(tmpdir, "inner_" + os.path.basename(item.filename))
+                    with open(ext_file, 'wb') as f: f.write(data)
+                    out_ext_file = ext_file + ".out"
+                    inner_ext = os.path.splitext(item.filename)[1].lower()
+                    try:
+                        if inner_ext == '.txt': process_txt(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext in ['.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.bmp']: 
+                            tmp_pdf = out_ext_file + ".pdf"
+                            process_pdf(ext_file, tmp_pdf, classifier, extracted_data)
+                            out_ext_file = tmp_pdf
+                        elif inner_ext in ['.docx', '.docm']: process_docx(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext in ['.xlsx', '.xlsm']: process_xlsx(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext == '.xls': process_xls(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext == '.rtf': process_rtf(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext == '.pptx': process_pptx(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext == '.ppt': process_ppt(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext == '.doc': process_doc(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext == '.csv': process_csv(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext == '.xml': process_xml(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext in ['.html', '.htm']: process_html(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext == '.eml': process_eml(ext_file, out_ext_file, classifier, extracted_data)
+                        elif inner_ext in ['.odt', '.ods', '.odp']: process_opendocument(ext_file, out_ext_file, classifier, extracted_data)
+                        else:
+                            zout.writestr(item, data)
+                            continue
+                            
+                        with open(out_ext_file, 'rb') as f: new_data = f.read()
+                        
+                        final_filename = item.filename
+                        if inner_ext in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']:
+                            final_filename = os.path.splitext(final_filename)[0] + ".pdf"
+                        
+                        zout.writestr(final_filename, new_data)
+                    except Exception as e:
+                        zout.writestr(item, data)
+
+        shutil.copy2(temp_zip, output_file)
+
+def process_rtf(input_file, output_file, classifier, extracted_data):
+    import os
+    try:
+        import win32com.client
+        import tempfile
+        abs_in = os.path.abspath(input_file)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            abs_out_docx = os.path.join(tmpdir, "converted.docx")
+            word = win32com.client.Dispatch("Word.Application")
+            word.DisplayAlerts = False
+            doc = word.Documents.Open(abs_in, ConfirmConversions=False, ReadOnly=True)
+            doc.SaveAs(abs_out_docx, 16)
+            doc.Close()
+            word.Quit()
+            
+            process_docx(abs_out_docx, abs_out_docx, classifier, extracted_data)
+            
+            word = win32com.client.Dispatch("Word.Application")
+            word.DisplayAlerts = False
+            doc2 = word.Documents.Open(abs_out_docx, ConfirmConversions=False, ReadOnly=True)
+            doc2.SaveAs(os.path.abspath(output_file), 6)
+            doc2.Close()
+            word.Quit()
+            return
+    except Exception as e:
+        print(f"Fallback su RTF text replace per {os.path.basename(input_file)}: {e}")
+        with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
+            text = f.read()
+        
+        if not text.strip():
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(text)
+            return
+
+        spans = classifier(text) + get_regex_spans(text)
+        spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
+        
+        anonymized_text = text
+        for span in spans:
+            extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
+            replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
+            anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
+            
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(anonymized_text)
+
+def process_pptx(input_file, output_file, classifier, extracted_data):
+    try:
+        import pptx
+    except ImportError:
+        raise Exception("Manca python-pptx. File ignorato.")
+
+    prs = pptx.Presentation(input_file)
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.has_text_frame:
+                for paragraph in shape.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        text = run.text
+                        if not text.strip(): continue
+                        spans = classifier(text) + get_regex_spans(text)
+                        if spans:
+                            spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
+                            anonymized_text = text
+                            for span in spans:
+                                extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
+                                replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
+                                anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
+                            run.text = anonymized_text
+            
+            if shape.has_table:
+                for row in shape.table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.text_frame.paragraphs:
+                            for run in paragraph.runs:
+                                text = run.text
+                                if not text.strip(): continue
+                                spans = classifier(text) + get_regex_spans(text)
+                                if spans:
+                                    spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
+                                    anonymized_text = text
+                                    for span in spans:
+                                        extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
+                                        replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
+                                        anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
+                                    run.text = anonymized_text
+
+    prs.save(output_file)
+    process_embedded_files(output_file, classifier, extracted_data)
+
+def process_ppt(input_file, output_file, classifier, extracted_data):
+    import os
+    try:
+        import win32com.client
+    except ImportError:
+        raise Exception("Manca pywin32 o Office non installato. File .ppt ignorato.")
+        
+    import tempfile
+    abs_in = os.path.abspath(input_file)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        abs_out_pptx = os.path.join(tmpdir, "converted.pptx")
+        try:
+            powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+            presentation = powerpoint.Presentations.Open(abs_in, WithWindow=False)
+            presentation.SaveAs(abs_out_pptx, 24)
+            presentation.Close()
+            powerpoint.Quit()
+        except Exception as e:
+            try: powerpoint.Quit()
+            except: pass
+            raise Exception(f"Conversione win32com fallita per vecchi .ppt: {e}")
+            
+        process_pptx(abs_out_pptx, output_file, classifier, extracted_data)
 
 
 def main():
@@ -598,6 +967,24 @@ def main():
                         process_xls(input_file, output_file, classifier, extracted_data)
                     elif ext == '.rtf':
                         process_rtf(input_file, output_file, classifier, extracted_data)
+                    elif ext == '.pptx':
+                        process_pptx(input_file, output_file, classifier, extracted_data)
+                    elif ext == '.ppt':
+                        process_ppt(input_file, output_file, classifier, extracted_data)
+                    elif ext == '.doc':
+                        process_doc(input_file, output_file, classifier, extracted_data)
+                    elif ext == '.csv':
+                        process_csv(input_file, output_file, classifier, extracted_data)
+                    elif ext == '.xml':
+                        process_xml(input_file, output_file, classifier, extracted_data)
+                    elif ext in ['.html', '.htm']:
+                        process_html(input_file, output_file, classifier, extracted_data)
+                    elif ext == '.eml':
+                        process_eml(input_file, output_file, classifier, extracted_data)
+                    elif ext in ['.odt', '.ods', '.odp']:
+                        process_opendocument(input_file, output_file, classifier, extracted_data)
+                    elif ext == '.zip':
+                        process_zip(input_file, output_file, classifier, extracted_data)
                     else:
                         return "unsupported"
                     return "success"
@@ -607,8 +994,7 @@ def main():
                 try:
                     result = future.result(timeout=300)
                     if result == "unsupported":
-                        print(f"Unsupported file type skipped: {rel_path}", flush=True)
-                        success = True
+                        raise Exception(f"Formato file non supportato o ignorato: {ext}")
                     else:
                         print(f"Success: {rel_path}. Saved to output.", flush=True)
                         success = True
