@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.24-alpha] - 2026-05-24
+### Rimosso
+- **install_deps.bat**: Eliminato lo script di installazione delle dipendenze via pip (`python-pptx`, `pywin32`, `beautifulsoup4`) per garantire che l'ambiente sia nativamente standalone al 100%, pre-impacchettando le librerie nel runtime senza richiedere connessione internet all'utente finale.
+
 ## [0.23-alpha] - 2026-05-24
 ### Aggiunto
 - **Traduzione README**: Aggiunto il file `README.en.md` per il supporto in lingua inglese.
