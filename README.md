@@ -60,21 +60,28 @@ Restituisce direttamente il flusso binario del file "pulito". Consulta la **[Doc
 
 ---
 
-## 🤖 Integrazione AI Multipiattaforma (Cursor, Claude, Copilot, Antigravity, Windsurf)
+## 🤖 Integrazione AI Multipiattaforma (Cursor, Windsurf, Claude Code, Copilot, Antigravity)
 
-Germano AI include ora un set di plugin ufficiali per integrarsi nativamente con i migliori assistenti alla programmazione (tramite lo standard **MCP** - Model Context Protocol).
-Questo sistema assicura che qualsiasi file fornito all'IA venga intercettato e forzato ad attraversare il filtro privacy locale **prima** che l'IA possa leggerne il contenuto!
+L'anonimizzazione dei documenti non è più limitata alla Dashboard web. Germano AI include ora una suite di integrazione ufficiale progettata per connettere il nostro motore privacy locale direttamente con i più popolari e potenti **Assistenti di Programmazione IA**. 
 
-### Come usare i plugin
-Nella cartella `ai_plugins` troverai il server universale `mcp_server.py` e uno script interattivo di configurazione.
+Sfruttando lo standard **Model Context Protocol (MCP)** (creato da Anthropic e adottato da tutto il settore), abbiamo sviluppato un plugin universale in Python capace di fare da "scudo" tra i tuoi file e l'Intelligenza Artificiale.
 
-Per configurare la tua piattaforma preferita, esegui semplicemente:
-```bash
-python ai_plugins/install_ai_plugins.py
-```
-Apparirà un menu guidato che ti fornirà le istruzioni esatte o configurerà automaticamente l'editor scelto (Cursor, Windsurf, Claude Code, GitHub Copilot, OpenCode o Google Antigravity).
+### Come funziona lo "Scudo Privacy"
+Normalmente, quando chiedi a un'IA come Claude, Antigravity o Cursor di "Leggere questo documento e farne un riassunto", l'IA utilizza i suoi tool standard per leggere l'intero file originale in chiaro e inviarlo ai propri server cloud.
 
-Al momento della connessione, il plugin verificherà se il demone di Germano AI è attivo. In caso contrario, lo **avvierà automaticamente in background** e aprirà la Dashboard nel tuo browser. Da quel momento l'IA sarà sicura e privata!
+Installando questo plugin:
+1. Al momento dell'avvio dell'editor, il plugin si connette in background a Germano AI (avviando il demone locale `START.bat` se non è già attivo).
+2. Fornisce all'IA un nuovo strumento chiamato `read_anonymized_file`.
+3. Insegna dinamicamente all'IA una regola fondamentale: **"Ogni volta che l'utente ti chiede di leggere un file, sei obbligato a usare read_anonymized_file al posto del tuo lettore standard"**.
+4. Quando l'IA invoca questo tool, il nostro script locale prende in carico il file originale, lo passa al filtro privacy in locale, salva la versione censurata in locale e restituisce all'IA **solo i dati anonimizzati**.
+
+L'Intelligenza Artificiale non entrerà **mai** in contatto con i dati originali!
+
+### Installazione Facilissima
+Non devi impazzire a configurare JSON a mano. 
+Fai doppio clic sul file **`INSTALL_AI_PLUGINS.bat`** (oppure esegui `python ai_plugins/install_ai_plugins.py` da terminale).
+
+Si aprirà un programma interattivo che scansionerà il tuo computer alla ricerca di editor compatibili (Cursor, Windsurf, VS Code, ecc.) e ti guiderà passo-passo fornendoti la configurazione esatta pronta per il copia-incolla, o nel caso di Claude Code, installerà tutto automaticamente con un solo clic. Se non troverà editor compatibili nel sistema, ti avviserà con un messaggio chiaro, permettendoti comunque di forzare le configurazioni manualmente.
 
 ---
 

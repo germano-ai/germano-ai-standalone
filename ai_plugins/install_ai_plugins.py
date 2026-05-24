@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import subprocess
+import time
+import shutil
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -97,6 +99,46 @@ def generate_opencode_config():
     print(json.dumps(config, indent=4))
     input("\nPremi Invio per continuare...")
 
+def scan_editors():
+    print("\n[Scansione Automatica Editor Supportati]")
+    found_any = False
+    
+    appdata = os.environ.get('APPDATA', '')
+    localappdata = os.environ.get('LOCALAPPDATA', '')
+    userprofile = os.environ.get('USERPROFILE', os.path.expanduser('~'))
+    
+    # Check Cursor
+    cursor_path = os.path.join(localappdata, 'Programs', 'cursor')
+    if os.path.exists(cursor_path) or os.path.exists(os.path.join(appdata, 'Cursor')):
+        print("- Trovato: Cursor IDE")
+        found_any = True
+        
+    # Check VS Code
+    vscode_path = os.path.join(localappdata, 'Programs', 'Microsoft VS Code')
+    if os.path.exists(vscode_path) or os.path.exists(os.path.join(appdata, 'Code')):
+        print("- Trovato: VS Code (Copilot)")
+        found_any = True
+        
+    # Check Windsurf
+    windsurf_path = os.path.join(userprofile, '.codeium', 'windsurf')
+    if os.path.exists(windsurf_path) or os.path.exists(os.path.join(localappdata, 'Programs', 'windsurf')):
+        print("- Trovato: Windsurf")
+        found_any = True
+        
+    # Check Claude Code
+    if shutil.which('claude'):
+        print("- Trovato: Claude Code")
+        found_any = True
+        
+    if not found_any:
+        print("\n=== Code editor non trovato ===")
+        print("Il sistema non ha rilevato alcun editor compatibile installato nelle posizioni standard.")
+        print("Puoi comunque configurarlo manualmente dal menu principale se il tuo editor è portable o installato altrove.")
+    else:
+        print("\nEditor trovati! Usa il menu principale per generare la configurazione per il tuo editor.")
+        
+    input("\nPremi Invio per tornare al menu...")
+
 def main():
     while True:
         clear_screen()
@@ -110,6 +152,7 @@ def main():
         print("4. GitHub Copilot (VS Code)")
         print("5. OpenCode")
         print("6. Google Antigravity")
+        print("7. Esegui Scansione Automatica Editor")
         print("0. Esci")
         print("="*50)
         
@@ -131,6 +174,8 @@ def main():
             print(f"- Comando: {sys.executable}")
             print(f"- Argomenti: {get_server_path()}")
             input("\nPremi Invio per continuare...")
+        elif choice == '7':
+            scan_editors()
         elif choice == '0':
             break
         else:
@@ -138,4 +183,5 @@ def main():
             time.sleep(1)
 
 if __name__ == "__main__":
+    scan_editors() # Esegui una scansione automatica all'avvio
     main()

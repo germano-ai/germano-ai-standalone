@@ -3,6 +3,11 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.22-alpha] - 2026-05-24
+### Aggiunto
+- **Scansione Automatica Editor**: Aggiunta la funzione di scansione automatica all'avvio dell'installer multipiattaforma. Se non viene trovato alcun editor supportato, il sistema restituisce chiaramente l'errore "Code editor non trovato", ma permette comunque la configurazione manuale.
+- **Documentazione Estesa**: Aggiunta la documentazione approfondita sulle integrazioni AI multipiattaforma (lo "Scudo Privacy") sia nel file README.md principale, sia nella Knowledge Base del sito (guide.html).
+
 ## [0.21-alpha] - 2026-05-24
 ### Aggiunto
 - **Launcher BAT per l'Installer**: Aggiunto lo script rapido `INSTALL_AI_PLUGINS.bat` nella cartella root `STANDALONE` per permettere agli utenti di avviare l'installer multipiattaforma con un semplice doppio clic, senza dover usare il terminale.
