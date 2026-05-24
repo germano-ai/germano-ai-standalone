@@ -3,6 +3,12 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.19-alpha] - 2026-05-24
+### Aggiunto
+- **Plugin per Antigravity**: Aggiunto il supporto nativo ad Antigravity tramite un server MCP dedicato (`mcp_server.py`) nella cartella `antigravity_plugin`.
+- **Autostart e Webview Automatica**: Il plugin verifica l'esecuzione del demone, lo avvia se necessario, e apre in automatico la Dashboard nel browser predefinito.
+- **Tool di Anonimizzazione Obbligatoria**: Esposto il tool `read_anonymized_file` che intercetta i file letti dall'IA forzandoli attraverso le API di censura locale.
+
 ## [0.18-alpha] - 2026-05-20
 ### Modificato
 - **Aggiornamento Librerie**: Aggiornate le dipendenze core a versioni stabili più recenti (`openpyxl` a `3.1.5`, `PyMuPDF` a `1.27.2.3`, `transformers` a `5.9.0`, `requests` a `2.34.2`, `numpy` a `2.4.6`, e `pandas` a `3.0.3`) per miglioramenti delle prestazioni e stabilità del demone.

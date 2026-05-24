@@ -60,6 +60,19 @@ Restituisce direttamente il flusso binario del file "pulito". Consulta la **[Doc
 
 ---
 
+## 🤖 Plugin per Antigravity (Google)
+
+Germano AI include ora un plugin ufficiale per integrarsi nativamente con **Google Antigravity** tramite lo standard **MCP** (Model Context Protocol).
+Il plugin si assicura che qualsiasi file fornito all'IA venga intercettato e forzato ad attraversare il filtro privacy locale **prima** che l'IA possa leggerne il contenuto.
+
+### Come usare il plugin
+1. Il codice si trova nella cartella `antigravity_plugin/mcp_server.py`.
+2. Aggiungi il server MCP alla configurazione di Antigravity puntando a questo script Python.
+3. Al momento della connessione, il plugin verificherà se il demone di Germano AI è attivo. In caso contrario, lo **avvierà automaticamente in background** e aprirà la Dashboard nel tuo browser.
+4. Da quel momento, Antigravity userà automaticamente il tool "read_anonymized_file" invece del suo lettore standard per tutti i documenti, preservando i tuoi dati sensibili!
+
+---
+
 ## 📂 Struttura Cartelle di Lavoro
 - `/input`: Trascina qui i file.
 - `/output`: I file anonimizzati, con formato e layout originale intatti.
