@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.21-alpha] - 2026-05-24
+### Aggiunto
+- **Launcher BAT per l'Installer**: Aggiunto lo script rapido `INSTALL_AI_PLUGINS.bat` nella cartella root `STANDALONE` per permettere agli utenti di avviare l'installer multipiattaforma con un semplice doppio clic, senza dover usare il terminale.
+
 ## [0.20-alpha] - 2026-05-24
 ### Aggiunto
 - **Supporto AI Universale (MCP)**: Esteso il supporto del plugin non solo ad Antigravity, ma anche a **Cursor IDE, Windsurf, Claude Code, GitHub Copilot e OpenCode**.
