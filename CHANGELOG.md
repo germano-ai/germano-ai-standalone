@@ -3,6 +3,11 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.23-alpha] - 2026-05-24
+### Aggiunto
+- **Traduzione README**: Aggiunto il file `README.en.md` per il supporto in lingua inglese.
+- **Language Switcher**: Aggiunti link in cima ai file README (sia in italiano che in inglese) per facilitare il passaggio da una lingua all'altra (`README.md` <-> `README.en.md`).
+
 ## [0.22-alpha] - 2026-05-24
 ### Aggiunto
 - **Scansione Automatica Editor**: Aggiunta la funzione di scansione automatica all'avvio dell'installer multipiattaforma. Se non viene trovato alcun editor supportato, il sistema restituisce chiaramente l'errore "Code editor non trovato", ma permette comunque la configurazione manuale.

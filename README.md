@@ -1,5 +1,7 @@
 # 🛡️ Germano AI - La Privacy Documentale, nell'Era dell'Intelligenza Artificiale.
 
+🌍 *Read this in other languages: [English](README.en.md)*
+
 Germano AI è una potente suite open-source progettata per **l'anonimizzazione intelligente** e massiva di documenti. Basata su motori di Intelligenza Artificiale locale, garantisce la totale privacy dei dati elaborando i file offline (senza inviare dati al cloud).
 
 > Sviluppato orgogliosamente in Italia da **[Yes Consulting](https://www.yesc.it/)**
