@@ -3,9 +3,15 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.20-alpha] - 2026-05-24
+### Aggiunto
+- **Supporto AI Universale (MCP)**: Esteso il supporto del plugin non solo ad Antigravity, ma anche a **Cursor IDE, Windsurf, Claude Code, GitHub Copilot e OpenCode**.
+- **Installer Interattivo**: Aggiunto lo script multipiattaforma `install_ai_plugins.py` per generare automaticamente le configurazioni (json/comandi) necessarie ad abilitare il plugin privacy nei vari editor IA.
+- **Rinominata la cartella**: La cartella del plugin è stata rinominata da `antigravity_plugin` in `ai_plugins` per riflettere il supporto universale.
+
 ## [0.19-alpha] - 2026-05-24
 ### Aggiunto
-- **Plugin per Antigravity**: Aggiunto il supporto nativo ad Antigravity tramite un server MCP dedicato (`mcp_server.py`) nella cartella `antigravity_plugin`.
+- **Plugin per Antigravity**: Aggiunto il supporto nativo ad Antigravity tramite un server MCP dedicato (`mcp_server.py`).
 - **Autostart e Webview Automatica**: Il plugin verifica l'esecuzione del demone, lo avvia se necessario, e apre in automatico la Dashboard nel browser predefinito.
 - **Tool di Anonimizzazione Obbligatoria**: Esposto il tool `read_anonymized_file` che intercetta i file letti dall'IA forzandoli attraverso le API di censura locale.
 

@@ -60,16 +60,21 @@ Restituisce direttamente il flusso binario del file "pulito". Consulta la **[Doc
 
 ---
 
-## 🤖 Plugin per Antigravity (Google)
+## 🤖 Integrazione AI Multipiattaforma (Cursor, Claude, Copilot, Antigravity, Windsurf)
 
-Germano AI include ora un plugin ufficiale per integrarsi nativamente con **Google Antigravity** tramite lo standard **MCP** (Model Context Protocol).
-Il plugin si assicura che qualsiasi file fornito all'IA venga intercettato e forzato ad attraversare il filtro privacy locale **prima** che l'IA possa leggerne il contenuto.
+Germano AI include ora un set di plugin ufficiali per integrarsi nativamente con i migliori assistenti alla programmazione (tramite lo standard **MCP** - Model Context Protocol).
+Questo sistema assicura che qualsiasi file fornito all'IA venga intercettato e forzato ad attraversare il filtro privacy locale **prima** che l'IA possa leggerne il contenuto!
 
-### Come usare il plugin
-1. Il codice si trova nella cartella `antigravity_plugin/mcp_server.py`.
-2. Aggiungi il server MCP alla configurazione di Antigravity puntando a questo script Python.
-3. Al momento della connessione, il plugin verificherà se il demone di Germano AI è attivo. In caso contrario, lo **avvierà automaticamente in background** e aprirà la Dashboard nel tuo browser.
-4. Da quel momento, Antigravity userà automaticamente il tool "read_anonymized_file" invece del suo lettore standard per tutti i documenti, preservando i tuoi dati sensibili!
+### Come usare i plugin
+Nella cartella `ai_plugins` troverai il server universale `mcp_server.py` e uno script interattivo di configurazione.
+
+Per configurare la tua piattaforma preferita, esegui semplicemente:
+```bash
+python ai_plugins/install_ai_plugins.py
+```
+Apparirà un menu guidato che ti fornirà le istruzioni esatte o configurerà automaticamente l'editor scelto (Cursor, Windsurf, Claude Code, GitHub Copilot, OpenCode o Google Antigravity).
+
+Al momento della connessione, il plugin verificherà se il demone di Germano AI è attivo. In caso contrario, lo **avvierà automaticamente in background** e aprirà la Dashboard nel tuo browser. Da quel momento l'IA sarà sicura e privata!
 
 ---
 
