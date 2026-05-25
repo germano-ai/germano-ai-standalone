@@ -2,7 +2,7 @@
 
 🌍 *Read this in other languages: [English](README.en.md)*
 
-**💡 Esempio di uso:** *Tu vuoi usare la potenza di un AI pubblica, ma non puoi (come da normativa vigente) o non vuoi condividere i dati personali? Con Germano puoi farlo gratuitamente. Germano è un' AI locale e offline che anonimizza i tuoi documenti e si integra perfettamente tramite plugin con gli strumenti che già usi: Claude Code, Google Antigravity, OpenCode e tutti gli altri. L'AI online lavorerà solo sui documenti già anonimizzati da Germano.ai . E' già pronto per essere compatibile con il GDPR e adattabile per chi avesse requisiti specifici.*
+**💡 Esempio di uso:** *Tu vuoi usare la potenza di un'LLM online (chatgpt, gemini, claude, copilot, deepseek..) ma i tuoi documenti contengono dati personali che non vuoi o non puoi inviare all'AI (come da normativa vigente per la Pubblica Amministrazione). Germano anonimizza questi dati per te. Germano è un' AI locale e offline che anonimizza i tuoi documenti e si integra perfettamente tramite plugin con gli strumenti che già usi: Claude Code, Google Antigravity, OpenCode e tutti gli altri. In questo modo l'AI online avrà in input solo i documenti anonimizzati da germano.ai . germano.ai anonimizza testo e volti ed è compatibile con il GDPR oltre che essere adattabile a requisiti di privacy specifici.*
 
 Germano AI è una potente suite open-source progettata per **l'anonimizzazione intelligente** e massiva di documenti. Basata su motori di Intelligenza Artificiale locale, garantisce la totale privacy dei dati elaborando i file offline (senza inviare dati al cloud).
 
