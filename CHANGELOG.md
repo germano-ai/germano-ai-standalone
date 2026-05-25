@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.28-alpha] - 2026-05-25
+### Modificato
+- **Esempio di uso**: Revisione del testo per includere l'applicazione Windows e server MCP.
+
 ## [0.27-alpha] - 2026-05-25
 ### Modificato
 - **Esempio di uso**: Aggiornato il testo dell'esempio di utilizzo nella landing page e nei file README per riflettere meglio i LLM online e le normative della PA.
