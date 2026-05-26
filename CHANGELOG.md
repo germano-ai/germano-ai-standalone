@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.44-alpha] - 2026-05-26
+### Bugfix & Web
+- Secondo hotfix su `script.js`: ripristinata la virgola mancante a fine blocco JSON della traduzione "Casi d'uso" che mandava in errore di sintassi l'interprete Javascript bloccando il sito.
+
 ## [0.43-alpha] - 2026-05-26
 ### Documentazione e Testi
 - Riscritti integralmente i testi per i Casi d'Uso 1 (Standalone) e 2 (Proxy API) nel sito web, inserendo esempi espliciti come "[PERSONA 1]" e "Mario Rossi", e aggiornate di conseguenza le traduzioni e i file README.
