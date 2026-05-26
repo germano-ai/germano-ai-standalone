@@ -901,7 +901,82 @@ def main():
         print(f"Error loading OCR Engine: {str(e)}", flush=True)
         ocr_reader = None
         
-    print("Model loaded successfully. Entering monitoring loop...", flush=True)
+    print("Model loaded successfully. Starting Internal Proxy API on port 8001...", flush=True)
+    
+    import threading
+    import json
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    
+    class InternalProxyAPI(BaseHTTPRequestHandler):
+        def do_POST(self):
+            if self.path == '/internal/anonymize_text':
+                content_length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(content_length).decode('utf-8')
+                try:
+                    data = json.loads(body)
+                    text = data.get("text", "")
+                    ext_data = []
+                    
+                    spans = classifier(text) + get_regex_spans(text)
+                    if spans:
+                        spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
+                        
+                        label_counts = {}
+                        word_to_label = {}
+                        
+                        # First pass: assign indexed labels to unique words
+                        # We iterate in normal order or reversed? spans are sorted reverse (end to start) by merge_and_sort_spans
+                        # so let's reverse them back to normal reading order for indexing
+                        spans_forward = sorted(spans, key=lambda x: x['start'])
+                        for span in spans_forward:
+                            word = span["word"]
+                            if word not in word_to_label:
+                                base_label = span.get('replacement_label', '[DATI_SENSIBILI]')
+                                label_counts[base_label] = label_counts.get(base_label, 0) + 1
+                                indexed_label = base_label.replace("]", f"_{label_counts[base_label]}]")
+                                word_to_label[word] = indexed_label
+                                
+                        anonymized = text
+                        # Apply replacements from end to start (as sorted by merge_and_sort_spans)
+                        for span in spans:
+                            word = span["word"]
+                            indexed_label = word_to_label[word]
+                            ext_data.append({
+                                "word": word,
+                                "label": indexed_label,
+                                "entity": span.get("entity_group", span.get("entity", "PII"))
+                            })
+                            anonymized = anonymized[:span['start']] + indexed_label + anonymized[span['end']:]
+                    else:
+                        anonymized = text
+
+                    response = {"anonymized": anonymized, "extracted_data": ext_data}
+                    
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(response).encode('utf-8'))
+                except Exception as e:
+                    self.send_response(500)
+                    self.end_headers()
+                    self.wfile.write(str(e).encode('utf-8'))
+            else:
+                self.send_response(404)
+                self.end_headers()
+                
+        def log_message(self, format, *args):
+            pass
+            
+    def start_internal_server():
+        try:
+            server = HTTPServer(('127.0.0.1', 8001), InternalProxyAPI)
+            server.serve_forever()
+        except Exception as e:
+            print(f"Internal proxy server error: {e}", flush=True)
+
+    threading.Thread(target=start_internal_server, daemon=True).start()
+    
+    print("Entering monitoring loop...", flush=True)
     
     with open(READY_FLAG, "w") as f:
         f.write("1")

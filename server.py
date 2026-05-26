@@ -266,6 +266,130 @@ def kill_orphans():
         
     return jsonify({'status': 'success', 'killed': killed})
 
+from flask import Response, stream_with_context
+
+@app.route('/v1/models', methods=['GET'])
+def proxy_models():
+    return jsonify({
+        "object": "list",
+        "data": [
+            {"id": "germano-proxy", "object": "model", "created": 1686935002, "owned_by": "germano"}
+        ]
+    })
+
+@app.route('/v1/chat/completions', methods=['POST'])
+def proxy_chat_completions():
+    payload = request.get_json(force=True, silent=True) or {}
+    auth_header = request.headers.get("Authorization")
+    
+    target_api_url = "https://api.openai.com/v1/chat/completions"
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+                if "target_api_url" in cfg and cfg["target_api_url"]:
+                    base_url = cfg["target_api_url"]
+                    if base_url.endswith("/"): base_url = base_url[:-1]
+                    if not base_url.endswith("/chat/completions"):
+                        target_api_url = base_url + "/chat/completions"
+                    else:
+                        target_api_url = base_url
+        except: pass
+
+    session_map = {} 
+    
+    def anonymize_text_via_daemon(text):
+        if not is_daemon_running():
+            return text
+        try:
+            resp = requests.post("http://127.0.0.1:8001/internal/anonymize_text", json={"text": text}, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                for item in data.get("extracted_data", []):
+                    session_map[item["label"]] = item["word"]
+                return data.get("anonymized", text)
+        except Exception as e:
+            app.logger.error(f"Daemon proxy error: {e}")
+        return text
+
+    if "messages" in payload:
+        for msg in payload.get("messages", []):
+            content = msg.get("content")
+            if isinstance(content, str):
+                msg["content"] = anonymize_text_via_daemon(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        part["text"] = anonymize_text_via_daemon(part.get("text", ""))
+
+    headers = {"Content-Type": "application/json"}
+    if auth_header:
+        headers["Authorization"] = auth_header
+        
+    is_stream = payload.get("stream", False)
+    
+    def replace_all(text):
+        if not text: return text
+        for label, real_word in session_map.items():
+            text = text.replace(label, real_word)
+        return text
+
+    if not is_stream:
+        try:
+            r = requests.post(target_api_url, json=payload, headers=headers, timeout=120)
+            if r.status_code != 200:
+                return Response(r.content, status=r.status_code, content_type=r.headers.get('Content-Type'))
+                
+            resp_json = r.json()
+            if "choices" in resp_json:
+                for choice in resp_json["choices"]:
+                    if "message" in choice and "content" in choice["message"]:
+                        content = choice["message"]["content"]
+                        if isinstance(content, str):
+                            choice["message"]["content"] = replace_all(content)
+            return jsonify(resp_json)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    else:
+        def generate():
+            buffer = ""
+            try:
+                with requests.post(target_api_url, json=payload, headers=headers, stream=True, timeout=120) as r:
+                    for line in r.iter_lines():
+                        if line:
+                            line_str = line.decode('utf-8')
+                            if line_str.startswith("data: ") and line_str != "data: [DONE]":
+                                try:
+                                    chunk_json = json.loads(line_str[6:])
+                                    if "choices" in chunk_json:
+                                        for choice in chunk_json["choices"]:
+                                            if "delta" in choice and "content" in choice["delta"]:
+                                                content = choice["delta"]["content"]
+                                                if content:
+                                                    buffer += content
+                                                    last_open = buffer.rfind('[')
+                                                    last_close = buffer.rfind(']')
+                                                    if last_open != -1 and (last_close == -1 or last_open > last_close) and (len(buffer) - last_open < 35):
+                                                        choice["delta"]["content"] = ""
+                                                    else:
+                                                        out_text = replace_all(buffer)
+                                                        choice["delta"]["content"] = out_text
+                                                        buffer = ""
+                                    yield f"data: {json.dumps(chunk_json)}\n\n"
+                                except:
+                                    yield f"{line_str}\n\n"
+                            elif line_str == "data: [DONE]":
+                                if buffer:
+                                    flush_json = {"choices": [{"delta": {"content": replace_all(buffer)}}]}
+                                    yield f"data: {json.dumps(flush_json)}\n\n"
+                                yield f"{line_str}\n\n"
+                            else:
+                                yield f"{line_str}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                
+        return Response(stream_with_context(generate()), content_type='text/event-stream')
+
 if __name__ == '__main__':
     print("Avvio Privacy Filter AI Server locale...")
     print("Apri il tuo browser all'indirizzo: http://127.0.0.1:8000")

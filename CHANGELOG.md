@@ -3,6 +3,12 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.31-alpha] - 2026-05-26
+### Aggiunto
+- **API Proxy Locale Universale**: Germano AI ora funge da vero e proprio Proxy API compatibile con lo standard OpenAI. Intercetta automaticamente e anonimizza in RAM tutti i prompt testuali, prima che raggiungano l'LLM, e de-anonimizza al volo le risposte generate (supportando il Server Sent Events - Streaming).
+- **Endpoint HTTP Interni in `daemon.py`**: Introdotto un mini-server HTTP su thread dedicato per elaborazioni in tempo reale senza latenze da I/O su disco.
+- **Supporto Configurazione Proxy**: Aggiunto campo `target_api_url` in `config.json`.
+
 ## [0.30-alpha] - 2026-05-26
 ### Aggiunto
 - **Plugin Installer**: Aggiunto il supporto per Lovable e le estensioni Cline / Roo Code in `install_ai_plugins.py`.

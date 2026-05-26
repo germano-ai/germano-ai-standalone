@@ -66,28 +66,28 @@ Directly returns the binary stream of the "clean" file. Check the **[Official Do
 
 ---
 
-## 🤖 Cross-Platform AI Integration (Cursor, Windsurf, Claude Code, Copilot, Antigravity)
+## 🤖 Cross-Platform AI Integration: Local API Proxy (New!)
 
-Document anonymization is no longer limited to the web Dashboard. Germano AI now includes an official integration suite designed to connect our local privacy engine directly with the most popular and powerful **AI Programming Assistants**. 
+Data anonymization is no longer limited to files! Germano AI now includes a universal **Local API Proxy** (compatible with the OpenAI format) capable of acting as a total "shield" between your IDE (Cursor, Windsurf, Claude Code, Copilot, Antigravity) and the Artificial Intelligence.
 
-Leveraging the **Model Context Protocol (MCP)** standard (created by Anthropic and adopted industry-wide), we developed a universal Python plugin capable of acting as a "shield" between your files and Artificial Intelligence.
+### How the Total "Privacy Shield" works
+Normally, the IDE sends everything you write (or drag into the chat) directly to online servers.
+By configuring your editor to point to Germano AI, the flow changes completely:
 
-### How the "Privacy Shield" works
-Normally, when you ask an AI like Claude, Antigravity or Cursor to "Read this document and summarize it", the AI uses its standard tools to read the entire original file in plain text and send it to its cloud servers.
+1. **Interception**: When you ask the AI something or attach a file, the IDE sends the request to Germano AI (running offline on your PC at port 8000).
+2. **On-the-Fly Censorship**: Germano intercepts the JSON, extracts your text prompts and images, passes them instantly to the local privacy filter, and replaces sensitive data with labels (e.g. `[PERSON_1]`).
+3. **Secure Forwarding**: Germano forwards the "purified" request to the real LLM provider (e.g. OpenAI).
+4. **Real-Time De-Anonymization**: When the LLM responds (even in word-by-word *streaming* mode), Germano intercepts the response, swaps `[PERSON_1]` back with the original name on the fly, and returns it to the IDE.
 
-By installing this plugin:
-1. When the editor starts, the plugin connects in the background to Germano AI (starting the local `START.bat` daemon if it is not already active).
-2. It provides the AI with a new tool called `read_anonymized_file`.
-3. It dynamically teaches the AI a fundamental rule: **"Whenever the user asks you to read a file, you are forced to use read_anonymized_file instead of your standard reader"**.
-4. When the AI invokes this tool, our local script takes charge of the original file, passes it to the local privacy filter, saves the redacted version locally and returns to the AI **only the anonymized data**.
+The Artificial Intelligence will **never** come into contact with your original data, and you won't even notice the difference!
 
-The Artificial Intelligence will **never** come into contact with the original data!
+### How to Enable It
+1. Start Germano AI by double-clicking on `START.bat`.
+2. Open the settings of your preferred IDE or AI tool.
+3. Set the **API Base URL** (or Custom URL) to: `http://127.0.0.1:8000/v1`
+4. Enter your real OpenAI API Key normally (or Anthropic, if your client natively supports it on the OpenAI proxy). Germano will use it securely only to forward the request to the real servers.
 
-### Super Easy Installation
-You don't have to go crazy configuring JSON files manually. 
-Double-click on the **`INSTALL_AI_PLUGINS.bat`** file (or run `python ai_plugins/install_ai_plugins.py` from the terminal).
-
-An interactive program will open that will scan your computer looking for compatible editors (Cursor, Windsurf, VS Code, etc.) and will guide you step-by-step providing the exact configuration ready for copy-pasting, or in the case of Claude Code, it will install everything automatically with a single click. If it doesn't find compatible editors in the system, it will notify you with a clear message, still allowing you to force the configurations manually.
+*(Note: The old integration via MCP Plugin using the `INSTALL_AI_PLUGINS.bat` script is still available, but the API Proxy offers superior protection by intercepting the entire conversation).*
 
 ---
 
