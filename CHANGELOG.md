@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.39-alpha] - 2026-05-26
+### Documentazione
+- Aggiunta la dicitura "Caso d'Uso 2" nella descrizione, esplicitando il funzionamento offline per la scansione massiva di directory e cartelle.
+
 ## [0.38-alpha] - 2026-05-26
 ### Documentazione
 - Corretta la descrizione del caso d'uso nei file README (it/en) e sulla landing page (it/en), per chiarire esplicitamente che l'applicativo funziona in modalità standalone.
