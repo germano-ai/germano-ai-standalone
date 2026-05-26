@@ -3,6 +3,11 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.37-alpha] - 2026-05-26
+### Sicurezza
+- **Fail-Safe Privacy (Hard Block) su Proxy API**: Implementato un blocco rigoroso nel `server.py`. Ora, se il demone IA fallisce l'anonimizzazione del testo o va in timeout durante l'offuscamento di un'immagine Base64, il Proxy distrugge la richiesta e solleva un errore 500, bloccando categoricamente l'invio dei dati originali all'LLM. Precedentemente l'API restituiva i dati in chiaro in caso di crash per non bloccare l'IDE.
+- Aggiornata la documentazione e la guida web sul sito ufficiale per informare gli utenti di questa misura di sicurezza.
+
 ## [0.36-alpha] - 2026-05-26
 ### Documentazione
 - **Migliorata Spiegazione Setup IDE**: Aggiunte istruzioni estremamente dettagliate (sia nei README che sul sito web) per guidare l'utente alla configurazione *manuale* dell'impostazione "Base URL" (o "Custom API URL") nei principali IDE come Cursor, Windsurf e Antigravity. È stato inoltre chiarito esplicitamente il motivo di sicurezza per cui non è possibile fornire uno script automatico per questa operazione.

@@ -96,6 +96,10 @@ Because modern IDEs encrypt and secure their API keys and proxy configurations w
    - **Windsurf / Antigravity / Other IDEs**: In the AI Provider settings (under OpenAI or Custom Provider), find the **Base URL** (or API Base URL / Custom URL) field and insert: `http://127.0.0.1:8000/v1`.
 3. Make sure you enter your real OpenAI API Key in the editor. The IDE will send it to Germano AI, which will safely use it locally **exclusively** to forward the request to OpenAI's servers after finishing the anonymization of prompts and files!
 
+### 🛡️ "Fail-Safe Privacy" (Hard Block Active)
+Our API Proxy is designed with a zero-tolerance policy for errors (Hard Block). 
+If for any reason (e.g., AI daemon crash, unreadable format, or corrupted image file) the privacy filter fails the scan, **the Proxy will NOT send your original data to the LLM**. The request will be instantly destroyed, and you will receive a red error message inside your editor. This guarantees that under no circumstances can your clear-text data leak to the internet due to a software malfunction.
+
 ---
 
 ## 📂 Working Folders Structure

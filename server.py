@@ -318,7 +318,7 @@ def proxy_chat_completions():
     
     def anonymize_text_via_daemon(text):
         if not is_daemon_running():
-            return text
+            raise Exception("Germano IA Daemon non in esecuzione. Blocco di sicurezza attivato: richiesta interrotta per prevenire la fuga di dati in chiaro.")
         try:
             resp = requests.post("http://127.0.0.1:8001/internal/anonymize_text", json={"text": text}, timeout=30)
             if resp.status_code == 200:
@@ -326,19 +326,97 @@ def proxy_chat_completions():
                 for item in data.get("extracted_data", []):
                     session_map[item["label"]] = item["word"]
                 return data.get("anonymized", text)
+            else:
+                raise Exception(f"Il Demone IA ha restituito errore {resp.status_code}.")
         except Exception as e:
             app.logger.error(f"Daemon proxy error: {e}")
-        return text
+            raise Exception(f"Errore critico durante l'anonimizzazione del testo: {e}. Richiesta bloccata.")
+
+    def anonymize_image_via_daemon(b64_string):
+        if not is_daemon_running():
+            raise Exception("Germano IA Daemon non in esecuzione. Blocco di sicurezza attivato per le immagini.")
+            
+        if not b64_string.startswith("data:image"):
+            return b64_string
+            
+        import base64
+        try:
+            header, encoded = b64_string.split(",", 1)
+            ext = ".jpg"
+            if "png" in header.lower(): ext = ".png"
+            elif "webp" in header.lower(): ext = ".webp"
+            
+            img_data = base64.b64decode(encoded)
+            uid = str(uuid.uuid4())[:8]
+            filename = f"proxy_image_{uid}{ext}"
+            
+            input_path = os.path.join("input", filename)
+            output_path = os.path.join("output", filename)
+            failed_path = os.path.join("failed", filename)
+            
+            os.makedirs("input", exist_ok=True)
+            os.makedirs("output", exist_ok=True)
+            os.makedirs("failed", exist_ok=True)
+            
+            with open(input_path, "wb") as f:
+                f.write(img_data)
+                
+            start_time = time.time()
+            timeout = 60
+            processed = False
+            failed_state = False
+            while time.time() - start_time < timeout:
+                if os.path.exists(output_path):
+                    processed = True
+                    break
+                if os.path.exists(failed_path):
+                    failed_state = True
+                    break
+                time.sleep(1)
+                
+            if processed:
+                time.sleep(0.5)
+                with open(output_path, "rb") as f:
+                    new_img_data = f.read()
+                new_encoded = base64.b64encode(new_img_data).decode('utf-8')
+                
+                # Pulizia file temporanei proxy
+                try: os.remove(input_path)
+                except: pass
+                try: os.remove(output_path)
+                except: pass
+                
+                return f"{header},{new_encoded}"
+            else:
+                try: os.remove(input_path)
+                except: pass
+                if failed_state:
+                    raise Exception("Immagine rifiutata o corrotta (finita nella cartella failed). Impossibile procedere.")
+                else:
+                    raise Exception(f"Timeout durante l'elaborazione OCR e censura dell'immagine (> {timeout}s).")
+                
+        except Exception as e:
+            app.logger.error(f"Image proxy error: {e}")
+            raise Exception(f"Errore critico durante l'anonimizzazione visiva: {e}. Blocco di sicurezza attivato.")
 
     if "messages" in payload:
-        for msg in payload.get("messages", []):
-            content = msg.get("content")
-            if isinstance(content, str):
-                msg["content"] = anonymize_text_via_daemon(content)
-            elif isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        part["text"] = anonymize_text_via_daemon(part.get("text", ""))
+        try:
+            for msg in payload.get("messages", []):
+                content = msg.get("content")
+                if isinstance(content, str):
+                    msg["content"] = anonymize_text_via_daemon(content)
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict):
+                            if part.get("type") == "text":
+                                part["text"] = anonymize_text_via_daemon(part.get("text", ""))
+                            elif part.get("type") == "image_url" and isinstance(part.get("image_url"), dict):
+                                url = part["image_url"].get("url", "")
+                                if url.startswith("data:image"):
+                                    part["image_url"]["url"] = anonymize_image_via_daemon(url)
+        except Exception as safety_error:
+            # BLOCCO TOTALE in caso di fallimento per evitare data leak
+            return jsonify({"error": {"message": str(safety_error), "type": "safety_privacy_block", "code": 500}}), 500
 
     headers = {"Content-Type": "application/json"}
     if auth_header:

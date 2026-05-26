@@ -96,6 +96,10 @@ Poiché le impostazioni di sicurezza dei moderni IDE memorizzano le chiavi API e
    - **Windsurf / Antigravity / Altri IDE**: Nelle impostazioni del Provider AI (sotto la voce OpenAI o Provider Personalizzato), cerca il campo **Base URL** (o API Base URL / Custom URL) e inserisci: `http://127.0.0.1:8000/v1`.
 3. Assicurati di inserire la tua vera API Key di OpenAI nell'editor. L'IDE la invierà a Germano AI, che la utilizzerà localmente in modo sicuro **esclusivamente** per inoltrare la richiesta ai server di OpenAI dopo aver concluso l'anonimizzazione dei prompt e dei file!
 
+### 🛡️ "Fail-Safe Privacy" (Hard Block Attivo)
+Il nostro Proxy API è progettato con una tolleranza zero per gli errori (Hard Block). 
+Se per qualsiasi motivo (es. crash del demone IA, formato illeggibile, o file immagine corrotto) il filtro privacy fallisce la scansione, **il Proxy non invierà i tuoi dati originali all'LLM**. La richiesta verrà istantaneamente distrutta e riceverai un messaggio di errore rosso all'interno del tuo editor. Questo garantisce che in nessun caso i tuoi dati in chiaro possano fuggire verso Internet a causa di un malfunzionamento software.
+
 ---
 
 ## 📂 Struttura Cartelle di Lavoro
