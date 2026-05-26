@@ -3,7 +3,7 @@
 🌍 *Leggi questo documento in altre lingue: [Italiano](README.md)*
 
 **💡 Example of Use:** *Do you want to use the power of an online LLM (chatgpt, gemini, claude, copilot, deepseek..) but your documents or the text you write in the prompt contain personal data that you do not want or cannot send to the AI (as per current regulations for the Public Administration)? Germano anonymizes this data for you. Germano is a local and offline Windows application (does not require internet access to work). germano.ai anonymizes text, prompts and faces and is compatible with the GDPR; it integrates perfectly by acting as a Local API Proxy with the tools you already use: Claude Code, Google Antigravity, OpenCode, Cursor, and all the others. In this way, the online AI will only receive as input the anonymized documents and texts.
-This is just one use case, germano.ai can be used in any situation where there is a large number of documents to anonymize, it supports many formats, returns the anonymized documents in the output folder, and is highly configurable.*
+This is just one use case, germano.ai can be used in any situation where there is a large number of documents to anonymize, and it works in standalone mode, supports many formats, returns the anonymized documents in the output folder, and is highly configurable.*
 
 Germano AI is a powerful open-source suite designed for **intelligent and massive document and text anonymization**. Based on local Artificial Intelligence engines, it guarantees total data privacy by processing files offline (without sending data to the cloud).
 

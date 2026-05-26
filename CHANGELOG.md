@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.38-alpha] - 2026-05-26
+### Documentazione
+- Corretta la descrizione del caso d'uso nei file README (it/en) e sulla landing page (it/en), per chiarire esplicitamente che l'applicativo funziona in modalità standalone.
+
 ## [0.37-alpha] - 2026-05-26
 ### Sicurezza
 - **Fail-Safe Privacy (Hard Block) su Proxy API**: Implementato un blocco rigoroso nel `server.py`. Ora, se il demone IA fallisce l'anonimizzazione del testo o va in timeout durante l'offuscamento di un'immagine Base64, il Proxy distrugge la richiesta e solleva un errore 500, bloccando categoricamente l'invio dei dati originali all'LLM. Precedentemente l'API restituiva i dati in chiaro in caso di crash per non bloccare l'IDE.
