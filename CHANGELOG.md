@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.42-alpha] - 2026-05-26
+### Bugfix & Web
+- Hotfix critico su `script.js`: corretta la formattazione JSON (apici doppi all'interno di stringhe) che impediva il corretto caricamento del file Javascript e bloccava il rendering della lingua sulla pagina web.
+
 ## [0.41-alpha] - 2026-05-26
 ### Documentazione e UI
 - Invertiti i due Casi d'Uso: il funzionamento "Standalone" massivo è ora il Caso d'Uso 1, mentre il funzionamento "Proxy API" è il Caso d'Uso 2.
