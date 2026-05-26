@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.32-alpha] - 2026-05-26
+### Aggiunto
+- **Anonimizzatore Testo Manuale in Dashboard**: Aggiunta una nuova sezione nella UI web (`index.html`) che permette all'utente di incollare direttamente del testo, anonimizzarlo istantaneamente tramite la nuova API `/api/v1/anonymize_text` e copiare il risultato, rendendo l'anonimizzatore utilizzabile anche senza API o integrazioni IDE.
+
 ## [0.31-alpha] - 2026-05-26
 ### Aggiunto
 - **API Proxy Locale Universale**: Germano AI ora funge da vero e proprio Proxy API compatibile con lo standard OpenAI. Intercetta automaticamente e anonimizza in RAM tutti i prompt testuali, prima che raggiungano l'LLM, e de-anonimizza al volo le risposte generate (supportando il Server Sent Events - Streaming).

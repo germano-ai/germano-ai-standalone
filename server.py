@@ -147,6 +147,24 @@ def check_update():
         "update_available": False
     })
 
+@app.route('/api/v1/anonymize_text', methods=['POST'])
+def api_anonymize_text():
+    if not is_daemon_running():
+        return jsonify({"error": "Il demone IA non è in esecuzione."}), 503
+    
+    data = request.get_json(force=True, silent=True)
+    if not data or 'text' not in data:
+        return jsonify({"error": "Fornire un JSON con il campo 'text'."}), 400
+        
+    try:
+        resp = requests.post("http://127.0.0.1:8001/internal/anonymize_text", json={"text": data["text"]}, timeout=30)
+        if resp.status_code == 200:
+            return jsonify(resp.json())
+        else:
+            return jsonify({"error": "Errore interno del demone."}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/v1/anonymize', methods=['POST'])
 def api_anonymize():
     if not is_daemon_running():

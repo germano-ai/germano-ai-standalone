@@ -367,4 +367,59 @@ document.addEventListener('DOMContentLoaded', () => {
     pollStatus();
     // Poll every 1 second
     pollInterval = setInterval(pollStatus, 1000);
+
+    // --- Manual Text Anonymizer ---
+    const btnManualAnonymize = document.getElementById('btn-manual-anonymize');
+    const txtInput = document.getElementById('manual-text-input');
+    const txtOutput = document.getElementById('manual-text-output');
+    const btnCopyOutput = document.getElementById('btn-copy-output');
+
+    if (btnManualAnonymize && txtInput && txtOutput) {
+        btnManualAnonymize.addEventListener('click', async () => {
+            const text = txtInput.value.trim();
+            if (!text) return;
+            
+            if (currentDaemonState !== 'running') {
+                alert("Devi prima avviare il demone (START DAEMON) per poter anonimizzare il testo.");
+                return;
+            }
+
+            btnManualAnonymize.disabled = true;
+            btnManualAnonymize.style.opacity = '0.7';
+            btnManualAnonymize.querySelector('span').textContent = 'Elaborazione...';
+            
+            try {
+                const response = await fetch('/api/v1/anonymize_text', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.anonymized) {
+                    txtOutput.value = data.anonymized;
+                } else {
+                    txtOutput.value = "Errore: " + (data.error || "Impossibile elaborare il testo.");
+                }
+            } catch (error) {
+                console.error("Manual anonymize error:", error);
+                txtOutput.value = "Errore di connessione al server locale.";
+            } finally {
+                btnManualAnonymize.disabled = false;
+                btnManualAnonymize.style.opacity = '1';
+                btnManualAnonymize.querySelector('span').textContent = 'Anonimizza';
+            }
+        });
+        
+        btnCopyOutput.addEventListener('click', () => {
+            if (txtOutput.value) {
+                txtOutput.select();
+                document.execCommand('copy');
+                const icon = btnCopyOutput.querySelector('i');
+                icon.className = 'fas fa-check';
+                setTimeout(() => { icon.className = 'fas fa-copy'; }, 2000);
+            }
+        });
+    }
 });
