@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.34-alpha] - 2026-05-26
+### Documentazione
+- **Aggiornamento Casi d'Uso e Landing Page**: Rimossi definitivamente i riferimenti al vecchio protocollo MCP. La documentazione (README, Sito Web, Guide) è stata interamente riscritta per riflettere l'integrazione nativa tramite API Proxy Locale. Aggiunta menzione esplicita all'anonimizzazione dei prompt testuali.
+
 ## [0.33-alpha] - 2026-05-26
 ### Modificato
 - **Comportamento Proxy**: Rimossa la logica di de-anonimizzazione al volo dalle risposte dell'LLM. Ora l'IA risponde esplicitamente usando i tag (es. `[PERSONA_1]`).
