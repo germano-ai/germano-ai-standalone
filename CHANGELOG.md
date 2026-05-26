@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.45-alpha] - 2026-05-26
+### Bugfix & Web
+- Terzo hotfix su `script.js`: corretta una doppia virgola (`,,`) sfuggita durante il fix precedente che impediva la validazione sintattica stretta di Node.js e manteneva rotto il rendering del sito per alcuni browser.
+
 ## [0.44-alpha] - 2026-05-26
 ### Bugfix & Web
 - Secondo hotfix su `script.js`: ripristinata la virgola mancante a fine blocco JSON della traduzione "Casi d'uso" che mandava in errore di sintassi l'interprete Javascript bloccando il sito.
