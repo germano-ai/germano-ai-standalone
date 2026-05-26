@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.46-alpha] - 2026-05-26
+### Architettura Web
+- Incorporato l'intero codice e dizionario di traduzione Javascript (`script.js`) all'interno dei tag `<script>` nei file HTML (`index.html` e `guide.html`), eliminando il file esterno per avere i file HTML completamente autonomi e auto-contenuti.
+
 ## [0.45-alpha] - 2026-05-26
 ### Bugfix & Web
 - Terzo hotfix su `script.js`: corretta una doppia virgola (`,,`) sfuggita durante il fix precedente che impediva la validazione sintattica stretta di Node.js e manteneva rotto il rendering del sito per alcuni browser.
