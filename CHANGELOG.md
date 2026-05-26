@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.35-alpha] - 2026-05-26
+### Rimosso
+- **Script di Installazione MCP Obsoleti**: Rimossi definitivamente i file `INSTALL_AI_PLUGINS.bat`, `UNINSTALL_AI_PLUGINS.bat` e la cartella `ai_plugins`. Con il passaggio all'architettura Proxy API locale, l'integrazione con gli IDE (Cursor, Windsurf, ecc.) avviene nativamente modificando l'URL di base dell'API nell'editor, rendendo questi script di configurazione MCP inutili.
+
 ## [0.34-alpha] - 2026-05-26
 ### Documentazione
 - **Aggiornamento Casi d'Uso e Landing Page**: Rimossi definitivamente i riferimenti al vecchio protocollo MCP. La documentazione (README, Sito Web, Guide) è stata interamente riscritta per riflettere l'integrazione nativa tramite API Proxy Locale. Aggiunta menzione esplicita all'anonimizzazione dei prompt testuali.
