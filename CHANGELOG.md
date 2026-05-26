@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.43-alpha] - 2026-05-26
+### Documentazione e Testi
+- Riscritti integralmente i testi per i Casi d'Uso 1 (Standalone) e 2 (Proxy API) nel sito web, inserendo esempi espliciti come "[PERSONA 1]" e "Mario Rossi", e aggiornate di conseguenza le traduzioni e i file README.
+
 ## [0.42-alpha] - 2026-05-26
 ### Bugfix & Web
 - Hotfix critico su `script.js`: corretta la formattazione JSON (apici doppi all'interno di stringhe) che impediva il corretto caricamento del file Javascript e bloccava il rendering della lingua sulla pagina web.
