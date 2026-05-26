@@ -146,19 +146,7 @@ def process_txt(input_file, output_file, classifier, extracted_data):
     with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
         text = f.read()
     
-    if not text.strip():
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(text)
-        return
-
-    spans = classifier(text) + get_regex_spans(text)
-    spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
-    
-    anonymized_text = text
-    for span in spans:
-        extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-        replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
-        anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
+    anonymized_text = anonymize_string(text, classifier, extracted_data)
         
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(anonymized_text)
@@ -263,12 +251,9 @@ def process_pdf(input_file, output_file, classifier, extracted_data, ocr_reader=
             # --- FINE BLOCCO OCR ---
 
             # --- BLOCCO TESTO DIGITALE ---
-            page_dict = page.get_text("dict")
             spans_classification = classifier(text) + get_regex_spans(text)
             
-            processed_words = set()
-            
-            # Pre-calc all text spans for faster intersection
+            page_dict = page.get_text("dict")
             all_spans = []
             for block in page_dict.get("blocks", []):
                 if "lines" not in block: continue
@@ -276,35 +261,44 @@ def process_pdf(input_file, output_file, classifier, extracted_data, ocr_reader=
                     for s in line["spans"]:
                         all_spans.append((fitz.Rect(s["bbox"]), s["size"]))
             
+            spans_classification.sort(key=lambda x: x['start'])
+            
+            from collections import defaultdict
+            word_spans = defaultdict(list)
             for span in spans_classification:
-                word = span['word'].strip()
+                word_spans[span['word'].strip()].append(span)
+            
+            import re
+            for word, spans_for_word in word_spans.items():
+                if not word: continue
                 
-                # Save all extracted entities
-                extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                
-                # Skip if empty or already processed to avoid massive slowdowns (O(N^2) explosion)
-                if not word or word in processed_words:
-                    continue
-                processed_words.add(word)
-                
-                base_str = span.get("replacement_label", "[DATI_SENSIBILI]")
-                replacement = base_str
+                for span in spans_for_word:
+                    extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
                 
                 rects = page.search_for(word)
-                for rect in rects:
-                    fontsize = rect.height * 0.75
-                    
-                    # Fast intersection check
-                    for span_rect, size in all_spans:
-                        if span_rect.intersects(rect):
-                            fontsize = size
+                matches = list(re.finditer(re.escape(word), text, flags=re.IGNORECASE))
+                
+                for span in spans_for_word:
+                    occurrence_idx = -1
+                    for i, match in enumerate(matches):
+                        # Tolleranza di 2 caratteri per differenze di whitespaces tra fitz get_text e il parser testuale interno
+                        if abs(match.start() - span['start']) <= 2 or match.start() == span['start']:
+                            occurrence_idx = i
                             break
                     
-                    # Aggiunge annotazione trasparente con fontsize esatto
-                    annot = page.add_redact_annot(rect, text=replacement, text_color=(0,0,0), fontsize=fontsize, fill=False, cross_out=False)
-                    # Forza la rimozione di bordi rossi o sfondi di default
-                    annot.set_colors(stroke=None, fill=None)
-                    annot.update()
+                    if occurrence_idx != -1 and occurrence_idx < len(rects):
+                        rect = rects[occurrence_idx]
+                        replacement = span.get("replacement_label", "[DATI_SENSIBILI]")
+                        
+                        fontsize = rect.height * 0.75
+                        for span_rect, size in all_spans:
+                            if span_rect.intersects(rect):
+                                fontsize = size
+                                break
+                        
+                        annot = page.add_redact_annot(rect, text=replacement, text_color=(0,0,0), fontsize=fontsize, fill=False, cross_out=False)
+                        annot.set_colors(stroke=None, fill=None)
+                        annot.update()
             
             # Applica preservando le immagini intatte
             page.apply_redactions(images=0, graphics=0)
@@ -340,20 +334,7 @@ def process_docx(input_file, output_file, classifier, extracted_data):
         for para in paragraphs:
             if not para.text.strip():
                 continue
-                
-            text = para.text
-            spans = classifier(text) + get_regex_spans(text)
-            if not spans:
-                continue
-                
-            spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
-            anonymized_text = text
-            for span in spans:
-                extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
-                anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
-                
-            para.text = anonymized_text
+            para.text = anonymize_string(para.text, classifier, extracted_data)
 
     def process_tables(tables):
         for table in tables:
@@ -389,34 +370,20 @@ def process_xlsx(input_file, output_file, classifier, extracted_data):
     try:
         wb = openpyxl.load_workbook(input_file, keep_vba=(ext == '.xlsm'))
         
-        def anonymize_text(text):
-            if not isinstance(text, str) or not text.strip():
-                return text
-            spans = classifier(text) + get_regex_spans(text)
-            if not spans:
-                return text
-            spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
-            anonymized_text = text
-            for span in spans:
-                extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
-                anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
-            return anonymized_text
-
         for sheet in wb.worksheets:
-            new_title = anonymize_text(sheet.title)
+            new_title = anonymize_string(sheet.title, classifier, extracted_data)
             if new_title and new_title != sheet.title:
                 sheet.title = new_title[:31] # Excel limita i nomi a 31 caratteri
                 
             for row in sheet.iter_rows():
                 for cell in row:
                     if isinstance(cell.value, str):
-                        cell.value = anonymize_text(cell.value)
+                        cell.value = anonymize_string(cell.value, classifier, extracted_data)
                     
                     if cell.comment and cell.comment.text:
-                        new_comment_text = anonymize_text(cell.comment.text)
+                        new_comment_text = anonymize_string(cell.comment.text, classifier, extracted_data)
                         if new_comment_text != cell.comment.text:
-                            author = anonymize_text(cell.comment.author) if cell.comment.author else "Author"
+                            author = anonymize_string(cell.comment.author, classifier, extracted_data) if cell.comment.author else "Author"
                             cell.comment = Comment(new_comment_text, author)
 
         wb.save(output_file)
@@ -441,17 +408,7 @@ def process_xls(input_file, output_file, classifier, extracted_data):
             for colx in range(sheet.ncols):
                 val = sheet.cell_value(rowx, colx)
                 if isinstance(val, str) and val.strip():
-                    spans = classifier(val) + get_regex_spans(val)
-                    if not spans:
-                        continue
-                        
-                    spans = merge_and_sort_spans(filter_and_format_spans(spans), val)
-                    anonymized_text = val
-                    for span in spans:
-                        extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                        replacement = span.get("replacement_label", "[DATI_SENSIBILI]")
-                        anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
-                    
+                    anonymized_text = anonymize_string(val, classifier, extracted_data)
                     w_sheet.write(rowx, colx, anonymized_text)
                     
     wb.save(output_file)
@@ -709,19 +666,7 @@ def process_rtf(input_file, output_file, classifier, extracted_data):
         with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
             text = f.read()
         
-        if not text.strip():
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(text)
-            return
-
-        spans = classifier(text) + get_regex_spans(text)
-        spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
-        
-        anonymized_text = text
-        for span in spans:
-            extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-            replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
-            anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
+        anonymized_text = anonymize_string(text, classifier, extracted_data)
             
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(anonymized_text)
@@ -740,15 +685,7 @@ def process_pptx(input_file, output_file, classifier, extracted_data):
                     for run in paragraph.runs:
                         text = run.text
                         if not text.strip(): continue
-                        spans = classifier(text) + get_regex_spans(text)
-                        if spans:
-                            spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
-                            anonymized_text = text
-                            for span in spans:
-                                extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                                replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
-                                anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
-                            run.text = anonymized_text
+                        run.text = anonymize_string(text, classifier, extracted_data)
             
             if shape.has_table:
                 for row in shape.table.rows:
@@ -757,15 +694,7 @@ def process_pptx(input_file, output_file, classifier, extracted_data):
                             for run in paragraph.runs:
                                 text = run.text
                                 if not text.strip(): continue
-                                spans = classifier(text) + get_regex_spans(text)
-                                if spans:
-                                    spans = merge_and_sort_spans(filter_and_format_spans(spans), text)
-                                    anonymized_text = text
-                                    for span in spans:
-                                        extracted_data.append({"word": span["word"], "entity": span.get("entity_group", span.get("entity", "PII")), "score": float(span["score"])})
-                                        replacement = span.get('replacement_label', '[DATI_SENSIBILI]')
-                                        anonymized_text = anonymized_text[:span['start']] + replacement + anonymized_text[span['end']:]
-                                    run.text = anonymized_text
+                                run.text = anonymize_string(text, classifier, extracted_data)
 
     prs.save(output_file)
     process_embedded_files(output_file, classifier, extracted_data)

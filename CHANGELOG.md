@@ -3,6 +3,14 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.47-alpha] - 2026-05-26
+### Refactoring & Bugfix
+- **daemon.py**: Risolta la massiccia duplicazione del codice di oscuramento su tutti i formati file (TXT, DOCX, XLSX, PPTX, ecc.) delegando l'elaborazione ad una singola funzione unificata (`anonymize_string`).
+- **daemon.py**: Corretto un grave bug nei PDF (falsi positivi) per cui venivano oscurate *tutte* le occorrenze testuali di una parola anche se l'IA ne aveva segnalata solo una specifica. Ora viene indicizzata e processata l'occorrenza corretta con tolleranza ai whitespace.
+- **server.py**: Migliorate le prestazioni generali e la stabilità; eliminate chiamate shell lente e rischiose a `tasklist` e `taskkill` sostituendole con API native `psutil`.
+- **server.py**: Risolto il rischio di file lock nell'API `api_anonymize` e migliorato il loop di polling (da 1 a 0.5 secondi, e controllo di chiusura atomico sul file di origine).
+- Sincronizzata la versione dell'app (`APP_VERSION`) in `server.py` che era rimasta indietro alla 0.18.
+
 ## [0.46-alpha] - 2026-05-26
 ### Architettura Web
 - Incorporato l'intero codice e dizionario di traduzione Javascript (`script.js`) all'interno dei tag `<script>` nei file HTML (`index.html` e `guide.html`), eliminando il file esterno per avere i file HTML completamente autonomi e auto-contenuti.

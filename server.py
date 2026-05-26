@@ -7,7 +7,7 @@ import time
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-APP_VERSION = "0.18-alpha"
+APP_VERSION = "0.47-alpha"
 
 DAEMON_PID_FILE = "daemon.pid"
 STOP_FLAG = "stop.flag"
@@ -17,12 +17,11 @@ LOG_FILE = "daemon.log"
 def is_daemon_running():
     if os.path.exists(DAEMON_PID_FILE):
         try:
+            import psutil
             with open(DAEMON_PID_FILE, "r") as f:
                 pid = int(f.read().strip())
             
-            # Use tasklist natively on Windows without needing psutil
-            output = subprocess.check_output(f'tasklist /FI "PID eq {pid}"', shell=True).decode()
-            if str(pid) in output:
+            if psutil.pid_exists(pid):
                 return True
         except:
             return False
@@ -119,11 +118,18 @@ def stop():
 
 @app.route('/api/stop_daemon', methods=['POST'])
 def stop_daemon():
-    # Cerca il demone tramite pid o nome
     try:
-        import subprocess
-        subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/FI", f"WINDOWTITLE eq germano_daemon*"], shell=True)
-        return jsonify({"status": "success", "message": "Demone fermato (se era in esecuzione)."})
+        import psutil
+        count = 0
+        if os.path.exists(DAEMON_PID_FILE):
+            try:
+                with open(DAEMON_PID_FILE, "r") as f:
+                    pid = int(f.read().strip())
+                if psutil.pid_exists(pid):
+                    psutil.Process(pid).terminate()
+                    count += 1
+            except: pass
+        return jsonify({"status": "success", "message": f"Demone fermato ({count} processi)."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
@@ -198,16 +204,14 @@ def api_anonymize():
     start_time = time.time()
     
     while time.time() - start_time < timeout:
-        if os.path.exists(output_path):
-            from flask import send_file
-            # Aspetta un secondo in più per sicurezza (per evitare file lock)
-            time.sleep(1)
-            return send_file(output_path, as_attachment=True, download_name=original_name)
-            
-        if os.path.exists(failed_path):
-            return jsonify({"error": "Errore durante l'elaborazione del file."}), 500
-            
-        time.sleep(1)
+        if not os.path.exists(input_path):
+            if os.path.exists(output_path):
+                from flask import send_file
+                return send_file(output_path, as_attachment=True, download_name=original_name)
+            if os.path.exists(failed_path):
+                return jsonify({"error": "Errore durante l'elaborazione del file."}), 500
+                
+        time.sleep(0.5)
         
     return jsonify({"error": "Timeout: l'elaborazione ha impiegato troppo tempo."}), 504
 
