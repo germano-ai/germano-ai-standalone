@@ -3,6 +3,11 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.41-alpha] - 2026-05-26
+### Documentazione e UI
+- Invertiti i due Casi d'Uso: il funzionamento "Standalone" massivo è ora il Caso d'Uso 1, mentre il funzionamento "Proxy API" è il Caso d'Uso 2.
+- Uniformato lo stile dei due titoli e rimossa l'icona della lampadina per un aspetto più pulito.
+
 ## [0.40-alpha] - 2026-05-26
 ### Interfaccia Utente & Testi
 - Sostituito "Esempio d'uso" con "Caso d'uso" nel sito web.
