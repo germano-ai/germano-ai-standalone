@@ -346,11 +346,15 @@ def proxy_chat_completions():
         
     is_stream = payload.get("stream", False)
     
-    def replace_all(text):
-        if not text: return text
-        for label, real_word in session_map.items():
-            text = text.replace(label, real_word)
-        return text
+    import time
+    if session_map:
+        os.makedirs("extracted", exist_ok=True)
+        try:
+            timestamp = int(time.time() * 1000)
+            with open(f"extracted/proxy_session_{timestamp}.json", "w", encoding="utf-8") as f:
+                json.dump(session_map, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            app.logger.error(f"Failed to save session map: {e}")
 
     if not is_stream:
         try:
@@ -358,51 +362,16 @@ def proxy_chat_completions():
             if r.status_code != 200:
                 return Response(r.content, status=r.status_code, content_type=r.headers.get('Content-Type'))
                 
-            resp_json = r.json()
-            if "choices" in resp_json:
-                for choice in resp_json["choices"]:
-                    if "message" in choice and "content" in choice["message"]:
-                        content = choice["message"]["content"]
-                        if isinstance(content, str):
-                            choice["message"]["content"] = replace_all(content)
-            return jsonify(resp_json)
+            return jsonify(r.json())
         except Exception as e:
             return jsonify({"error": str(e)}), 500
     else:
         def generate():
-            buffer = ""
             try:
                 with requests.post(target_api_url, json=payload, headers=headers, stream=True, timeout=120) as r:
                     for line in r.iter_lines():
                         if line:
-                            line_str = line.decode('utf-8')
-                            if line_str.startswith("data: ") and line_str != "data: [DONE]":
-                                try:
-                                    chunk_json = json.loads(line_str[6:])
-                                    if "choices" in chunk_json:
-                                        for choice in chunk_json["choices"]:
-                                            if "delta" in choice and "content" in choice["delta"]:
-                                                content = choice["delta"]["content"]
-                                                if content:
-                                                    buffer += content
-                                                    last_open = buffer.rfind('[')
-                                                    last_close = buffer.rfind(']')
-                                                    if last_open != -1 and (last_close == -1 or last_open > last_close) and (len(buffer) - last_open < 35):
-                                                        choice["delta"]["content"] = ""
-                                                    else:
-                                                        out_text = replace_all(buffer)
-                                                        choice["delta"]["content"] = out_text
-                                                        buffer = ""
-                                    yield f"data: {json.dumps(chunk_json)}\n\n"
-                                except:
-                                    yield f"{line_str}\n\n"
-                            elif line_str == "data: [DONE]":
-                                if buffer:
-                                    flush_json = {"choices": [{"delta": {"content": replace_all(buffer)}}]}
-                                    yield f"data: {json.dumps(flush_json)}\n\n"
-                                yield f"{line_str}\n\n"
-                            else:
-                                yield f"{line_str}\n\n"
+                            yield f"{line.decode('utf-8')}\n\n"
             except Exception as e:
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
                 

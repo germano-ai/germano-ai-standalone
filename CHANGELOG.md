@@ -3,6 +3,11 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.33-alpha] - 2026-05-26
+### Modificato
+- **Comportamento Proxy**: Rimossa la logica di de-anonimizzazione al volo dalle risposte dell'LLM. Ora l'IA risponde esplicitamente usando i tag (es. `[PERSONA_1]`).
+- **Log Sessione Proxy**: La mappa di anonimizzazione generata ad ogni intercettazione viene ora salvata all'interno della cartella `extracted` come file JSON (es. `proxy_session_timestamp.json`).
+
 ## [0.32-alpha] - 2026-05-26
 ### Aggiunto
 - **Anonimizzatore Testo Manuale in Dashboard**: Aggiunta una nuova sezione nella UI web (`index.html`) che permette all'utente di incollare direttamente del testo, anonimizzarlo istantaneamente tramite la nuova API `/api/v1/anonymize_text` e copiare il risultato, rendendo l'anonimizzatore utilizzabile anche senza API o integrazioni IDE.
