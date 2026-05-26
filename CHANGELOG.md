@@ -3,6 +3,10 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.36-alpha] - 2026-05-26
+### Documentazione
+- **Migliorata Spiegazione Setup IDE**: Aggiunte istruzioni estremamente dettagliate (sia nei README che sul sito web) per guidare l'utente alla configurazione *manuale* dell'impostazione "Base URL" (o "Custom API URL") nei principali IDE come Cursor, Windsurf e Antigravity. È stato inoltre chiarito esplicitamente il motivo di sicurezza per cui non è possibile fornire uno script automatico per questa operazione.
+
 ## [0.35-alpha] - 2026-05-26
 ### Rimosso
 - **Script di Installazione MCP Obsoleti**: Rimossi definitivamente i file `INSTALL_AI_PLUGINS.bat`, `UNINSTALL_AI_PLUGINS.bat` e la cartella `ai_plugins`. Con il passaggio all'architettura Proxy API locale, l'integrazione con gli IDE (Cursor, Windsurf, ecc.) avviene nativamente modificando l'URL di base dell'API nell'editor, rendendo questi script di configurazione MCP inutili.

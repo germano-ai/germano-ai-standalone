@@ -86,11 +86,15 @@ By configuring your editor to point to Germano AI, the flow changes completely:
 
 The Artificial Intelligence will **never** come into contact with your original data, allowing you to use extremely specific prompts without violating the GDPR!
 
-### How to Enable It
+### How to Activate It (Manual Setup Required)
+
+Because modern IDEs encrypt and secure their API keys and proxy configurations within internal databases, the integration cannot be automated via scripts for security reasons. It **must be done manually by the user within the software's graphical interface**. This is a safe, one-time operation that takes just a few seconds:
+
 1. Start Germano AI by double-clicking on `START.bat`.
-2. Open the settings of your preferred IDE or AI tool.
-3. Set the **API Base URL** (or Custom URL) to: `http://127.0.0.1:8000/v1`
-4. Enter your real OpenAI API Key normally (or Anthropic, if your client natively supports it on the OpenAI proxy). Germano will use it securely only to forward the request to the real servers.
+2. Open your preferred AI editor and change the AI server base address:
+   - **Cursor**: Go to `Settings` -> `Models` -> Scroll to `OpenAI API Key` and insert your real key. Then, just below it, toggle on **Override OpenAI Base URL** and insert the following address: `http://127.0.0.1:8000/v1`.
+   - **Windsurf / Antigravity / Other IDEs**: In the AI Provider settings (under OpenAI or Custom Provider), find the **Base URL** (or API Base URL / Custom URL) field and insert: `http://127.0.0.1:8000/v1`.
+3. Make sure you enter your real OpenAI API Key in the editor. The IDE will send it to Germano AI, which will safely use it locally **exclusively** to forward the request to OpenAI's servers after finishing the anonymization of prompts and files!
 
 ---
 

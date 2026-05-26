@@ -86,11 +86,15 @@ Configurando il tuo editor per puntare a Germano AI, il flusso cambia completame
 
 L'Intelligenza Artificiale non entrerà **mai** in contatto con i tuoi dati originali, permettendoti di usare prompt estremamente specifici senza violare il GDPR!
 
-### Come Attivarlo
+### Come Attivarlo (Impostazione Manuale Richiesta)
+
+Poiché le impostazioni di sicurezza dei moderni IDE memorizzano le chiavi API e gli indirizzi proxy in database interni crittografati o protetti, l'integrazione non può essere automatizzata tramite script per motivi di sicurezza, ma **deve essere eseguita manualmente dall'utente nell'interfaccia grafica del software**. Si tratta di un'operazione sicura che va fatta una volta sola e richiede pochi secondi:
+
 1. Avvia Germano AI facendo doppio clic su `START.bat`.
-2. Apri le impostazioni del tuo IDE o strumento AI preferito.
-3. Imposta l'**API Base URL** (o Custom URL) a: `http://127.0.0.1:8000/v1`
-4. Inserisci normalmente la tua vera API Key di OpenAI (o Anthropic, se il tuo client la supporta nativamente sul proxy OpenAI). Germano la userà in modo sicuro solo per inoltrare la richiesta ai veri server.
+2. Apri il tuo editor AI preferito e modifica l'indirizzo base del server AI:
+   - **Cursor**: Vai in `Impostazioni (Settings)` -> `Models` -> Scorri fino a `OpenAI API Key` e inserisci la tua chiave reale. Poi, appena sotto, attiva la levetta **Override OpenAI Base URL** e inserisci il seguente indirizzo: `http://127.0.0.1:8000/v1`.
+   - **Windsurf / Antigravity / Altri IDE**: Nelle impostazioni del Provider AI (sotto la voce OpenAI o Provider Personalizzato), cerca il campo **Base URL** (o API Base URL / Custom URL) e inserisci: `http://127.0.0.1:8000/v1`.
+3. Assicurati di inserire la tua vera API Key di OpenAI nell'editor. L'IDE la invierà a Germano AI, che la utilizzerà localmente in modo sicuro **esclusivamente** per inoltrare la richiesta ai server di OpenAI dopo aver concluso l'anonimizzazione dei prompt e dei file!
 
 ---
 
