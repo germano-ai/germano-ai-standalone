@@ -3,6 +3,11 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.30-alpha] - 2026-05-26
+### Aggiunto
+- **Plugin Installer**: Aggiunto il supporto per Lovable e le estensioni Cline / Roo Code in `install_ai_plugins.py`.
+- **Plugin Uninstaller**: Creato lo script `UNINSTALL_AI_PLUGINS.bat` e il relativo backend Python per facilitare la rimozione delle configurazioni dei plugin IA.
+
 ## [0.29-alpha] - 2026-05-25
 ### Modificato
 - **Esempio di uso**: Aggiornamento del testo dell'esempio per specificare l'assenza di necessità di connessione internet e generalizzare i casi d'uso.

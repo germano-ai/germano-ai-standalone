@@ -99,6 +99,40 @@ def generate_opencode_config():
     print(json.dumps(config, indent=4))
     input("\nPremi Invio per continuare...")
 
+def generate_lovable_config():
+    server_path = get_server_path()
+    python_exe = sys.executable
+    print("\n[Lovable]")
+    print("Lovable supporta l'MCP. Segui questi passi per aggiungere Germano AI:")
+    print("1. Vai nelle impostazioni di Lovable -> MCP Servers")
+    print("2. Aggiungi un nuovo server con questa configurazione:")
+    config = {
+        "mcpServers": {
+            "GermanoAI": {
+                "command": python_exe,
+                "args": [server_path]
+            }
+        }
+    }
+    print(json.dumps(config, indent=4))
+    input("\nPremi Invio per continuare...")
+
+def generate_cline_config():
+    server_path = get_server_path()
+    python_exe = sys.executable
+    print("\n[Cline / Roo Code (Estensioni VS Code & Cursor)]")
+    print("Copia la seguente configurazione e incollala nel tuo file `cline_mcp_settings.json`:")
+    config = {
+        "mcpServers": {
+            "GermanoAI": {
+                "command": python_exe,
+                "args": [server_path]
+            }
+        }
+    }
+    print("\n" + json.dumps(config, indent=4))
+    input("\nPremi Invio per continuare...")
+
 def scan_editors():
     print("\n[Scansione Automatica Editor Supportati]")
     found_any = False
@@ -130,6 +164,19 @@ def scan_editors():
         print("- Trovato: Claude Code")
         found_any = True
         
+    # Check Lovable
+    lovable_path = os.path.join(localappdata, 'Programs', 'Lovable')
+    if os.path.exists(lovable_path) or os.path.exists(os.path.join(appdata, 'Lovable')):
+        print("- Trovato: Lovable")
+        found_any = True
+        
+    # Check Cline / Roo Code
+    cline_path = os.path.join(appdata, 'Code', 'User', 'globalStorage', 'saoudrizwan.claude-dev')
+    roo_path = os.path.join(appdata, 'Code', 'User', 'globalStorage', 'rooveterinaryinc.roo-cline')
+    if os.path.exists(cline_path) or os.path.exists(roo_path):
+        print("- Trovato: Estensione Cline / Roo Code")
+        found_any = True
+        
     if not found_any:
         print("\n=== Code editor non trovato ===")
         print("Il sistema non ha rilevato alcun editor compatibile installato nelle posizioni standard.")
@@ -152,7 +199,9 @@ def main():
         print("4. GitHub Copilot (VS Code)")
         print("5. OpenCode")
         print("6. Google Antigravity")
-        print("7. Esegui Scansione Automatica Editor")
+        print("7. Lovable")
+        print("8. Cline / Roo Code")
+        print("9. Esegui Scansione Automatica Editor")
         print("0. Esci")
         print("="*50)
         
@@ -175,6 +224,10 @@ def main():
             print(f"- Argomenti: {get_server_path()}")
             input("\nPremi Invio per continuare...")
         elif choice == '7':
+            generate_lovable_config()
+        elif choice == '8':
+            generate_cline_config()
+        elif choice == '9':
             scan_editors()
         elif choice == '0':
             break
