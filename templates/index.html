@@ -1,251 +1,599 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>germano.ai | Daemon Controller</title>
+    <title>Germano AI — Protezione Privacy Documenti</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body>
-    <div id="update-banner" style="display: none; background: linear-gradient(90deg, #3b82f6, #8b5cf6); color: white; padding: 10px 20px; text-align: center; font-weight: bold; font-family: 'Outfit', sans-serif;">
-        🚀 Nuova versione disponibile (<span id="update-version"></span>)! 
-        <a href="https://github.com/germano-ai/germano-ai-standalone/releases" target="_blank" style="color: white; text-decoration: underline; margin-left: 10px;">Scarica l'aggiornamento</a>
-        <span onclick="document.getElementById('update-banner').style.display='none'" style="float: right; cursor: pointer;">✖</span>
-    </div>
-    <div class="container">
-        
-        <!-- TOP SECTION (2 COLUMNS) -->
-        <div class="main-grid">
-            
-            <!-- LEFT COLUMN: OPERATIONAL CONTROLS -->
-            <div class="left-col">
-                <section class="settings-panel card" style="height: 100%;">
-                    <h2>Impostazioni di Censura</h2>
-                    
-                    <div class="compliance-profiles" style="margin-bottom: 1.5rem; background: #1e293b; padding: 1rem; border-radius: 8px; border: 1px solid #334155;">
-                        <p style="margin-top: 0; margin-bottom: 0.8rem; font-weight: 600; color: #f8fafc;">Profilo di Conformità:</p>
-                        <div style="display: flex; flex-direction: column; gap: 0.8rem;">
-                            <label style="display: flex; align-items: flex-start; cursor: pointer; color: #e2e8f0;">
-                                <input type="radio" name="compliance_mode" id="mode_pa" value="PA" style="margin-top: 3px; margin-right: 10px;">
-                                <div>
-                                    <strong>Germano PA</strong> (Pubblica Amministrazione)<br>
-                                    <span style="font-size: 0.85rem; color: #94a3b8;">Preset bloccato a norma CAD/GDPR. Minimizzazione forzata (0% Soglia, Tutti i filtri attivi).</span>
-                                </div>
-                            </label>
-                            <label style="display: flex; align-items: flex-start; cursor: pointer; color: #e2e8f0;">
-                                <input type="radio" name="compliance_mode" id="mode_pd" value="PD" checked style="margin-top: 3px; margin-right: 10px;">
-                                <div>
-                                    <strong>Germano PD</strong> (Pubblico Dominio)<br>
-                                    <span style="font-size: 0.85rem; color: #94a3b8;">Uso privato/aziendale libero. Disattivazione filtri e soglie configurabili a piacimento.</span>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
+<body class="mode-simple">
 
-                    <div class="slider-container" style="margin-bottom: 2rem;">
-                        <label for="setting_ai_threshold">Soglia Affidabilità IA (Nomi/Luoghi): <span id="threshold_val">0% (Tutto)</span></label>
-                        <input type="range" id="setting_ai_threshold" min="0" max="100" value="0">
-                        <small>Aumenta per censurare solo le parole di cui l'IA è assolutamente sicura (riduce falsi positivi).</small>
-                    </div>
-
-                    <div class="daemon-control" style="margin-top: auto;">
-                        <button id="toggle-daemon" class="btn-toggle off">
-                            <span class="status-indicator"></span>
-                            <span id="toggle-text">START DAEMON</span>
-                        </button>
-                        <p id="daemon-status-text" class="status-text-off">System is offline. AI model is not loaded.</p>
-                        
-                        <div id="loading-container" class="loading-container hidden">
-                            <p class="loading-text">Caricamento Modelli Neurali in RAM (Attendi...)</p>
-                            <div class="progress-bar">
-                                <div class="progress-bar-inner"></div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-
-            <!-- RIGHT COLUMN: HARDWARE & FILTERS -->
-            <div class="right-col">
-                <div class="card" style="height: 100%;">
-                    <header style="margin-bottom: 2rem; padding: 0;">
-                        <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem; color: #60a5fa;">germano.ai</h1>
-                        <p style="color: #94a3b8; margin: 0;">Daemon Controller (Persistent Model)</p>
-                    </header>
-                    
-                    <div class="settings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: #1e293b; padding: 1.5rem; border-radius: 8px; border: 1px solid #334155; margin-bottom: 2rem;">
-                        <label class="switch-container" style="grid-column: 1 / -1; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #334155;">
-                            <input type="checkbox" id="setting_ocr" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Abilita OCR (Scansioni/Immagini)</span>
-                        </label>
-                        
-                        <label class="switch-container">
-                            <input type="checkbox" id="setting_faces" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Volti (Biometria)</span>
-                        </label>
-                        
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_person" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Nomi e Cognomi</span>
-                        </label>
-
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_address" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Indirizzi Fisici</span>
-                        </label>
-
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_email" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Indirizzi Email</span>
-                        </label>
-
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_phone" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Numeri di Telefono</span>
-                        </label>
-
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_cf_iva" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Cod. Fiscale / P.IVA</span>
-                        </label>
-
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_account" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">IBAN e Carte</span>
-                        </label>
-
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_secret" checked>
-                            <span class="slider round"></span>
-                            <span class="label-text">Password e Segreti</span>
-                        </label>
-
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_url">
-                            <span class="slider round"></span>
-                            <span class="label-text">URL / Siti Web</span>
-                        </label>
-
-                        <label class="switch-container">
-                            <input type="checkbox" id="censor_date">
-                            <span class="slider round"></span>
-                            <span class="label-text">Date di nascita</span>
-                        </label>
-                    </div>
-                    
-                    <div class="slider-container" style="margin-top: auto;">
-                        <label for="setting_hardware" style="font-weight: 600;">Accelerazione Hardware (Motore IA):</label>
-                        <select id="setting_hardware" style="width: 100%; padding: 0.8rem; background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; margin-top: 0.8rem; font-size: 1rem;">
-                            <option value="gpu_fallback">GPU con Fallback CPU di sicurezza (Consigliato)</option>
-                            <option value="gpu">Solo GPU (Massime Prestazioni)</option>
-                            <option value="cpu">Solo CPU (Massima Compatibilità)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            
+    <!-- Notifica Aggiornamento (Solo se connesso) -->
+    <div id="updateBanner" class="top-banner banner-info" style="display: none;">
+        <div class="banner-inner">
+            <span>È disponibile una nuova versione di Germano AI (<strong id="latestVersionSpan"></strong>).</span>
+            <a href="https://germano.ai" target="_blank" rel="noopener" class="banner-btn">Scopri di più</a>
         </div>
+    </div>
 
-        <!-- MIDDLE SECTION: MANUAL TEXT ANONYMIZER -->
-        <div class="card" style="margin-bottom: 2rem; padding: 1.5rem; background: #1e293b; border-left: 4px solid #8b5cf6;">
-            <h2 style="margin-top: 0; color: #f8fafc; font-size: 1.2rem; margin-bottom: 1rem;">
-                <i class="fas fa-keyboard" style="color: #8b5cf6; margin-right: 8px;"></i>
-                Anonimizzatore Testo Manuale
-            </h2>
-            <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: stretch;">
-                <div style="display: flex; flex-direction: column;">
-                    <label style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 0.3rem;">Testo Originale</label>
-                    <textarea id="manual-text-input" placeholder="Incolla qui il testo da anonimizzare..." style="flex-grow: 1; padding: 0.8rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-family: inherit; resize: vertical; min-height: 120px;"></textarea>
+    <!-- Avviso Processi Multipli (Solo in Modalità Avanzata) -->
+    <div id="orphanWarning" class="top-banner banner-warning adv-only" style="display: none;">
+        <div class="banner-inner">
+            <span>Attenzione: rilevati <strong id="orphanCount">0</strong> processi secondari rimasti aperti in background.</span>
+            <button id="killOrphansBtn" class="banner-btn banner-btn-danger">Chiudi processi secondari</button>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- HEADER PRINCIPALE CON SLIDER SEMPLICE / AVANZATO -->
+        <header class="main-header">
+            <div class="brand-area">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="M9 12l2 2 4-4"/>
+                    </svg>
                 </div>
-                
-                <div style="display: flex; align-items: center; justify-content: center;">
-                    <button id="btn-manual-anonymize" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); border: none; padding: 1rem 1.5rem; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; transition: transform 0.2s;">
-                        <i class="fas fa-arrow-right" style="font-size: 1.5rem;"></i>
-                        <span>Anonimizza</span>
+                <div>
+                    <div class="brand-title-row">
+                        <h1 class="brand-title">GERMANO AI</h1>
+                        <span class="version-pill">v{{ version }}</span>
+                        <span class="offline-pill">100% Offline</span>
+                    </div>
+                    <p class="brand-subtitle">Protezione automatica dei dati personali nei documenti e per ChatGPT / AI</p>
+                </div>
+            </div>
+
+            <!-- SLIDER MODALITÀ SEMPLICE / AVANZATA -->
+            <div class="mode-slider-wrap" title="Scegli tra l'interfaccia guidata semplificata o i controlli completi">
+                <div class="mode-slider" id="modeSlider" data-mode="simple">
+                    <div class="mode-slider-thumb"></div>
+                    <button type="button" class="mode-slider-btn active" id="btnModeSimple" data-target="simple">
+                        ✨ Modalità Semplice
+                    </button>
+                    <button type="button" class="mode-slider-btn" id="btnModeAdvanced" data-target="advanced">
+                        ⚙️ Modalità Avanzata
                     </button>
                 </div>
-                
-                <div style="display: flex; flex-direction: column;">
-                    <label style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 0.3rem;">Testo Anonimizzato</label>
-                    <div style="position: relative; flex-grow: 1; display: flex;">
-                        <textarea id="manual-text-output" readonly placeholder="Il risultato apparirà qui..." style="width: 100%; padding: 0.8rem; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #10b981; font-family: inherit; resize: vertical; min-height: 120px; outline: none;"></textarea>
-                        <button id="btn-copy-output" style="position: absolute; top: 10px; right: 10px; background: rgba(51, 65, 85, 0.8); border: none; border-radius: 4px; color: white; padding: 5px 10px; cursor: pointer;" title="Copia negli appunti">
-                            <i class="fas fa-copy"></i>
+            </div>
+
+            <!-- STATO E PULSANTE PRINCIPALE (ZERO GERGO TECNICO) -->
+            <div class="header-actions">
+                <a href="/guide" target="_blank" rel="noopener" class="btn-guide-header" id="btnOpenGuide" title="Apri il manuale completo e la documentazione tecnica offline">
+                    <span class="guide-btn-icon">📖</span>
+                    <span>Guida & Docs</span>
+                </a>
+                <div class="engine-status-pill" id="engineStatusPill">
+                    <span class="status-dot stopped" id="statusDot"></span>
+                    <span id="statusText">In Pausa</span>
+                </div>
+                <button type="button" id="mainToggleBtn" class="btn-power start">
+                    <span id="mainToggleIcon">▶</span>
+                    <span id="mainToggleLabel">ATTIVA GERMANO</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- BARRA GLOBALE: SWITCH DE-ANONIMIZZAZIONE AUTOMATICA -->
+        <section class="deanon-hero-bar" id="deanonHeroBar">
+            <div class="deanon-hero-info">
+                <div class="deanon-hero-icon">🔄</div>
+                <div>
+                    <div class="deanon-hero-title">
+                        Rimetti a posto automaticamente i dati veri nel ritorno dall'AI
+                        <span class="deanon-badge" id="deanonStateBadge">AUTOMATICO ATTIVO</span>
+                    </div>
+                    <p class="deanon-hero-desc">
+                        Quando è attivo (<strong id="vaultCountLabel">0</strong> dati in memoria), Germano assegna etichette numerate (es. <code>[PERSONA_1]</code>) in uscita e <strong>rimette automaticamente al loro posto tutti i dati veri</strong> nelle risposte e nei file restituiti dall'AI tramite il Proxy API locale (Google Antigravity, Codex, Cursor, Claude Code, OpenCode) o nelle cartelle interne del programma.
+                    </p>
+                </div>
+            </div>
+            <div class="deanon-hero-controls">
+                <label class="big-switch" title="Attiva o disattiva il ripristino automatico dei dati veri nei file e risposte di ritorno dall'AI">
+                    <input type="checkbox" id="enable_deanonymize" checked>
+                    <span class="big-switch-slider"></span>
+                </label>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SEZIONE ESCLUSIVA MODALITÀ AVANZATA: MODELLI IA & SINGOLE FEATURES        -->
+        <!-- ========================================================================= -->
+        <section class="adv-only mega-checkbox-section" id="megaCheckboxSection">
+            <!-- SOTTO-SEZIONE 1: I 6 MODELLI IA LOCALI + MOTORE REGEX -->
+            <div class="mega-header">
+                <div>
+                    <h2 class="mega-title">🧠 1. Motori e Modelli IA Offline (Abilita / Disabilita Singoli Modelli)</h2>
+                    <p class="mega-subtitle">Attiva o disattiva singolarmente ciascuno dei 6 modelli di Intelligenza Artificiale locali e il motore matematico RegEx. Modifiche attive in tempo reale.</p>
+                </div>
+                <div class="mega-presets">
+                    <button type="button" class="btn-preset preset-pa active" id="btnModelsAllOn" title="Attiva tutti i 6 modelli IA e il motore RegEx">
+                        ✅ Tutti i Modelli Attivi
+                    </button>
+                    <button type="button" class="btn-preset" id="btnModelsAllOff" title="Disattiva tutti i modelli IA">
+                        ⏸️ Disattiva Tutti i Modelli
+                    </button>
+                </div>
+            </div>
+
+            <div class="mega-checkbox-grid" style="margin-bottom: 24px;">
+                <label class="mega-check-card model-card">
+                    <input type="checkbox" id="enable_model_velvet" class="model-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🧠 Velvet Privacy Filter 1.5B</span>
+                            <code class="mega-tag">NLP • 3.0 GB FP16</code>
+                        </div>
+                        <p>Modello Transformer contestuale multilingue per nomi, contatti, segreti e dati personali</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card model-card">
+                    <input type="checkbox" id="enable_model_italian_ner" class="model-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🇮🇹 Italian NER XXL v2 (58 Classi)</span>
+                            <code class="mega-tag">NLP • 210 MB FP16</code>
+                        </div>
+                        <p>Modello specialistico italiano per sanità, tribunali, catasto, finanza, professioni e aziende</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card model-card">
+                    <input type="checkbox" id="enable_ocr" class="model-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🔍 EasyOCR (CRAFT + Latin G2)</span>
+                            <code class="mega-tag">OCR • 89 MB</code>
+                        </div>
+                        <p>Legge e censura i testi contenuti dentro immagini, foto e PDF scannerizzati</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card model-card">
+                    <input type="checkbox" id="enable_faces" class="model-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🧑 YuNet Biometria Volti (DNN)</span>
+                            <code class="mega-tag">[VOLTO] • ONNX</code>
+                        </div>
+                        <p>Riconoscimento biometrico e oscuramento facce su foto, PDF e carte d'identità</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card model-card">
+                    <input type="checkbox" id="enable_signatures" class="model-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">✍️ YOLOS-Tiny Signature Detector</span>
+                            <code class="mega-tag">[FIRMA] • 12 MB</code>
+                        </div>
+                        <p>Rilevamento visivo IA e oscuramento delle firme autografe e sigle manoscritte</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card model-card">
+                    <input type="checkbox" id="enable_plate_vision" class="model-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🚗 YOLOS-Small Plate Detector</span>
+                            <code class="mega-tag">[TARGA] • 58 MB</code>
+                        </div>
+                        <p>Rilevamento visivo IA e oscuramento delle targhe automobilistiche nelle fotografie</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card model-card">
+                    <input type="checkbox" id="enable_regex" class="model-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">📐 Motore RegEx Italiano</span>
+                            <code class="mega-tag">DETERMINISTICO</code>
+                        </div>
+                        <p>Regole matematiche esatte per Codici Fiscali, P.IVA, IBAN, CIE, CAP, Telefoni e Catasto</p>
+                    </div>
+                </label>
+            </div>
+
+            <!-- SOTTO-SEZIONE 2: LE 18 SINGOLE FEATURES / CATEGORIE DI DATI -->
+            <div class="mega-header" style="border-top: 1px solid rgba(148, 163, 184, 0.16); padding-top: 18px;">
+                <div>
+                    <h2 class="mega-title">☑️ 2. Singole Funzionalità e Categorie di Dati (18 Filtri Granulari)</h2>
+                    <p class="mega-subtitle">Scegli esattamente quali singole feature e tipi di informazioni anonimizzare o lasciare in chiaro.</p>
+                </div>
+                <div class="mega-presets">
+                    <button type="button" class="btn-preset preset-pa active" id="btnPresetPA" title="Attiva tutti i modelli e tutte le 18 categorie (Profilo PA / GDPR)">
+                        🛡️ Tutto Attivo (Profilo PA / GDPR)
+                    </button>
+                    <button type="button" class="btn-preset" id="btnPresetEssential" title="Attiva solo Nomi, Indirizzi, Codici Fiscali, Email e Telefoni">
+                        ⚡ Solo Dati Essenziali
+                    </button>
+                    <button type="button" class="btn-preset" id="btnPresetNone" title="Deseleziona tutte le 18 categorie per scegliere manualmente">
+                        🔓 Deseleziona Tutte le Categorie
+                    </button>
+                </div>
+            </div>
+
+            <!-- GRIGLIA GIGANTE DI 18 CHECKBOX PER OGNI SINGOLA FEATURE -->
+            <div class="mega-checkbox-grid">
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_person" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">👤 Nomi Propri e Cognomi</span>
+                            <code class="mega-tag">[PERSONA]</code>
+                        </div>
+                        <p>Nomi, cognomi, firmatari, testimoni e cittadini citati nel testo</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_profession" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🎓 Professioni, Avvocati e Notai</span>
+                            <code class="mega-tag">[PROFESSIONE/TITOLO]</code>
+                        </div>
+                        <p>Qualifiche professionali, avvocati, notai, medici, periti e ruoli lavorativi</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_address" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">📍 Indirizzi Fisici, Vie e Luoghi</span>
+                            <code class="mega-tag">[INDIRIZZO]</code>
+                        </div>
+                        <p>Vie, piazze, numeri civici, CAP, città di residenza, comuni e domicili</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_cadastre" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🗺️ Dati Catastali e Immobiliari</span>
+                            <code class="mega-tag">[CATASTO]</code>
+                        </div>
+                        <p>Foglio catastale, particella, subalterno e mappale in atti notarili e perizie</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_cf_iva" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🪪 Codici Fiscali e Partite IVA</span>
+                            <code class="mega-tag">[COD.FISCALE/P.IVA]</code>
+                        </div>
+                        <p>Codici fiscali alfanumerici italiani (16 caratteri) e Partite IVA</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_email" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">✉️ Email e Caselle PEC</span>
+                            <code class="mega-tag">[EMAIL]</code>
+                        </div>
+                        <p>Indirizzi di posta elettronica personale, aziendale e PEC</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_phone" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">📞 Telefoni, Cellulari e IMEI</span>
+                            <code class="mega-tag">[TELEFONO]</code>
+                        </div>
+                        <p>Recapiti telefonici fissi, cellulari, fax, prefissi e codici IMEI dispositivi</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_account" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">💳 IBAN, Carte, Conti e Banche</span>
+                            <code class="mega-tag">[CONTO/CARTA]</code>
+                        </div>
+                        <p>Coordinate IBAN, carte di credito, CVV, BIC/SWIFT, assegni e istituti bancari</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_financial" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">💶 Importi Monetari e Tassi Mutuo</span>
+                            <code class="mega-tag">[IMPORTO/FINANZA]</code>
+                        </div>
+                        <p>Cifre economiche, compensi, valute, patrimoni e tassi di interesse/mutuo</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_date" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">📅 Date di Nascita, Età e Orari</span>
+                            <code class="mega-tag">[DATA]</code>
+                        </div>
+                        <p>Date di nascita, decesso, età anagrafica, date contrattuali e orari</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_org" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🏢 Aziende, Società ed Enti</span>
+                            <code class="mega-tag">[AZIENDA/ENTE]</code>
+                        </div>
+                        <p>Ragioni sociali (S.r.l., S.p.A., S.n.c., S.a.s., Cooperative, Brand e Ditte)</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_plates_docs" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🪪 Targhe Testuali, CIE e Passaporti</span>
+                            <code class="mega-tag">[TARGA/DOCUMENTO]</code>
+                        </div>
+                        <p>Targhe citate nel testo, numeri Carta d'Identità (CIE), passaporti e patenti</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_medical" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🏥 Malattie, Diagnosi e Cartelle Cliniche</span>
+                            <code class="mega-tag">[DATO_SANITARIO]</code>
+                        </div>
+                        <p>Patologie, diagnosi, anamnesi, storia clinica e referti ospedalieri (Art. 9 GDPR)</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_medicine" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">💊 Farmaci, Terapie e Posologia</span>
+                            <code class="mega-tag">[FARMACO/TERAPIA]</code>
+                        </div>
+                        <p>Nomi di medicinali, principi attivi, dosaggi (mg/ml), frequenza e durata terapie</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_legal" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">⚖️ Tribunali, Sentenze e Procedimenti</span>
+                            <code class="mega-tag">[DATO_GIUDIZIARIO]</code>
+                        </div>
+                        <p>Tribunali, numeri di sentenza, Ruolo Generale (RG) e riferimenti giudiziari (Art. 10 GDPR)</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_civil_status" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">💍 Stato Civile e Regime Patrimoniale</span>
+                            <code class="mega-tag">[STATO_CIVILE]</code>
+                        </div>
+                        <p>Coniugato/a, celibe/nubile, divorziato, separazione o comunione dei beni</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_secret" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🔑 Password, PIN e Chiavi Segrete</span>
+                            <code class="mega-tag">[SEGRETO]</code>
+                        </div>
+                        <p>Password di accesso, codici PIN, token di autenticazione e chiavi API</p>
+                    </div>
+                </label>
+
+                <label class="mega-check-card">
+                    <input type="checkbox" id="censor_url" class="cat-check" checked>
+                    <div class="mega-check-box">✓</div>
+                    <div class="mega-check-content">
+                        <div class="mega-check-top">
+                            <span class="mega-check-name">🌐 Indirizzi IP, MAC e Link Web (URL)</span>
+                            <code class="mega-tag">[URL]</code>
+                        </div>
+                        <p>Indirizzi IPv4/IPv6, MAC address, User-Agent e link privati</p>
+                    </div>
+                </label>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- UNICA DROPZONE AUTOMATICA INTELLIGENTE (PROTEGGE E RIPRISTINA DA SOLA)    -->
+        <!-- ========================================================================= -->
+        <div class="workflow-grid single-col" id="workflowGrid">
+            <section class="step-card step-protect">
+                <div class="step-badge" id="mainDropzoneBadge">AUTOMATICO • RICONOSCIMENTO INTELLIGENTE</div>
+                <h2 class="step-title">🛡️ Trascina qui i tuoi documenti</h2>
+                <p class="step-desc" id="mainDropzoneDesc">
+                    Trascina qualsiasi documento nella finestra (o copialo nella cartella interna <code>input</code>): se contiene dati personali Germano lo protegge; se invece contiene etichette di ritorno dall'AI (es. <code>[PERSONA_1]</code>), <strong>Germano se ne accorge da solo e rimette automaticamente al loro posto tutti i dati veri!</strong>
+                </p>
+
+                <div class="big-dropzone" id="protectDropzone">
+                    <input type="file" id="protectFileInput" multiple style="display: none;">
+                    <div class="dropzone-circle protect-circle">📄</div>
+                    <div class="dropzone-main-text">Trascina qui i tuoi documenti (oppure i file ricevuti dall'AI)</div>
+                    <div class="dropzone-sub-text">oppure <strong>clicca qui per sceglierli dal PC</strong> — Germano protegge i file nuovi e rimette da solo i dati veri in quelli di ritorno dall'AI</div>
+                </div>
+
+                <div class="step-card-actions">
+                    <button type="button" class="btn-secondary-action" onclick="openLocalFolder('input')">
+                        📂 Apri cartella file in ingresso (<span id="countInput">0</span>)
+                    </button>
+                    <span class="vault-info-pill" id="vaultInfoPill">
+                        🔄 Ripristino automatico attivo: <strong id="vaultCountBadge">0</strong> dati in memoria
+                    </span>
+                </div>
+            </section>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- DOCUMENTI PRONTI DA SCARICARE (SEMPLICE E IMMEDIATO)                      -->
+        <!-- ========================================================================= -->
+        <section class="files-card">
+            <div class="files-header">
+                <div>
+                    <h2 class="step-title">✅ I tuoi Documenti Pronti (<span id="countOutput">0</span>)</h2>
+                    <p class="step-desc">Qui trovi subito i file protetti (e quelli ripristinati) pronti da scaricare o aprire sul tuo computer.</p>
+                </div>
+                <div class="files-header-actions">
+                    <!-- Tab solo in modalità avanzata -->
+                    <div class="folder-tabs adv-only">
+                        <button type="button" class="folder-tab active" data-folder="output">Pronti (<span id="tabCountOutput">0</span>)</button>
+                        <button type="button" class="folder-tab" data-folder="input">In Coda (<span id="tabCountInput">0</span>)</button>
+                        <button type="button" class="folder-tab" data-folder="processed">Originali (<span id="tabCountProcessed">0</span>)</button>
+                        <button type="button" class="folder-tab" data-folder="failed">Non Riusciti (<span id="tabCountFailed">0</span>)</button>
+                    </div>
+                    <button type="button" class="btn-primary-folder" onclick="openLocalFolder('output')">
+                        📂 Apri Cartella Documenti Pronti sul PC
+                    </button>
+                </div>
+            </div>
+
+            <div class="file-list-box" id="fileListContainer">
+                <div class="empty-files-msg">Nessun documento presente. Trascina un file nel riquadro qui sopra per iniziare!</div>
+            </div>
+        </section>
+
+        <!-- ========================================================================= -->
+        <!-- SCRIVI O INCOLLA UN TESTO / MESSAGGIO PER CHATGPT                         -->
+        <!-- ========================================================================= -->
+        <section class="text-tool-card">
+            <div class="text-tool-header">
+                <div>
+                    <h2 class="step-title">💬 Messaggi e Risposte per ChatGPT / Claude (Automatico)</h2>
+                    <p class="step-desc">Incolla una domanda da proteggere oppure incolla la risposta ricevuta dall'AI: se contiene <code>[PERSONA_1]</code>, Germano rimette a posto i dati veri da solo all'istante!</p>
+                </div>
+                <span class="entity-pill" id="textEntityBadge" style="display: none;">0 dati protetti</span>
+            </div>
+
+            <div class="text-boxes-grid">
+                <div class="text-col">
+                    <label for="manualInputText" class="text-col-label">1. Incolla qui il tuo testo (se incolli la risposta dell'AI, i dati veri tornano a posto da soli):</label>
+                    <textarea id="manualInputText" placeholder="Incolla qui un testo da proteggere (es. Mario Rossi, CF RSSMRA80A01F205X...) oppure incolla la risposta dell'AI con [PERSONA_1] per vederla subito ripristinata in automatico..."></textarea>
+                    <div class="text-col-buttons">
+                        <button type="button" id="anonymizeTextBtn" class="btn-action-protect">
+                            🛡️ Proteggi Testo per l'AI
+                        </button>
+                    </div>
+                </div>
+
+                <div class="text-col">
+                    <label for="manualOutputText" class="text-col-label">2. Risultato pronto da copiare:</label>
+                    <textarea id="manualOutputText" readonly placeholder="Qui apparirà il testo protetto (es. con [PERSONA_1]) oppure il testo con i nomi veri ripristinati..."></textarea>
+                    <div class="text-col-buttons">
+                        <button type="button" id="copyTextBtn" class="btn-action-copy">
+                            📋 Copia Risultato negli Appunti
                         </button>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- BOTTOM SECTION -->
-        <div class="bottom-grid">
-            
-            <!-- BOTTOM LEFT: STATS -->
-            <div class="left-col-bottom" style="display: flex; flex-direction: column; gap: 1rem;">
-                <section id="pre-flight-stats" class="card" style="height: auto; padding: 1.5rem; text-align: left; border-left: 4px solid #3b82f6;">
-                    <p style="font-size: 1.1rem; color: #f8fafc; margin: 0;">
-                        <i class="fas fa-folder-open"></i> <strong>Coda di Lavoro (Input):</strong> <br>
-                        <span id="lbl_input_files" style="font-weight:bold; color:#60a5fa; font-size: 1.5rem;">0</span> file in 
-                        <span id="lbl_input_folders" style="font-weight:bold; color:#60a5fa; font-size: 1.5rem;">0</span> cartelle 
-                        (<span id="lbl_input_size" style="color:#94a3b8;">0 B</span>)
-                    </p>
-                </section>
+        <!-- ========================================================================= -->
+        <!-- SEZIONE ESCLUSIVA MODALITÀ AVANZATA: IMPOSTAZIONI TECNICHE, VAULT & LOG   -->
+        <!-- ========================================================================= -->
+        <div class="adv-only adv-bottom-grid">
+            <!-- Colonna Sinistra: Sensibilità, Hardware, Proxy e Vault -->
+            <section class="adv-panel-card">
+                <h3 class="adv-panel-title">⚙️ Parametri Motore IA, Hardware e Collegamento Editor</h3>
 
-                <section id="session-progress-container" class="card hidden" style="height: auto; padding: 1.5rem; text-align: left; border-left: 4px solid #10b981;">
-                    <p style="margin-top: 0; margin-bottom: 1rem; font-weight: 600; color: #f8fafc; font-size: 1.1rem;">Progresso Sessione Attuale</p>
-                    <div class="progress-bar-wrap" style="width: 100%; height: 28px; background: #1e293b; border-radius: 14px; overflow: hidden; border: 1px solid #334155; position: relative;">
-                        <div id="session-progress-fill" style="height: 100%; width: 0%; background: linear-gradient(90deg, #10b981, #34d399); transition: width 0.5s ease-out;"></div>
-                        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.95rem; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);">
-                            <span id="lbl_progress_percent">0</span>%
+                <div class="adv-setting-block">
+                    <div class="adv-setting-row">
+                        <label for="ai_threshold">Sensibilità Filtro Intelligenza Artificiale</label>
+                        <span class="adv-val-badge" id="thresholdValue">Massima Sicurezza (0%)</span>
+                    </div>
+                    <input type="range" id="ai_threshold" min="0.0" max="0.95" step="0.05" value="0.0" class="adv-range">
+                    <p class="adv-hint">A 0% intercetta qualunque possibile dato personale. Aumenta solo se vuoi ridurre eventuali falsi positivi.</p>
+                </div>
+
+                <div class="adv-setting-block">
+                    <label for="hardware_mode" class="adv-label">Utilizzo Scheda Video (GPU) / Processore (CPU)</label>
+                    <select id="hardware_mode" class="adv-select">
+                        <option value="gpu_fallback">Automatico (Scheda Video GPU con passaggio automatico a CPU)</option>
+                        <option value="cpu">Usa solo il Processore Centrale (CPU)</option>
+                        <option value="gpu">Forza Scheda Video NVIDIA (CUDA)</option>
+                    </select>
+                </div>
+
+                <div class="adv-setting-block">
+                    <label for="target_api_url" class="adv-label">Collegamento Diretto Editor AI (Indirizzo Locale: <code>http://127.0.0.1:8000/v1</code>)</label>
+                    <input type="text" id="target_api_url" class="adv-input" value="https://api.openai.com/v1/chat/completions" placeholder="https://api.openai.com/v1/chat/completions">
+                    <p class="adv-hint">Con lo switch di ripristino attivo, le risposte ricevute da ChatGPT/OpenAI vengono rimesse in chiaro automaticamente.</p>
+                </div>
+
+                <div class="adv-setting-block vault-block">
+                    <div class="adv-setting-row">
+                        <span>🗄️ Archivio Corrispondenze Salvate (<strong id="advVaultCount">0</strong> voci)</span>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" class="btn-mini" id="btnShowVault">Visualizza Mappa</button>
+                            <button type="button" class="btn-mini btn-mini-danger" id="btnClearVault">Svuota Memoria</button>
                         </div>
                     </div>
-                    <p style="margin-bottom: 0; margin-top: 1rem; color: #94a3b8; font-size: 1rem;">
-                        <span id="lbl_progress_done" style="color: #f8fafc; font-weight:bold;">0</span> / <span id="lbl_progress_total">0</span> file completati
-                    </p>
-                </section>
+                    <div id="vaultPreviewBox" class="vault-preview-box" style="display:none;"></div>
+                </div>
+            </section>
 
-                <section class="stats-panel card" style="height: auto; display: flex; flex-direction: row; justify-content: space-between; padding: 1.5rem;">
-                    <div class="stat-box" style="text-align: center;">
-                        <span class="stat-label" style="display: block; font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.5rem;">Pending Files (Input)</span>
-                        <span class="stat-value" id="stat-input" style="font-size: 2rem;">0</span>
+            <!-- Colonna Destra: Registro Attività e Risorse PC -->
+            <section class="adv-panel-card">
+                <div class="adv-setting-row" style="margin-bottom:10px;">
+                    <h3 class="adv-panel-title" style="margin:0;">📋 Registro Attività in Tempo Reale</h3>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <span class="sys-usage-pill" id="sysUsagePill">CPU: 0% • RAM: 0 GB</span>
+                        <button type="button" id="clearLogsBtn" class="btn-mini">Pulisci Registro</button>
                     </div>
-                    <div class="stat-box" style="text-align: center;">
-                        <span class="stat-label" style="display: block; font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.5rem;">Processed Files</span>
-                        <span class="stat-value success-text" id="stat-processed" style="font-size: 2rem; color: #10b981;">0</span>
-                    </div>
-                    <div class="stat-box" style="text-align: center;">
-                        <span class="stat-label" style="display: block; font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.5rem;">Outputs Generated</span>
-                        <span class="stat-value" id="stat-output" style="font-size: 2rem;">0</span>
-                    </div>
-                </section>
-            </div>
-
-            <!-- BOTTOM RIGHT: LOGS -->
-            <div class="right-col-bottom">
-                <main class="dashboard" style="grid-template-columns: 1fr; height: 100%;">
-                    <div class="card log-card" style="height: 100%; min-height: 400px;">
-                        <h2>
-                            <i class="fas fa-terminal" style="color: #60a5fa;"></i>
-                            Live Daemon Logs
-                        </h2>
-                        <div class="log-container" id="log-container">
-[SYSTEM] Waiting for daemon to start...
-</div>
-                    </div>
-                </main>
-            </div>
-
+                </div>
+                <div class="terminal-window" id="logTerminal">
+                    <div class="log-line">Pronto. Clicca su "ATTIVA GERMANO" in alto a destra per avviare la protezione.</div>
+                </div>
+            </section>
         </div>
     </div>
+
+    <div id="toastContainer" class="toast-container"></div>
 
     <script src="/static/script.js"></script>
 </body>

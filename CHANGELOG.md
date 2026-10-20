@@ -1,10 +1,101 @@
-## [0.48-alpha] - 2026-05-26
-- Corretto un refuso testuale (apostrofo di troppo) in README.md
-- Aggiornamento della documentazione offline
 # Changelog
 
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
+
+## [0.50-alpha] - 2026-10-20
+### Architettura Standalone & Compatibilità Windows 11 Vanilla (100% Offline)
+- **Zero-Admin Native C++ Runtime Bundling**: Estratte e integrate direttamente in `runtime/` e `runtime/Lib/site-packages/torch/lib/` tutte le 12 librerie dinamiche ufficiali a 64-bit del Microsoft Visual C++ Redistributable (`concrt140.dll`, `msvcp140.dll`, `msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`, `vcamp140.dll`, `vccorlib140.dll`, `vcomp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `vcruntime140_threads.dll`) insieme alle librerie di sistema `pywin32` (`pythoncom311.dll`, `pywintypes311.dll`). Questo risolve definitivamente gli errori `ImportError: DLL load failed` / `WinError 126` su installazioni **Windows 11 Vanilla** appena formattate, anche quando l'utente avvia `START.bat` senza privilegi di Amministratore (UAC).
+- **Configurazione `python311._pth` Isolata**: Aggiornato il file di path del runtime embedded per includere `..`, `Lib` e `Lib\site-packages` con `import site` attivo, garantendo la risoluzione deterministica dei moduli indipendentemente dalla working directory o da installazioni Python di sistema preesistenti.
+- **Launcher `START.bat` Riprogettato**: Riscritto lo script di avvio con codifica UTF-8 (`chcp 65001`), variabili d'ambiente rigorose per l'isolamento offline (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `HF_HUB_DISABLE_TELEMETRY=1`, `EASYOCR_MODULE_PATH`), pre-flight check dell'interprete embedded e verifica opzionale non bloccante delle librerie VC++.
+
+### Aggiornamento Completo Software, Dipendenze e Modelli IA
+- **Aggiornamento Integrale dello Stack Python (39 Pacchetti)**:
+  - **AI & Deep Learning**: `torch` aggiornato a `2.14.1+cpu`, `torchvision` a `0.29.1`, `transformers` a `5.20.2`, `tokenizers` a `0.23.3`, `huggingface_hub` a `2.2.0`, `safetensors` a `0.7.0`, `numpy` a `2.4.4`, `scipy` a `1.17.1`, `scikit-image` a `0.26.0`.
+  - **Documenti, PDF & Immagini**: `PyMuPDF` (`pymupdf`) aggiornato a `2.0.0`, `opencv-python-headless` a `5.0.0.93`, `pillow` a `13.0.0`, `lxml` a `6.1.3`, `beautifulsoup4` a `4.15.0`, `pypdfium2` a `5.7.0`, `python-bidi` a `0.6.7`, `pyclipper` a `1.4.0`, `shapely` a `2.1.2`.
+  - **Web Server, Rete & Sistema**: `Werkzeug` a `3.1.9`, `requests` a `2.33.1`, `urllib3` a `2.8.0`, `certifi` a `2026.10.19`, `charset-normalizer` a `3.4.7`, `idna` a `3.11`, `pywin32` a `312`, `pip` a `26.2.1`, `setuptools` a `84.2.0`, `wheel` a `0.48.0`.
+- **Rimozione Conflitti e Duplicati**: Rimosso il pacchetto obsoleto `torch-directml 0.2.5.dev240914` (che forzava il downgrade di PyTorch alla versione 2.4.1 impedendo il caricamento di `transformers >= 5.14`) e rimosso il duplicato `opencv-python` in favore di `opencv-python-headless 5.0.0.93`.
+- **Suite Completa di 6 Modelli IA Pre-Impacchettati 100% Offline (`models/`)**:
+  1. `models/privacy-filter` (**Velvet Privacy Filter 1.5B FP16**, `3000 MB`): Modello Transformer contestuale multilingue per il rilevamento semantico di PII.
+  2. `models/italian-ner-xxl` (**DeepMount00 Italian NER XXL v2 FP16**, `210.2 MB`): Modello NER specializzato sul dominio legale, sanitario, catastale, bancario e amministrativo italiano (58 classi granulari tra cui `CODICE_FISCALE`, `PARTITA_IVA`, `IBAN`, `MALATTIA`, `FARMACO`, `CARTELLA_CLINICA`, `TRIBUNALE`, `SENTENZA`, `FOGLIO_CATASTALE`, `PARTICELLA_CATASTALE`, `RAGIONE_SOCIALE`). Opera in ensemble con `privacy-filter`.
+  3. `models/easyocr` (**EasyOCR CRAFT + Latin G2**, `89.2 MB`): Rilevamento e lettura OCR su PDF scansionati e immagini.
+  4. `models/face-detection` (**OpenCV 5.0 YuNet ONNX**, `0.23 MB`): Riconoscimento biometrico e oscuramento dei volti (`[VOLTO]`) tramite `cv2.FaceDetectorYN`.
+  5. `models/signature-detection` (**YOLOS-Tiny Signature Detector FP16**, `12.4 MB`): Rilevamento visivo e oscuramento delle firme autografe e sigle manoscritte (`[FIRMA]`) su contratti e PDF scansionati.
+  6. `models/plate-detection` (**YOLOS-Small License Plate Detector FP16**, `58.5 MB`): Rilevamento visivo e oscuramento delle targhe automobilistiche (`[TARGA]`) nelle fotografie e perizie.
+
+### Nuove Funzionalità e Bugfix Backend (`daemon.py` & `server.py`)
+- **Hot-Reload Dinamico della Configurazione (`reload_settings`)**: Il demone in background ora controlla il timestamp di modifica di `config.json` ad ogni ciclo e ad ogni richiesta API. Cambiare profilo (`PA` / `PD`), soglia IA o filtri selettivi nella Dashboard applica le modifiche **in tempo reale** senza dover riavviare il demone e ricaricare i modelli in RAM.
+- **Correzione Elaborazione Immagini Raster in `process_pdf`**: Risolto l'errore `RuntimeError: is no PDF` durante l'applicazione delle annotazioni di censura (`add_redact_annot` / `apply_redactions`) su file immagine (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`, `.webp`) convertendo il buffer in PDF in-memory durante la fase di redazione e riesportando l'immagine nel suo formato nativo originale a fine elaborazione.
+- **Miglioramento Precisione NLP & Unione Token BPE**:
+  - Rimossi gli spazi iniziali/finali inclusi dal tokenizzatore BPE di GPT-2 (`privacy-filter`), evitando che la sostituzione mangi gli spazi tra le parole (es. `"Il signor[PERSONA]"` -> `"Il signor [PERSONA]"`).
+  - Unione automatica di token consecutivi appartenenti alla stessa categoria separati da spazio (es. Nome + Cognome uniti in un singolo `[PERSONA_1]` anziché `[PERSONA_1] [PERSONA_2]`).
+  - Filtro anti-falsi positivi sui sub-token corti (<= 3 caratteri) interni alle parole comuni italiane (es. la sottostringa `ita` dentro il verbo `abita`).
+  - Applicazione effettiva di `filter_and_format_spans` anche sui PDF digitali e sulle scansioni OCR, sostituendo i vecchi `[REDACTED]` generici con le etichette contestuali specifiche (`[PERSONA]`, `[EMAIL]`, `[COD.FISCALE/P.IVA]`, ecc.) e rispettando i 9 filtri selettivi.
+- **Correzione Bug `PID_FILE` in `server.py`**: Risolto un `NameError` negli endpoint `/api/check_orphans` e `/api/kill_orphans` in cui `PID_FILE` non era definito nello scope globale di `server.py`.
+- **Nuove API Dashboard in `server.py`**:
+  - `POST /api/settings`: Salvataggio istantaneo della configurazione su `config.json` senza riavvio del demone.
+  - `POST /api/upload_files`: Caricamento diretto di più file dalla Web UI alla cartella `input/`.
+  - `GET /api/files`: Elenco dettagliato (nome, dimensione, data, conteggio entità censurate dal report di audit) dei file nelle cartelle `input`, `output`, `processed` e `failed`.
+  - `GET /api/download/<folder>/<filename>`: Download immediato dei documenti elaborati direttamente dal browser.
+  - `POST /api/open_folder`: Apertura nativa delle cartelle di lavoro in Esplora File di Windows.
+  - `POST /api/clear_logs`: Pulizia immediata del log del terminale.
+
+### Nuova Interfaccia Grafica Web (100% Offline, Slider Semplice/Avanzata & Zero CDN)
+- **Slider Superiore `✨ Modalità Semplice` / `⚙️ Modalità Avanzata`**:
+  - **Modalità Semplice ("A prova di errore", Zero Gergo Tecnico)**: Interfaccia guidata pensata per chiunque, priva di termini tecnici (niente parole come *"Demone"*, *"PID"*, *"OCR"*, *"Regex"*, *"Threshold"* o *"Proxy"*). Pulsante principale immediato (`▶ ATTIVA GERMANO` / `■ FERMA GERMANO`) con **Auto-Start intelligente** (se l'utente trascina un file o clicca su *"Proteggi Testo"* mentre il programma è in pausa, Germano si attiva da solo automaticamente).
+  - **Modalità Avanzata con Controllo Totale dei 6 Modelli IA (+ RegEx) e delle 18 Singole Funzionalità/Categorie**:
+    - **Blocco 1 — 7 Interruttori per i Singoli Modelli e Motori Locali**:
+      1. 🧠 **Velvet Privacy Filter 1.5B FP16** (`enable_model_velvet`)
+      2. 🇮🇹 **DeepMount00 Italian NER XXL v2 (58 Classi)** (`enable_model_italian_ner`)
+      3. 🔍 **EasyOCR (CRAFT + Latin G2)** (`enable_ocr`)
+      4. 🧑 **YuNet Biometria Volti (OpenCV 5 DNN)** (`enable_faces`)
+      5. ✍️ **YOLOS-Tiny Signature Detector (Firme Autografe)** (`enable_signatures`)
+      6. 🚗 **YOLOS-Small License Plate Detector (Targhe in Foto)** (`enable_plate_vision`)
+      7. 📐 **Motore RegEx Italiano Deterministico** (`enable_regex`)
+    - **Blocco 2 — 18 Grandi Schede Checkbox per le Singole Funzionalità e Categorie di Dati**:
+      1. 👤 **Nomi Propri e Cognomi** (`censor_person` → `[PERSONA_N]`)
+      2. 🎓 **Professioni, Avvocati, Notai e Titoli** (`censor_profession` → `[PROFESSIONE/TITOLO_N]`)
+      3. 📍 **Indirizzi Fisici, Vie, CAP e Luoghi** (`censor_address` → `[INDIRIZZO_N]`)
+      4. 🗺️ **Dati Catastali e Immobiliari (Foglio, Particella, Subalterno)** (`censor_cadastre` → `[CATASTO_N]`)
+      5. 🪪 **Codici Fiscali e Partite IVA** (`censor_cf_iva` → `[COD.FISCALE/P.IVA_N]`)
+      6. ✉️ **Email e Caselle PEC** (`censor_email` → `[EMAIL_N]`)
+      7. 📞 **Telefoni, Cellulari e IMEI** (`censor_phone` → `[TELEFONO_N]`)
+      8. 💳 **IBAN, Carte, Conti e Banche** (`censor_account` → `[CONTO/CARTA_N]`)
+      9. 💶 **Importi Monetari, Valute e Tassi Mutuo** (`censor_financial` → `[IMPORTO/FINANZA_N]`)
+      10. 📅 **Date di Nascita, Età, Scadenze e Orari** (`censor_date` → `[DATA_N]`)
+      11. 🏢 **Aziende, Ragioni Sociali, Società ed Enti** (`censor_org` → `[AZIENDA/ENTE_N]`)
+      12. 🪪 **Targhe Testuali, CIE, Passaporti e Patenti** (`censor_plates_docs` → `[TARGA/DOCUMENTO_N]`)
+      13. 🏥 **Malattie, Diagnosi e Cartelle Cliniche (Art. 9 GDPR)** (`censor_medical` → `[DATO_SANITARIO_N]`)
+      14. 💊 **Farmaci, Terapie, Dosaggi e Posologia** (`censor_medicine` → `[FARMACO/TERAPIA_N]`)
+      15. ⚖️ **Tribunali, Sentenze e Procedimenti (Art. 10 GDPR)** (`censor_legal` → `[DATO_GIUDIZIARIO_N]`)
+      16. 💍 **Stato Civile e Regime Patrimoniale** (`censor_civil_status` → `[STATO_CIVILE_N]`)
+      17. 🔑 **Password, PIN e Chiavi Segrete** (`censor_secret` → `[SEGRETO_N]`)
+      18. 🌐 **Indirizzi IP, MAC e Link Web (URL)** (`censor_url` → `[URL_N]`)
+    - Pulsanti rapidi di preset: *"🛡️ Tutto Attivo (Profilo PA / GDPR)"*, *"⚡ Solo Dati Essenziali"*, *"🔓 Deseleziona Tutto"*.
+- **Sistema Automatico di De-Anonimizzazione ("Rimetti a posto automaticamente i dati veri nel ritorno dall'AI")**:
+  - **Switch Globale in Testata**: Permette di attivare/disattivare il ripristino automatico dei dati originali senza alcun passaggio manuale e senza mai accedere a cartelle esterne al programma.
+  - **Vault Persistente delle Corrispondenze (`extracted/deanonymize_vault.json`)**: Ogni entità nascosta viene sostituita con un tag univoco numerato (`[PERSONA_1]`, `[PERSONA_2]`, `[EMAIL_1]`, `[INDIRIZZO_1]`) e salvata localmente nel Vault.
+  - **Proxy API Bidirezionale Automatico per Harness AI (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`)**: Integrazione nativa trasparente con **Google Antigravity**, **OpenAI Codex CLI**, **Cursor**, **Windsurf**, **Claude Code** e **OpenCode**. Il Proxy anonimizza i messaggi e i file in uscita verso il Cloud e **rimette automaticamente al loro posto tutti i dati veri** nelle risposte e negli argomenti `tool_calls` (`write_file`, `edit_file`, `apply_patch`) di ritorno dall'AI, incluso il supporto **Streaming SSE con buffer di ricomposizione (`StreamTagBuffer`)** per i tag spezzati tra più token.
+  - **Riconoscimento Automatico nella Cartella Interna `input/` e Dropzone**: Caricando un file o incollando un testo contenente etichette del Vault nella Dropzone o nella cartella `input/`, Germano lo riconosce automaticamente e ripristina i dati originali.
+- **Eliminazione Totale Dipendenze CDN Esterne**: Rimossi tutti i riferimenti a `cdnjs.cloudflare.com` (FontAwesome) e `fonts.googleapis.com` (Google Fonts) da `templates/index.html` e `static/style.css`. Tutte le icone sono ora **SVG/ vettoriali native** e la tipografia utilizza lo stack nativo di Windows 11 (`Segoe UI Variable Display`, `Cascadia Mono`, `Consolas`).
+- **Pulsante e Manuale Offline Completo Bilingue (`/guide` & `GUIDA_OFFLINE.html`)**: Aggiunto nella testata della dashboard il pulsante *"📖 Guida & Docs"* che apre la guida offline bilingue (italiano e inglese commutabile all'istante). La guida illustra dapprima i concetti base a prova di errore della Modalità Semplice e il funzionamento delle 5 cartelle interne (`input`, `output`, `processed`, `failed`, `extracted`), prosegue con i controlli dettagliati della Modalità Avanzata (i 7 modelli IA locali e le 18 categorie granulari), e contiene le specifiche complete delle API REST e le istruzioni passo-passo per il Proxy con Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf e Claude Code.
+
+### Pre-Distribution Bug Audit & Certificazione Windows 11 Home 100% Offline (Air-Gapped)
+- **Escape del Titolo Finestra in `START.bat`**: Sostituito `&` con `^&` in `TITLE Germano AI v0.50-alpha - Local Privacy Engine ^& API Proxy` per prevenire l'errore di sintassi della shell `cmd.exe` (`'API' non è riconosciuto come comando interno o esterno`) al doppio clic dell'utente.
+- **Risoluzione Race Condition di Avvio & File Lock (`server.py` e `daemon.py`)**:
+  - Scrittura immediata del PID (`proc.pid`) in `daemon.pid` al momento dello spawn del processo in `server.py` e alla prima riga di `main()` in `daemon.py` prima del caricamento di PyTorch (5–10s), evitando duplicazioni di processi in background dovute a doppi clic o upload immediati.
+  - Chiusura esplicita del descrittore `log_f` nel processo padre in `server.py`, prevenendo lock su `daemon.log` e consentendo la pulizia dei log senza conflitti di condivisione file su Windows.
+- **Filtro Post-Merge Etichette di Campo (`daemon.py`)**: Aggiunta la bonifica post-unione dei token su parole chiave di campo (`IBAN`, `CF`, `P.IVA`, `TEL`, `PEC`, `EMAIL`, `BIC`), evitando che frammentazioni sub-word del modello BERT italiano scambino tali etichette per nomi propri di persona (`[PERSONA]`).
+- **Verifica Completa in Ambiente Air-Gapped Windows 11 Vanilla**:
+  - Simulazione rigorosa con blocco a livello socket di qualsiasi traffico IP esterno a `127.0.0.1`.
+  - Isolamento totale di `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `HF_HOME`, `TORCH_HOME` in directory temporanea vuota per certificare l'assenza di dipendenze da cache utente preesistenti o connessioni internet.
+  - Test superato al 100% su caricamento dei 6 modelli, anonimizzazione e de-anonimizzazione automatica (file `DOCX`, testo e streaming SSE del Proxy API per Antigravity/Codex/Cursor/Claude Code), e rispetto del limite Windows `MAX_PATH` (percorso massimo di 148 caratteri).
+
+## [0.48-alpha] - 2026-08-01
+### Modelli IA & Esecuzione Offline
+- **Aggiornamento Modello NLP (`models/privacy-filter`)**: Convertito il modello `velvet-privacy-filter` (1.5B parametri) da FP32 (`5.99 GB`) a `float16` nativo (`model.safetensors` da `3.00 GB`), dimezzando lo spazio su disco e l'occupazione di memoria senza perdita di accuratezza.
+- **Integrazione Pesi OCR Offline (`models/easyocr`)**: Pre-impacchettati i modelli `craft_mlt_25k.pth` (rilevamento testo) e `latin_g2.pth` (riconoscimento caratteri) per l'esecuzione offline di EasyOCR.
+- **Prerequisiti Windows**: Aggiunto l'installer ufficiale `vc_redist.x64.exe` nella cartella `prerequisites/` e forzate le variabili d'ambiente `HF_HUB_OFFLINE=1` e `TRANSFORMERS_OFFLINE=1`.
 
 ## [0.47-alpha] - 2026-05-26
 ### Refactoring & Bugfix
@@ -238,4 +329,3 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.
 - Sistema "Killer" di processi orfani all'avvio.
 - Gestione timeout, fallback CPU/GPU e quarantena documenti danneggiati.
 - Supporto a file PDF, DOCX, XLSX, TXT, RTF.
-

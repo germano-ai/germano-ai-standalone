@@ -2,13 +2,11 @@
 
 🌍 *Read this in other languages: [English](README.en.md)*
 
-*<span style="color: #007bff; font-weight: bold;">Caso d'Uso 1</span>: Hai semplicemente un gran numero di documenti da anonimizzare sul tuo computer o server o NAS. Germano funziona in modalità standalone e restituisce i documenti anonimizzati; supporta molti formati ed è altamente configurabile. Tu semplicemente copi la cartella contenente i file dentro ad input e ricevi i file anonimizzati nella cartella output. Germano mantiene la struttura della directory e delle sottocartelle originali. Germano anonimizza testo, prompt e volti ed è compatibile con il GDPR; Germano è un'applicazione windows locale e offline (non richiede accesso ad internet per funzionare).*
+*<span style="color: #007bff; font-weight: bold;">Caso d'Uso 1</span>: Hai semplicemente un gran numero di documenti da anonimizzare sul tuo computer o server o NAS. Germano funziona in modalità standalone e restituisce i documenti anonimizzati; supporta molti formati ed è altamente configurabile. Tu semplicemente copi la cartella contenente i file dentro ad input e ricevi i file anonimizzati nella cartella output. Germano mantiene la struttura della directory e delle sottocartelle originali. Germano anonimizza testo, prompt e volti ed è compatibile con il GDPR; Germano è un'applicazione Windows locale e offline (non richiede accesso ad internet per funzionare).*
 
-*<span style="color: #007bff; font-weight: bold;">Caso d'Uso 2</span>: Vuoi usare la potenza di un LLM online (chatgpt, gemini, claude, copilot, deepseek..) ma i tuoi documenti o il testo che scrivi nel prompt contengono dati personali che non vuoi o non puoi inviare all'AI (come da normativa vigente per la Pubblica Amministrazione)? Germano anonimizza questi dati per te integrandosi perfettamente fungendo da Proxy API Locale con gli strumenti che già usi: Claude Code, Google Antigravity, OpenCode, Cursor e tutti gli altri. Se sul prompt scrivi "Mario Rossi" se ne accorge e lo sostituisce con [PERSONA 1] prima che venga inviato all'LLM online. In questo modo l'AI online avrà in input solo i documenti e i testi anonimizzati.*
+*<span style="color: #007bff; font-weight: bold;">Caso d'Uso 2</span>: Vuoi usare la potenza di un'LLM online (chatgpt, gemini, claude, copilot, deepseek..) ma i tuoi documenti o il testo che scrivi nel prompt contengono dati personali che non vuoi o non puoi inviare all'AI (come da normativa vigente per la Pubblica Amministrazione)? Germano anonimizza questi dati per te integrandosi perfettamente fungendo da Proxy API Locale con gli strumenti che già usi: Claude Code, Google Antigravity, OpenCode, Cursor e tutti gli altri. Se sul prompt scrivi "Mario Rossi" se ne accorge e lo sostituisce con [PERSONA_1] prima che venga inviato all'LLM online. In questo modo l'AI online avrà in input solo i documenti e i testi anonimizzati.*
 
-*<span style="color: #007bff; font-weight: bold;">Caso d'Uso 2</span>: Vuoi usare la potenza di un LLM online (chatgpt, gemini, claude, copilot, deepseek..) ma i tuoi documenti o il testo che scrivi nel prompt contengono dati personali che non vuoi o non puoi inviare all'AI (come da normativa vigente per la Pubblica Amministrazione)? Germano anonimizza questi dati per te. Germano è un'applicazione windows locale e offline (non richiede accesso ad internet per funzionare). germano.ai anonimizza testo, prompt e volti ed è compatibile con il GDPR; si integra perfettamente fungendo da Proxy API Locale con gli strumenti che già usi: Claude Code, Google Antigravity, OpenCode, Cursor e tutti gli altri. In questo modo l'AI online avrà in input solo i documenti e i testi anonimizzati.*
-
-Germano AI è una potente suite open-source progettata per **l'anonimizzazione intelligente** e massiva di documenti e flussi di testo. Basata su motori di Intelligenza Artificiale locale, garantisce la totale privacy dei dati elaborando i file offline (senza inviare dati al cloud).
+Germano AI è una potente suite open-source progettata per **l'anonimizzazione intelligente** e massiva di documenti e flussi di testo. Basata su motori di Intelligenza Artificiale locale, garantisce la totale privacy dei dati elaborando i file **100% offline** (senza inviare dati al cloud) ed è pronta all'uso al primo colpo anche su un PC con **Windows 11 Vanilla** appena installato, senza richiedere connessione Internet né installazioni preliminari.
 
 > Sviluppato orgogliosamente in Italia da **[Yes Consulting](https://www.yesc.it/)**
 
@@ -17,42 +15,53 @@ Germano AI è una potente suite open-source progettata per **l'anonimizzazione i
 ## ⚡ Quickstart (Come funziona)
 
 Germano AI lavora in modo completamente autonomo "ascoltando" le sue cartelle. Il funzionamento base è semplicissimo:
-1. Inserisci i documenti (e le eventuali sottocartelle) che vuoi anonimizzare all'interno della cartella **`input`**.
-2. Fai doppio clic sul file **`START.bat`** per avviare il motore IA e aprire la Dashboard nel browser.
-3. Dalla Dashboard, clicca su "START DAEMON". Il software prenderà i file da `input`, li censurerà, e salverà i documenti puliti nella cartella **`output`**, preservando intatta l'eventuale struttura delle tue cartelle e sottocartelle interne.
-4. I file originali verranno parcheggiati in **`processed`**, mentre eventuali file non supportati andranno in **`failed`**. 
+1. Inserisci i documenti (e le eventuali sottocartelle) che vuoi anonimizzare all'interno della cartella **`input`** (oppure trascinali direttamente nella **Dropzone** della Dashboard Web).
+2. Fai doppio clic sul file **`START.bat`** per avviare il server locale e aprire la Dashboard nel browser (`http://127.0.0.1:8000`).
+3. Dalla Dashboard, clicca su **"AVVIA MOTORE IA"**. Il software prenderà i file da `input`, li censurerà e salverà i documenti puliti nella cartella **`output`**, preservando intatta l'eventuale struttura delle tue cartelle e sottocartelle interne.
+4. I file originali verranno parcheggiati in **`processed`**, mentre eventuali file danneggiati o non supportati andranno in **`failed`**. I report JSON di audit verranno salvati in **`extracted`**.
 
-💡 **Tip Produttività:** Puoi tranquillamente trascinare nuovi file o intere cartelle dentro `input` *mentre il software sta già lavorando*! Verranno messi in coda ed elaborati in tempo reale senza dover riavviare nulla. Inoltre, dalla Dashboard puoi anonimizzare "al volo" porzioni di testo incollandole nell'apposita casella.
+💡 **Tip Produttività:** Puoi tranquillamente trascinare nuovi file o intere cartelle dentro `input` (o tramite la Dropzone Web) *mentre il software sta già lavorando*! Verranno messi in coda ed elaborati in tempo reale senza dover riavviare nulla. Inoltre, dalla Dashboard puoi anonimizzare "al volo" porzioni di testo incollandole nell'apposita casella e scaricare direttamente i file elaborati.
 
-👉 **[SCARICA GERMANO AI STANDALONE (~4 GB)](https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD)**
+👉 **[SCARICA GERMANO AI STANDALONE](https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD)**
 
 ---
 
 ## 🏛️ Profili di Conformità (PA vs PD)
 
-Germano AI è progettato per adattarsi sia ad ambienti altamente regolamentati che a professionisti privati tramite due profili specifici selezionabili dalla Dashboard:
+Germano AI è progettato per adattarsi sia ad ambienti altamente regolamentati che a professionisti privati tramite due profili specifici selezionabili in tempo reale dalla Dashboard:
 
 ### 🔴 Germano PA (Pubblica Amministrazione)
 - A norma **CAD** e **GDPR**.
-- Nessuna possibilità per l'operatore di disabilitare filtri di sicurezza cruciali come l'OCR o la biometria facciale.
+- Nessuna possibilità per l'operatore di disabilitare filtri di sicurezza cruciali come l'OCR, la biometria facciale o le categorie di dati personali.
 - Sicurezza assoluta "by design" per gestire dati ipersensibili dei cittadini.
 
 ### 🟢 Germano PD (Pubblico Dominio)
-- Totalmente sbloccato.
-- Permette di bilanciare la potenza dei filtri IA e disattivare la censura delle immagini per ottimizzare i tempi di elaborazione sui PC meno potenti.
+- Totalmente sbloccato e personalizzabile in tempo reale (Hot-Reload senza riavvio del demone).
+- Permette di bilanciare la soglia dei filtri IA, selezionare singolarmente le 9 categorie di censura e disattivare la scansione delle immagini per ottimizzare i tempi di elaborazione.
 
 ---
 
-## 🚀 Funzionalità Principali
+## 🚀 Funzionalità Principali (v0.50-alpha)
 
-*   **100% Offline & Locale:** I tuoi dati non lasciano mai il tuo ufficio.
+*   **100% Offline & Windows 11 Vanilla Ready:** Include Python 3.11 embedded, tutte le 12 librerie native Microsoft Visual C++ Redistributable (x64) pre-integrate nel runtime (zero privilegi di amministratore richiesti), interfaccia Web priva di CDN esterni e **6 modelli IA locali pre-installati**.
+*   **Slider Modalità Semplice / Modalità Avanzata:**
+    *   **✨ Modalità Semplice ("A prova di errore"):** Nessun termine tecnico, avvio automatico del motore quando si trascina un file e flusso guidato in 2 passi.
+    *   **⚙️ Modalità Avanzata:** Enorme griglia interattiva di **18 Checkbox e 7 Interruttori di Modelli IA** per configurare singolarmente Nomi, Professioni/Titoli, Indirizzi, Catasto, Codici Fiscali/P.IVA, Email/PEC, Telefoni, IBAN/Conti, Importi/Finanza, Date, Aziende/Enti, Targhe/Documenti, Dati Sanitari (Art. 9 GDPR), Farmaci/Terapie, Dati Giudiziari (Art. 10 GDPR), Stato Civile, Password/Segreti e URL/IP.
+*   **📖 Guida Completa & Documentazione Offline:** Pulsante rapido *"📖 Guida & Docs"* integrato direttamente nella dashboard (disponibile su `/guide` e come file autonomo `GUIDA_OFFLINE.html`), bilingue (italiano e inglese commutabile all'istante), con spiegazioni a prova di errore, guida alle 5 cartelle, specifiche REST API e setup passo-passo per Google Antigravity, OpenAI Codex, Cursor e Claude Code.
+*   **🔄 De-Anonimizzazione Automatica tramite Proxy API e Cartelle Interne:** Attivando lo switch in alto, Germano memorizza nel Vault locale (`extracted/deanonymize_vault.json`) i dati associati a `[PERSONA_1]`, `[INDIRIZZO_1]`, ecc. Nelle integrazioni via Proxy API locale (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` per **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) e nella cartella interna `input/`, le risposte e i file restituiti dall'AI vengono rimessi in chiaro con tutti i dati veri in modo **completamente automatico** (senza mai controllare cartelle esterne al programma).
+*   **6 Motori di Intelligenza Artificiale 100% Offline Integrati (`models/`):**
+    1. **Velvet Privacy Filter (1.5B FP16):** Modello linguistico contestuale multilingue per dati personali.
+    2. **Italian NER XXL v2 (58 classi):** Modello specializzato nel dominio legale, sanitario, bancario, catastale e burocratico italiano.
+    3. **EasyOCR (CRAFT + Latin G2):** Riconoscimento ottico dei caratteri su PDF scansionati e foto.
+    4. **YuNet Face Detector (OpenCV 5 DNN):** Oscuramento biometrico dei volti e fototessere (`[VOLTO]`).
+    5. **YOLOS-Tiny Signature Detector:** Rilevamento visivo e oscuramento delle firme autografe manoscritte (`[FIRMA]`).
+    6. **YOLOS-Small License Plate Detector:** Rilevamento visivo e oscuramento delle targhe di veicoli nelle foto (`[TARGA]`).
 *   **Gestione Multi-Formato Avanzata:**
-    *   📄 **PDF:** Censura testuale e *censura visiva* (disegna maschere nere oscuranti preservando il layout).
-    *   📝 **DOCX / DOCM:** Anonimizza testi, tabelle, intestazioni e piè di pagina.
-    *   📊 **XLSX / XLSM / XLS:** Oscura i dati nelle celle e persino nei commenti, preservando eventuali Macro VBA.
-*   **Censura Intelligente & RegEx:** Combina NLP Transformer (`openai/privacy-filter`) con Espressioni Regolari (RegEx) italiane (Email, Codici Fiscali, P.IVA, ecc.).
-*   **OCR e Biometria Integrata:** Integra `EasyOCR` per estrarre e censurare testi nelle scansioni e `OpenCV` per riconoscere e offuscare automaticamente i volti sulle fototessere.
-*   **Accelerazione Hardware:** Supporta CPU, GPU NVIDIA (CUDA) e GPU AMD/Intel (tramite `torch_directml`).
+    *   📄 **PDF & Portfolio PDF:** Censura testuale contestuale, *censura visiva* su scansioni e anonimizzazione ricorsiva di PDF allegati/incapsulati.
+    *   🖼️ **Immagini (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`):** OCR locale e oscuramento biometrico di volti, firme e targhe con salvataggio nel formato immagine nativo.
+    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonimizza e de-anonimizza testi, tabelle, intestazioni, piè di pagina e oggetti OLE incapsulati.
+    *   📊 **Fogli di Calcolo & Presentazioni (`XLSX`, `XLSM`, `XLS`, `CSV`, `PPTX`, `PPT`):** Oscura e ripristina i dati nelle celle, nelle slide e nei commenti, preservando eventuali Macro VBA.
+    *   🌐 **Web, Email & Archivi (`HTML`, `XML`, `EML`, `ZIP`):** Elaborazione DOM/MIME nativa e ispezione ricorsiva di archivi `.zip`.
 
 ---
 
@@ -70,7 +79,7 @@ Restituisce direttamente il flusso binario del file "pulito". Consulta la **[Doc
 ```http
 POST http://127.0.0.1:8000/api/v1/anonymize_text
 ```
-Riceve un JSON con il campo `{"text": "..."}` e restituisce il testo anonimizzato.
+Riceve un JSON con il campo `{"text": "..."}` e restituisce il testo anonimizzato insieme alla mappa dettagliata delle entità estratte.
 
 ---
 
@@ -83,15 +92,13 @@ Normalmente, l'IDE invia tutto quello che scrivi nel prompt (o che trascini nell
 Configurando il tuo editor per puntare a Germano AI, il flusso cambia completamente:
 
 1. **Intercettazione**: Quando chiedi all'IA qualcosa o alleghi un file, l'IDE invia la richiesta a Germano AI (che gira offline sul tuo PC alla porta 8000).
-2. **Censura al Volo**: Germano intercetta la richiesta, estrae i tuoi prompt testuali, li passa al volo al filtro privacy locale, e sostituisce i dati sensibili con etichette (es. `[PERSONA_1]`).
+2. **Censura al Volo**: Germano intercetta la richiesta, estrae i tuoi prompt testuali, li passa al volo al filtro privacy locale, e sostituisce i dati sensibili con etichette indicizzate (es. `[PERSONA_1]`).
 3. **Mappatura Tracciabile**: La mappa esatta delle parole sostituite viene salvata in un log JSON nella cartella `extracted`, per permetterti di ricollegare facilmente le etichette dell'AI ai dati reali.
 4. **Inoltro Sicuro**: Germano inoltra la richiesta "purificata" al vero fornitore LLM (es. OpenAI). Quando l'AI risponderà, utilizzerà a sua volta i tag anonimizzati (es. "Il contratto è intestato a [PERSONA_1]").
 
 L'Intelligenza Artificiale non entrerà **mai** in contatto con i tuoi dati originali, permettendoti di usare prompt estremamente specifici senza violare il GDPR!
 
 ### Come Attivarlo (Impostazione Manuale Richiesta)
-
-Poiché le impostazioni di sicurezza dei moderni IDE memorizzano le chiavi API e gli indirizzi proxy in database interni crittografati o protetti, l'integrazione non può essere automatizzata tramite script per motivi di sicurezza, ma **deve essere eseguita manualmente dall'utente nell'interfaccia grafica del software**. Si tratta di un'operazione sicura che va fatta una volta sola e richiede pochi secondi:
 
 1. Avvia Germano AI facendo doppio clic su `START.bat`.
 2. Apri il tuo editor AI preferito e modifica l'indirizzo base del server AI:
@@ -101,16 +108,16 @@ Poiché le impostazioni di sicurezza dei moderni IDE memorizzano le chiavi API e
 
 ### 🛡️ "Fail-Safe Privacy" (Hard Block Attivo)
 Il nostro Proxy API è progettato con una tolleranza zero per gli errori (Hard Block). 
-Se per qualsiasi motivo (es. crash del demone IA, formato illeggibile, o file immagine corrotto) il filtro privacy fallisce la scansione, **il Proxy non invierà i tuoi dati originali all'LLM**. La richiesta verrà istantaneamente distrutta e riceverai un messaggio di errore rosso all'interno del tuo editor. Questo garantisce che in nessun caso i tuoi dati in chiaro possano fuggire verso Internet a causa di un malfunzionamento software.
+Se per qualsiasi motivo (es. demone IA spento, formato illeggibile, o file immagine corrotto) il filtro privacy fallisce la scansione, **il Proxy non invierà i tuoi dati originali all'LLM**. La richiesta verrà istantaneamente distrutta e riceverai un messaggio di errore all'interno del tuo editor. Questo garantisce che in nessun caso i tuoi dati in chiaro possano fuggire verso Internet a causa di un malfunzionamento software.
 
 ---
 
 ## 📂 Struttura Cartelle di Lavoro
-- `/input`: Trascina qui i file.
+- `/input`: Trascina qui i file da elaborare.
 - `/output`: I file anonimizzati, con formato e layout originale intatti.
 - `/processed`: File originali spostati a fine lavoro.
 - `/failed`: Documenti corrotti, bloccati o illeggibili.
-- `/extracted`: File JSON con i log di cosa è stato sostituito (per Audit).
+- `/extracted`: File JSON con i log di cosa è stato sostituito (per Audit GDPR).
 
 ## 📜 Licenza e Contribuzione
 Questo progetto è orgogliosamente distribuito sotto licenza **GNU GPL v3**. Puoi usarlo gratuitamente anche per scopi commerciali, a patto di mantenere Open Source le tue eventuali modifiche. 

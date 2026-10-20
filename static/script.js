@@ -1,425 +1,713 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const toggleBtn = document.getElementById('toggle-daemon');
-    const toggleText = document.getElementById('toggle-text');
-    const statusText = document.getElementById('daemon-status-text');
-    const logContainer = document.getElementById('log-container');
-    
-    // Stats
-    const statInput = document.getElementById('stat-input');
-    const statProcessed = document.getElementById('stat-processed');
-    const statOutput = document.getElementById('stat-output');
-    
-    const loadingContainer = document.getElementById('loading-container');
-    
-    let currentDaemonState = 'stopped'; // 'stopped', 'loading_models', 'running'
-    let pollInterval = null;
-    let autoScroll = true;
-    let sessionTotalFiles = 0;
+let currentUiMode = 'simple';
+let currentComplianceMode = 'PA';
+let currentStatus = 'stopped';
+let activeFileTab = 'output';
+let cachedFiles = { input: [], output: [], processed: [], failed: [] };
 
-    // Check for orphaned daemons on startup
-    fetch('/api/check_orphans').then(res => res.json()).then(data => {
-        if (data.orphans && data.orphans > 0) {
-            const kill = confirm(`Attenzione: Sono state rilevate ${data.orphans} istanze del demone rimaste attive in background da sessioni precedenti. Vuoi terminarle per evitare accavallamenti e problemi sui file?`);
-            if (kill) {
-                fetch('/api/kill_orphans', { method: 'POST' }).then(() => {
-                    alert("Processi fantasma terminati con successo.");
+const ALL_MODEL_IDS = [
+    'enable_model_velvet', 'enable_model_italian_ner', 'enable_ocr',
+    'enable_faces', 'enable_signatures', 'enable_plate_vision', 'enable_regex'
+];
+
+const ALL_CATEGORY_IDS = [
+    'censor_person', 'censor_profession', 'censor_address', 'censor_cadastre',
+    'censor_cf_iva', 'censor_email', 'censor_phone', 'censor_account',
+    'censor_financial', 'censor_date', 'censor_org', 'censor_plates_docs',
+    'censor_medical', 'censor_medicine', 'censor_legal', 'censor_civil_status',
+    'censor_secret', 'censor_url'
+];
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.25s ease';
+        setTimeout(() => toast.remove(), 250);
+    }, 3200);
+}
+
+function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatTime(epoch) {
+    if (!epoch) return '';
+    const d = new Date(epoch * 1000);
+    return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function applyUiMode(mode, save = true) {
+    currentUiMode = (mode === 'advanced') ? 'advanced' : 'simple';
+    document.body.classList.toggle('mode-simple', currentUiMode === 'simple');
+    document.body.classList.toggle('mode-advanced', currentUiMode === 'advanced');
+
+    const slider = document.getElementById('modeSlider');
+    const btnSimple = document.getElementById('btnModeSimple');
+    const btnAdv = document.getElementById('btnModeAdvanced');
+    if (slider) slider.dataset.mode = currentUiMode;
+    if (btnSimple) btnSimple.classList.toggle('active', currentUiMode === 'simple');
+    if (btnAdv) btnAdv.classList.toggle('active', currentUiMode === 'advanced');
+
+    if (currentUiMode === 'simple') {
+        activeFileTab = 'output';
+        renderFileList();
+    }
+    if (save) {
+        persistSettings(false);
+    }
+}
+
+function applyDeanonSwitchState(enabled) {
+    const heroBar = document.getElementById('deanonHeroBar');
+    const badge = document.getElementById('deanonStateBadge');
+    const vaultPill = document.getElementById('vaultInfoPill');
+
+    if (heroBar) heroBar.classList.toggle('off', !enabled);
+    if (badge) badge.textContent = enabled ? 'AUTOMATICO ATTIVO' : 'DISATTIVATO';
+    if (vaultPill) vaultPill.style.display = enabled ? 'inline-block' : 'none';
+}
+
+function updateThresholdBadge(val) {
+    const badge = document.getElementById('thresholdValue');
+    if (!badge) return;
+    const pct = Math.round(parseFloat(val || 0) * 100);
+    badge.textContent = pct === 0 ? 'Massima Sicurezza (0%)' : `Soglia: ${pct}%`;
+}
+
+function updatePresetButtonsHighlight() {
+    const allModelsChecked = ALL_MODEL_IDS.every(id => {
+        const el = document.getElementById(id);
+        return el && el.checked;
+    });
+    const noModelsChecked = ALL_MODEL_IDS.every(id => {
+        const el = document.getElementById(id);
+        return el && !el.checked;
+    });
+    const btnModelsOn = document.getElementById('btnModelsAllOn');
+    const btnModelsOff = document.getElementById('btnModelsAllOff');
+    if (btnModelsOn) btnModelsOn.classList.toggle('active', allModelsChecked);
+    if (btnModelsOff) btnModelsOff.classList.toggle('active', noModelsChecked);
+
+    const allCatsChecked = ALL_CATEGORY_IDS.every(id => {
+        const el = document.getElementById(id);
+        return el && el.checked;
+    });
+    const noCatsChecked = ALL_CATEGORY_IDS.every(id => {
+        const el = document.getElementById(id);
+        return el && !el.checked;
+    });
+    const btnPA = document.getElementById('btnPresetPA');
+    const btnNone = document.getElementById('btnPresetNone');
+    if (btnPA) btnPA.classList.toggle('active', allModelsChecked && allCatsChecked && currentComplianceMode === 'PA');
+    if (btnNone) btnNone.classList.toggle('active', noCatsChecked);
+}
+
+function gatherSettings() {
+    const out = {
+        ui_mode: currentUiMode,
+        compliance_mode: currentComplianceMode,
+        enable_deanonymize: document.getElementById('enable_deanonymize')?.checked ?? true,
+        target_api_url: (document.getElementById('target_api_url')?.value || '').trim(),
+        ai_threshold: parseFloat(document.getElementById('ai_threshold')?.value || '0') || 0.0,
+        hardware_mode: document.getElementById('hardware_mode')?.value || 'gpu_fallback'
+    };
+    ALL_MODEL_IDS.forEach(k => {
+        out[k] = document.getElementById(k)?.checked ?? true;
+    });
+    ALL_CATEGORY_IDS.forEach(k => {
+        out[k] = document.getElementById(k)?.checked ?? true;
+    });
+    return out;
+}
+
+async function persistSettings(notify = true) {
+    try {
+        const settings = gatherSettings();
+        const r = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings })
+        });
+        if (r.ok && notify) {
+            showToast('Impostazioni aggiornate.', 'success');
+        }
+    } catch (e) {
+        console.error('Errore salvataggio impostazioni:', e);
+    }
+}
+
+async function loadInitialSettings() {
+    try {
+        const r = await fetch('/api/settings');
+        if (!r.ok) return;
+        const cfg = await r.json();
+
+        currentComplianceMode = cfg.compliance_mode || 'PA';
+        const deanonEl = document.getElementById('enable_deanonymize');
+        if (deanonEl) deanonEl.checked = cfg.enable_deanonymize !== false;
+        applyDeanonSwitchState(cfg.enable_deanonymize !== false);
+
+        const boolKeys = [...ALL_MODEL_IDS, ...ALL_CATEGORY_IDS];
+        boolKeys.forEach(k => {
+            const el = document.getElementById(k);
+            if (el && cfg[k] !== undefined) el.checked = Boolean(cfg[k]);
+        });
+
+        if (cfg.ai_threshold !== undefined) {
+            const th = document.getElementById('ai_threshold');
+            if (th) th.value = cfg.ai_threshold;
+            updateThresholdBadge(cfg.ai_threshold);
+        }
+        if (cfg.hardware_mode) {
+            const hw = document.getElementById('hardware_mode');
+            if (hw) hw.value = cfg.hardware_mode;
+        }
+        if (cfg.target_api_url) {
+            const tu = document.getElementById('target_api_url');
+            if (tu) tu.value = cfg.target_api_url;
+        }
+
+        applyUiMode(cfg.ui_mode || 'simple', false);
+        updatePresetButtonsHighlight();
+    } catch (e) {
+        console.error('Errore caricamento impostazioni:', e);
+    }
+}
+
+async function openLocalFolder(folderName) {
+    try {
+        const r = await fetch('/api/open_folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folder: folderName })
+        });
+        if (!r.ok) showToast('Impossibile aprire la cartella.', 'error');
+    } catch (e) {
+        showToast('Errore apertura cartella.', 'error');
+    }
+}
+window.openLocalFolder = openLocalFolder;
+
+async function ensureEngineRunning() {
+    if (currentStatus === 'running' || currentStatus === 'loading_models') {
+        return true;
+    }
+    showToast('Avvio automatico di Germano in corso...', 'info');
+    try {
+        await fetch('/api/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings: gatherSettings() })
+        });
+        await pollStatus();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function uploadFilesToProtect(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    const formData = new FormData();
+    for (let i = 0; i < fileList.length; i++) {
+        formData.append('files', fileList[i]);
+    }
+    try {
+        const r = await fetch('/api/upload_files', { method: 'POST', body: formData });
+        const data = await r.json();
+        if (r.ok && data.status === 'success') {
+            if (data.auto_restored_files && data.auto_restored_files.length > 0) {
+                showToast(`🔄 Rilevato file di ritorno dall'AI: dati veri rimessi a posto in automatico!`, 'success');
+                data.auto_restored_files.forEach(f => {
+                    const a = document.createElement('a');
+                    a.href = f.download_url;
+                    a.download = f.name;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
                 });
             }
+            if (data.saved_count > 0) {
+                showToast(`${data.saved_count} documento/i caricato/i per la protezione!`, 'success');
+                await ensureEngineRunning();
+            }
+            fetchRecentFiles();
+            pollStatus();
+        } else {
+            showToast(data.message || 'Errore durante il caricamento.', 'error');
         }
-    }).catch(e => console.error("Error checking orphans", e));
+    } catch (e) {
+        showToast('Errore di connessione durante il caricamento.', 'error');
+    }
+}
 
-    // Check for updates
-    fetch('/api/check_update').then(res => res.json()).then(data => {
-        if (data.update_available) {
-            document.getElementById('update-version').innerText = data.latest_version;
-            document.getElementById('update-banner').style.display = 'block';
-        }
-    }).catch(e => console.error("Error checking updates", e));
+function renderFileList() {
+    const container = document.getElementById('fileListContainer');
+    if (!container) return;
+    const folderToRender = (currentUiMode === 'simple') ? 'output' : activeFileTab;
+    const list = cachedFiles[folderToRender] || [];
 
-    const preFlightStats = document.getElementById('pre-flight-stats');
-    const progressContainer = document.getElementById('session-progress-container');
-    const lblInputFiles = document.getElementById('lbl_input_files');
-    const lblInputFolders = document.getElementById('lbl_input_folders');
-    const lblInputSize = document.getElementById('lbl_input_size');
-    const progressFill = document.getElementById('session-progress-fill');
-    const lblProgressPercent = document.getElementById('lbl_progress_percent');
-    const lblProgressDone = document.getElementById('lbl_progress_done');
-    const lblProgressTotal = document.getElementById('lbl_progress_total');
-
-    function formatBytes(bytes) {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    if (list.length === 0) {
+        const emptyMessages = {
+            output: 'Nessun documento pronto. Trascina un file nel riquadro "Passo 1" qui sopra per iniziare!',
+            input: 'Nessun documento in attesa di elaborazione.',
+            processed: 'Nessun documento originale archiviato.',
+            failed: 'Nessun documento con errori.'
+        };
+        container.innerHTML = `<div class="empty-files-msg">${emptyMessages[folderToRender] || 'Nessun file.'}</div>`;
+        return;
     }
 
-    // Detect manual scrolling to stop autoscroll
-    logContainer.addEventListener('scroll', () => {
-        const isAtBottom = logContainer.scrollHeight - logContainer.scrollTop <= logContainer.clientHeight + 10;
-        autoScroll = isAtBottom;
+    container.innerHTML = list.map(item => {
+        const isRestored = item.name.startsWith('ripristinato_');
+        const badgeHtml = isRestored
+            ? `<span style="background:rgba(139,92,246,0.22);color:#c4b5fd;padding:2px 8px;border-radius:99px;font-size:0.75rem;font-weight:700;">🔄 Dati Veri Ripristinati</span>`
+            : (folderToRender === 'output' ? `<span style="background:rgba(16,185,129,0.18);color:#6ee7b7;padding:2px 8px;border-radius:99px;font-size:0.75rem;font-weight:700;">🛡️ Protetto</span>` : '');
+
+        const canDownload = ['output', 'processed', 'failed'].includes(folderToRender);
+        const dlBtn = canDownload
+            ? `<a class="file-download-btn" href="/api/download/${folderToRender}/${encodeURIComponent(item.name)}" download>⬇ Scarica</a>`
+            : `<span class="file-row-meta">In lavorazione...</span>`;
+
+        return `
+            <div class="file-row">
+                <div class="file-row-left">
+                    <span>📄</span>
+                    <span class="file-row-name" title="${item.name}">${item.name}</span>
+                    ${badgeHtml}
+                </div>
+                <div class="file-row-right">
+                    <span class="file-row-meta">${formatBytes(item.size)} • ${formatTime(item.mtime)}</span>
+                    ${dlBtn}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function fetchRecentFiles() {
+    try {
+        const r = await fetch('/api/files');
+        if (!r.ok) return;
+        cachedFiles = await r.json();
+        renderFileList();
+    } catch (e) {}
+}
+
+async function pollStatus() {
+    try {
+        const r = await fetch('/api/status');
+        if (!r.ok) return;
+        const data = await r.json();
+        currentStatus = data.status;
+
+        const dot = document.getElementById('statusDot');
+        const txt = document.getElementById('statusText');
+        const btn = document.getElementById('mainToggleBtn');
+        const btnIcon = document.getElementById('mainToggleIcon');
+        const btnLbl = document.getElementById('mainToggleLabel');
+
+        if (data.status === 'running') {
+            dot.className = 'status-dot running';
+            txt.textContent = 'Protezione Attiva (Pronto)';
+            btn.className = 'btn-power stop';
+            btn.disabled = false;
+            btnIcon.textContent = '■';
+            btnLbl.textContent = 'FERMA GERMANO';
+        } else if (data.status === 'loading_models') {
+            dot.className = 'status-dot loading';
+            txt.textContent = 'Avvio in corso (Caricamento IA)...';
+            btn.className = 'btn-power stop';
+            btn.disabled = false;
+            btnIcon.textContent = '■';
+            btnLbl.textContent = 'ANNULLA AVVIO';
+        } else if (data.status === 'shutting_down') {
+            dot.className = 'status-dot loading';
+            txt.textContent = 'Arresto in corso...';
+            btn.disabled = true;
+        } else {
+            dot.className = 'status-dot stopped';
+            txt.textContent = 'In Pausa';
+            btn.className = 'btn-power start';
+            btn.disabled = false;
+            btnIcon.textContent = '▶';
+            btnLbl.textContent = 'ATTIVA GERMANO';
+        }
+
+        if (data.stats) {
+            const setTxt = (id, v) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = v;
+            };
+            setTxt('countInput', data.stats.pending);
+            setTxt('countOutput', data.stats.outputs);
+            setTxt('tabCountOutput', data.stats.outputs);
+            setTxt('tabCountInput', data.stats.pending);
+            setTxt('tabCountProcessed', data.stats.processed);
+            setTxt('tabCountFailed', data.stats.failed);
+            setTxt('vaultCountLabel', data.stats.vault_count || 0);
+            setTxt('vaultCountBadge', data.stats.vault_count || 0);
+            setTxt('advVaultCount', data.stats.vault_count || 0);
+        }
+
+        if (data.system) {
+            const sysPill = document.getElementById('sysUsagePill');
+            if (sysPill) {
+                sysPill.textContent = `CPU: ${data.system.cpu_percent}% • RAM: ${data.system.ram_used_gb}/${data.system.ram_total_gb} GB`;
+            }
+        }
+    } catch (e) {}
+}
+
+async function pollLogs() {
+    if (currentUiMode !== 'advanced') return;
+    try {
+        const r = await fetch('/api/logs');
+        if (!r.ok) return;
+        const data = await r.json();
+        const term = document.getElementById('logTerminal');
+        if (!term || !data.logs || data.logs.length === 0) return;
+
+        const isAtBottom = term.scrollHeight - term.clientHeight <= term.scrollTop + 30;
+        term.innerHTML = data.logs.map(line => {
+            let cls = 'log-line';
+            if (line.includes('Completato:') || line.includes('PRONTO') || line.includes('ripristinato')) cls += ' success';
+            else if (line.includes('ATTENZIONE') || line.includes('Avviso')) cls += ' warn';
+            else if (line.includes('ERRORE') || line.includes('FATALE')) cls += ' error';
+            const safe = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `<div class="${cls}">${safe}</div>`;
+        }).join('');
+        if (isAtBottom) term.scrollTop = term.scrollHeight;
+    } catch (e) {}
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadInitialSettings();
+    await pollStatus();
+    await fetchRecentFiles();
+
+    // SLIDER SEMPLICE / AVANZATA
+    document.getElementById('btnModeSimple')?.addEventListener('click', () => applyUiMode('simple', true));
+    document.getElementById('btnModeAdvanced')?.addEventListener('click', () => applyUiMode('advanced', true));
+
+    // SWITCH GLOBALE DE-ANONIMIZZAZIONE
+    document.getElementById('enable_deanonymize')?.addEventListener('change', (e) => {
+        applyDeanonSwitchState(e.target.checked);
+        persistSettings(true);
     });
 
-    function setUIState(state) {
-        currentDaemonState = state;
-        
-        if (state === 'running') {
-            toggleBtn.classList.remove('hidden');
-            loadingContainer.classList.add('hidden');
-            toggleBtn.className = 'btn-toggle on';
-            toggleText.textContent = 'STOP DAEMON';
-            statusText.textContent = 'System is ONLINE. Monitoring for files...';
-            statusText.className = 'status-text-on';
-            toggleBtn.disabled = false;
-            if (preFlightStats) preFlightStats.classList.add('hidden');
-            if (progressContainer) progressContainer.classList.remove('hidden');
-        } else if (state === 'loading_models') {
-            toggleBtn.classList.add('hidden');
-            loadingContainer.classList.remove('hidden');
-            statusText.textContent = '';
-            if (preFlightStats) preFlightStats.classList.add('hidden');
-            if (progressContainer) progressContainer.classList.remove('hidden');
-        } else {
-            toggleBtn.classList.remove('hidden');
-            loadingContainer.classList.add('hidden');
-            toggleBtn.className = 'btn-toggle off';
-            toggleText.textContent = 'START DAEMON';
-            statusText.textContent = 'System is offline. AI model is not loaded.';
-            statusText.className = 'status-text-off';
-            toggleBtn.disabled = false;
-            sessionTotalFiles = 0;
-            if (preFlightStats) preFlightStats.classList.remove('hidden');
-            if (progressContainer) progressContainer.classList.add('hidden');
-        }
-    }
-
-    const thresholdSlider = document.getElementById('setting_ai_threshold');
-    const thresholdVal = document.getElementById('threshold_val');
-    const modePA = document.getElementById('mode_pa');
-    const modePD = document.getElementById('mode_pd');
-    
-    function updateThresholdText(val) {
-        if (val == 0) thresholdVal.textContent = '0% (Tutto)';
-        else if (val == 100) thresholdVal.textContent = '100% (Estrema certezza)';
-        else thresholdVal.textContent = val + '%';
-    }
-    
-    function applyComplianceMode() {
-        const isPA = modePA.checked;
-        const ocr = document.getElementById('setting_ocr');
-        const faces = document.getElementById('setting_faces');
-        const slider = document.getElementById('setting_ai_threshold');
-        
-        const filterIds = [
-            'censor_person', 'censor_address', 'censor_email', 'censor_phone', 
-            'censor_cf_iva', 'censor_account', 'censor_secret', 'censor_url', 'censor_date'
-        ];
-        const filterEls = filterIds.map(id => document.getElementById(id));
-        
-        const tooltipText = "Passa a Germano PD per sbloccare questa funzionalità";
-        
-        if (isPA) {
-            ocr.checked = true;
-            faces.checked = true;
-            filterEls.forEach(el => { if(el) el.checked = true; });
-            
-            slider.value = 0;
-            updateThresholdText(0);
-            
-            ocr.disabled = true;
-            faces.disabled = true;
-            filterEls.forEach(el => { if(el) el.disabled = true; });
-            slider.disabled = true;
-            
-            [ocr, faces, ...filterEls].forEach(el => {
-                if(el) {
-                    const parent = el.closest('.switch-container');
-                    if (parent) {
-                        parent.style.opacity = '0.5';
-                        parent.style.cursor = 'not-allowed';
-                        parent.title = tooltipText;
-                        const sl = parent.querySelector('.slider');
-                        if(sl) sl.style.cursor = 'not-allowed';
-                    }
-                }
+    // PULSANTE PRINCIPALE ATTIVA / FERMA GERMANO
+    document.getElementById('mainToggleBtn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('mainToggleBtn');
+        btn.disabled = true;
+        if (currentStatus === 'stopped') {
+            showToast('Avvio di Germano AI in corso...', 'info');
+            await fetch('/api/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ settings: gatherSettings() })
             });
-            if(slider) {
-                const sliderParent = slider.closest('.slider-container');
-                if (sliderParent) {
-                    sliderParent.style.opacity = '0.5';
-                    sliderParent.title = tooltipText;
-                    slider.style.cursor = 'not-allowed';
-                }
-            }
         } else {
-            ocr.disabled = false;
-            faces.disabled = false;
-            filterEls.forEach(el => { if(el) el.disabled = false; });
-            slider.disabled = false;
-            
-            [ocr, faces, ...filterEls].forEach(el => {
-                if(el) {
-                    const parent = el.closest('.switch-container');
-                    if (parent) {
-                        parent.style.opacity = '1';
-                        parent.style.cursor = 'pointer';
-                        parent.removeAttribute('title');
-                        const sl = parent.querySelector('.slider');
-                        if(sl) sl.style.cursor = 'pointer';
-                    }
-                }
+            showToast('Arresto di Germano AI in corso...', 'info');
+            await fetch('/api/stop', { method: 'POST' });
+        }
+        await pollStatus();
+    });
+
+    // GRIGLIA MODELLI IA E SINGOLE CATEGORIE (MODALITÀ AVANZATA)
+    document.querySelectorAll('.model-check, .cat-check').forEach(chk => {
+        chk.addEventListener('change', () => {
+            if (!chk.checked) {
+                currentComplianceMode = 'PD';
+            }
+            updatePresetButtonsHighlight();
+            persistSettings(true);
+        });
+    });
+
+    // PULSANTI RAPIDI MODELLI IA
+    document.getElementById('btnModelsAllOn')?.addEventListener('click', () => {
+        ALL_MODEL_IDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = true;
+        });
+        updatePresetButtonsHighlight();
+        persistSettings(true);
+    });
+
+    document.getElementById('btnModelsAllOff')?.addEventListener('click', () => {
+        currentComplianceMode = 'PD';
+        ALL_MODEL_IDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = false;
+        });
+        updatePresetButtonsHighlight();
+        persistSettings(true);
+    });
+
+    // PRESET PULSANTI GRIGLIA CATEGORIE
+    document.getElementById('btnPresetPA')?.addEventListener('click', () => {
+        currentComplianceMode = 'PA';
+        [...ALL_MODEL_IDS, ...ALL_CATEGORY_IDS].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = true;
+        });
+        const th = document.getElementById('ai_threshold');
+        if (th) th.value = 0.0;
+        updateThresholdBadge(0.0);
+        updatePresetButtonsHighlight();
+        persistSettings(true);
+    });
+
+    document.getElementById('btnPresetEssential')?.addEventListener('click', () => {
+        currentComplianceMode = 'PD';
+        const essentials = new Set(['censor_person', 'censor_address', 'censor_cf_iva', 'censor_email', 'censor_phone']);
+        ALL_CATEGORY_IDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = essentials.has(id);
+        });
+        updatePresetButtonsHighlight();
+        persistSettings(true);
+    });
+
+    document.getElementById('btnPresetNone')?.addEventListener('click', () => {
+        currentComplianceMode = 'PD';
+        ALL_CATEGORY_IDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = false;
+        });
+        updatePresetButtonsHighlight();
+        persistSettings(true);
+    });
+
+    // SENSIBILITA', HARDWARE, PROXY
+    const thSlider = document.getElementById('ai_threshold');
+    if (thSlider) {
+        thSlider.addEventListener('input', (e) => updateThresholdBadge(e.target.value));
+        thSlider.addEventListener('change', () => {
+            if (parseFloat(thSlider.value) > 0) currentComplianceMode = 'PD';
+            persistSettings(true);
+        });
+    }
+    document.getElementById('hardware_mode')?.addEventListener('change', () => persistSettings(true));
+    document.getElementById('target_api_url')?.addEventListener('change', () => persistSettings(true));
+
+    // DROPZONE 1: PROTEGGI FILE
+    const protectDrop = document.getElementById('protectDropzone');
+    const protectInput = document.getElementById('protectFileInput');
+    if (protectDrop && protectInput) {
+        protectDrop.addEventListener('click', () => protectInput.click());
+        protectInput.addEventListener('change', (e) => {
+            uploadFilesToProtect(e.target.files);
+            protectInput.value = '';
+        });
+        ['dragenter', 'dragover'].forEach(ev => protectDrop.addEventListener(ev, (e) => {
+            e.preventDefault();
+            protectDrop.classList.add('dragover');
+        }));
+        ['dragleave', 'drop'].forEach(ev => protectDrop.addEventListener(ev, (e) => {
+            e.preventDefault();
+            protectDrop.classList.remove('dragover');
+        }));
+        protectDrop.addEventListener('drop', (e) => {
+            if (e.dataTransfer?.files?.length) uploadFilesToProtect(e.dataTransfer.files);
+        });
+    }
+
+    // TABS FILE MANAGER (AVANZATA)
+    document.querySelectorAll('.folder-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.folder-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            activeFileTab = tab.dataset.folder;
+            renderFileList();
+        });
+    });
+
+    // PROTEGGI O RIPRISTINA AUTOMATICAMENTE TESTO
+    const inputTextEl = document.getElementById('manualInputText');
+    let autoRestoreDebounce = null;
+
+    async function checkAndAutoRestoreText(text) {
+        const deanonOn = document.getElementById('enable_deanonymize')?.checked ?? true;
+        if (!deanonOn || !text || !/\[\s*[A-ZÀ-Ÿ\.\s\/_]+[\_\s]\d+\s*\]/i.test(text)) {
+            return false;
+        }
+        try {
+            const r = await fetch('/api/v1/deanonymize_text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
             });
-            if(slider) {
-                const sliderParent = slider.closest('.slider-container');
-                if (sliderParent) {
-                    sliderParent.style.opacity = '1';
-                    sliderParent.removeAttribute('title');
-                    slider.style.cursor = 'pointer';
+            const data = await r.json();
+            if (r.ok && data.restored && data.restored !== text) {
+                const outputEl = document.getElementById('manualOutputText');
+                const badgeEl = document.getElementById('textEntityBadge');
+                if (outputEl) outputEl.value = data.restored;
+                if (badgeEl) {
+                    badgeEl.style.display = 'inline-block';
+                    badgeEl.textContent = '🔄 Dati veri rimessi in automatico';
                 }
+                showToast('🔄 Risposta AI rilevata: dati veri rimessi a posto automaticamente!', 'success');
+                return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    if (inputTextEl) {
+        inputTextEl.addEventListener('input', () => {
+            clearTimeout(autoRestoreDebounce);
+            autoRestoreDebounce = setTimeout(() => {
+                checkAndAutoRestoreText((inputTextEl.value || '').trim());
+            }, 220);
+        });
+    }
+
+    document.getElementById('anonymizeTextBtn')?.addEventListener('click', async () => {
+        const inputEl = document.getElementById('manualInputText');
+        const outputEl = document.getElementById('manualOutputText');
+        const badgeEl = document.getElementById('textEntityBadge');
+        const btn = document.getElementById('anonymizeTextBtn');
+
+        const text = (inputEl?.value || '').trim();
+        if (!text) {
+            showToast('Scrivi o incolla prima un testo.', 'error');
+            return;
+        }
+
+        // Se contiene già etichette del Vault e lo switch è attivo, ripristina in automatico
+        if (await checkAndAutoRestoreText(text)) {
+            return;
+        }
+
+        if (currentStatus !== 'running') {
+            await ensureEngineRunning();
+            if (currentStatus !== 'running') {
+                showToast('Attendi qualche secondo che Germano completi l\'avvio e riprova.', 'info');
+                return;
             }
         }
-    }
 
-    if (modePA && modePD) {
-        modePA.addEventListener('change', applyComplianceMode);
-        modePD.addEventListener('change', applyComplianceMode);
-    }
-    
-    if (thresholdSlider) {
-        thresholdSlider.addEventListener('input', (e) => updateThresholdText(e.target.value));
-    }
+        btn.disabled = true;
+        const origLabel = btn.textContent;
+        btn.textContent = '⏳ Elaborazione in corso...';
 
-    function getSettingsFromUI() {
-        const isPA = modePA ? modePA.checked : false;
-        
-        return {
-            compliance_mode: isPA ? "PA" : "PD",
-            enable_ocr: isPA ? true : document.getElementById('setting_ocr').checked,
-            enable_faces: isPA ? true : document.getElementById('setting_faces').checked,
-            enable_regex: true,
-            censor_person: isPA ? true : document.getElementById('censor_person').checked,
-            censor_address: isPA ? true : document.getElementById('censor_address').checked,
-            censor_email: isPA ? true : document.getElementById('censor_email').checked,
-            censor_phone: isPA ? true : document.getElementById('censor_phone').checked,
-            censor_cf_iva: isPA ? true : document.getElementById('censor_cf_iva').checked,
-            censor_account: isPA ? true : document.getElementById('censor_account').checked,
-            censor_secret: isPA ? true : document.getElementById('censor_secret').checked,
-            censor_url: isPA ? true : document.getElementById('censor_url').checked,
-            censor_date: isPA ? true : document.getElementById('censor_date').checked,
-            ai_threshold: isPA ? 0.0 : parseInt(document.getElementById('setting_ai_threshold').value) / 100.0,
-            hardware_mode: document.getElementById('setting_hardware').value
-        };
-    }
-
-    function setSettingsToUI(s) {
-        if (s.compliance_mode === "PA" && modePA) {
-            modePA.checked = true;
-        } else if (s.compliance_mode === "PD" && modePD) {
-            modePD.checked = true;
+        try {
+            const r = await fetch('/api/v1/anonymize_text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            });
+            const data = await r.json();
+            if (r.ok && data.anonymized !== undefined) {
+                outputEl.value = data.anonymized;
+                if (data.auto_restored) {
+                    if (badgeEl) {
+                        badgeEl.style.display = 'inline-block';
+                        badgeEl.textContent = '🔄 Dati veri rimessi in automatico';
+                    }
+                    showToast('🔄 Dati originali rimessi a posto automaticamente!', 'success');
+                } else {
+                    const count = (data.extracted_data || []).length;
+                    if (badgeEl) {
+                        badgeEl.style.display = 'inline-block';
+                        badgeEl.textContent = `${count} dati protetti`;
+                    }
+                    showToast(`Testo protetto con successo (${count} dati nascosti).`, 'success');
+                }
+                pollStatus();
+            } else {
+                showToast(data.error || 'Errore durante l\'elaborazione del testo.', 'error');
+            }
+        } catch (e) {
+            showToast('Errore di comunicazione con il motore locale.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origLabel;
         }
-        
-        if (s.enable_ocr !== undefined) document.getElementById('setting_ocr').checked = s.enable_ocr;
-        if (s.enable_faces !== undefined) document.getElementById('setting_faces').checked = s.enable_faces;
-        
-        if (s.censor_person !== undefined) document.getElementById('censor_person').checked = s.censor_person;
-        if (s.censor_address !== undefined) document.getElementById('censor_address').checked = s.censor_address;
-        if (s.censor_email !== undefined) document.getElementById('censor_email').checked = s.censor_email;
-        if (s.censor_phone !== undefined) document.getElementById('censor_phone').checked = s.censor_phone;
-        if (s.censor_cf_iva !== undefined) document.getElementById('censor_cf_iva').checked = s.censor_cf_iva;
-        if (s.censor_account !== undefined) document.getElementById('censor_account').checked = s.censor_account;
-        if (s.censor_secret !== undefined) document.getElementById('censor_secret').checked = s.censor_secret;
-        if (s.censor_url !== undefined) document.getElementById('censor_url').checked = s.censor_url;
-        if (s.censor_date !== undefined) document.getElementById('censor_date').checked = s.censor_date;
+    });
 
-        if (s.ai_threshold !== undefined) {
-            const val = Math.round(s.ai_threshold * 100);
-            document.getElementById('setting_ai_threshold').value = val;
-            updateThresholdText(val);
+    // COPIA TESTO
+    document.getElementById('copyTextBtn')?.addEventListener('click', () => {
+        const outputEl = document.getElementById('manualOutputText');
+        if (!outputEl || !outputEl.value) {
+            showToast('Nessun risultato da copiare.', 'error');
+            return;
         }
-        if (s.hardware_mode !== undefined) document.getElementById('setting_hardware').value = s.hardware_mode;
-        
-        applyComplianceMode();
-    }
+        navigator.clipboard.writeText(outputEl.value).then(() => {
+            showToast('Testo copiato negli appunti!', 'success');
+        });
+    });
 
-    let previousSettings = getSettingsFromUI();
+    // ARCHIVIO CORRISPONDENZE (VAULT) IN MODALITA' AVANZATA
+    document.getElementById('btnShowVault')?.addEventListener('click', async () => {
+        const box = document.getElementById('vaultPreviewBox');
+        if (!box) return;
+        if (box.style.display === 'block') {
+            box.style.display = 'none';
+            return;
+        }
+        try {
+            const r = await fetch('/api/vault');
+            const data = await r.json();
+            box.style.display = 'block';
+            if (!data.items || data.items.length === 0) {
+                box.innerHTML = '<div>Nessuna corrispondenza salvata in memoria.</div>';
+            } else {
+                box.innerHTML = data.items.map(it =>
+                    `<div class="vault-item"><strong>${it.tag}</strong> <span>→ ${it.value}</span></div>`
+                ).join('');
+            }
+        } catch (e) {}
+    });
 
-    fetch('/api/settings').then(res => res.json()).then(data => {
-        if (Object.keys(data).length > 0) {
-            setSettingsToUI(data);
-            previousSettings = getSettingsFromUI();
+    document.getElementById('btnClearVault')?.addEventListener('click', async () => {
+        await fetch('/api/clear_vault', { method: 'POST' });
+        const box = document.getElementById('vaultPreviewBox');
+        if (box) box.style.display = 'none';
+        showToast('Archivio corrispondenze svuotato.', 'info');
+        pollStatus();
+    });
+
+    // PULISCI REGISTRO
+    document.getElementById('clearLogsBtn')?.addEventListener('click', async () => {
+        await fetch('/api/clear_logs', { method: 'POST' });
+        pollLogs();
+        showToast('Registro attività pulito.', 'info');
+    });
+
+    // PROCESSI SECONDARI E AGGIORNAMENTO
+    fetch('/api/check_orphans').then(r => r.json()).then(d => {
+        if (d.orphans > 0) {
+            document.getElementById('orphanCount').textContent = d.orphans;
+            document.getElementById('orphanWarning').style.display = 'block';
         }
     }).catch(() => {});
 
-    const settingInputs = document.querySelectorAll('.settings-panel input, .settings-panel select');
-    settingInputs.forEach(input => {
-        input.addEventListener('change', async () => {
-            if (currentDaemonState === 'running' || currentDaemonState === 'loading_models') {
-                const confirmed = confirm("La modifica di questa impostazione richiede il riavvio del demone. Continuare?");
-                if (confirmed) {
-                    previousSettings = getSettingsFromUI();
-                    statusText.textContent = 'Riavvio in corso...';
-                    await fetch('/api/stop');
-                    setTimeout(async () => {
-                        await fetch('/api/start', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ settings: previousSettings })
-                        });
-                    }, 1500);
-                } else {
-                    // Revert to previous
-                    setSettingsToUI(previousSettings);
-                }
-            } else {
-                previousSettings = getSettingsFromUI();
-            }
-        });
+    document.getElementById('killOrphansBtn')?.addEventListener('click', async () => {
+        await fetch('/api/kill_orphans', { method: 'POST' });
+        document.getElementById('orphanWarning').style.display = 'none';
+        showToast('Processi secondari chiusi.', 'success');
     });
 
-    async function toggleDaemon() {
-        // Optimistic UI update
-        toggleBtn.disabled = true;
-        
-        try {
-            if (currentDaemonState === 'running' || currentDaemonState === 'loading_models') {
-                statusText.textContent = 'Sending stop signal...';
-                await fetch('/api/stop');
-            } else {
-                statusText.textContent = 'Booting AI System...';
-                
-                await fetch('/api/start', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ settings: getSettingsFromUI() })
-                });
-            }
-        } catch (error) {
-            console.error("Failed to toggle daemon:", error);
+    fetch('/api/check_update').then(r => r.json()).then(d => {
+        if (d.update_available) {
+            document.getElementById('latestVersionSpan').textContent = d.latest_version;
+            document.getElementById('updateBanner').style.display = 'block';
         }
-        
-        setTimeout(() => { toggleBtn.disabled = false; }, 2000);
-    }
+    }).catch(() => {});
 
-    async function pollStatus() {
-        try {
-            // Check status & stats
-            const resStatus = await fetch('/api/status');
-            const dataStatus = await resStatus.json();
-            
-            // If the state changed in the backend, update UI
-            if (dataStatus.status !== currentDaemonState) {
-                setUIState(dataStatus.status);
-            }
-            
-            // Update stats
-            if (dataStatus.stats) {
-                const currentPending = dataStatus.stats.pending;
-                statInput.textContent = currentPending;
-                statOutput.textContent = dataStatus.stats.outputs;
-                statProcessed.textContent = dataStatus.stats.processed;
-                
-                if (currentDaemonState === 'stopped') {
-                    if (lblInputFiles) lblInputFiles.textContent = currentPending;
-                    if (lblInputFolders) lblInputFolders.textContent = dataStatus.stats.pending_folders || 0;
-                    if (lblInputSize) lblInputSize.textContent = formatBytes(dataStatus.stats.pending_bytes || 0);
-                } else {
-                    if (sessionTotalFiles === 0 || currentPending > sessionTotalFiles) {
-                        sessionTotalFiles = currentPending;
-                    }
-                    if (sessionTotalFiles > 0) {
-                        const done = sessionTotalFiles - currentPending;
-                        const percent = Math.round((done / sessionTotalFiles) * 100);
-                        if (progressFill) progressFill.style.width = percent + '%';
-                        if (lblProgressPercent) lblProgressPercent.textContent = percent;
-                        if (lblProgressDone) lblProgressDone.textContent = done;
-                        if (lblProgressTotal) lblProgressTotal.textContent = sessionTotalFiles;
-                    } else {
-                        if (progressFill) progressFill.style.width = '100%';
-                        if (lblProgressPercent) lblProgressPercent.textContent = 100;
-                        if (lblProgressDone) lblProgressDone.textContent = 0;
-                        if (lblProgressTotal) lblProgressTotal.textContent = 0;
-                    }
-                }
-            }
-
-            // Fetch logs
-            const resLogs = await fetch('/api/logs');
-            const dataLogs = await resLogs.json();
-            
-            if (dataLogs.logs) {
-                let logsText = dataLogs.logs.join("");
-                // Only update if logs changed
-                if (logContainer.textContent !== logsText) {
-                    logContainer.textContent = logsText;
-                    if (autoScroll) {
-                        logContainer.scrollTop = logContainer.scrollHeight;
-                    }
-                }
-            }
-        } catch (error) {
-            console.error("Polling error:", error);
-        }
-    }
-
-    toggleBtn.addEventListener('click', toggleDaemon);
-
-    // Initial check
-    pollStatus();
-    // Poll every 1 second
-    pollInterval = setInterval(pollStatus, 1000);
-
-    // --- Manual Text Anonymizer ---
-    const btnManualAnonymize = document.getElementById('btn-manual-anonymize');
-    const txtInput = document.getElementById('manual-text-input');
-    const txtOutput = document.getElementById('manual-text-output');
-    const btnCopyOutput = document.getElementById('btn-copy-output');
-
-    if (btnManualAnonymize && txtInput && txtOutput) {
-        btnManualAnonymize.addEventListener('click', async () => {
-            const text = txtInput.value.trim();
-            if (!text) return;
-            
-            if (currentDaemonState !== 'running') {
-                alert("Devi prima avviare il demone (START DAEMON) per poter anonimizzare il testo.");
-                return;
-            }
-
-            btnManualAnonymize.disabled = true;
-            btnManualAnonymize.style.opacity = '0.7';
-            btnManualAnonymize.querySelector('span').textContent = 'Elaborazione...';
-            
-            try {
-                const response = await fetch('/api/v1/anonymize_text', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: text })
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok && data.anonymized) {
-                    txtOutput.value = data.anonymized;
-                } else {
-                    txtOutput.value = "Errore: " + (data.error || "Impossibile elaborare il testo.");
-                }
-            } catch (error) {
-                console.error("Manual anonymize error:", error);
-                txtOutput.value = "Errore di connessione al server locale.";
-            } finally {
-                btnManualAnonymize.disabled = false;
-                btnManualAnonymize.style.opacity = '1';
-                btnManualAnonymize.querySelector('span').textContent = 'Anonimizza';
-            }
-        });
-        
-        btnCopyOutput.addEventListener('click', () => {
-            if (txtOutput.value) {
-                txtOutput.select();
-                document.execCommand('copy');
-                const icon = btnCopyOutput.querySelector('i');
-                icon.className = 'fas fa-check';
-                setTimeout(() => { icon.className = 'fas fa-copy'; }, 2000);
-            }
-        });
-    }
+    setInterval(pollStatus, 1500);
+    setInterval( pollLogs, 1500);
+    setInterval(fetchRecentFiles, 2500);
 });

@@ -1,0 +1,1735 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Germano AI — Manuale & Documentazione Tecnica (100% Offline)</title>
+    <style>
+        :root {
+            --bg-body: #0b1120;
+            --bg-card: #131c31;
+            --bg-card-alt: #18243d;
+            --bg-input: #0d1526;
+            --border: #263554;
+            --border-bright: #3b5280;
+            --text-main: #f8fafc;
+            --text-sec: #cbd5e1;
+            --text-muted: #94a3b8;
+            --blue: #3b82f6;
+            --blue-hover: #2563eb;
+            --green: #10b981;
+            --green-hover: #059669;
+            --purple: #8b5cf6;
+            --amber: #f59e0b;
+            --red: #ef4444;
+            --font-sans: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+            --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            background: var(--bg-body);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            line-height: 1.65;
+            min-height: 100vh;
+        }
+
+        /* Language Toggle Visibility Switch */
+        body:not([data-lang="en"]) .lang-en { display: none !important; }
+        body[data-lang="en"] .lang-it { display: none !important; }
+
+        /* Top Sticky Header */
+        .guide-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(19, 28, 49, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            text-decoration: none;
+            color: inherit;
+        }
+        .brand-icon-box {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        .brand-text h1 {
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .brand-text p {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .badge-pill {
+            display: inline-block;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 99px;
+            background: rgba(16, 185, 129, 0.15);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .badge-version {
+            background: rgba(59, 130, 246, 0.15);
+            color: #93c5fd;
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 8px;
+            background: var(--bg-card-alt);
+            border: 1px solid var(--border);
+            color: var(--text-sec);
+            text-decoration: none;
+            font-size: 0.86rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-back:hover {
+            background: var(--border);
+            color: #fff;
+            border-color: var(--border-bright);
+        }
+        .lang-switch-group {
+            display: inline-flex;
+            background: var(--bg-card-alt);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 3px;
+            gap: 2px;
+        }
+        .lang-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 5px 12px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.18s;
+        }
+        .lang-btn.active {
+            background: var(--blue);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+        }
+
+        /* Layout Grid: Sidebar + Content */
+        .layout-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 30px 24px 80px;
+            display: grid;
+            grid-template-columns: 290px 1fr;
+            gap: 36px;
+        }
+        @media (max-width: 1024px) {
+            .layout-container { grid-template-columns: 1fr; }
+            .sidebar { display: none; }
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            position: sticky;
+            top: 86px;
+            height: calc(100vh - 110px);
+            overflow-y: auto;
+            padding-right: 12px;
+        }
+        .sidebar::-webkit-scrollbar { width: 5px; }
+        .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .sidebar-title {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            font-weight: 800;
+            margin: 16px 0 8px 10px;
+        }
+        .sidebar-nav {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .sidebar-link {
+            display: block;
+            padding: 7px 12px;
+            color: var(--text-sec);
+            text-decoration: none;
+            font-size: 0.87rem;
+            font-weight: 500;
+            border-radius: 7px;
+            transition: all 0.15s;
+            border-left: 2px solid transparent;
+        }
+        .sidebar-link:hover {
+            color: #fff;
+            background: var(--bg-card);
+            border-left-color: var(--blue);
+            padding-left: 15px;
+        }
+
+        /* Content Styling */
+        .content {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+        .doc-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px 36px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+        .section-header {
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 16px;
+        }
+        .section-tag {
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--blue);
+            margin-bottom: 6px;
+            display: inline-block;
+        }
+        h2.section-title {
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: var(--text-main);
+            letter-spacing: -0.02em;
+        }
+        h3.sub-title {
+            font-size: 1.22rem;
+            font-weight: 700;
+            color: #93c5fd;
+            margin: 28px 0 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        h4.sub-sub-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #e2e8f0;
+            margin: 20px 0 8px;
+        }
+        p { margin-bottom: 14px; color: var(--text-sec); font-size: 0.96rem; }
+        p strong { color: #fff; }
+        ul, ol { margin-left: 22px; margin-bottom: 16px; color: var(--text-sec); font-size: 0.95rem; }
+        li { margin-bottom: 6px; }
+
+        /* Callout Boxes */
+        .callout {
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin: 18px 0;
+            font-size: 0.92rem;
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+        }
+        .callout-icon { font-size: 1.3rem; line-height: 1; flex-shrink: 0; margin-top: 2px; }
+        .callout-content { flex: 1; }
+        .callout-content p:last-child { margin-bottom: 0; }
+        .callout-info { background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); color: #bfdbfe; }
+        .callout-success { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); color: #a7f3d0; }
+        .callout-warning { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #fde68a; }
+        .callout-purple { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.35); color: #ddd6fe; }
+
+        /* Step Cards */
+        .step-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .step-card {
+            background: var(--bg-card-alt);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            position: relative;
+        }
+        .step-num {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--blue);
+            color: #fff;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+        }
+        .step-card h4 { font-size: 1.05rem; font-weight: 700; color: #fff; }
+        .step-card p { font-size: 0.88rem; margin: 0; color: var(--text-sec); }
+
+        /* Folder Tree Visual */
+        .folder-tree {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            font-family: var(--font-mono);
+            font-size: 0.88rem;
+            color: #e2e8f0;
+            margin: 18px 0;
+            line-height: 1.7;
+        }
+        .tree-folder { color: #60a5fa; font-weight: 700; }
+        .tree-comment { color: var(--text-muted); font-style: italic; }
+
+        /* Tables */
+        .table-responsive {
+            overflow-x: auto;
+            margin: 18px 0;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            text-align: left;
+        }
+        th {
+            background: var(--bg-card-alt);
+            color: #fff;
+            font-weight: 700;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-sec);
+            vertical-align: top;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255, 255, 255, 0.02); }
+        code {
+            font-family: var(--font-mono);
+            background: rgba(15, 23, 42, 0.7);
+            padding: 2px 6px;
+            border-radius: 5px;
+            font-size: 0.85em;
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+
+        /* Code Blocks */
+        .code-block {
+            background: #080d19;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            margin: 16px 0;
+            overflow: hidden;
+        }
+        .code-header {
+            background: var(--bg-card-alt);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+        }
+        .copy-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-sec);
+            padding: 3px 10px;
+            border-radius: 5px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .copy-btn:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+        pre {
+            padding: 16px;
+            overflow-x: auto;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: #e2e8f0;
+            line-height: 1.55;
+        }
+
+        /* Quick Jump Anchor Offset */
+        :target {
+            scroll-margin-top: 90px;
+        }
+    </style>
+</head>
+<body data-lang="it">
+
+    <!-- TOP HEADER -->
+    <header class="guide-header">
+        <a href="/" class="header-brand">
+            <div class="brand-icon-box">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M9 12l2 2 4-4"/>
+                </svg>
+            </div>
+            <div class="brand-text">
+                <h1>GERMANO AI <span class="badge-pill badge-version">v0.50-alpha</span></h1>
+                <p class="lang-it">Manuale Ufficiale & Documentazione Tecnica (100% Offline)</p>
+                <p class="lang-en">Official Guide & Technical Documentation (100% Offline)</p>
+            </div>
+        </a>
+
+        <div class="header-controls">
+            <span class="badge-pill">🔒 100% Offline • Zero CDN • GDPR</span>
+            <div class="lang-switch-group">
+                <button type="button" class="lang-btn active" id="btn-it" onclick="setDocLang('it')">🇮🇹 Italiano</button>
+                <button type="button" class="lang-btn" id="btn-en" onclick="setDocLang('en')">🇬🇧 English</button>
+            </div>
+            <a href="/" class="btn-back">
+                <span>⬅️</span>
+                <span class="lang-it">Dashboard</span>
+                <span class="lang-en">Dashboard</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- MAIN TWO-COLUMN CONTAINER -->
+    <div class="layout-container">
+
+        <!-- SIDEBAR TABLE OF CONTENTS -->
+        <aside class="sidebar">
+            <div class="sidebar-title lang-it">Indice Argomenti</div>
+            <div class="sidebar-title lang-en">Table of Contents</div>
+            <ul class="sidebar-nav">
+                <li><a href="#introduzione" class="sidebar-link lang-it">1. Introduzione & Principi Chiave</a><a href="#introduzione" class="sidebar-link lang-en">1. Introduction & Core Principles</a></li>
+                <li><a href="#modalita-semplice" class="sidebar-link lang-it">2. Guida Base (Modalità Semplice)</a><a href="#modalita-semplice" class="sidebar-link lang-en">2. Basic Guide (Simple Mode)</a></li>
+                <li><a href="#cartelle" class="sidebar-link lang-it">3. Le 5 Cartelle di Germano</a><a href="#cartelle" class="sidebar-link lang-en">3. The 5 Germano Folders</a></li>
+                <li><a href="#deanon-automatica" class="sidebar-link lang-it">4. La Magia del Ripristino Automatico</a><a href="#deanon-automatica" class="sidebar-link lang-en">4. The Automatic Restore Magic</a></li>
+                <li><a href="#formati" class="sidebar-link lang-it">5. Formati di File Supportati</a><a href="#formati" class="sidebar-link lang-en">5. Supported File Formats</a></li>
+                <li><a href="#modalita-avanzata" class="sidebar-link lang-it">6. Controlli (Modalità Avanzata)</a><a href="#modalita-avanzata" class="sidebar-link lang-en">6. Controls (Advanced Mode)</a></li>
+                <li><a href="#modelli-ia" class="sidebar-link lang-it">7. I 6 Modelli IA Locali + RegEx</a><a href="#modelli-ia" class="sidebar-link lang-en">7. The 6 Local AI Models + RegEx</a></li>
+                <li><a href="#categorie" class="sidebar-link lang-it">8. Le 18 Categorie Configurabili</a><a href="#categorie" class="sidebar-link lang-en">8. The 18 Configurable Categories</a></li>
+                <li><a href="#hardware-soglia" class="sidebar-link lang-it">9. Hardware, Soglia & Vault</a><a href="#hardware-soglia" class="sidebar-link lang-en">9. Hardware, Threshold & Vault</a></li>
+                <li><a href="#api-rest" class="sidebar-link lang-it">10. Specifiche API REST Complete</a><a href="#api-rest" class="sidebar-link lang-en">10. Complete REST API Specs</a></li>
+                <li><a href="#proxy-agenti" class="sidebar-link lang-it">11. Proxy Trasparente per Agenti IA</a><a href="#proxy-agenti" class="sidebar-link lang-en">11. Transparent AI Agent Proxy</a></li>
+                <li><a href="#setup-editor" class="sidebar-link lang-it">12. Setup Antigravity, Cursor, Codex</a><a href="#setup-editor" class="sidebar-link lang-en">12. Setup Antigravity, Cursor, Codex</a></li>
+                <li><a href="#faq" class="sidebar-link lang-it">13. Domande Frequenti & Risoluzione</a><a href="#faq" class="sidebar-link lang-en">13. FAQ & Troubleshooting</a></li>
+            </ul>
+        </aside>
+
+        <!-- MAIN DOCUMENTATION CONTENT -->
+        <main class="content">
+
+            <!-- ========================================================================= -->
+            <!-- 1. INTRODUZIONE                                                           -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="introduzione">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Panoramica</span>
+                    <span class="section-tag lang-en">Overview</span>
+                    <h2 class="section-title lang-it">1. Introduzione & Principi Chiave</h2>
+                    <h2 class="section-title lang-en">1. Introduction & Core Principles</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p><strong>Germano AI</strong> è una suite autonoma e portatile progettata per proteggere la privacy, eliminare i dati personali sensibili (GDPR Art. 9 e 10) e consentire l'utilizzo sicuro di strumenti di Intelligenza Artificiale Cloud (come ChatGPT, Claude o Google Gemini) e ambienti di sviluppo (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) su qualsiasi computer con <strong>Windows 11</strong>.</p>
+                    
+                    <div class="callout callout-success">
+                        <div class="callout-icon">🛡️</div>
+                        <div class="callout-content">
+                            <strong>100% Locale, Standalone e Air-Gapped:</strong>
+                            <p>Germano AI include un runtime Python 3.11 embedded, tutte le librerie native C++ di sistema e 6 modelli di Intelligenza Artificiale pre-installati. Funziona al primo colpo senza installare software, senza privilegi di amministratore e <strong>senza effettuare alcuna chiamata a Internet</strong>. Nessun dato lascia mai il tuo computer.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lang-en">
+                    <p><strong>Germano AI</strong> is a standalone, portable suite engineered to safeguard privacy, redact sensitive personally identifiable information (GDPR Art. 9 & 10), and empower users to securely leverage Cloud AI models (ChatGPT, Claude, Google Gemini) and AI development harnesses (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) on vanilla <strong>Windows 11</strong> workstations.</p>
+
+                    <div class="callout callout-success">
+                        <div class="callout-icon">🛡️</div>
+                        <div class="callout-content">
+                            <strong>100% Local, Standalone and Air-Gapped:</strong>
+                            <p>Germano AI ships with an embedded Python 3.11 runtime, all native Visual C++ runtime libraries, and 6 pre-packaged local AI models. It works right out-of-the-box without root/admin privileges, with zero setup, and <strong>with absolutely zero internet requests</strong>. No data ever leaves your machine.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 2. GUIDA BASE (MODALITA' SEMPLICE)                                        -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="modalita-semplice">
+                <div class="section-header">
+                    <span class="section-tag lang-it">A Prova di Errore</span>
+                    <span class="section-tag lang-en">Foolproof Guide</span>
+                    <h2 class="section-title lang-it">2. Guida Base (Modalità Semplice)</h2>
+                    <h2 class="section-title lang-en">2. Basic Guide (Simple Mode)</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>Nella <strong>✨ Modalità Semplice</strong> (attiva di default all'apertura), l'interfaccia è pensata per essere immediata e intuitiva: non ci sono termini tecnici complicati né parametri da configurare.</p>
+
+                    <h3 class="sub-title">Come Avviare e Fermare Germano</h3>
+                    <p>In alto a destra trovi il pulsante principale con lo stato:</p>
+                    <ul>
+                        <li><strong>In Pausa (Pulsante Verde "▶ ATTIVA GERMANO"):</strong> Il motore locale è fermo e non consuma memoria RAM né processore.</li>
+                        <li><strong>Protezione Attiva (Pulsante Rosso "■ FERMA GERMANO"):</strong> Il motore è attivo in background, pronto ad anonimizzare documenti all'istante.</li>
+                    </ul>
+
+                    <div class="callout callout-info">
+                        <div class="callout-icon">💡</div>
+                        <div class="callout-content">
+                            <strong>Auto-Start Intelligente:</strong> Non serve nemmeno ricordarsi di premere il pulsante! Se Germano è in pausa e trascini un file o clicchi su "Proteggi Testo", Germano <strong>si attiva da solo automaticamente</strong> in pochi secondi.
+                        </div>
+                    </div>
+
+                    <h3 class="sub-title">I 3 Modi per Usare Germano</h3>
+                    <div class="step-grid">
+                        <div class="step-card">
+                            <div class="step-num">1</div>
+                            <h4>Trascina i Documenti</h4>
+                            <p>Trascina uno o più file (PDF, Word, Excel, immagini, ecc.) nel riquadro tratteggiato <em>"Passo 1: Trascina qui i tuoi documenti"</em>. Germano li protegge all'istante.</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">2</div>
+                            <h4>Scarica i Risultati</h4>
+                            <p>Nel riquadro <em>"Passo 2: Scarica i file protetti"</em> vedrai comparire i file bonificati con un comodo pulsante <strong>"⬇ Scarica"</strong> per salvarli o aprirli subito.</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">3</div>
+                            <h4>Proteggi Testo al Volo</h4>
+                            <p>Incolla un messaggio o testo contrattuale nel box di testo e premi <strong>"🛡️ Proteggi Testo"</strong>. Copia il risultato bonificato per incollarlo in ChatGPT o Claude.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lang-en">
+                    <p>In <strong>✨ Simple Mode</strong> (active by default), the interface is engineered to be crystal-clear and foolproof: zero technical jargon, zero complex terminology, and zero manual parameter tuning.</p>
+
+                    <h3 class="sub-title">Starting and Stopping Germano</h3>
+                    <p>At the top right corner of the header, you will find the main power button and status indicator:</p>
+                    <ul>
+                        <li><strong>Idle / Paused (Green Button "▶ START GERMANO"):</strong> The background AI engine is stopped, freeing up system RAM and CPU.</li>
+                        <li><strong>Protection Active (Red Button "■ STOP GERMANO"):</strong> The local AI engine is loaded and monitoring for documents to redact.</li>
+                    </ul>
+
+                    <div class="callout callout-info">
+                        <div class="callout-icon">💡</div>
+                        <div class="callout-content">
+                            <strong>Intelligent Auto-Start:</strong> You don't even need to click the button! If Germano is currently idle and you drop a file or protect a text snippet, Germano <strong>wakes up automatically on its own</strong> within seconds.
+                        </div>
+                    </div>
+
+                    <h3 class="sub-title">The 3 Easy Ways to Use Germano</h3>
+                    <div class="step-grid">
+                        <div class="step-card">
+                            <div class="step-num">1</div>
+                            <h4>Drag & Drop Files</h4>
+                            <p>Drag any file (PDF, Word, Excel, image, scan) into <em>"Step 1: Drag & drop your files"</em>. Germano redacts sensitive data instantly.</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">2</div>
+                            <h4>Download Results</h4>
+                            <p>In <em>"Step 2: Download protected files"</em>, your cleaned documents appear with a one-click <strong>"⬇ Download"</strong> button.</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">3</div>
+                            <h4>Redact Text on the Fly</h4>
+                            <p>Paste contract snippets or emails into the text area and click <strong>"🛡️ Protect Text"</strong>. Copy the sanitized text into ChatGPT or Claude safely.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 3. LE 5 CARTELLE DI GERMANO                                               -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="cartelle">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Organizzazione File</span>
+                    <span class="section-tag lang-en">Directory Structure</span>
+                    <h2 class="section-title lang-it">3. La Guida alle 5 Cartelle di Germano</h2>
+                    <h2 class="section-title lang-en">3. The 5 Germano Folders</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>All'interno della cartella del programma troverai 5 cartelle di lavoro fondamentali. Germano lavora <strong>esclusivamente</strong> all'interno di queste cartelle e non tocca mai documenti al di fuori di esse (niente cartelle <code>Download</code> o <code>Desktop</code> non autorizzate):</p>
+
+                    <div class="folder-tree">
+                        📁 GermanoAI_Release_v0.50-alpha/<br>
+                        ├── 📁 <span class="tree-folder">input/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← La buca delle lettere: i file da proteggere vengono inseriti qui</span><br>
+                        ├── 📁 <span class="tree-folder">output/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← I documenti pronti: file anonimizzati o con dati veri ripristinati</span><br>
+                        ├── 📁 <span class="tree-folder">processed/</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← L'archivio storico: i documenti originali dopo l'elaborazione</span><br>
+                        ├── 📁 <span class="tree-folder">failed/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Errori: file corrotti o non leggibili finiscono qui</span><br>
+                        └── 📁 <span class="tree-folder">extracted/</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Cassaforte: report di sicurezza e archivio corrispondenze (Vault)</span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Cartella</th>
+                                    <th>A cosa serve</th>
+                                    <th>Comportamento di Germano</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>input/</code></td>
+                                    <td><strong>Ingresso Documenti:</strong> Puoi trascinare file dalla Web UI oppure incollarli direttamente a mano in questa cartella tramite Esplora File.</td>
+                                    <td>Germano rileva istantaneamente i nuovi file, li analizza e li processa uno dopo l'altro.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>output/</code></td>
+                                    <td><strong>Uscita File Protetti:</strong> Contiene i file finiti con le parti sensibili annerite visivamente o sostituite con etichette sicure.</td>
+                                    <td>I file mantengono la stessa identica impaginazione, font e tabelle dell'originale.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>processed/</code></td>
+                                    <td><strong>Archivio Originali:</strong> Per evitare che un file originale venga sovrascritto o perso, viene spostato qui appena completato.</td>
+                                    <td>Gli originali rimangono al sicuro sul tuo PC locale senza modifiche.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>failed/</code></td>
+                                    <td><strong>Segnalazione Anomalie:</strong> Se un documento ha una password non fornita o è danneggiato, finisce qui.</td>
+                                    <td>Il demone scrive nel log l'errore dettagliato e prosegue con i file successivi senza bloccarsi.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>extracted/</code></td>
+                                    <td><strong>Cassaforte & Audit GDPR:</strong> Contiene i file <code>.json</code> con la lista di tutte le entità censurate e il Vault delle corrispondenze.</td>
+                                    <td>Consente la tracciabilità delle operazioni di conformità GDPR per gli uffici legali.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="lang-en">
+                    <p>Inside the program directory, you will find 5 core working directories. Germano operates <strong>strictly and exclusively</strong> within these folders and will never access or monitor folders outside its program directory (no unauthorized scanning of <code>Downloads</code> or <code>Desktop</code>):</p>
+
+                    <div class="folder-tree">
+                        📁 GermanoAI_Release_v0.50-alpha/<br>
+                        ├── 📁 <span class="tree-folder">input/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Drop zone: place documents to be protected here</span><br>
+                        ├── 📁 <span class="tree-folder">output/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Results: protected documents or automatically de-anonymized files</span><br>
+                        ├── 📁 <span class="tree-folder">processed/</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Archive: original files are moved here after processing</span><br>
+                        ├── 📁 <span class="tree-folder">failed/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Quarantine: corrupted or password-locked files are placed here</span><br>
+                        └── 📁 <span class="tree-folder">extracted/</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Audit Vault: security logs and de-anonymization tag-to-word map</span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Folder</th>
+                                    <th>Purpose</th>
+                                    <th>Germano Behavior</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>input/</code></td>
+                                    <td><strong>Incoming Files:</strong> Drop files via the Web UI or copy-paste them directly using Windows File Explorer.</td>
+                                    <td>Germano detects new files immediately and begins batch redaction.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>output/</code></td>
+                                    <td><strong>Redacted Results:</strong> Holds the resulting clean documents with visual blackouts or secure tags.</td>
+                                    <td>Maintains 1:1 original document formatting, typography, tables, and layouts.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>processed/</code></td>
+                                    <td><strong>Originals Archive:</strong> Protects original documents by moving them here so nothing is ever overwritten.</td>
+                                    <td>Original files remain intact and accessible locally on your disk.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>failed/</code></td>
+                                    <td><strong>Error Quarantine:</strong> Password-protected or corrupt files that fail parsing are isolated here.</td>
+                                    <td>Logs the exact reason to <code>daemon.log</code> and seamlessly continues to next file.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>extracted/</code></td>
+                                    <td><strong>GDPR Audit & Vault:</strong> Stores JSON audit trails detailing all redacted entities and the reverse mapping vault.</td>
+                                    <td>Ensures auditability for corporate data protection officers (DPO) and compliance teams.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 4. LA MAGIA DEL RIPRISTINO AUTOMATICO                                     -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="deanon-automatica">
+                <div class="section-header">
+                    <span class="section-tag lang-it">De-Anonimizzazione Trasparente</span>
+                    <span class="section-tag lang-en">Transparent De-Anonymization</span>
+                    <h2 class="section-title lang-it">4. La "Magia" del Ripristino Automatico Dati</h2>
+                    <h2 class="section-title lang-en">4. The Automatic De-Anonymization Magic</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>Uno dei problemi più grandi quando si usa ChatGPT o un'altra IA per analizzare contratti, buste paga o cartelle cliniche è: <em>"Se censuro il nome Mario Rossi con [PERSONA_1], poi l'IA mi risponderà parlando di [PERSONA_1]. Devo rimettere a mano tutti i nomi veri?"</em></p>
+                    <p><strong>Con Germano AI la risposta è NO: fa tutto da solo!</strong></p>
+
+                    <div class="callout callout-purple">
+                        <div class="callout-icon">🔄</div>
+                        <div class="callout-content">
+                            <strong>Switch Globale in Testata ("Rimetti a posto automaticamente i dati veri nel ritorno dall'AI"):</strong>
+                            <p>Quando questo interruttore è attivo (acceso di default), Germano assegna un'etichetta univoca numerata ad ogni persona o dato (es. <code>[PERSONA_1]</code>, <code>[COD.FISCALE/P.IVA_1]</code>, <code>[IBAN_1]</code>) e ne conserva la corrispondenza nella sua cassaforte protetta locale (Vault).</p>
+                        </div>
+                    </div>
+
+                    <h3 class="sub-title">Come Funziona il Ciclo Completo in 3 Semplici Passaggi:</h3>
+                    <ol>
+                        <li><strong>Invia all'IA:</strong> Trascini il contratto in Germano. Germano crea il file sicuro dove Mario Rossi diventa <code>[PERSONA_1]</code> e Via Roma diventa <code>[INDIRIZZO_1]</code>. Puoi caricare questo file protetto su ChatGPT in totale sicurezza (nessuna violazione di privacy).</li>
+                        <li><strong>Chiedi all'IA:</strong> Chiedi a ChatGPT o Claude: <em>"Analizza questo contratto, riassumi le clausole e compila la lettera di accettazione"</em>. L'IA genererà la risposta parlando di <code>[PERSONA_1]</code>.</li>
+                        <li><strong>Ritorno Automatico:</strong> Scarica il file restituito dall'IA o copia il testo della risposta e rimettilo in Germano (nella cartella <code>input/</code> o nel box di testo). <strong>Germano si accorge da solo che è un testo di ritorno dall'IA</strong>, apre la sua cassaforte e sostituisce istantaneamente <code>[PERSONA_1]</code> con "Mario Rossi" e <code>[INDIRIZZO_1]</code> con "Via Roma"!</li>
+                    </ol>
+
+                    <p>Non devi cliccare pulsanti speciali né riconfigurare nulla: <strong>avviene tutto in automatico!</strong></p>
+                </div>
+
+                <div class="lang-en">
+                    <p>One of the biggest friction points when utilizing ChatGPT or Claude to draft, review, or summarize confidential documents is: <em>"If I replace Mario Rossi with [PERSONA_1], the AI will formulate its answer referencing [PERSONA_1]. Do I have to manually find-and-replace all real names afterwards?"</em></p>
+                    <p><strong>With Germano AI, the answer is NO: it does it all automatically!</strong></p>
+
+                    <div class="callout callout-purple">
+                        <div class="callout-icon">🔄</div>
+                        <div class="callout-content">
+                            <strong>Global Header Switch ("Automatically restore real data in AI responses"):</strong>
+                            <p>When this switch is enabled (ON by default), Germano assigns unique numbered tags to each entity (e.g. <code>[PERSONA_1]</code>, <code>[COD.FISCALE/P.IVA_1]</code>, <code>[IBAN_1]</code>) and securely stores the bidirectional mapping inside its local Vault.</p>
+                        </div>
+                    </div>
+
+                    <h3 class="sub-title">The Complete 3-Step Lifecycle:</h3>
+                    <ol>
+                        <li><strong>Send to AI:</strong> Drop your agreement into Germano. Germano emits a sanitized document where John Doe becomes <code>[PERSONA_1]</code> and 742 Evergreen Terrace becomes <code>[INDIRIZZO_1]</code>. Upload this file to ChatGPT with zero GDPR or NDA liability.</li>
+                        <li><strong>Query the AI:</strong> Instruct ChatGPT or Claude: <em>"Summarize liabilities and draft an executive addendum for this client"</em>. The AI outputs its response utilizing the tags like <code>[PERSONA_1]</code>.</li>
+                        <li><strong>Automatic Return:</strong> Drag the file returned by the AI (or paste its text) back into Germano. <strong>Germano automatically senses vault tags on its own</strong>, queries its local secure vault, and transparently replaces <code>[PERSONA_1]</code> with "John Doe" and <code>[INDIRIZZO_1]</code> with "742 Evergreen Terrace"!</li>
+                    </ol>
+
+                    <p>No extra manual steps, no secondary dropzones: <strong>100% autonomous and frictionless!</strong></p>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 5. FORMATI DI FILE SUPPORTATI                                             -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="formati">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Compatibilità Documentale</span>
+                    <span class="section-tag lang-en">Document Compatibility</span>
+                    <h2 class="section-title lang-it">5. Formati di File Supportati</h2>
+                    <h2 class="section-title lang-en">5. Supported File Formats</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>Germano AI supporta nativamente l'intero spettro di documenti utilizzati nella Pubblica Amministrazione, studi legali, notarili, cliniche sanitarie e aziende:</p>
+
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Estensione</th>
+                                    <th>Tipologia Documento</th>
+                                    <th>Metodo di Redazione</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>.pdf</code></td>
+                                    <td><strong>Documenti PDF:</strong> Testo digitale vettoriale, PDF scansionati (immagini raster) e PDF ibridi.</td>
+                                    <td>Oscuramento visivo millimetrico (`fitz.Rect`) con applicazione di testo sostitutivo (es. `[PERSONA]`), rimozione metadati e OCR integrato per le scansioni.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.docx</code>, <code>.docm</code>, <code>.doc</code></td>
+                                    <td><strong>Microsoft Word:</strong> Contratti, perizie, relazioni e atti notarili.</td>
+                                    <td>Ispezione dei paragrafi, tabelle, intestazioni, piè di pagina e scansione OCR sulle immagini incorporate nel documento Word.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.xlsx</code>, <code>.xlsm</code>, <code>.xls</code></td>
+                                    <td><strong>Fogli di Calcolo Excel:</strong> Buste paga, bilanci, anagrafiche e fatture.</td>
+                                    <td>Scansione e sostituzione cella per cella su tutti i fogli di lavoro con preservazione integrale di formule matematiche e stili grafici.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.pptx</code>, <code>.ppt</code></td>
+                                    <td><strong>Presentazioni PowerPoint:</strong> Slide aziendali e report di progetto.</td>
+                                    <td>Anonimizzazione di tutte le forme di testo, tabelle e note del relatore su ogni slide.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.txt</code>, <code>.csv</code></td>
+                                    <td><strong>Testo Semplice & CSV:</strong> Database, log di sistema ed elenchi anagrafici.</td>
+                                    <td>Sostituzione istantanea ad altissima velocità (migliaia di righe al secondo).</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.html</code>, <code>.htm</code>, <code>.xml</code></td>
+                                    <td><strong>Pagine Web & Flussi Dati:</strong> Fatture elettroniche PA (XML), export web.</td>
+                                    <td>Parsing ad albero DOM che preserva i tag HTML/XML e bonifica esclusivamente il testo visibile.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.eml</code></td>
+                                    <td><strong>Email & Posta Elettronica:</strong> Messaggi salvati da Outlook, Thunderbird o PEC.</td>
+                                    <td>Anonimizzazione del mittente, destinatario, oggetto, corpo del messaggio e allegati.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.odt</code>, <code>.ods</code>, <code>.odp</code></td>
+                                    <td><strong>OpenDocument:</strong> Documenti creati con LibreOffice o OpenOffice.</td>
+                                    <td>Elaborazione XML nativa dell'archivio ODF.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.webp</code>, <code>.bmp</code>, <code>.tiff</code></td>
+                                    <td><strong>Fotografie & Scansioni Raster:</strong> Carte d'identità, perizie incidenti stradali, cartelle cliniche fotografate.</td>
+                                    <td>OCR integrato con rilevamento e annerimento ottico di volti, targhe automobilistiche e firme autografe.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.zip</code></td>
+                                    <td><strong>Archivi Compressi:</strong> Fascicoli documentali completi.</td>
+                                    <td>Decompressione in-memory, anonimizzazione ricorsiva di tutti i file contenuti e ri-creazione dell'archivio ZIP protetto.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="lang-en">
+                    <p>Germano AI natively supports the complete document spectrum utilized across public administrations, law firms, healthcare organizations, and enterprises:</p>
+
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Extension</th>
+                                    <th>Document Type</th>
+                                    <th>Redaction Engine</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>.pdf</code></td>
+                                    <td><strong>PDF Documents:</strong> Vector digital text, scanned raster pages, and hybrid PDFs.</td>
+                                    <td>Pixel-perfect visual redaction boxes (`fitz.Rect`) with text replacement (e.g. `[PERSONA]`), metadata scrubbing, and automated OCR for scanned pages.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.docx</code>, <code>.docm</code>, <code>.doc</code></td>
+                                    <td><strong>Microsoft Word:</strong> Agreements, legal briefs, HR reviews, and reports.</td>
+                                    <td>Full traversal of paragraphs, tables, headers, footers, and OCR scanning of images embedded inside Word documents.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.xlsx</code>, <code>.xlsm</code>, <code>.xls</code></td>
+                                    <td><strong>Excel Spreadsheets:</strong> Payroll, financial statements, and CRM exports.</td>
+                                    <td>Cell-by-cell redaction across all sheets while preserving mathematical formulas, formulas references, and formatting.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.pptx</code>, <code>.ppt</code></td>
+                                    <td><strong>PowerPoint Presentations:</strong> Decks and training slides.</td>
+                                    <td>Sanitization of text frames, tables, and speaker notes across all slides.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.txt</code>, <code>.csv</code></td>
+                                    <td><strong>Plain Text & CSV:</strong> Database dumps, transaction logs, and tabular data.</td>
+                                    <td>Ultra-high-throughput streaming replacement (thousands of lines per second).</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.html</code>, <code>.htm</code>, <code>.xml</code></td>
+                                    <td><strong>Web Pages & Data Streams:</strong> Public electronic invoices (XML), web dumps.</td>
+                                    <td>DOM tree parsing that protects markup integrity while stripping sensitive PII text.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.eml</code></td>
+                                    <td><strong>Emails:</strong> Saved messages from Outlook, Thunderbird, or certified email (PEC).</td>
+                                    <td>Redaction of sender, recipients, subject, body, and embedded attachments.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.odt</code>, <code>.ods</code>, <code>.odp</code></td>
+                                    <td><strong>OpenDocument:</strong> LibreOffice and Apache OpenOffice suites.</td>
+                                    <td>Native XML processing inside the ODF zip archive.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.webp</code>, <code>.bmp</code>, <code>.tiff</code></td>
+                                    <td><strong>Photos & Scans:</strong> Identity cards, driver licenses, incident scene photos.</td>
+                                    <td>Deep learning OCR combined with biometric face detection, license plate blurring, and handwritten signature detection.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.zip</code></td>
+                                    <td><strong>Compressed Archives:</strong> Multi-file case dossiers.</td>
+                                    <td>In-memory extraction, recursive multi-format processing of all nested files, and repacking of the clean ZIP archive.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 6. MODALITA' AVANZATA                                                     -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="modalita-avanzata">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Controllo Granulare</span>
+                    <span class="section-tag lang-en">Granular Control</span>
+                    <h2 class="section-title lang-it">6. Controlli Dettagliati (Modalità Avanzata)</h2>
+                    <h2 class="section-title lang-en">6. Detailed Controls (Advanced Mode)</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>Cliccando sullo slider superiore <strong>"⚙️ Modalità Avanzata"</strong>, Germano svela il suo pannello di controllo completo. Questa modalità è studiata per DPO, responsabili privacy, programmatori e amministratori di sistema che necessitano di calibrare con precisione ogni singolo aspetto dell'elaborazione.</p>
+
+                    <h3 class="sub-title">Cosa Puoi Fare nella Modalità Avanzata:</h3>
+                    <ul>
+                        <li><strong>Abilitare o Disabilitare Singoli Modelli IA:</strong> Puoi accendere o spegnere individualmente ciascuno dei 6 modelli IA locali (ad esempio spegnere il rilevamento volti se elabori solo contratti scritti, velocizzando l'esecuzione).</li>
+                        <li><strong>Abilitare o Disabilitare le Singole Categorie di Dati:</strong> Tramite 18 grandi checkbox, puoi decidere esattamente quali dati proteggere (ad esempio anonimizzare Codici Fiscali e IBAN ma lasciare visibili i nomi delle aziende).</li>
+                        <li><strong>Regolare la Soglia di Confidenza IA:</strong> Cursore dinamico da 0% (massima sicurezza preventiva) a 100%.</li>
+                        <li><strong>Selezionare l'Accelerazione Hardware:</strong> Passare tra GPU Fallback (NVIDIA CUDA / CPU), Solo CPU o DirectML.</li>
+                        <li><strong>Consultare e Svuotare il Vault:</strong> Visualizzare in tempo reale tutte le corrispondenze <code>[TAG] → Valore Reale</code> salvate in memoria.</li>
+                        <li><strong>Terminale Log in Tempo Reale:</strong> Leggere in diretta cosa sta facendo il demone locale riga per riga con evidenziazione a colori.</li>
+                    </ul>
+                </div>
+
+                <div class="lang-en">
+                    <p>By toggling the top switch to <strong>"⚙️ Advanced Mode"</strong>, Germano exposes its comprehensive engineering suite. This mode is designed for Data Protection Officers (DPO), privacy engineers, developers, and system administrators requiring granular control over redaction behaviors.</p>
+
+                    <h3 class="sub-title">Advanced Mode Capabilities:</h3>
+                    <ul>
+                        <li><strong>Individual AI Model Toggles:</strong> Enable or disable each of the 6 local AI models on demand (e.g. disable face detection when auditing pure text contracts for increased throughput).</li>
+                        <li><strong>18 Granular Data Feature Checkboxes:</strong> Configure exactly what entities get censored (e.g. mask Italian Tax Codes and Bank IBANs while keeping public organization names visible).</li>
+                        <li><strong>AI Confidence Threshold Slider:</strong> Fine-tune sensitivity from 0% (maximum GDPR compliance paranoia) to 100%.</li>
+                        <li><strong>Hardware Acceleration Selector:</strong> Switch between GPU Fallback (NVIDIA CUDA / CPU), CPU Only, or DirectML.</li>
+                        <li><strong>Vault Inspector & Reset:</strong> Audit the active <code>[TAG] → Real Value</code> mapping stored in memory with one-click purge.</li>
+                        <li><strong>Live Activity Terminal:</strong> Inspect real-time daemon logs with color-coded success, warning, and error syntax highlighting.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 7. I 6 MODELLI IA LOCALI + REGEX                                          -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="modelli-ia">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Intelligenza Artificiale Locale</span>
+                    <span class="section-tag lang-en">Local Artificial Intelligence</span>
+                    <h2 class="section-title lang-it">7. I 6 Modelli IA Locali + Motore RegEx</h2>
+                    <h2 class="section-title lang-en">7. The 6 Local AI Models + RegEx Engine</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>A differenza di altri software che si limitano a cercare poche parole chiave con espressioni regolari elementari, Germano AI combina un <strong>ensemble ibrido</strong> di 6 reti neurali all'avanguardia operanti al 100% in locale:</p>
+
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Modello / Motore</th>
+                                    <th>Architettura & Peso</th>
+                                    <th>Cosa Rileva nel Documento</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>🧠 <strong>Velvet Privacy Filter</strong> (<code>enable_model_velvet</code>)</td>
+                                    <td>Transformer Multilingue 1.5B Parametri FP16 (<code>3000 MB</code>)</td>
+                                    <td>Comprende il contesto grammaticale e semantico della frase. Rileva persone, indirizzi, date, numeri di conto, carte di credito e dati sensibili anche in presenza di refusi, abbreviazioni o dialetti.</td>
+                                </tr>
+                                <tr>
+                                    <td>🇮🇹 <strong>DeepMount00 Italian NER XXL</strong> (<code>enable_model_italian_ner</code>)</td>
+                                    <td>RoBERTa Specializzato per l'Italia (58 Classi) (<code>210 MB</code>)</td>
+                                    <td>Modello specialistico addestrato sul linguaggio burocratico, legale, sanitario e amministrativo italiano. Riconosce cartelle cliniche, farmaci, dosaggi, tribunali, sentenze, fogli catastali, particelle e avvocati/notai.</td>
+                                </tr>
+                                <tr>
+                                    <td>🔍 <strong>EasyOCR Engine</strong> (<code>enable_ocr</code>)</td>
+                                    <td>CRAFT + Latin G2 Deep Neural OCR (<code>89 MB</code>)</td>
+                                    <td>Riconoscimento ottico dei caratteri su immagini, scansioni e fotografie ad alta precisione in lingua italiana e inglese.</td>
+                                </tr>
+                                <tr>
+                                    <td>🧑 <strong>YuNet Face Biometrics</strong> (<code>enable_faces</code>)</td>
+                                    <td>OpenCV 5.0 DNN Face Detector (<code>0.23 MB</code>)</td>
+                                    <td>Rilevamento volumetrico dei volti umani all'interno di fotografie, fototessere e documenti d'identità con applicazione di censura ottica (oscuramento).</td>
+                                </tr>
+                                <tr>
+                                    <td>✍️ <strong>YOLOS Signature Detector</strong> (<code>enable_signatures</code>)</td>
+                                    <td>Vision Transformer YOLOS-Tiny FP16 (<code>12.4 MB</code>)</td>
+                                    <td>Riconosce e oscura le firme autografe manoscritte, sigle e timbri apposti in calce a contratti, perizie e verbali.</td>
+                                </tr>
+                                <tr>
+                                    <td>🚗 <strong>YOLOS License Plate Detector</strong> (<code>enable_plate_vision</code>)</td>
+                                    <td>Vision Transformer YOLOS-Small FP16 (<code>58.5 MB</code>)</td>
+                                    <td>Identifica le targhe automobilistiche nelle fotografie di perizie assicurative, rilievi fotografici e documenti.</td>
+                                </tr>
+                                <tr>
+                                    <td>📐 <strong>Motore RegEx Deterministico</strong> (<code>enable_regex</code>)</td>
+                                    <td>Espressioni Regolari Matematiche (<code>0 ms</code>)</td>
+                                    <td>Regole deterministiche per Codici Fiscali italiani (algoritmo carattere di controllo), Partite IVA, IBAN bancari internazionali, telefoni, CAP e numeri di protocollo.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="lang-en">
+                    <p>Unlike simplistic tools relying strictly on naive regexes, Germano AI combines an advanced <strong>multi-model ensemble</strong> of 6 neural networks operating 100% locally on your device:</p>
+
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Model / Engine</th>
+                                    <th>Architecture & Footprint</th>
+                                    <th>Detection Scope</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>🧠 <strong>Velvet Privacy Filter</strong> (<code>enable_model_velvet</code>)</td>
+                                    <td>1.5B Parameter Multilingual Transformer FP16 (<code>3000 MB</code>)</td>
+                                    <td>Contextual semantic understanding. Detects personal names, addresses, dates, account numbers, and credentials even across typos, slang, and unstructured paragraphs.</td>
+                                </tr>
+                                <tr>
+                                    <td>🇮🇹 <strong>DeepMount00 Italian NER XXL</strong> (<code>enable_model_italian_ner</code>)</td>
+                                    <td>Specialized Italian RoBERTa (58 Classes) (<code>210 MB</code>)</td>
+                                    <td>Fine-tuned on Italian public administration, medical records, cadastre, and court filings. Detects diagnoses, dosages, courts, judicial verdicts, cadastre parcels, and notary titles.</td>
+                                </tr>
+                                <tr>
+                                    <td>🔍 <strong>EasyOCR Engine</strong> (<code>enable_ocr</code>)</td>
+                                    <td>CRAFT + Latin G2 Deep Neural OCR (<code>89 MB</code>)</td>
+                                    <td>High-precision optical character recognition on scanned papers, faxes, and photos in Italian and English.</td>
+                                </tr>
+                                <tr>
+                                    <td>🧑 <strong>YuNet Face Biometrics</strong> (<code>enable_faces</code>)</td>
+                                    <td>OpenCV 5.0 DNN Face Detector (<code>0.23 MB</code>)</td>
+                                    <td>Biometric face detection in photos, IDs, driver licenses, and incident records with instant visual blackouts.</td>
+                                </tr>
+                                <tr>
+                                    <td>✍️ <strong>YOLOS Signature Detector</strong> (<code>enable_signatures</code>)</td>
+                                    <td>YOLOS-Tiny Vision Transformer FP16 (<code>12.4 MB</code>)</td>
+                                    <td>Identifies and redacts handwritten cursive signatures, initials, and stamps on agreements and legal deeds.</td>
+                                </tr>
+                                <tr>
+                                    <td>🚗 <strong>YOLOS License Plate Detector</strong> (<code>enable_plate_vision</code>)</td>
+                                    <td>YOLOS-Small Vision Transformer FP16 (<code>58.5 MB</code>)</td>
+                                    <td>Detects vehicle license plates in automotive insurance claims, site surveys, and accident photos.</td>
+                                </tr>
+                                <tr>
+                                    <td>📐 <strong>Deterministic RegEx Engine</strong> (<code>enable_regex</code>)</td>
+                                    <td>Optimized Regex State Machine (<code>0 ms</code>)</td>
+                                    <td>Instant pattern validation for Italian Fiscal Codes (checksum validation), VAT IDs, IBAN accounts, emails, phone numbers, and postal codes.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 8. LE 18 CATEGORIE CONFIGURABILI                                          -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="categorie">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Filtri Selettivi</span>
+                    <span class="section-tag lang-en">Selective Filters</span>
+                    <h2 class="section-title lang-it">8. Le 18 Categorie e Funzionalità Configurabili</h2>
+                    <h2 class="section-title lang-en">8. The 18 Configurable Feature Categories</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>In Modalità Avanzata puoi attivare o disattivare singolarmente ciascuna delle 18 categorie di dati sensibili. Ecco l'elenco completo con la chiave di configurazione, l'etichetta assegnata e la spiegazione:</p>
+
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Categoria & Switch</th>
+                                    <th>Tag Assegnato</th>
+                                    <th>Cosa Viene Protetto & Esempi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>👤 <code>censor_person</code></td>
+                                    <td><code>[PERSONA_N]</code></td>
+                                    <td>Nomi propri di battesimo, cognomi, nomignoli e pseudonimi (es. <em>Mario Rossi</em>).</td>
+                                </tr>
+                                <tr>
+                                    <td>🎓 <code>censor_profession</code></td>
+                                    <td><code>[PROFESSIONE/TITOLO_N]</code></td>
+                                    <td>Titoli professionali e onorifici (es. <em>Dott., Avv., Notaio, Ingegnere, Architetto</em>).</td>
+                                </tr>
+                                <tr>
+                                    <td>📍 <code>censor_address</code></td>
+                                    <td><code>[INDIRIZZO_N]</code></td>
+                                    <td>Indirizzi di residenza, vie, corsi, piazze, CAP, frazioni e numeri civici (es. <em>Via Roma 10, 20121 Milano</em>).</td>
+                                </tr>
+                                <tr>
+                                    <td>🗺️ <code>censor_cadastre</code></td>
+                                    <td><code>[CATASTO_N]</code></td>
+                                    <td>Riferimenti catastali di fabbricati e terreni (es. <em>Foglio 12, Particella 450, Subalterno 3</em>).</td>
+                                </tr>
+                                <tr>
+                                    <td>🪪 <code>censor_cf_iva</code></td>
+                                    <td><code>[COD.FISCALE/P.IVA_N]</code></td>
+                                    <td>Codici Fiscali alfanumerici a 16 caratteri e Partite IVA a 11 cifre.</td>
+                                </tr>
+                                <tr>
+                                    <td>✉️ <code>censor_email</code></td>
+                                    <td><code>[EMAIL_N]</code></td>
+                                    <td>Indirizzi email personali, aziendali e caselle PEC (Posta Elettronica Certificata).</td>
+                                </tr>
+                                <tr>
+                                    <td>📞 <code>censor_phone</code></td>
+                                    <td><code>[TELEFONO_N]</code></td>
+                                    <td>Numeri di cellulare, telefoni fissi con prefisso internazionale (+39) e codici IMEI.</td>
+                                </tr>
+                                <tr>
+                                    <td>💳 <code>censor_account</code></td>
+                                    <td><code>[CONTO/CARTA_N]</code></td>
+                                    <td>Codici IBAN bancari, numeri di conto corrente, carte di credito/debito, codici BIC/SWIFT.</td>
+                                </tr>
+                                <tr>
+                                    <td>💶 <code>censor_financial</code></td>
+                                    <td><code>[IMPORTO/FINANZA_N]</code></td>
+                                    <td>Importi di stipendi, compensi, tassi di mutuo, valute e saldi economici riservati.</td>
+                                </tr>
+                                <tr>
+                                    <td>📅 <code>censor_date</code></td>
+                                    <td><code>[DATA_N]</code></td>
+                                    <td>Date di nascita, date di rilascio documenti, età anagrafiche e orari sensibili.</td>
+                                </tr>
+                                <tr>
+                                    <td>🏢 <code>censor_org</code></td>
+                                    <td><code>[AZIENDA/ENTE_N]</code></td>
+                                    <td>Ragioni sociali societarie (S.r.l., S.p.A., S.n.c.), associazioni, cooperative ed enti.</td>
+                                </tr>
+                                <tr>
+                                    <td>🪪 <code>censor_plates_docs</code></td>
+                                    <td><code>[TARGA/DOCUMENTO_N]</code></td>
+                                    <td>Targhe automobilistiche nel testo, Carte d'Identità Elettroniche (CIE), passaporti e patenti.</td>
+                                </tr>
+                                <tr>
+                                    <td>🏥 <code>censor_medical</code></td>
+                                    <td><code>[DATO_SANITARIO_N]</code></td>
+                                    <td>Dati sanitari ai sensi dell'Art. 9 GDPR: patologie, diagnosi, cartelle cliniche e referti.</td>
+                                </tr>
+                                <tr>
+                                    <td>💊 <code>censor_medicine</code></td>
+                                    <td><code>[FARMACO/TERAPIA_N]</code></td>
+                                    <td>Nomi commerciali e principi attivi di farmaci, terapie mediche, dosaggi e posologie.</td>
+                                </tr>
+                                <tr>
+                                    <td>⚖️ <code>censor_legal</code></td>
+                                    <td><code>[DATO_GIUDIZIARIO_N]</code></td>
+                                    <td>Dati giudiziari ai sensi dell'Art. 10 GDPR: numeri di sentenze, tribunali, decreti penali e procedimenti.</td>
+                                </tr>
+                                <tr>
+                                    <td>💍 <code>censor_civil_status</code></td>
+                                    <td><code>[STATO_CIVILE_N]</code></td>
+                                    <td>Stato civile (coniugato, nubile, separato) e regime patrimoniale (comunione/separazione dei beni).</td>
+                                </tr>
+                                <tr>
+                                    <td>🔑 <code>censor_secret</code></td>
+                                    <td><code>[SEGRETO_N]</code></td>
+                                    <td>Password, PIN di sicurezza, chiavi crittografiche, codici di accesso e API tokens.</td>
+                                </tr>
+                                <tr>
+                                    <td>🌐 <code>censor_url</code></td>
+                                    <td><code>[URL_N]</code></td>
+                                    <td>Indirizzi IP (IPv4 e IPv6), indirizzi MAC, collegamenti web a cartelle private e User-Agent.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="lang-en">
+                    <p>In Advanced Mode, you can selectively toggle each of the 18 sensitive data categories. Here is the complete matrix specifying config keys, replacement tags, and real-world examples:</p>
+
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Category & Switch</th>
+                                    <th>Assigned Tag</th>
+                                    <th>Protection Scope & Examples</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>👤 <code>censor_person</code></td>
+                                    <td><code>[PERSONA_N]</code></td>
+                                    <td>First names, middle names, last names, aliases, and nicknames (e.g. <em>John Doe</em>).</td>
+                                </tr>
+                                <tr>
+                                    <td>🎓 <code>censor_profession</code></td>
+                                    <td><code>[PROFESSIONE/TITOLO_N]</code></td>
+                                    <td>Professional and honorific titles (e.g. <em>Dr., Esq., Notary, Lead Architect</em>).</td>
+                                </tr>
+                                <tr>
+                                    <td>📍 <code>censor_address</code></td>
+                                    <td><code>[INDIRIZZO_N]</code></td>
+                                    <td>Street addresses, postal zip codes, apartment units, and cities (e.g. <em>742 Evergreen Terrace</em>).</td>
+                                </tr>
+                                <tr>
+                                    <td>🗺️ <code>censor_cadastre</code></td>
+                                    <td><code>[CATASTO_N]</code></td>
+                                    <td>Land registry and cadastre parcels (e.g. <em>Sheet 12, Parcel 450, Subordinate 3</em>).</td>
+                                </tr>
+                                <tr>
+                                    <td>🪪 <code>censor_cf_iva</code></td>
+                                    <td><code>[COD.FISCALE/P.IVA_N]</code></td>
+                                    <td>Italian Tax Codes (Codice Fiscale) and corporate VAT IDs (Partita IVA).</td>
+                                </tr>
+                                <tr>
+                                    <td>✉️ <code>censor_email</code></td>
+                                    <td><code>[EMAIL_N]</code></td>
+                                    <td>Personal emails, business emails, and certified PEC inboxes.</td>
+                                </tr>
+                                <tr>
+                                    <td>📞 <code>censor_phone</code></td>
+                                    <td><code>[TELEFONO_N]</code></td>
+                                    <td>Mobile phones, landlines with international country codes (+39, +1), and device IMEI numbers.</td>
+                                </tr>
+                                <tr>
+                                    <td>💳 <code>censor_account</code></td>
+                                    <td><code>[CONTO/CARTA_N]</code></td>
+                                    <td>Bank IBANs, bank account numbers, credit/debit card numbers, and SWIFT/BIC codes.</td>
+                                </tr>
+                                <tr>
+                                    <td>💶 <code>censor_financial</code></td>
+                                    <td><code>[IMPORTO/FINANZA_N]</code></td>
+                                    <td>Confidential salary figures, mortgage interest rates, balances, and monetary sums.</td>
+                                </tr>
+                                <tr>
+                                    <td>📅 <code>censor_date</code></td>
+                                    <td><code>[DATA_N]</code></td>
+                                    <td>Dates of birth, document expiration dates, exact patient ages, and sensitive timestamps.</td>
+                                </tr>
+                                <tr>
+                                    <td>🏢 <code>censor_org</code></td>
+                                    <td><code>[AZIENDA/ENTE_N]</code></td>
+                                    <td>Corporate organization names (LLC, Inc, Corp, S.p.A., S.r.l.), NGOs, and institutions.</td>
+                                </tr>
+                                <tr>
+                                    <td>🪪 <code>censor_plates_docs</code></td>
+                                    <td><code>[TARGA/DOCUMENTO_N]</code></td>
+                                    <td>Vehicle license plates in text, National ID cards, passports, and driver licenses.</td>
+                                </tr>
+                                <tr>
+                                    <td>🏥 <code>censor_medical</code></td>
+                                    <td><code>[DATO_SANITARIO_N]</code></td>
+                                    <td>GDPR Art. 9 Health Data: diagnoses, hospitalizations, symptoms, and medical histories.</td>
+                                </tr>
+                                <tr>
+                                    <td>💊 <code>censor_medicine</code></td>
+                                    <td><code>[FARMACO/TERAPIA_N]</code></td>
+                                    <td>Prescription drugs, active pharmaceutical ingredients, therapies, and dosages.</td>
+                                </tr>
+                                <tr>
+                                    <td>⚖️ <code>censor_legal</code></td>
+                                    <td><code>[DATO_GIUDIZIARIO_N]</code></td>
+                                    <td>GDPR Art. 10 Judicial Data: court names, case docket numbers, and criminal records.</td>
+                                </tr>
+                                <tr>
+                                    <td>💍 <code>censor_civil_status</code></td>
+                                    <td><code>[STATO_CIVILE_N]</code></td>
+                                    <td>Marital status (married, divorced, single) and property regime agreements.</td>
+                                </tr>
+                                <tr>
+                                    <td>🔑 <code>censor_secret</code></td>
+                                    <td><code>[SEGRETO_N]</code></td>
+                                    <td>Passwords, PIN codes, private cryptographic keys, and API tokens.</td>
+                                </tr>
+                                <tr>
+                                    <td>🌐 <code>censor_url</code></td>
+                                    <td><code>[URL_N]</code></td>
+                                    <td>IP addresses (IPv4 & IPv6), MAC addresses, internal private web links, and User-Agents.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 9. HARDWARE, SOGLIA & VAULT                                               -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="hardware-soglia">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Configurazione Tecnica</span>
+                    <span class="section-tag lang-en">Technical Configuration</span>
+                    <h2 class="section-title lang-it">9. Hardware, Soglia IA & Gestione Vault</h2>
+                    <h2 class="section-title lang-en">9. Hardware, AI Threshold & Vault Management</h2>
+                </div>
+
+                <div class="lang-it">
+                    <h3 class="sub-title">Soglia di Confidenza IA (Cursore di Sicurezza)</h3>
+                    <p>Il cursore di sensibilità consente di impostare la soglia minima di certezza dell'Intelligenza Artificiale:</p>
+                    <ul>
+                        <li><strong>0% (Massima Sicurezza - Profilo PA / GDPR Predefinito):</strong> Qualsiasi elemento che presenti anche il minimo dubbio viene oscurato. È la modalità consigliata per la Pubblica Amministrazione e per evitare sanzioni GDPR.</li>
+                        <li><strong>Valori intermedi (10% - 50%):</strong> Modalità bilanciata adatta a testi commerciali e di marketing per ridurre al minimo i falsi positivi.</li>
+                    </ul>
+
+                    <h3 class="sub-title">Accelerazione Hardware</h3>
+                    <p>Germano include 3 modalità di esecuzione selezionabili:</p>
+                    <ol>
+                        <li><strong>GPU Fallback (Consigliato):</strong> Se nel PC è presente una scheda grafica NVIDIA compatibile CUDA, Germano sfrutta l'accelerazione GPU. Se la scheda non è presente o la memoria VRAM non basta, passa automaticamente alla CPU senza crashare.</li>
+                        <li><strong>Solo CPU:</strong> Esegue tutti i modelli sul processore centrale del computer (funziona su qualsiasi PC Windows 11 anche senza scheda video).</li>
+                        <li><strong>DirectML (AMD / Intel):</strong> Accelerazione sperimentale per schede grafiche AMD Radeon o Intel Iris/Arc tramite librerie Microsoft DirectML.</li>
+                    </ol>
+
+                    <h3 class="sub-title">Gestione del Vault delle Corrispondenze</h3>
+                    <p>La tabella delle corrispondenze risiede localmente in <code>extracted/deanonymize_vault.json</code>. Cliccando su <strong>"👁️ Mostra Corrispondenze"</strong> in Modalità Avanzata puoi ispezionare tutti i tag attivi. Cliccando su <strong>"🗑️ Svuota Archivio"</strong> azzeri la memoria delle corrispondenze per iniziare una nuova sessione pulita.</p>
+                </div>
+
+                <div class="lang-en">
+                    <h3 class="sub-title">AI Confidence Threshold (Safety Slider)</h3>
+                    <p>The sensitivity slider defines the minimum statistical probability threshold required for AI redactions:</p>
+                    <ul>
+                        <li><strong>0% (Maximum Safety - Default GDPR / Public Administration Profile):</strong> Redacts any span that raises even the slightest suspicion. Recommended for strict compliance scenarios.</li>
+                        <li><strong>Balanced Values (10% - 50%):</strong> Optimal for commercial and marketing copy to eliminate occasional false positives.</li>
+                    </ul>
+
+                    <h3 class="sub-title">Hardware Acceleration Modes</h3>
+                    <p>Germano supports 3 selectable compute execution backends:</p>
+                    <ol>
+                        <li><strong>GPU Fallback (Recommended):</strong> Utilizes NVIDIA CUDA acceleration if an active compatible GPU is detected. Gracefully falls back to CPU if VRAM is exhausted.</li>
+                        <li><strong>CPU Only:</strong> Executes models exclusively on the central CPU cores (guaranteed compatibility across all Windows 11 hardware).</li>
+                        <li><strong>DirectML (AMD / Intel):</strong> Experimental GPU acceleration via Microsoft DirectML for AMD Radeon and Intel GPUs.</li>
+                    </ol>
+
+                    <h3 class="sub-title">Vault Memory Management</h3>
+                    <p>The reverse de-anonymization dictionary is persisted locally in <code>extracted/deanonymize_vault.json</code>. In Advanced Mode, click <strong>"👁️ View Mappings"</strong> to inspect current associations, or click <strong>"🗑️ Clear Vault"</strong> to purge all remembered entities.</p>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 10. SPECIFICHE API REST COMPLETE                                          -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="api-rest">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Integrazione Sviluppatori</span>
+                    <span class="section-tag lang-en">Developer Integration</span>
+                    <h2 class="section-title lang-it">10. Specifiche API REST Complete</h2>
+                    <h2 class="section-title lang-en">10. Complete REST API Specifications</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>Germano AI espone un server HTTP locale su <code>http://127.0.0.1:8000</code>. Di seguito la documentazione completa di tutti gli endpoint REST pronti per essere integrati in script Python, Bash, Node.js o applicativi aziendali.</p>
+
+                    <h3 class="sub-title">1. Anonimizzazione Testo (POST /api/v1/anonymize_text)</h3>
+                    <p>Anonimizza una stringa di testo arbitraria restituendo il testo bonificato e l'elenco delle entità rilevate.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copia</button>
+                        </div>
+                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/anonymize_text   -H "Content-Type: application/json"   -d '{
+    "text": "Il contratto è firmato da Mario Rossi, CF RSSMRA80A01H501U residente in Via Roma 10 a Milano.",
+    "force_anonymize": true
+  }'</code></pre>
+                    </div>
+
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>JSON Response (200 OK)</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copia</button>
+                        </div>
+                        <pre><code>{
+  "anonymized": "Il contratto è firmato da [PERSONA_1], CF [COD.FISCALE/P.IVA_1] residente in [INDIRIZZO_1].",
+  "extracted_data": [
+    { "word": "Mario Rossi", "label": "[PERSONA_1]", "entity": "private_person", "score": 0.998 },
+    { "word": "RSSMRA80A01H501U", "label": "[COD.FISCALE/P.IVA_1]", "entity": "cf_iva", "score": 1.0 },
+    { "word": "Via Roma 10 a Milano", "label": "[INDIRIZZO_1]", "entity": "private_address", "score": 0.994 }
+  ]
+}</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">2. De-Anonimizzazione Testo (POST /api/v1/deanonymize_text)</h3>
+                    <p>Ripristina i dati reali all'interno di un testo contenente etichette del Vault restituito dall'AI.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copia</button>
+                        </div>
+                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/deanonymize_text   -H "Content-Type: application/json"   -d '{
+    "text": "Confermo che [PERSONA_1] ha saldato la fattura."
+  }'</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">3. Anonimizzazione File Singolo (POST /api/v1/anonymize)</h3>
+                    <p>Invia un file multipart/form-data e riceve direttamente in streaming il file bonificato mantenendo il formato originale.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copia</button>
+                        </div>
+                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/anonymize   -F "file=@contratto_riservato.docx"   --output "contratto_protetto.docx"</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">4. Stato e Metriche del Motore (GET /api/status)</h3>
+                    <p>Fornisce lo stato operativo (<code>running</code>, <code>loading_models</code>, <code>stopped</code>), il conteggio dei file nelle cartelle, l'uso CPU e RAM.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copia</button>
+                        </div>
+                        <pre><code>curl -X GET http://127.0.0.1:8000/api/status</code></pre>
+                    </div>
+                </div>
+
+                <div class="lang-en">
+                    <p>Germano AI serves a local HTTP REST API on <code>http://127.0.0.1:8000</code>. Below is the technical specification for all endpoints ready to integrate into Python, Bash, Node.js, or enterprise backends.</p>
+
+                    <h3 class="sub-title">1. Text Anonymization (POST /api/v1/anonymize_text)</h3>
+                    <p>Sanitizes arbitrary text strings, returning the clean string alongside an audit array of tagged entities.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/anonymize_text   -H "Content-Type: application/json"   -d '{
+    "text": "The contract is executed by John Doe, Tax ID RSSMRA80A01H501U residing in Milan.",
+    "force_anonymize": true
+  }'</code></pre>
+                    </div>
+
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>JSON Response (200 OK)</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>{
+  "anonymized": "The contract is executed by [PERSONA_1], Tax ID [COD.FISCALE/P.IVA_1] residing in [INDIRIZZO_1].",
+  "extracted_data": [
+    { "word": "John Doe", "label": "[PERSONA_1]", "entity": "private_person", "score": 0.998 },
+    { "word": "RSSMRA80A01H501U", "label": "[COD.FISCALE/P.IVA_1]", "entity": "cf_iva", "score": 1.0 },
+    { "word": "residing in Milan", "label": "[INDIRIZZO_1]", "entity": "private_address", "score": 0.994 }
+  ]
+}</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">2. Text De-Anonymization (POST /api/v1/deanonymize_text)</h3>
+                    <p>Restores original confidential data in an AI-generated completion containing Vault tags.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/deanonymize_text   -H "Content-Type: application/json"   -d '{
+    "text": "I hereby confirm that [PERSONA_1] has completed payment."
+  }'</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">3. Single File Redaction (POST /api/v1/anonymize)</h3>
+                    <p>Uploads a multipart document and streams back the sanitized version in its native file format.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/anonymize   -F "file=@confidential_agreement.docx"   --output "protected_agreement.docx"</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">4. Engine Status & Telemetry (GET /api/status)</h3>
+                    <p>Returns health state (<code>running</code>, <code>loading_models</code>, <code>stopped</code>), folder file counts, and system RAM/CPU load.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>curl -X GET http://127.0.0.1:8000/api/status</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 11. PROXY TRASPARENTE PER AGENTI IA                                       -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="proxy-agenti">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Scudo Privacy Totale</span>
+                    <span class="section-tag lang-en">Total Privacy Shield</span>
+                    <h2 class="section-title lang-it">11. Proxy API Trasparente per Agenti IA</h2>
+                    <h2 class="section-title lang-en">11. Transparent AI Agent Proxy</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>Germano AI integra un <strong>Proxy API Bidirezionale Intelligente</strong> conforme allo standard OpenAI (`/v1/chat/completions`), Anthropic (`/v1/messages`) e OpenAI Responses (`/v1/responses`).</p>
+
+                    <div class="callout callout-info">
+                        <div class="callout-icon">⚡</div>
+                        <div class="callout-content">
+                            <strong>Come Funziona il Proxy:</strong>
+                            <p>Gli editor o agenti IA (come <strong>Google Antigravity</strong>, <strong>OpenAI Codex CLI</strong>, <strong>Cursor</strong>, <strong>Windsurf</strong>, <strong>Claude Code</strong>) indirizzano le loro chiamate API verso <code>http://127.0.0.1:8000/v1</code> invece che direttamente verso il cloud. Germano intercetta la chiamata in uscita, <strong>anonimizza al volo</strong> prompt, messaggi, immagini e argomenti delle funzioni (`tool_calls`), inoltra la richiesta al provider prescelto e, quando la risposta torna indietro, <strong>rimette automaticamente i dati veri al loro posto</strong> prima di passarla all'editor!</p>
+                        </div>
+                    </div>
+
+                    <h3 class="sub-title">Supporto Streaming SSE con `StreamTagBuffer`</h3>
+                    <p>Nelle risposte in streaming (Server-Sent Events), i token arrivano spezzati frammento per frammento. Se un modello cloud restituisce un tag suddiviso in più token (es. <code>[PER</code> + <code>SONA_1]</code>), il buffer intelligente <code>StreamTagBuffer</code> di Germano trattiene temporaneamente i caratteri finché il tag non è completo, lo de-anonimizza al volo e rilascia immediatamente il testo originale senza ritardi evidenti.</p>
+
+                    <h3 class="sub-title">Supporto Chiamate Funzione & Scrittura File (`tool_calls`)</h3>
+                    <p>Quando Google Antigravity o Codex invocano strumenti come <code>write_file</code> o <code>edit_file</code>, Germano de-anonimizza ricorsivamente la stringa JSON contenuta in <code>function.arguments</code>. In questo modo il file che l'agente scrive sul disco conterrà sempre i <strong>dati reali corretti</strong> senza alcuna etichetta residua!</p>
+                </div>
+
+                <div class="lang-en">
+                    <p>Germano AI includes an embedded <strong>Bidirectional Transparent Proxy</strong> compliant with the OpenAI standard (`/v1/chat/completions`), Anthropic standard (`/v1/messages`), and Responses API (`/v1/responses`).</p>
+
+                    <div class="callout callout-info">
+                        <div class="callout-icon">⚡</div>
+                        <div class="callout-content">
+                            <strong>How the Proxy Operates:</strong>
+                            <p>AI editors and coding harnesses (such as <strong>Google Antigravity</strong>, <strong>OpenAI Codex CLI</strong>, <strong>Cursor</strong>, <strong>Windsurf</strong>, <strong>Claude Code</strong>) point their API requests to <code>http://127.0.0.1:8000/v1</code> rather than direct cloud endpoints. Germano intercepts outgoing traffic, <strong>redacts on the fly</strong> prompts, system instructions, images, and function arguments (`tool_calls`), forwards the clean request to OpenAI/Anthropic, and when the stream returns, <strong>transparently re-injects real data</strong> before handing the response back to your editor!</p>
+                        </div>
+                    </div>
+
+                    <h3 class="sub-title">SSE Streaming via `StreamTagBuffer`</h3>
+                    <p>In streaming completions (Server-Sent Events), tokens arrive fragmented across tiny chunks. If an LLM emits a tag split across chunks (e.g. <code>[PER</code> + <code>SONA_1]</code>), Germano's <code>StreamTagBuffer</code> buffers fragments until the bracket closes, queries the local vault, and emits the real restored word without perceptible latency.</p>
+
+                    <h3 class="sub-title">Native Tool Calls & File Editing (`tool_calls`)</h3>
+                    <p>When autonomous agents like Google Antigravity or Codex invoke file creation or patching tools (`write_file`, `edit_file`), Germano recursively de-anonymizes the JSON string within <code>function.arguments</code>. As a result, code or documents written to disk by the AI will always feature the <strong>authentic real data</strong> with zero leftover placeholder tags!</p>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 12. SETUP ANTIGRAVITY, CURSOR, CODEX                                      -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="setup-editor">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Guida Passo-Passo</span>
+                    <span class="section-tag lang-en">Step-by-Step Setup</span>
+                    <h2 class="section-title lang-it">12. Setup Antigravity, Cursor, Codex, Claude Code</h2>
+                    <h2 class="section-title lang-en">12. Setup Antigravity, Cursor, Codex, Claude Code</h2>
+                </div>
+
+                <div class="lang-it">
+                    <h3 class="sub-title">1. Configurazione Google Antigravity</h3>
+                    <p>Per proteggere le conversazioni e i documenti manipolati all'interno di Google Antigravity:</p>
+                    <ol>
+                        <li>In Germano AI (Dashboard), imposta l'URL target del tuo provider (es. <code>https://api.openai.com/v1/chat/completions</code>).</li>
+                        <li>Nelle impostazioni di rete o variabili d'ambiente di Antigravity, configura:
+                            <div class="code-block">
+                                <pre><code>OPENAI_BASE_URL="http://127.0.0.1:8000/v1"</code></pre>
+                            </div>
+                        </li>
+                    </ol>
+
+                    <h3 class="sub-title">2. Configurazione OpenAI Codex CLI</h3>
+                    <p>Nel prompt dei comandi di Windows (CMD o PowerShell) imposta la variabile d'ambiente prima di lanciare codex:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>PowerShell</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copia</button>
+                        </div>
+                        <pre><code>$env:OPENAI_BASE_URL = "http://127.0.0.1:8000/v1"
+codex</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">3. Configurazione Cursor IDE</h3>
+                    <ol>
+                        <li>Apri Cursor e premi <code>Ctrl + Shift + J</code> per entrare nelle impostazioni.</li>
+                        <li>Vai su <strong>Models</strong> -> <strong>OpenAI API Key</strong>.</li>
+                        <li>Inserisci la tua chiave API reale (oppure inserisci una chiave fittizia se usi Germano con chiave preconfigurata).</li>
+                        <li>Clicca su <strong>Override OpenAI Base URL</strong> e imposta:
+                            <div class="code-block">
+                                <pre><code>http://127.0.0.1:8000/v1</code></pre>
+                            </div>
+                        </li>
+                    </ol>
+
+                    <h3 class="sub-title">4. Configurazione Claude Code (Anthropic)</h3>
+                    <p>Imposta l'endpoint di base Anthropic puntando al proxy locale di Germano:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>PowerShell</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copia</button>
+                        </div>
+                        <pre><code>$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8000"
+claude</code></pre>
+                    </div>
+                </div>
+
+                <div class="lang-en">
+                    <h3 class="sub-title">1. Google Antigravity Setup</h3>
+                    <p>To shield all prompts, context documents, and files processed by Google Antigravity:</p>
+                    <ol>
+                        <li>In Germano AI Dashboard, confirm your upstream provider URL (e.g. <code>https://api.openai.com/v1/chat/completions</code>).</li>
+                        <li>Configure Antigravity's target endpoint:
+                            <div class="code-block">
+                                <pre><code>OPENAI_BASE_URL="http://127.0.0.1:8000/v1"</code></pre>
+                            </div>
+                        </li>
+                    </ol>
+
+                    <h3 class="sub-title">2. OpenAI Codex CLI Setup</h3>
+                    <p>In Windows PowerShell or CMD, set the base URL environment variable prior to launching codex:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>PowerShell</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>$env:OPENAI_BASE_URL = "http://127.0.0.1:8000/v1"
+codex</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">3. Cursor IDE Setup</h3>
+                    <ol>
+                        <li>Open Cursor and press <code>Ctrl + Shift + J</code> to open Settings.</li>
+                        <li>Navigate to <strong>Models</strong> -> <strong>OpenAI API Key</strong>.</li>
+                        <li>Enable <strong>Override OpenAI Base URL</strong> and enter:
+                            <div class="code-block">
+                                <pre><code>http://127.0.0.1:8000/v1</code></pre>
+                            </div>
+                        </li>
+                    </ol>
+
+                    <h3 class="sub-title">4. Claude Code Setup (Anthropic)</h3>
+                    <p>Direct Anthropic requests through Germano's local de-anonymizing proxy:</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>PowerShell</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8000"
+claude</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
+            <!-- 13. DOMANDE FREQUENTI & RISOLUZIONE                                       -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="faq">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Supporto Rapido</span>
+                    <span class="section-tag lang-en">Quick Support</span>
+                    <h2 class="section-title lang-it">13. Domande Frequenti (FAQ) & Risoluzione Errori</h2>
+                    <h2 class="section-title lang-en">13. FAQ & Troubleshooting</h2>
+                </div>
+
+                <div class="lang-it">
+                    <h3 class="sub-title">D: Germano AI invia qualcosa su Internet?</h3>
+                    <p><strong>R: Assolutamente NO.</strong> L'intero software è progettato e certificato per funzionare su computer isolati dalla rete (air-gapped). Tutti i 6 modelli IA risiedono nella cartella <code>models/</code> e il codice include protezioni che disabilitano qualsiasi telemetria.</p>
+
+                    <h3 class="sub-title">D: Cosa succede se il programma indica "Porta 8000 già in uso"?</h3>
+                    <p><strong>R:</strong> Significa che hai già una finestra di Germano aperta in background o un altro server web locale. Chiudi la finestra precedente o apri il task manager e termina i processi <code>python.exe</code> inattivi.</p>
+
+                    <h3 class="sub-title">D: Perché vedo l'avviso "Processi secondari rimasti aperti"?</h3>
+                    <p><strong>R:</strong> Se la finestra di Germano è stata chiusa forzatamente in passato, potrebbe essere rimasto un processo in background. Basta cliccare sul pulsante rosso <strong>"Chiudi processi secondari"</strong> che compare in cima alla pagina per risolvere il problema con un solo clic.</p>
+
+                    <h3 class="sub-title">D: I file protetti mantengono la grafica e i font originali?</h3>
+                    <p><strong>R: SÌ al 100%.</strong> I PDF mantengono il loro layout esatto con annotazioni di copertura pixel per pixel. I file Word DOCX e i fogli Excel XLSX mantengono tutte le tabelle, immagini, bordi, formule matematiche e formattazioni originali.</p>
+                </div>
+
+                <div class="lang-en">
+                    <h3 class="sub-title">Q: Does Germano AI transmit any data over the Internet?</h3>
+                    <p><strong>A: Absolutely NOT.</strong> The entire platform is engineered and certified for air-gapped workstations. All 6 neural networks are housed inside <code>models/</code>, and internal runtime flags actively suppress any outbound telemetry.</p>
+
+                    <h3 class="sub-title">Q: What should I do if port 8000 is reported in use?</h3>
+                    <p><strong>A:</strong> This indicates an existing instance of Germano is already running in background or another dev server is bound to port 8000. Close the prior terminal window or terminate orphaned <code>python.exe</code> instances.</p>
+
+                    <h3 class="sub-title">Q: Why do I see the "Orphaned processes detected" banner?</h3>
+                    <p><strong>A:</strong> If the command prompt was abruptly terminated in a prior session, an idle background process may persist. Simply click the red <strong>"Terminate Orphaned Processes"</strong> button to clean up in 1 click.</p>
+
+                    <h3 class="sub-title">Q: Do redacted files preserve their original typography and tables?</h3>
+                    <p><strong>A: 100% YES.</strong> PDFs preserve vector geometry and font metrics with pixel-perfect redact bounding boxes. Word DOCX and Excel XLSX documents preserve all styling, tables, formulas, and structural layouts.</p>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        function setDocLang(lang) {
+            document.body.dataset.lang = lang;
+            document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+            const activeBtn = document.getElementById('btn-' + lang);
+            if (activeBtn) activeBtn.classList.add('active');
+            try {
+                localStorage.setItem('germano_guide_lang', lang);
+                const url = new URL(window.location);
+                url.searchParams.set('lang', lang);
+                window.history.replaceState({}, '', url);
+            } catch (e) {}
+        }
+
+        function copyCode(btn) {
+            const codeEl = btn.closest('.code-block').querySelector('code');
+            if (!codeEl) return;
+            navigator.clipboard.writeText(codeEl.innerText).then(() => {
+                const orig = btn.textContent;
+                btn.textContent = '✓ Copiato!';
+                btn.style.background = '#10b981';
+                btn.style.color = '#fff';
+                setTimeout(() => {
+                    btn.textContent = orig;
+                    btn.style.background = '';
+                    btn.style.color = '';
+                }, 2000);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            let initialLang = 'it';
+            try {
+                const urlLang = new URLSearchParams(window.location.search).get('lang');
+                const savedLang = localStorage.getItem('germano_guide_lang');
+                if (urlLang === 'en' || urlLang === 'it') {
+                    initialLang = urlLang;
+                } else if (savedLang === 'en' || savedLang === 'it') {
+                    initialLang = savedLang;
+                }
+            } catch (e) {}
+            setDocLang(initialLang);
+        });
+    </script>
+</body>
+</html>
