@@ -22,7 +22,7 @@ Germano AI lavora in modo completamente autonomo "ascoltando" le sue cartelle. I
 
 💡 **Tip Produttività:** Puoi aggiungere nuovi file o intere cartelle *mentre il software sta già lavorando*: vengono messi in coda ed elaborati senza riavviare nulla. **Esporta elenco** salva in CSV (per Excel) l'elenco dei documenti pronti o non riusciti. Dalla Dashboard puoi anche anonimizzare "al volo" un testo incollandolo nel riquadro **«Testo da inviare a un servizio di AI»**.
 
-👉 **[SCARICA GERMANO AI STANDALONE](https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD)**
+👉 **[SCARICA GERMANO AI STANDALONE](https://download.germano.ai)**
 
 ---
 
@@ -45,7 +45,7 @@ Germano AI è progettato per adattarsi sia ad ambienti altamente regolamentati c
 
 *   **Nuova Dashboard, sobria e pensata per il lavoro in blocco:** pulsanti per aprire le cartelle `input` e `output`, aggiunta di file o intere cartelle, contatori In attesa / Pronti / Non riusciti, elenco dei documenti non elaborati con il motivo e **Rimetti in coda**, esportazione dell'elenco in CSV.
 *   **Endpoint per gli agenti AI:** in Modalità Avanzata la scheda **Agenti AI e API** mostra gli indirizzi del Proxy (formato OpenAI e Anthropic) e, per Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider e gli SDK, dove impostarli; seguono gli esempi delle API REST.
-*   **Aggiornamenti automatici:** solo quando Windows segnala che il PC è connesso a Internet, Germano cerca una nuova versione su GitHub, la scarica da Google Drive, ne verifica l'impronta SHA-256 e la installa al riavvio, conservando documenti, Vault e impostazioni (dettagli più sotto).
+*   **Aggiornamenti automatici:** solo quando Windows segnala che il PC è connesso a Internet, Germano cerca una nuova versione su download.germano.ai, la scarica, ne verifica l'integrità e la installa al riavvio, conservando documenti, Vault e impostazioni (dettagli più sotto).
 *   **Formattazione e immagini preservate** in Word, Excel, PowerPoint e OpenDocument (la v0.50 cancellava grassetti, font e immagini dai DOCX); anonimizzati anche note a piè di pagina, caselle di testo, commenti, note del relatore, metadati e miniature.
 *   **Censura PDF più sicura:** OCR sulle scansioni con timbro digitale, oscuramento dei pixel nelle scansioni ricercabili, pagine ruotate corrette, campi modulo, commenti, segnalibri e allegati incorporati; firme digitali PAdES rimosse.
 *   **Proxy API corretto per Claude Code e Codex** (nella v0.50 lo streaming SSE era rotto), immagini e PDF anonimizzati anche nei formati Anthropic/Responses, analisi a batch con cache molto più veloce.
@@ -136,8 +136,8 @@ Se per qualsiasi motivo (es. demone IA spento, formato illeggibile, o file immag
 
 Germano si mantiene aggiornato da solo, senza rinunciare al funzionamento offline:
 
-1. **Solo se Windows segnala che il PC è connesso a Internet** (circa 20 secondi dopo l'avvio e poi ogni 6 ore), Germano legge da GitHub il file `update.json` con il numero dell'ultima versione. Su un PC scollegato non avviene alcun tentativo di connessione.
-2. Se la versione è più recente, il pacchetto viene scaricato da Google Drive nella cartella `update/` e ne vengono verificate dimensione e impronta **SHA-256**: un file diverso da quello pubblicato viene scartato.
+1. **Solo se Windows segnala che il PC è connesso a Internet** (circa 20 secondi dopo l'avvio e poi ogni 6 ore), Germano apre `https://download.germano.ai` (l'indirizzo ufficiale di download, che rimanda alla cartella pubblica dei pacchetti) e cerca lo ZIP `GermanoAI_Release_v<versione>.zip` più recente. Su un PC scollegato non avviene alcun tentativo di connessione.
+2. Se è più recente della versione installata, il pacchetto viene scaricato nella cartella `update/` e controllato: download completo, impronta **SHA-256** (se nella cartella c'è anche il file `.sha256`), integrità di ogni file dello ZIP e versione uguale a quella del nome. Un pacchetto che non supera i controlli viene scartato.
 3. L'installazione avviene al successivo avvio di `START.bat` (oppure subito con **Installa ora e riavvia** nell'avviso della Dashboard). Le cartelle di lavoro, il Vault e `config.json` non vengono toccati; se qualcosa va storto viene rimessa al suo posto la versione precedente.
 
 Le opzioni sono in Modalità Avanzata, **Sistema e registro → Aggiornamenti** (oppure in `config.json`: `"check_updates": false` disattiva il controllo, `"auto_update": false` si limita a segnalare la nuova versione). Durante il controllo non viene inviato alcun dato dei documenti.

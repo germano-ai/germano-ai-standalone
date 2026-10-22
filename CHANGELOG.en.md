@@ -35,11 +35,13 @@ unchanged: it works offline on a freshly installed Windows 11.
 
 ### Added - Automatic updates
 - **Only when Windows reports that the PC is connected to the Internet** (Network List Manager: the check sends no
-  packets), 20 seconds after startup and then every 6 hours, Germano reads `update.json` with the latest version from
-  GitHub. On a disconnected PC no connection attempt is made.
-- When a newer version exists the package is downloaded from Google Drive (also past the confirmation page of large
-  files), accepted only over HTTPS from Google domains, verified for size and SHA-256 fingerprint, extracted and
-  checked in the `update/` folder.
+  packets), 20 seconds after startup and then every 6 hours, Germano opens `https://download.germano.ai`, the single
+  reference for new versions, which points to the public Google Drive folder holding the packages, and looks there for
+  the most recent `GermanoAI_Release_v<version>.zip`. On a disconnected PC no connection attempt is made.
+- When it is newer than the installed version the package is downloaded (also past Google Drive's confirmation page
+  for large files), accepted only over HTTPS from download.germano.ai and Google domains, checked (complete download,
+  SHA-256 fingerprint when the folder also holds `<ZIP name>.sha256`, CRC of every file in the ZIP, VERSION matching
+  the file name), extracted and prepared in the `update/` folder.
 - Installation at the next `START.bat` start or right away with *Installa ora e riavvia* (install now and restart): a
   separate installer replaces the program components, keeps `input`, `output`, `processed`, `failed`, `extracted`,
   `state` and `config.json`, puts the previous version back if anything fails and restarts Germano.

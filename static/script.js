@@ -410,11 +410,13 @@ function renderUpdate(u) {
             download = true;
             break;
         case 'downloading':
-            text = `Download dell'aggiornamento ${u.latest}: ${pct}% (${formatBytes(u.progress.done)} di ${formatBytes(u.progress.total)}).`;
+            text = u.progress && u.progress.total
+                ? `Download dell'aggiornamento ${u.latest}: ${pct}% (${formatBytes(u.progress.done)} di ${formatBytes(u.progress.total)}).`
+                : `Download dell'aggiornamento ${u.latest}: ${formatBytes((u.progress || {}).done || 0)} scaricati.`;
             progress = true;
             break;
         case 'verifying':
-            text = `Verifica dell'impronta dell'aggiornamento ${u.latest}...`;
+            text = `Verifica dell'aggiornamento ${u.latest}...`;
             break;
         case 'extracting':
             text = `Preparazione dell'aggiornamento ${u.latest}: ${pct}%.`;

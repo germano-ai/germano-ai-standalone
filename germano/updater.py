@@ -1,9 +1,12 @@
 """Aggiornamento automatico di Germano AI.
 
-Solo se Windows segnala che il PC è connesso a Internet (Network List Manager: lo stato già noto al sistema,
-nessuna connessione aperta da Germano per scoprirlo) legge da GitHub il file update.json con versione, link di
-Google Drive dello ZIP, impronta SHA-256 e dimensione. Se la versione è più recente scarica lo ZIP in update/,
-ne verifica l'impronta, lo estrae e lo prepara.
+Unico riferimento: https://download.germano.ai, l'indirizzo ufficiale di download, che rimanda alla cartella
+pubblica di Google Drive con i pacchetti. Solo se Windows segnala che il PC è connesso a Internet (Network List
+Manager: lo stato già noto al sistema, nessuna connessione aperta da Germano per scoprirlo) l'indirizzo viene
+seguito fino alla cartella, dove si cerca lo ZIP «GermanoAI_Release_v<versione>.zip» con la versione più alta.
+Se è più recente di quella installata viene scaricato in update/ e controllato (download completo, impronta
+SHA-256 se nella cartella c'è anche «<nome dello ZIP>.sha256», CRC di ogni file dello ZIP, VERSION uguale alla
+versione del nome), poi estratto e preparato.
 
 La sostituzione avviene a programma chiuso (germano/tools/update_install.py): al successivo avvio di START.bat
 oppure subito con «Installa e riavvia». Vengono sostituiti solo i file del programma: cartelle di lavoro, Vault,
@@ -25,8 +28,12 @@ import zipfile
 
 from . import common
 
-REPO_RAW = "https://raw.githubusercontent.com/germano-ai/germano-ai-standalone/master"
-MANIFEST_URL = REPO_RAW + "/update.json"
+DOWNLOAD_PAGE = "https://download.germano.ai/"  # unico riferimento per le nuove versioni
+FOLDER_VIEW_URL = "https://drive.google.com/embeddedfolderview?id={id}"  # elenco dei file di una cartella pubblica
+FILE_DOWNLOAD_URL = "https://drive.usercontent.google.com/download?id={id}&export=download&confirm=t"
+PACKAGE_RE = re.compile(r"^GermanoAI_Release_v(\d+(?:\.\d+)+(?:-[A-Za-z]+\d*)?)\.zip$", re.IGNORECASE)
+MAX_REDIRECTS = 5
+SIZE_ESTIMATE = 3.5 * 1024 ** 3  # se Google non indica la dimensione: stima prudente per lo spazio su disco
 UPDATE_DIR = os.path.join(common.BASE_DIR, "update")
 DOWNLOAD_DIR = os.path.join(UPDATE_DIR, "download")
 NEW_DIR = os.path.join(UPDATE_DIR, "new")
@@ -37,6 +44,7 @@ RESULT_FILE = os.path.join(UPDATE_DIR, "install_result.json")
 LOG_FILE = os.path.join(UPDATE_DIR, "update.log")
 FIRST_CHECK_DELAY = 20          # secondi dopo l'avvio
 CHECK_INTERVAL = 6 * 3600       # controllo periodico
+SITE_HOSTS = ("germano.ai",)
 DOWNLOAD_HOSTS = ("google.com", "googleusercontent.com")
 REQUIRE_HTTPS = True
 REQUIRED_FILES = ("START.bat", "server.py", "daemon.py", "VERSION", os.path.join("runtime", "python.exe"),
@@ -103,17 +111,69 @@ def windows_reports_online():
             pass
 
 
-def drive_file_id(link):
-    """ID del file da un link di Google Drive (file/d/ID, open?id=ID, uc?id=ID) o da un ID già nudo."""
-    link = (link or "").strip()
-    m = re.search(r"/file/d/([A-Za-z0-9_-]{10,})", link) or re.search(r"[?&]id=([A-Za-z0-9_-]{10,})", link)
-    if m:
-        return m.group(1)
-    return link if re.fullmatch(r"[A-Za-z0-9_-]{20,}", link) else None
+def drive_folder_id(url):
+    """ID della cartella da un indirizzo di Google Drive (.../drive/folders/ID, anche .../drive/u/0/folders/ID)."""
+    m = re.search(r"/drive/(?:u/\d+/)?folders/([A-Za-z0-9_-]{10,})", url or "")
+    return m.group(1) if m else None
 
 
 def drive_download_url(file_id):
-    return f"https://drive.usercontent.google.com/download?id={file_id}&export=download&confirm=t"
+    return FILE_DOWNLOAD_URL.format(id=urllib.parse.quote(file_id))
+
+
+class _FolderParser(html.parser.HTMLParser):
+    """File elencati nella vista incorporata di una cartella pubblica di Google Drive: (id, nome)."""
+
+    def __init__(self):
+        super().__init__()
+        self.files = []
+        self._id = None
+        self._title = None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        classes = (a.get("class") or "").split()
+        if tag == "div" and "flip-entry" in classes and (a.get("id") or "").startswith("entry-"):
+            self._id = a["id"][len("entry-"):]
+        elif tag == "a" and self._id is None:
+            m = re.search(r"/file/d/([A-Za-z0-9_-]{10,})", a.get("href") or "")
+            if m:
+                self._id = m.group(1)
+        elif tag == "div" and "flip-entry-title" in classes and self._id:
+            self._title = []
+
+    def handle_data(self, data):
+        if self._title is not None:
+            self._title.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "div" and self._title is not None:
+            self.files.append((self._id, "".join(self._title).strip()))
+            self._id = self._title = None
+
+
+def parse_drive_folder(page):
+    p = _FolderParser()
+    try:
+        p.feed(page)
+    except Exception:
+        return []
+    return [(fid, name) for fid, name in p.files if fid and name]
+
+
+def pick_latest(files):
+    """Pacchetto con la versione più alta tra i file della cartella, con l'eventuale file .sha256 abbinato."""
+    best = None
+    for fid, name in files:
+        m = PACKAGE_RE.match(name)
+        key = parse_version(m.group(1)) if m else None
+        if key and (best is None or key > best[0]):
+            best = (key, m.group(1), fid, name)
+    if not best:
+        return None
+    by_name = {name.lower(): fid for fid, name in files}
+    return {"version": best[1], "file_id": best[2], "name": best[3],
+            "sha256_file_id": by_name.get(best[3].lower() + ".sha256")}
 
 
 class _FormParser(html.parser.HTMLParser):
@@ -147,12 +207,17 @@ def drive_confirm_url(page):
     return None
 
 
-def _allowed_host(url):
+def _host_ok(url, hosts):
     parsed = urllib.parse.urlparse(url)
     if REQUIRE_HTTPS and parsed.scheme != "https":
         return False
     host = (parsed.hostname or "").lower()
-    return any(host == h or host.endswith("." + h) for h in DOWNLOAD_HOSTS)
+    return any(host == h or host.endswith("." + h) for h in hosts)
+
+
+def _allowed_host(url):
+    """Indirizzi da cui si accettano elenco della cartella e file: solo Google, solo HTTPS."""
+    return _host_ok(url, DOWNLOAD_HOSTS)
 
 
 def find_package_root(base):
@@ -256,72 +321,103 @@ class Updater:
             self._set(state="idle", error=None)
             return self.snapshot()  # nessuna connessione: nessun tentativo di rete
         self._set(state="checking", error=None)
-        manifest = self.fetch_manifest()
-        self._set(checked_at=time.time(), latest=manifest.get("version"), notes=manifest.get("notes"))
-        if not is_newer(manifest.get("version"), common.get_version()):
+        latest = self.find_latest()
+        self._set(checked_at=time.time(), latest=latest["version"] if latest else common.get_version(), notes=None)
+        if not latest or not is_newer(latest["version"], common.get_version()):
             self._set(state="uptodate", available=False)
             return self.snapshot()
         self._set(state="available", available=True)
-        ulog(f"Disponibile la versione {manifest['version']} (installata {common.get_version()}).")
+        ulog(f"Disponibile la versione {latest['version']} (installata {common.get_version()}): {latest['name']}.")
         if auto_download:
-            self.download(manifest)
+            self.download(latest)
         return self.snapshot()
 
-    def fetch_manifest(self):
+    @staticmethod
+    def _session():
         import requests
+        s = requests.Session()
+        s.headers["User-Agent"] = f"GermanoAI-Updater/{common.get_version()}"
+        return s
+
+    def find_latest(self, s=None):
+        """Segue download.germano.ai fino alla cartella di Google Drive e vi cerca il pacchetto più recente.
+        Restituisce None se nella cartella non c'è nessun pacchetto di Germano AI."""
+        s = s or self._session()
+        url, folder = DOWNLOAD_PAGE, None
+        for _ in range(MAX_REDIRECTS):
+            try:
+                r = s.get(url, allow_redirects=False, timeout=15, stream=True)
+                r.close()
+            except Exception as e:
+                raise UpdateError(f"download.germano.ai non raggiungibile: {e}") from None
+            location = r.headers.get("Location")
+            if r.status_code not in (301, 302, 303, 307, 308) or not location:
+                break
+            url = urllib.parse.urljoin(url, location)
+            if not (_host_ok(url, SITE_HOSTS) or _allowed_host(url)):
+                raise UpdateError("download.germano.ai rimanda a un indirizzo non previsto "
+                                  f"({urllib.parse.urlparse(url).hostname}).")
+            folder = drive_folder_id(url) if _allowed_host(url) else None
+            if folder:
+                break
+        if not folder:
+            raise UpdateError("download.germano.ai non rimanda a una cartella di Google Drive.")
         try:
-            r = requests.get(MANIFEST_URL, timeout=15, headers={"User-Agent": f"GermanoAI-Updater/{common.get_version()}",
-                                                                 "Cache-Control": "no-cache"})
+            r = s.get(FOLDER_VIEW_URL.format(id=folder), timeout=20)
         except Exception as e:
-            raise UpdateError(f"GitHub non raggiungibile: {e}") from None
-        if r.status_code == 404:
-            return {"version": common.get_version()}  # nessun aggiornamento pubblicato
-        if r.status_code != 200:
-            raise UpdateError(f"GitHub ha risposto con il codice {r.status_code}.")
+            raise UpdateError(f"Google Drive non raggiungibile: {e}") from None
+        if r.status_code != 200 or not _allowed_host(r.url):
+            raise UpdateError(f"La cartella di download non è accessibile (codice {r.status_code}): "
+                              "deve essere condivisa con «Chiunque abbia il link».")
+        latest = pick_latest(parse_drive_folder(r.text))
+        if latest:
+            latest["download_url"] = drive_download_url(latest["file_id"])
+        return latest
+
+    def _published_sha256(self, s, release):
+        """Impronta dal file «<nome dello ZIP>.sha256» della cartella, se presente."""
+        if not release.get("sha256_file_id"):
+            return None
         try:
-            m = r.json()
-        except ValueError:
-            raise UpdateError("File update.json non valido.") from None
-        if not isinstance(m, dict) or not parse_version(m.get("version")):
-            raise UpdateError("File update.json non valido (versione mancante).")
-        if is_newer(m.get("version"), common.get_version()):
-            url = m.get("download_url") or (drive_download_url(m["drive_file_id"]) if m.get("drive_file_id") else "")
-            if (REQUIRE_HTTPS and not url.startswith("https://")) or not _allowed_host(url):
-                raise UpdateError("update.json non indica un link di download valido su Google Drive.")
-            if not re.fullmatch(r"[0-9a-fA-F]{64}", str(m.get("sha256") or "")) or not int(m.get("size") or 0):
-                raise UpdateError("update.json non contiene impronta SHA-256 e dimensione dello ZIP.")
-            m["download_url"] = url
-        return m
+            r = s.get(drive_download_url(release["sha256_file_id"]), timeout=30)
+        except Exception as e:
+            raise UpdateError(f"Impronta SHA-256 non scaricabile: {e}") from None
+        m = re.search(r"\b([0-9a-fA-F]{64})\b", r.text[:4096]) if r.status_code == 200 and _allowed_host(r.url) else None
+        if not m:
+            raise UpdateError(f"Il file {release['name']}.sha256 della cartella di download non contiene "
+                              "un'impronta SHA-256 valida.")
+        return m.group(1).lower()
 
     # -------------------------------------------------------------- download e preparazione
-    def download(self, manifest):
-        import requests
-        version, size, expected = manifest["version"], int(manifest["size"]), manifest["sha256"].lower()
+    def download(self, release):
+        version = release["version"]
+        s = self._session()
         try:
             os.makedirs(DOWNLOAD_DIR, exist_ok=True)
             free = shutil.disk_usage(UPDATE_DIR).free
         except OSError as e:
             raise UpdateError(f"La cartella del programma non è scrivibile: {e}") from None
-        if free < size * 2.6:
-            raise UpdateError(f"Spazio insufficiente: servono circa {size * 2.6 / 1024 ** 3:.1f} GB liberi "
-                              f"per scaricare e preparare l'aggiornamento.")
+        expected = self._published_sha256(s, release)
         zip_path = os.path.join(DOWNLOAD_DIR, f"GermanoAI_{version}.zip")
         part = zip_path + ".part"
-        self._set(state="downloading", progress={"done": 0, "total": size}, error=None)
-        ulog(f"Download della versione {version} da Google Drive...")
-        s = requests.Session()
-        s.headers["User-Agent"] = f"GermanoAI-Updater/{common.get_version()}"
-        r = s.get(manifest["download_url"], stream=True, timeout=60)
+        self._set(state="downloading", progress={"done": 0, "total": 0}, error=None)
+        ulog(f"Download di {release['name']} dalla cartella di download (download.germano.ai)...")
+        r = s.get(release["download_url"], stream=True, timeout=60)
         if "text/html" in (r.headers.get("Content-Type") or ""):
             url2 = drive_confirm_url(r.text)
             if not url2 or not _allowed_host(url2):
-                raise UpdateError("Google Drive non ha fornito il file: il link deve essere condiviso con "
+                raise UpdateError("Google Drive non ha fornito il file: la cartella deve essere condivisa con "
                                   "«Chiunque abbia il link» (oppure è stato superato il limite di download).")
             r = s.get(url2, stream=True, timeout=60)
             if "text/html" in (r.headers.get("Content-Type") or ""):
                 raise UpdateError("Google Drive ha restituito una pagina invece del file: riprova più tardi.")
         if r.status_code != 200 or not _allowed_host(r.url):
             raise UpdateError(f"Download non riuscito (codice {r.status_code}).")
+        size = int(r.headers.get("Content-Length") or 0)
+        if free < (size or SIZE_ESTIMATE) * 2.6:
+            r.close()
+            raise UpdateError(f"Spazio insufficiente: servono circa {(size or SIZE_ESTIMATE) * 2.6 / 1024 ** 3:.1f} GB "
+                              "liberi per scaricare e preparare l'aggiornamento.")
         h = hashlib.sha256()
         done = 0
         last = 0.0
@@ -336,31 +432,40 @@ class Updater:
                     last = time.time()
                     self._set(progress={"done": done, "total": size})
         self._set(state="verifying", progress={"done": done, "total": size})
-        if done != size or h.hexdigest() != expected:
+        if size and done != size:
+            common.remove_quietly(part)
+            raise UpdateError(f"Download incompleto ({done} byte su {size}): riprova più tardi.")
+        if expected and h.hexdigest() != expected:
             common.remove_quietly(part)
             raise UpdateError("Il file scaricato non corrisponde all'originale pubblicato (impronta SHA-256 "
                               "diversa): è stato scartato.")
         os.replace(part, zip_path)
-        ulog(f"Download completato e verificato ({done} byte, SHA-256 {expected}).")
+        ulog(f"Download completato ({done} byte, SHA-256 {h.hexdigest()}"
+             + (", uguale a quella pubblicata)." if expected else ")."))
         self.prepare(zip_path, version)
 
     def prepare(self, zip_path, version):
         self._set(state="extracting", progress={"done": 0, "total": 1})
         shutil.rmtree(NEW_DIR, ignore_errors=True)
         os.makedirs(NEW_DIR, exist_ok=True)
-        with zipfile.ZipFile(zip_path) as z:
-            members = z.infolist()
-            total = sum(m.file_size for m in members) or 1
-            done = 0
-            last = 0.0
-            for m in members:
-                if self.stop_event.is_set():
-                    raise UpdateError("Preparazione interrotta.")
-                z.extract(m, NEW_DIR)  # zipfile ignora percorsi assoluti e ".."
-                done += m.file_size
-                if time.time() - last > 0.5:
-                    last = time.time()
-                    self._set(progress={"done": done, "total": total})
+        try:
+            with zipfile.ZipFile(zip_path) as z:
+                members = z.infolist()
+                total = sum(m.file_size for m in members) or 1
+                done = 0
+                last = 0.0
+                for m in members:
+                    if self.stop_event.is_set():
+                        raise UpdateError("Preparazione interrotta.")
+                    z.extract(m, NEW_DIR)  # zipfile ignora percorsi assoluti e ".." e controlla il CRC di ogni file
+                    done += m.file_size
+                    if time.time() - last > 0.5:
+                        last = time.time()
+                        self._set(progress={"done": done, "total": total})
+        except (zipfile.BadZipFile, EOFError) as e:
+            common.remove_quietly(zip_path)
+            shutil.rmtree(NEW_DIR, ignore_errors=True)
+            raise UpdateError(f"Lo ZIP scaricato è danneggiato ({e}): è stato scartato.") from None
         root = find_package_root(NEW_DIR)
         if not root:
             raise UpdateError("Lo ZIP scaricato non contiene Germano AI (START.bat non trovato).")
