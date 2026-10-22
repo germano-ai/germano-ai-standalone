@@ -4,7 +4,7 @@
 
 *<span style="color: #007bff; font-weight: bold;">Caso d'Uso 1</span>: Hai semplicemente un gran numero di documenti da anonimizzare sul tuo computer o server o NAS. Germano funziona in modalità standalone e restituisce i documenti anonimizzati; supporta molti formati ed è altamente configurabile. Tu semplicemente copi la cartella contenente i file dentro ad input e ricevi i file anonimizzati nella cartella output. Germano mantiene la struttura della directory e delle sottocartelle originali. Germano anonimizza testo, prompt e volti ed è compatibile con il GDPR; Germano è un'applicazione Windows locale e offline (non richiede accesso ad internet per funzionare).*
 
-*<span style="color: #007bff; font-weight: bold;">Caso d'Uso 2</span>: Vuoi usare la potenza di un'LLM online (chatgpt, gemini, claude, copilot, deepseek..) ma i tuoi documenti o il testo che scrivi nel prompt contengono dati personali che non vuoi o non puoi inviare all'AI (come da normativa vigente per la Pubblica Amministrazione)? Germano anonimizza questi dati per te integrandosi perfettamente fungendo da Proxy API Locale con gli strumenti che già usi: Claude Code, Google Antigravity, OpenCode, Cursor e tutti gli altri. Se sul prompt scrivi "Mario Rossi" se ne accorge e lo sostituisce con [PERSONA_1] prima che venga inviato all'LLM online. In questo modo l'AI online avrà in input solo i documenti e i testi anonimizzati.*
+*<span style="color: #007bff; font-weight: bold;">Caso d'Uso 2</span>: Vuoi usare la potenza di un LLM online (chatgpt, gemini, claude, copilot, deepseek..) ma i tuoi documenti o il testo che scrivi nel prompt contengono dati personali che non vuoi o non puoi inviare all'AI (come da normativa vigente per la Pubblica Amministrazione)? Germano anonimizza questi dati per te integrandosi perfettamente fungendo da Proxy API Locale con gli strumenti che già usi: Claude Code, Google Antigravity, OpenCode, Cursor e tutti gli altri. Se sul prompt scrivi "Mario Rossi" se ne accorge e lo sostituisce con [PERSONA_1] prima che venga inviato all'LLM online. In questo modo l'AI online avrà in input solo i documenti e i testi anonimizzati.*
 
 Germano AI è una potente suite open-source progettata per **l'anonimizzazione intelligente** e massiva di documenti e flussi di testo. Basata su motori di Intelligenza Artificiale locale, garantisce la totale privacy dei dati elaborando i file **100% offline** (senza inviare dati al cloud) ed è pronta all'uso al primo colpo anche su un PC con **Windows 11 Vanilla** appena installato, senza richiedere connessione Internet né installazioni preliminari.
 
@@ -15,12 +15,12 @@ Germano AI è una potente suite open-source progettata per **l'anonimizzazione i
 ## ⚡ Quickstart (Come funziona)
 
 Germano AI lavora in modo completamente autonomo "ascoltando" le sue cartelle. Il funzionamento base è semplicissimo:
-1. Inserisci i documenti (e le eventuali sottocartelle) che vuoi anonimizzare all'interno della cartella **`input`** (oppure trascinali direttamente nella **Dropzone** della Dashboard Web).
-2. Fai doppio clic sul file **`START.bat`** per avviare il server locale e aprire la Dashboard nel browser (`http://127.0.0.1:8000`).
-3. Dalla Dashboard, clicca su **"AVVIA MOTORE IA"**. Il software prenderà i file da `input`, li censurerà e salverà i documenti puliti nella cartella **`output`**, preservando intatta l'eventuale struttura delle tue cartelle e sottocartelle interne.
-4. I file originali verranno parcheggiati in **`processed`**, mentre eventuali file danneggiati o non supportati andranno in **`failed`**. I report JSON di audit verranno salvati in **`extracted`**.
+1. Fai doppio clic sul file **`START.bat`** per avviare il server locale e aprire la Dashboard nel browser (`http://127.0.0.1:8000`).
+2. Aggiungi i documenti (anche intere cartelle con sottocartelle): trascinali nel riquadro **«Trascina qui file o cartelle»**, usa **Seleziona file** / **Seleziona cartella**, oppure copiali nella cartella **`input`** (il pulsante **Apri cartella input** la apre in Esplora file).
+3. Clicca **Avvia motore** in alto a destra (se aggiungi i file dalla Dashboard il motore parte da solo). Germano prende i file da `input`, li anonimizza e salva i documenti puliti nella cartella **`output`**, preservando la struttura delle cartelle e sottocartelle; i contatori **In attesa / Pronti / Non riusciti** mostrano l'andamento del lotto.
+4. Ritira i risultati con **Apri cartella output** o dalla tabella **Documenti**. Gli originali vengono archiviati in **`processed`**; i file danneggiati o non supportati finiscono in **`failed`** e compaiono nella scheda **Non riusciti** con il motivo e il pulsante **Rimetti in coda**. I report JSON di audit vengono salvati in **`extracted`**.
 
-💡 **Tip Produttività:** Puoi tranquillamente trascinare nuovi file o intere cartelle dentro `input` (o tramite la Dropzone Web) *mentre il software sta già lavorando*! Verranno messi in coda ed elaborati in tempo reale senza dover riavviare nulla. Inoltre, dalla Dashboard puoi anonimizzare "al volo" porzioni di testo incollandole nell'apposita casella e scaricare direttamente i file elaborati.
+💡 **Tip Produttività:** Puoi aggiungere nuovi file o intere cartelle *mentre il software sta già lavorando*: vengono messi in coda ed elaborati senza riavviare nulla. **Esporta elenco** salva in CSV (per Excel) l'elenco dei documenti pronti o non riusciti. Dalla Dashboard puoi anche anonimizzare "al volo" un testo incollandolo nel riquadro **«Testo da inviare a un servizio di AI»**.
 
 👉 **[SCARICA GERMANO AI STANDALONE](https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD)**
 
@@ -37,31 +37,47 @@ Germano AI è progettato per adattarsi sia ad ambienti altamente regolamentati c
 
 ### 🟢 Germano PD (Pubblico Dominio)
 - Totalmente sbloccato e personalizzabile in tempo reale (Hot-Reload senza riavvio del demone).
-- Permette di bilanciare la soglia dei filtri IA, selezionare singolarmente le 9 categorie di censura e disattivare la scansione delle immagini per ottimizzare i tempi di elaborazione.
+- Permette di bilanciare la soglia dei filtri IA, selezionare singolarmente le 18 categorie di dati e i 6 modelli IA (es. disattivare la scansione delle immagini) per ottimizzare i tempi di elaborazione.
 
 ---
 
-## 🚀 Funzionalità Principali (v0.50-alpha)
+## 🆕 Novità della v0.51-alpha
+
+*   **Nuova Dashboard, sobria e pensata per il lavoro in blocco:** pulsanti per aprire le cartelle `input` e `output`, aggiunta di file o intere cartelle, contatori In attesa / Pronti / Non riusciti, elenco dei documenti non elaborati con il motivo e **Rimetti in coda**, esportazione dell'elenco in CSV.
+*   **Endpoint per gli agenti AI:** in Modalità Avanzata la scheda **Agenti AI e API** mostra gli indirizzi del Proxy (formato OpenAI e Anthropic) e, per Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider e gli SDK, dove impostarli; seguono gli esempi delle API REST.
+*   **Aggiornamenti automatici:** solo quando Windows segnala che il PC è connesso a Internet, Germano cerca una nuova versione su GitHub, la scarica da Google Drive, ne verifica l'impronta SHA-256 e la installa al riavvio, conservando documenti, Vault e impostazioni (dettagli più sotto).
+*   **Formattazione e immagini preservate** in Word, Excel, PowerPoint e OpenDocument (la v0.50 cancellava grassetti, font e immagini dai DOCX); anonimizzati anche note a piè di pagina, caselle di testo, commenti, note del relatore, metadati e miniature.
+*   **Censura PDF più sicura:** OCR sulle scansioni con timbro digitale, oscuramento dei pixel nelle scansioni ricercabili, pagine ruotate corrette, campi modulo, commenti, segnalibri e allegati incorporati; firme digitali PAdES rimosse.
+*   **Proxy API corretto per Claude Code e Codex** (nella v0.50 lo streaming SSE era rotto), immagini e PDF anonimizzati anche nei formati Anthropic/Responses, analisi a batch con cache molto più veloce.
+*   **Nuovi formati:** RTF nativo (senza Word), file firmati `.p7m` (es. `fattura.xml.p7m`), JSON, TSV, Markdown, log e codice sorgente.
+*   **Affidabilità e sicurezza:** vault protetto da accessi concorrenti, il motore si chiude con la finestra, i file vengono elaborati solo a copia completata, avanzamento e motivo degli errori visibili nella Dashboard, API locale protetta dai siti web malevoli; nessun dato dei documenti viene inviato in rete.
+*   Elenco completo nel [CHANGELOG](CHANGELOG.md).
+
+**Aggiornamento dalla v0.50:** estrai la v0.51 in una nuova cartella e copia dalla vecchia `extracted/deanonymize_vault.json` (così i documenti già protetti restano ripristinabili) e, se vuoi, `config.json`. Dalla v0.51 in poi gli aggiornamenti si installano da soli.
+
+**Requisiti:** Windows 10/11 a 64 bit, 8 GB di RAM (16 GB consigliati), circa 6 GB di spazio libero. Nessuna installazione e nessun privilegio di amministratore.
+
+## 🚀 Funzionalità Principali (v0.51-alpha)
 
 *   **100% Offline & Windows 11 Vanilla Ready:** Include Python 3.11 embedded, tutte le 12 librerie native Microsoft Visual C++ Redistributable (x64) pre-integrate nel runtime (zero privilegi di amministratore richiesti), interfaccia Web priva di CDN esterni e **6 modelli IA locali pre-installati**.
-*   **Slider Modalità Semplice / Modalità Avanzata:**
-    *   **✨ Modalità Semplice ("A prova di errore"):** Nessun termine tecnico, avvio automatico del motore quando si trascina un file e flusso guidato in 2 passi.
-    *   **⚙️ Modalità Avanzata:** Enorme griglia interattiva di **18 Checkbox e 7 Interruttori di Modelli IA** per configurare singolarmente Nomi, Professioni/Titoli, Indirizzi, Catasto, Codici Fiscali/P.IVA, Email/PEC, Telefoni, IBAN/Conti, Importi/Finanza, Date, Aziende/Enti, Targhe/Documenti, Dati Sanitari (Art. 9 GDPR), Farmaci/Terapie, Dati Giudiziari (Art. 10 GDPR), Stato Civile, Password/Segreti e URL/IP.
-*   **📖 Guida Completa & Documentazione Offline:** Pulsante rapido *"📖 Guida & Docs"* integrato direttamente nella dashboard (disponibile su `/guide` e come file autonomo `GUIDA_OFFLINE.html`), bilingue (italiano e inglese commutabile all'istante), con spiegazioni a prova di errore, guida alle 5 cartelle, specifiche REST API e setup passo-passo per Google Antigravity, OpenAI Codex, Cursor e Claude Code.
-*   **🔄 De-Anonimizzazione Automatica tramite Proxy API e Cartelle Interne:** Attivando lo switch in alto, Germano memorizza nel Vault locale (`extracted/deanonymize_vault.json`) i dati associati a `[PERSONA_1]`, `[INDIRIZZO_1]`, ecc. Nelle integrazioni via Proxy API locale (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` per **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) e nella cartella interna `input/`, le risposte e i file restituiti dall'AI vengono rimessi in chiaro con tutti i dati veri in modo **completamente automatico** (senza mai controllare cartelle esterne al programma).
+*   **Selettore Modalità Semplice / Avanzata:**
+    *   **Modalità Semplice:** nessun termine tecnico; si aggiungono i documenti, il motore parte da solo e i risultati si ritirano con un clic.
+    *   **Modalità Avanzata:** quattro schede. **Elaborazione** (anche gli originali archiviati), **Agenti AI e API** (indirizzi del Proxy, configurazione per ogni strumento, servizi di destinazione, esempi REST), **Filtri e modelli** (profilo, sensibilità, **18 categorie e 7 motori di analisi**: Nomi, Professioni/Titoli, Indirizzi, Catasto, Codici Fiscali/P.IVA, Email/PEC, Telefoni, IBAN/Conti, Importi/Finanza, Date, Aziende/Enti, Targhe/Documenti, Dati Sanitari (Art. 9 GDPR), Farmaci/Terapie, Dati Giudiziari (Art. 10 GDPR), Stato Civile, Password/Segreti e URL/IP), **Sistema e registro** (calcolo e precisione, cartelle di lavoro, aggiornamenti, Vault, registro in tempo reale).
+*   **📖 Guida Completa & Documentazione Offline:** Pulsante *"Guida"* integrato nella Dashboard (disponibile su `/guide` e come file autonomo `GUIDA_OFFLINE.html`), bilingue (italiano e inglese commutabile all'istante), con spiegazioni a prova di errore, guida alle 5 cartelle, specifiche REST API e setup passo-passo per Google Antigravity, OpenAI Codex, Cursor e Claude Code.
+*   **🔄 De-Anonimizzazione Automatica tramite Proxy API e Cartelle Interne:** Con l'interruttore *"Ripristino automatico dei dati originali"* attivo (predefinito), Germano memorizza nel Vault locale (`extracted/deanonymize_vault.json`) i dati associati a `[PERSONA_1]`, `[INDIRIZZO_1]`, ecc. Nelle integrazioni via Proxy API locale (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` per **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) e nella cartella interna `input/`, le risposte e i file restituiti dall'AI vengono rimessi in chiaro con tutti i dati veri in modo **completamente automatico** (senza mai controllare cartelle esterne al programma).
 *   **6 Motori di Intelligenza Artificiale 100% Offline Integrati (`models/`):**
-    1. **Velvet Privacy Filter (1.5B FP16):** Modello linguistico contestuale multilingue per dati personali.
+    1. **Velvet Privacy Filter (1.5B, pesi BF16):** Modello linguistico contestuale multilingue per dati personali (basato su OpenAI Privacy Filter, licenza Apache-2.0).
     2. **Italian NER XXL v2 (58 classi):** Modello specializzato nel dominio legale, sanitario, bancario, catastale e burocratico italiano.
     3. **EasyOCR (CRAFT + Latin G2):** Riconoscimento ottico dei caratteri su PDF scansionati e foto.
     4. **YuNet Face Detector (OpenCV 5 DNN):** Oscuramento biometrico dei volti e fototessere (`[VOLTO]`).
     5. **YOLOS-Tiny Signature Detector:** Rilevamento visivo e oscuramento delle firme autografe manoscritte (`[FIRMA]`).
     6. **YOLOS-Small License Plate Detector:** Rilevamento visivo e oscuramento delle targhe di veicoli nelle foto (`[TARGA]`).
 *   **Gestione Multi-Formato Avanzata:**
-    *   📄 **PDF & Portfolio PDF:** Censura testuale contestuale, *censura visiva* su scansioni e anonimizzazione ricorsiva di PDF allegati/incapsulati.
-    *   🖼️ **Immagini (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`):** OCR locale e oscuramento biometrico di volti, firme e targhe con salvataggio nel formato immagine nativo.
-    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonimizza e de-anonimizza testi, tabelle, intestazioni, piè di pagina e oggetti OLE incapsulati.
-    *   📊 **Fogli di Calcolo & Presentazioni (`XLSX`, `XLSM`, `XLS`, `CSV`, `PPTX`, `PPT`):** Oscura e ripristina i dati nelle celle, nelle slide e nei commenti, preservando eventuali Macro VBA.
-    *   🌐 **Web, Email & Archivi (`HTML`, `XML`, `EML`, `ZIP`):** Elaborazione DOM/MIME nativa e ispezione ricorsiva di archivi `.zip`.
+    *   📄 **PDF & Portfolio PDF:** Censura a livello di carattere, OCR e *censura visiva* sulle scansioni (anche miste con timbro digitale), campi modulo, commenti, segnalibri, metadati e anonimizzazione ricorsiva degli allegati incorporati.
+    *   🖼️ **Immagini (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`, `GIF`):** OCR locale e oscuramento biometrico di volti, firme e targhe con formato e risoluzione originali; metadati EXIF/GPS rimossi.
+    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonimizza e de-anonimizza testi, tabelle, intestazioni, piè di pagina, note, caselle di testo, commenti e oggetti incorporati senza alterare la formattazione. `DOC`/`PPT` richiedono Microsoft Office o LibreOffice (salvo che siano RTF/DOCX/HTML rinominati).
+    *   📊 **Fogli di Calcolo & Presentazioni (`XLSX`, `XLSM`, `XLS`, `CSV`, `TSV`, `PPTX`, `PPT`):** Oscura e ripristina i dati in celle, nomi dei fogli, grafici, slide, note del relatore e commenti, preservando formule e Macro VBA.
+    *   🌐 **Web, Dati, Email & Archivi (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Elaborazione DOM/MIME nativa, allegati email, ispezione ricorsiva di archivi `.zip` e file firmati `.p7m`.
 
 ---
 
@@ -93,18 +109,22 @@ Configurando il tuo editor per puntare a Germano AI, il flusso cambia completame
 
 1. **Intercettazione**: Quando chiedi all'IA qualcosa o alleghi un file, l'IDE invia la richiesta a Germano AI (che gira offline sul tuo PC alla porta 8000).
 2. **Censura al Volo**: Germano intercetta la richiesta, estrae i tuoi prompt testuali, li passa al volo al filtro privacy locale, e sostituisce i dati sensibili con etichette indicizzate (es. `[PERSONA_1]`).
-3. **Mappatura Tracciabile**: La mappa esatta delle parole sostituite viene salvata in un log JSON nella cartella `extracted`, per permetterti di ricollegare facilmente le etichette dell'AI ai dati reali.
+3. **Mappatura Tracciabile**: La mappa esatta delle parole sostituite viene salvata in un registro giornaliero (`extracted/proxy_sessions/AAAA-MM-GG.jsonl`), per permetterti di ricollegare facilmente le etichette dell'AI ai dati reali.
 4. **Inoltro Sicuro**: Germano inoltra la richiesta "purificata" al vero fornitore LLM (es. OpenAI). Quando l'AI risponderà, utilizzerà a sua volta i tag anonimizzati (es. "Il contratto è intestato a [PERSONA_1]").
 
 L'Intelligenza Artificiale non entrerà **mai** in contatto con i tuoi dati originali, permettendoti di usare prompt estremamente specifici senza violare il GDPR!
 
 ### Come Attivarlo (Impostazione Manuale Richiesta)
 
+In Modalità Avanzata, la scheda **Agenti AI e API** della Dashboard mostra gli indirizzi da copiare e, strumento per strumento, dove impostarli.
+
 1. Avvia Germano AI facendo doppio clic su `START.bat`.
 2. Apri il tuo editor AI preferito e modifica l'indirizzo base del server AI:
    - **Cursor**: Vai in `Impostazioni (Settings)` -> `Models` -> Scorri fino a `OpenAI API Key` e inserisci la tua chiave reale. Poi, appena sotto, attiva la levetta **Override OpenAI Base URL** e inserisci il seguente indirizzo: `http://127.0.0.1:8000/v1`.
    - **Windsurf / Antigravity / Altri IDE**: Nelle impostazioni del Provider AI (sotto la voce OpenAI o Provider Personalizzato), cerca il campo **Base URL** (o API Base URL / Custom URL) e inserisci: `http://127.0.0.1:8000/v1`.
-3. Assicurati di inserire la tua vera API Key di OpenAI nell'editor. L'IDE la invierà a Germano AI, che la utilizzerà localmente in modo sicuro **esclusivamente** per inoltrare la richiesta ai server di OpenAI dopo aver concluso l'anonimizzazione dei prompt e dei file!
+   - **Claude Code**: prima di avviarlo imposta `ANTHROPIC_BASE_URL=http://127.0.0.1:8000` (in PowerShell: `$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8000"`).
+   - **OpenAI Codex CLI**: imposta `OPENAI_BASE_URL=http://127.0.0.1:8000/v1`.
+3. Assicurati di inserire la tua vera API Key (OpenAI o Anthropic) nell'editor. L'IDE la invierà a Germano AI, che la utilizzerà localmente in modo sicuro **esclusivamente** per inoltrare la richiesta ai server di OpenAI dopo aver concluso l'anonimizzazione dei prompt e dei file!
 
 ### 🛡️ "Fail-Safe Privacy" (Hard Block Attivo)
 Il nostro Proxy API è progettato con una tolleranza zero per gli errori (Hard Block). 
@@ -112,12 +132,25 @@ Se per qualsiasi motivo (es. demone IA spento, formato illeggibile, o file immag
 
 ---
 
+## 🔄 Aggiornamenti automatici
+
+Germano si mantiene aggiornato da solo, senza rinunciare al funzionamento offline:
+
+1. **Solo se Windows segnala che il PC è connesso a Internet** (circa 20 secondi dopo l'avvio e poi ogni 6 ore), Germano legge da GitHub il file `update.json` con il numero dell'ultima versione. Su un PC scollegato non avviene alcun tentativo di connessione.
+2. Se la versione è più recente, il pacchetto viene scaricato da Google Drive nella cartella `update/` e ne vengono verificate dimensione e impronta **SHA-256**: un file diverso da quello pubblicato viene scartato.
+3. L'installazione avviene al successivo avvio di `START.bat` (oppure subito con **Installa ora e riavvia** nell'avviso della Dashboard). Le cartelle di lavoro, il Vault e `config.json` non vengono toccati; se qualcosa va storto viene rimessa al suo posto la versione precedente.
+
+Le opzioni sono in Modalità Avanzata, **Sistema e registro → Aggiornamenti** (oppure in `config.json`: `"check_updates": false` disattiva il controllo, `"auto_update": false` si limita a segnalare la nuova versione). Durante il controllo non viene inviato alcun dato dei documenti.
+
+---
+
 ## 📂 Struttura Cartelle di Lavoro
 - `/input`: Trascina qui i file da elaborare.
 - `/output`: I file anonimizzati, con formato e layout originale intatti.
 - `/processed`: File originali spostati a fine lavoro.
-- `/failed`: Documenti corrotti, bloccati o illeggibili.
+- `/failed`: Documenti corrotti, bloccati o illeggibili (visibili nella scheda *Non riusciti* con il motivo).
 - `/extracted`: File JSON con i log di cosa è stato sostituito (per Audit GDPR).
+- `/update`: Creata solo quando serve: aggiornamento scaricato in attesa di installazione.
 
 ## 📜 Licenza e Contribuzione
 Questo progetto è orgogliosamente distribuito sotto licenza **GNU GPL v3**. Puoi usarlo gratuitamente anche per scopi commerciali, a patto di mantenere Open Source le tue eventuali modifiche. 

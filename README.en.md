@@ -14,13 +14,13 @@ Germano AI is a powerful open-source suite designed for **intelligent and massiv
 
 ## ⚡ Quickstart (How it works)
 
-Germano AI works completely autonomously by "listening" to its folders. The basic operation is extremely simple:
-1. Place the documents (and any subfolders) you want to anonymize inside the **`input`** folder (or drag and drop them directly into the Web Dashboard **Dropzone**).
-2. Double-click the **`START.bat`** file to start the local server and open the Dashboard in your browser (`http://127.0.0.1:8000`).
-3. From the Dashboard, click on **"AVVIA MOTORE IA"** (Start AI Engine). The software will take the files from `input`, redact them, and save the clean documents in the **`output`** folder, preserving your internal folder and subfolder structure intact.
-4. The original files will be parked in **`processed`**, while any unsupported or corrupted files will go to **`failed`**. JSON audit logs are saved in **`extracted`**.
+Germano AI works completely autonomously by "listening" to its folders. The basic operation is extremely simple (the Dashboard labels are in Italian; their meaning is given in brackets):
+1. Double-click the **`START.bat`** file to start the local server and open the Dashboard in your browser (`http://127.0.0.1:8000`).
+2. Add the documents (whole folders with subfolders too): drag them into the **«Trascina qui file o cartelle»** (Drop files or folders here) box, use **Seleziona file** / **Seleziona cartella** (Select files / Select folder), or copy them into the **`input`** folder (the **Apri cartella input** button opens it in File Explorer).
+3. Click **Avvia motore** (Start engine) in the top right corner (when you add files from the Dashboard the engine starts on its own). Germano takes the files from `input`, redacts them and saves the clean documents in the **`output`** folder, preserving the folder and subfolder structure; the **In attesa / Pronti / Non riusciti** (pending / ready / failed) counters show the batch progress.
+4. Collect the results with **Apri cartella output** (Open output folder) or from the **Documenti** table. Originals are archived in **`processed`**; damaged or unsupported files go to **`failed`** and appear in the **Non riusciti** tab with the reason and a **Rimetti in coda** (Queue again) button. JSON audit logs are saved in **`extracted`**.
 
-💡 **Productivity Tip:** You can safely drag new files or entire folders into `input` (or via the Web Dropzone) *while the software is already working*! They will be queued and processed in real time without having to restart anything. Additionally, from the Dashboard, you can anonymize portions of text "on the fly" by pasting them into the dedicated text box and download processed files directly from the browser.
+💡 **Productivity Tip:** You can add new files or entire folders *while the software is already working*: they are queued and processed without restarting anything. **Esporta elenco** (Export list) saves the list of ready or failed documents as CSV (for Excel). From the Dashboard you can also anonymize a text "on the fly" by pasting it into the **«Testo da inviare a un servizio di AI»** (Text to send to an AI service) box.
 
 👉 **[DOWNLOAD GERMANO AI STANDALONE](https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD)**
 
@@ -37,31 +37,47 @@ Germano AI is designed to adapt to both highly regulated environments and privat
 
 ### 🟢 Germano PD (Public Domain)
 - Completely unlocked and customizable in real time (Hot-Reload without restarting the daemon).
-- Allows you to balance the AI filter threshold, individually toggle the 9 redaction categories, and disable image censorship to optimize processing times.
+- Allows you to balance the AI filter threshold and individually toggle the 18 data categories and the 6 AI models (e.g. turn off image scanning) to optimize processing times.
 
 ---
 
-## 🚀 Main Features (v0.50-alpha)
+## 🆕 What's new in v0.51-alpha
+
+*   **New Dashboard, sober and built for batch work:** buttons to open the `input` and `output` folders, adding files or whole folders, pending / ready / failed counters, a list of the documents that could not be processed with the reason and a **Rimetti in coda** (Queue again) button, CSV export of the list.
+*   **Endpoints for AI agents:** in Advanced Mode the **Agenti AI e API** (AI agents and API) tab shows the Proxy addresses (OpenAI and Anthropic formats) and where to set them in Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider and the SDKs, followed by REST API examples.
+*   **Automatic updates:** only when Windows reports that the PC is connected to the Internet, Germano looks for a new version on GitHub, downloads it from Google Drive, verifies its SHA-256 fingerprint and installs it on restart, keeping documents, Vault and settings (details below).
+*   **Formatting and images preserved** in Word, Excel, PowerPoint and OpenDocument (v0.50 removed bold text, fonts and pictures from DOCX files); footnotes, text boxes, comments, speaker notes, metadata and thumbnails are now anonymized too.
+*   **Stronger PDF redaction:** OCR on scans carrying a digital stamp, pixel blanking on searchable scans, correct rotated pages, form fields, comments, bookmarks, embedded attachments; signatures (PAdES) removed.
+*   **API Proxy fixed for Claude Code and Codex** (SSE streaming was broken in v0.50), images and PDFs in Anthropic/Responses format anonymized, faster batch analysis with caching.
+*   **New formats:** native RTF (no Word needed), signed `.p7m` files (e.g. `fattura.xml.p7m`), JSON, TSV, Markdown, logs and source code.
+*   **Reliability and security:** thread-safe vault, the engine stops when the window is closed, files are processed only once fully copied, live progress and failure reasons in the Dashboard, protection of the local API against malicious websites; no document data is ever sent over the network.
+*   Full list in the [CHANGELOG](CHANGELOG.en.md).
+
+**Upgrading from v0.50:** extract v0.51 into a new folder and copy `extracted/deanonymize_vault.json` from the old one (so documents you already protected can still be restored) and, optionally, `config.json`. From v0.51 onwards updates install themselves.
+
+**Requirements:** Windows 10/11 64-bit, 8 GB RAM (16 GB recommended), about 6 GB of free disk space. No installation and no administrator privileges.
+
+## 🚀 Main Features (v0.51-alpha)
 
 *   **100% Offline & Vanilla Windows 11 Ready:** Bundles embedded Python 3.11, all 12 native 64-bit Microsoft Visual C++ Redistributable DLLs directly in the runtime (zero administrator privileges required), a zero-CDN offline Web UI, and **6 pre-installed local AI models**.
-*   **Simple Mode / Advanced Mode Slider:**
-    *   **✨ Simple Mode (Foolproof UI):** Zero technical jargon, automatic engine startup when dropping a file, and a guided 2-step workflow.
-    *   **⚙️ Advanced Mode:** Giant interactive grid of **18 Checkboxes and 7 AI Model Toggles** to individually configure Names, Professions/Titles, Addresses, Cadastre, Fiscal Codes/VAT, Emails/PEC, Phones, IBAN/Accounts, Amounts/Financials, Dates, Companies/Orgs, License Plates/Docs, Medical/Health Data (GDPR Art. 9), Medications/Therapies, Judicial/Legal Data (GDPR Art. 10), Civil Status, Passwords/Secrets, and URLs/IPs.
-*   **📖 Complete Offline Guide & Technical Documentation:** Quick *"📖 Guida & Docs"* button directly integrated in the dashboard header (available at `/guide` and as a standalone `GUIDA_OFFLINE.html` file), bilingual (instant Italian/English toggle), featuring foolproof explanations, guide to the 5 internal folders, complete REST API specs, and step-by-step setup for Google Antigravity, OpenAI Codex, Cursor, and Claude Code.
-*   **🔄 Automatic De-Anonymization via API Proxy and Internal Folders:** When the top switch is enabled, Germano stores the mapping for `[PERSONA_1]`, `[INDIRIZZO_1]`, etc. in the local Vault (`extracted/deanonymize_vault.json`). Across the local API Proxy (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` for **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) and the internal `input/` folder, responses and files returned by the AI automatically have all original real data restored on the fly (without ever scanning folders outside the program directory).
+*   **Simple / Advanced Mode selector:**
+    *   **Simple Mode:** zero technical jargon; add the documents, the engine starts on its own and the results are one click away.
+    *   **Advanced Mode:** four tabs. **Elaborazione** (Processing, archived originals included), **Agenti AI e API** (AI agents and API: Proxy addresses, per-tool setup, target services, REST examples), **Filtri e modelli** (Filters and models: profile, sensitivity, **18 categories and 7 analysis engines**: Names, Professions/Titles, Addresses, Cadastre, Fiscal Codes/VAT, Emails/PEC, Phones, IBAN/Accounts, Amounts/Financials, Dates, Companies/Orgs, License Plates/Docs, Medical/Health Data (GDPR Art. 9), Medications/Therapies, Judicial/Legal Data (GDPR Art. 10), Civil Status, Passwords/Secrets, and URLs/IPs), **Sistema e registro** (System and log: compute and precision, working folders, updates, Vault, live log).
+*   **📖 Complete Offline Guide & Technical Documentation:** *"Guida"* (Guide) button integrated in the Dashboard header (available at `/guide` and as a standalone `GUIDA_OFFLINE.html` file), bilingual (instant Italian/English toggle), featuring foolproof explanations, guide to the 5 internal folders, complete REST API specs, and step-by-step setup for Google Antigravity, OpenAI Codex, Cursor, and Claude Code.
+*   **🔄 Automatic De-Anonymization via API Proxy and Internal Folders:** With the *"Ripristino automatico dei dati originali"* (automatic restore of the original data) switch on (default), Germano stores the mapping for `[PERSONA_1]`, `[INDIRIZZO_1]`, etc. in the local Vault (`extracted/deanonymize_vault.json`). Across the local API Proxy (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` for **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) and the internal `input/` folder, responses and files returned by the AI automatically have all original real data restored on the fly (without ever scanning folders outside the program directory).
 *   **6 Integrated 100% Offline AI Engines (`models/`):**
-    1. **Velvet Privacy Filter (1.5B FP16):** Multilingual contextual Transformer model for PII detection.
+    1. **Velvet Privacy Filter (1.5B, BF16 weights):** Multilingual contextual Transformer model for PII detection (based on OpenAI Privacy Filter, Apache-2.0).
     2. **Italian NER XXL v2 (58 classes):** Specialized NER model for legal, medical, banking, cadastral, and administrative entities.
     3. **EasyOCR (CRAFT + Latin G2):** Local Optical Character Recognition on scanned PDFs and photos.
     4. **YuNet Face Detector (OpenCV 5 DNN):** Biometric face detection and redaction (`[VOLTO]`).
     5. **YOLOS-Tiny Signature Detector:** Visual detection and redaction of handwritten signatures (`[FIRMA]`).
     6. **YOLOS-Small License Plate Detector:** Visual detection and redaction of vehicle license plates (`[TARGA]`).
 *   **Advanced Multi-Format Management:**
-    *   📄 **PDF & PDF Portfolios:** Contextual textual redaction, *visual redaction* on scans, and recursive anonymization of embedded PDF attachments.
-    *   🖼️ **Images (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`):** Local OCR and visual redaction of faces, signatures, and license plates preserving the native image format.
-    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonymizes and de-anonymizes texts, tables, headers, footers, and embedded OLE objects.
-    *   📊 **Spreadsheets & Presentations (`XLSX`, `XLSM`, `XLS`, `CSV`, `PPTX`, `PPT`):** Redacts and restores data in cells, slides, and comments while preserving VBA Macros.
-    *   🌐 **Web, Email & Archives (`HTML`, `XML`, `EML`, `ZIP`):** Native DOM/MIME processing and recursive `.zip` archive inspection.
+    *   📄 **PDF & PDF Portfolios:** Character-level redaction, OCR and *visual redaction* on scans (including mixed scans with a digital stamp), form fields, comments, bookmarks, metadata and recursive anonymization of embedded attachments.
+    *   🖼️ **Images (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`, `GIF`):** Local OCR and visual redaction of faces, signatures, and license plates preserving format and resolution; EXIF/GPS metadata removed.
+    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonymizes and de-anonymizes texts, tables, headers, footers, footnotes, text boxes, comments and embedded objects without altering formatting. `DOC`/`PPT` require Microsoft Office or LibreOffice (unless they are renamed RTF/DOCX/HTML files).
+    *   📊 **Spreadsheets & Presentations (`XLSX`, `XLSM`, `XLS`, `CSV`, `TSV`, `PPTX`, `PPT`):** Redacts and restores data in cells, sheet names, charts, slides, speaker notes and comments while preserving formulas and VBA Macros.
+    *   🌐 **Web, Data, Email & Archives (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Native DOM/MIME processing, email attachments, recursive `.zip` inspection and signed `.p7m` files.
 
 ---
 
@@ -93,18 +109,22 @@ By configuring your editor to point to Germano AI, the flow changes completely:
 
 1. **Interception**: When you ask the AI something or attach a file, the IDE sends the request to Germano AI (running offline on your PC at port 8000).
 2. **On-the-Fly Censorship**: Germano intercepts the request, extracts your text prompts, passes them instantly to the local privacy filter, and replaces sensitive data with indexed labels (e.g. `[PERSONA_1]`).
-3. **Traceable Mapping**: The exact map of replaced words is saved in a JSON log in the `extracted` folder, allowing you to easily link the AI labels back to real data.
+3. **Traceable Mapping**: The exact map of replaced words is saved in a daily log (`extracted/proxy_sessions/YYYY-MM-DD.jsonl`), allowing you to easily link the AI labels back to real data.
 4. **Secure Forwarding**: Germano forwards the "purified" request to the real LLM provider (e.g. OpenAI). When the AI responds, it will in turn use the anonymized tags (e.g. "The contract is registered to [PERSONA_1]").
 
 The Artificial Intelligence will **never** come into contact with your original data, allowing you to use extremely specific prompts without violating the GDPR!
 
 ### How to Activate It (Manual Setup Required)
 
+In Advanced Mode, the Dashboard's **Agenti AI e API** (AI agents and API) tab shows the addresses to copy and, tool by tool, where to set them.
+
 1. Start Germano AI by double-clicking on `START.bat`.
 2. Open your preferred AI editor and change the AI server base address:
    - **Cursor**: Go to `Settings` -> `Models` -> Scroll to `OpenAI API Key` and insert your real key. Then, just below it, toggle on **Override OpenAI Base URL** and insert the following address: `http://127.0.0.1:8000/v1`.
    - **Windsurf / Antigravity / Other IDEs**: In the AI Provider settings (under OpenAI or Custom Provider), find the **Base URL** (or API Base URL / Custom URL) field and insert: `http://127.0.0.1:8000/v1`.
-3. Make sure you enter your real OpenAI API Key in the editor. The IDE will send it to Germano AI, which will safely use it locally **exclusivamente** to forward the request to OpenAI's servers after finishing the anonymization of prompts and files!
+   - **Claude Code**: before starting it, set `ANTHROPIC_BASE_URL=http://127.0.0.1:8000` (in PowerShell: `$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8000"`).
+   - **OpenAI Codex CLI**: set `OPENAI_BASE_URL=http://127.0.0.1:8000/v1`.
+3. Make sure you enter your real API Key (OpenAI or Anthropic) in the editor. The IDE will send it to Germano AI, which will safely use it locally **exclusively** to forward the request to OpenAI's servers after finishing the anonymization of prompts and files!
 
 ### 🛡️ "Fail-Safe Privacy" (Hard Block Active)
 Our API Proxy is designed with a zero-tolerance policy for errors (Hard Block). 
@@ -112,12 +132,25 @@ If for any reason (e.g., AI daemon stopped, unreadable format, or corrupted imag
 
 ---
 
+## 🔄 Automatic updates
+
+Germano keeps itself up to date without giving up offline operation:
+
+1. **Only when Windows reports that the PC is connected to the Internet** (about 20 seconds after startup and then every 6 hours), Germano reads the `update.json` file with the latest version number from GitHub. On a disconnected PC no connection attempt is made.
+2. If the version is newer, the package is downloaded from Google Drive into the `update/` folder and its size and **SHA-256** fingerprint are verified: a file that differs from the published one is discarded.
+3. Installation happens at the next `START.bat` start (or right away with **Installa ora e riavvia**, install now and restart, in the Dashboard notice). Working folders, the Vault and `config.json` are left untouched; if anything goes wrong, the previous version is put back.
+
+The options are in Advanced Mode, **Sistema e registro → Aggiornamenti** (System and log → Updates), or in `config.json`: `"check_updates": false` turns the check off, `"auto_update": false` only reports the new version. No document data is sent during the check.
+
+---
+
 ## 📂 Working Folders Structure
 - `/input`: Drag files here.
 - `/output`: Anonymized files, with original format and layout intact.
 - `/processed`: Original files moved at the end of the job.
-- `/failed`: Corrupted, blocked, or unreadable documents.
+- `/failed`: Corrupted, blocked, or unreadable documents (listed in the *Non riusciti* tab with the reason).
 - `/extracted`: JSON files with logs of what was replaced (for GDPR Audit).
+- `/update`: Created only when needed: a downloaded update waiting to be installed.
 
 ## 📜 License and Contribution
 This project is proudly distributed under the **GNU GPL v3** license. You can use it for free even for commercial purposes, as long as you keep any modifications Open Source. 
