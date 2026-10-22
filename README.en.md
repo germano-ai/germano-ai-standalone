@@ -22,7 +22,7 @@ Germano AI works completely autonomously by "listening" to its folders. The basi
 
 💡 **Productivity Tip:** You can add new files or entire folders *while the software is already working*: they are queued and processed without restarting anything. **Esporta elenco** (Export list) saves the list of ready or failed documents as CSV (for Excel). From the Dashboard you can also anonymize a text "on the fly" by pasting it into the **«Testo da inviare a un servizio di AI»** (Text to send to an AI service) box.
 
-👉 **[DOWNLOAD GERMANO AI STANDALONE](https://drive.google.com/drive/folders/1uyRyW-zgqkEy5QmMmylQZ6k7-wzuEleD)**
+👉 **[DOWNLOAD GERMANO AI STANDALONE](https://download.germano.ai)**
 
 ---
 
@@ -45,7 +45,7 @@ Germano AI is designed to adapt to both highly regulated environments and privat
 
 *   **New Dashboard, sober and built for batch work:** buttons to open the `input` and `output` folders, adding files or whole folders, pending / ready / failed counters, a list of the documents that could not be processed with the reason and a **Rimetti in coda** (Queue again) button, CSV export of the list.
 *   **Endpoints for AI agents:** in Advanced Mode the **Agenti AI e API** (AI agents and API) tab shows the Proxy addresses (OpenAI and Anthropic formats) and where to set them in Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider and the SDKs, followed by REST API examples.
-*   **Automatic updates:** only when Windows reports that the PC is connected to the Internet, Germano looks for a new version on GitHub, downloads it from Google Drive, verifies its SHA-256 fingerprint and installs it on restart, keeping documents, Vault and settings (details below).
+*   **Automatic updates:** only when Windows reports that the PC is connected to the Internet, Germano looks for a new version on download.germano.ai, downloads it, verifies its integrity and installs it on restart, keeping documents, Vault and settings (details below).
 *   **Formatting and images preserved** in Word, Excel, PowerPoint and OpenDocument (v0.50 removed bold text, fonts and pictures from DOCX files); footnotes, text boxes, comments, speaker notes, metadata and thumbnails are now anonymized too.
 *   **Stronger PDF redaction:** OCR on scans carrying a digital stamp, pixel blanking on searchable scans, correct rotated pages, form fields, comments, bookmarks, embedded attachments; signatures (PAdES) removed.
 *   **API Proxy fixed for Claude Code and Codex** (SSE streaming was broken in v0.50), images and PDFs in Anthropic/Responses format anonymized, faster batch analysis with caching.
@@ -136,8 +136,8 @@ If for any reason (e.g., AI daemon stopped, unreadable format, or corrupted imag
 
 Germano keeps itself up to date without giving up offline operation:
 
-1. **Only when Windows reports that the PC is connected to the Internet** (about 20 seconds after startup and then every 6 hours), Germano reads the `update.json` file with the latest version number from GitHub. On a disconnected PC no connection attempt is made.
-2. If the version is newer, the package is downloaded from Google Drive into the `update/` folder and its size and **SHA-256** fingerprint are verified: a file that differs from the published one is discarded.
+1. **Only when Windows reports that the PC is connected to the Internet** (about 20 seconds after startup and then every 6 hours), Germano opens `https://download.germano.ai` (the official download address, which points to the public package folder) and looks for the most recent `GermanoAI_Release_v<version>.zip`. On a disconnected PC no connection attempt is made.
+2. If it is newer than the installed version, the package is downloaded into the `update/` folder and checked: complete download, **SHA-256** fingerprint (when the folder also holds the `.sha256` file), integrity of every file in the ZIP and version matching the file name. A package that fails the checks is discarded.
 3. Installation happens at the next `START.bat` start (or right away with **Installa ora e riavvia**, install now and restart, in the Dashboard notice). Working folders, the Vault and `config.json` are left untouched; if anything goes wrong, the previous version is put back.
 
 The options are in Advanced Mode, **Sistema e registro → Aggiornamenti** (System and log → Updates), or in `config.json`: `"check_updates": false` turns the check off, `"auto_update": false` only reports the new version. No document data is sent during the check.

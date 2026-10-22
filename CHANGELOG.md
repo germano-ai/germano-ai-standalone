@@ -33,11 +33,13 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 
 ### Aggiunto - Aggiornamenti automatici
 - **Solo quando Windows segnala che il PC è connesso a Internet** (Network List Manager: la verifica non invia
-  pacchetti in rete), 20 secondi dopo l'avvio e poi ogni 6 ore, Germano legge da GitHub `update.json` con l'ultima
-  versione. Su un PC scollegato non avviene alcun tentativo di connessione.
-- Se c'è una versione più recente il pacchetto viene scaricato da Google Drive (anche oltre la pagina di conferma dei
-  file grandi), accettato solo via HTTPS dai domini Google, verificato per dimensione e impronta SHA-256, estratto e
-  controllato nella cartella `update/`.
+  pacchetti in rete), 20 secondi dopo l'avvio e poi ogni 6 ore, Germano apre `https://download.germano.ai`, unico
+  riferimento per le nuove versioni, che rimanda alla cartella pubblica di Google Drive con i pacchetti, e vi cerca lo ZIP
+  `GermanoAI_Release_v<versione>.zip` più recente. Su un PC scollegato non avviene alcun tentativo di connessione.
+- Se è più recente della versione installata, il pacchetto viene scaricato (anche oltre la pagina di conferma di
+  Google Drive per i file grandi), accettato solo via HTTPS da download.germano.ai e dai domini Google, controllato
+  (download completo, impronta SHA-256 se nella cartella c'è anche `<nome dello ZIP>.sha256`, CRC di ogni file dello
+  ZIP, VERSION uguale alla versione del nome), estratto e preparato nella cartella `update/`.
 - Installazione al successivo avvio di `START.bat` oppure subito con *Installa ora e riavvia*: un installatore separato
   sostituisce i componenti del programma, conserva `input`, `output`, `processed`, `failed`, `extracted`, `state` e
   `config.json`, rimette al suo posto la versione precedente in caso di errore e riavvia Germano.
