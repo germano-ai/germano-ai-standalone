@@ -1,7 +1,148 @@
 # Changelog
 
+🌍 *Read this in other languages: [English](CHANGELOG.en.md)*
+
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
+
+## [0.51-alpha] - 2026-10-22
+Versione di consolidamento: audit completo del codice 0.50 (bug verificati con test riproducibili), riscrittura
+modulare del motore (`germano/`), Dashboard completamente rinnovata e aggiornamenti automatici. Runtime, librerie e
+modelli invariati: funziona offline su Windows 11 appena installato.
+
+### Aggiunto - Nuova Dashboard
+- Interfaccia ridisegnata, chiara e sobria, con il logo ufficiale. Selettore **Semplice / Avanzata**; in Modalità
+  Avanzata quattro schede: *Elaborazione*, *Agenti AI e API*, *Filtri e modelli*, *Sistema e registro*.
+- **Lavoro in blocco**: aggiunta di file o di intere cartelle (trascinamento oppure *Seleziona file* /
+  *Seleziona cartella*), pulsanti **Apri cartella input** e **Apri cartella output** (Esplora file), contatori
+  *In attesa* / *Pronti* / *Non riusciti*, avanzamento del lotto e riepilogo finale, avviso con *Avvia elaborazione*
+  quando ci sono documenti in attesa e il motore è in pausa.
+- Tabella **Documenti** con schede *Pronti*, *In attesa*, *Non riusciti* e *Originali* (in Avanzata), filtro per
+  nome, cartella o motivo e azioni *Apri*, *Mostra nella cartella*, *Scarica*. I documenti non riusciti mostrano il
+  motivo e si rimettono in coda singolarmente o tutti insieme (**Rimetti in coda**); **Esporta elenco** salva la
+  tabella in CSV per Excel (separatore `;`, protezione dalla formula injection).
+- Per ogni documento elaborato vengono registrati modalità, numero di dati oscurati e tempo (`state/outputs.json`),
+  visibili nella tabella.
+- Scheda **Agenti AI e API**: indirizzi del Proxy da copiare (formato OpenAI `/v1` e formato Anthropic), tabella con
+  dove impostarli in Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider e negli SDK
+  OpenAI e Anthropic, servizi di destinazione ed esempi delle API REST con `curl.exe`.
+- Scheda *Sistema e registro*: percorsi delle cartelle di lavoro con i pulsanti *Apri* e *Copia percorso*,
+  impostazioni degli aggiornamenti, archivio delle corrispondenze e registro in tempo reale.
+- Nuove API locali: `GET /api/folders`, `POST /api/file_action` (mostra/apre un file; si aprono solo documenti, mai
+  eseguibili o script), `POST /api/retry_failed`, `GET /api/update/status`, `POST /api/update/check|download|install`.
+
+### Aggiunto - Aggiornamenti automatici
+- **Solo quando Windows segnala che il PC è connesso a Internet** (Network List Manager: la verifica non invia
+  pacchetti in rete), 20 secondi dopo l'avvio e poi ogni 6 ore, Germano legge da GitHub `update.json` con l'ultima
+  versione. Su un PC scollegato non avviene alcun tentativo di connessione.
+- Se c'è una versione più recente il pacchetto viene scaricato da Google Drive (anche oltre la pagina di conferma dei
+  file grandi), accettato solo via HTTPS dai domini Google, verificato per dimensione e impronta SHA-256, estratto e
+  controllato nella cartella `update/`.
+- Installazione al successivo avvio di `START.bat` oppure subito con *Installa ora e riavvia*: un installatore separato
+  sostituisce i componenti del programma, conserva `input`, `output`, `processed`, `failed`, `extracted`, `state` e
+  `config.json`, rimette al suo posto la versione precedente in caso di errore e riavvia Germano.
+- Opzioni `check_updates` e `auto_update` (anche nella Dashboard, *Sistema e registro → Aggiornamenti*) e pulsante
+  *Controlla ora*.
+
+### Corretto - Perdita di dati e privacy
+- **DOCX distrutti dall'anonimizzazione**: la v0.50 riscriveva ogni paragrafo con `paragraph.text = ...`, cancellando
+  grassetti, font, collegamenti e **le immagini** del documento; l'autore restava nei metadati. Ora Word, Excel e
+  PowerPoint vengono modificati direttamente nell'XML: cambia solo il testo personale, il resto resta identico.
+- **Parti di documento mai analizzate**: note a piè di pagina, caselle di testo, tabelle annidate, commenti (e i loro
+  autori), revisioni, controlli contenuto, forme raggruppate e SmartArt di PowerPoint, note del relatore, grafici,
+  intestazioni/piè di pagina ODT (`styles.xml`), metadati (autore, ultimo modificatore, titolo), miniature di anteprima.
+- **Modello Italian NER cieco oltre ~512 token**: sui testi lunghi non rilevava nulla dopo le prime righe (test: 0
+  entità su 5.500 caratteri, 7 dopo la correzione). Ora il testo è diviso in blocchi sovrapposti.
+- **PDF scansionati con timbro digitale** (tipici della PA: protocollo stampato su una scansione): niente OCR, quindi
+  il contenuto restava leggibile. Ora l'OCR si attiva quando le immagini della pagina hanno poco testo digitale.
+- **Scansioni "ricercabili"**: veniva rimosso solo il livello di testo invisibile, l'immagine restava visibile. Ora i
+  pixel sottostanti vengono oscurati.
+- **Pagine PDF ruotate**: volti/firme/OCR venivano oscurati nel punto sbagliato (coordinate non de-ruotate).
+- **PDF**: campi modulo, commenti e relativo autore, segnalibri, metadati/XMP, link `mailto:`, allegati incorporati
+  (anche in sottocartelle, prima causavano un errore) e firme digitali PAdES (con nome e codice fiscale del
+  firmatario) ora vengono anonimizzati o rimossi. Un'occorrenza mancata non viene più confusa con un'altra
+  (censura a livello di carattere invece di `search_for`).
+- **Allegati in chiaro**: le email saltavano gli allegati; gli ZIP copiavano invariati i file non supportati o in
+  errore; il Proxy inviava in chiaro immagini e PDF nei formati Anthropic e OpenAI Responses. Ora tutto viene
+  anonimizzato, oppure escluso/bloccato (principio fail-safe).
+- **Vault che poteva azzerarsi**: scritture concorrenti senza lock e lettura fallita trattata come vault vuoto, poi
+  salvato sopra quello buono. Ora: lock, scritture atomiche, copia di sicurezza se il file è illeggibile.
+- **Ripristino con dati sbagliati**: le etichette non numerate (`[PERSONA]`) venivano sostituite con l'ultimo nome
+  visto. Ora si ripristinano solo le etichette numerate; con lo switch spento il vault non salva più i dati reali.
+- **Testi ANSI**: TXT/CSV in codifica Windows-1252 perdevano le lettere accentate (`errors="ignore"`).
+- **Commenti HTML** trasformati in testo visibile dopo l'anonimizzazione.
+- Le immagini venivano riesportate a 72 dpi (perdita di risoluzione), solo la prima pagina dei TIFF multipagina,
+  senza correggere la rotazione EXIF delle foto e mantenendo i metadati GPS.
+- Gli originali in `processed/` potevano essere sovrascritti da un file omonimo.
+
+### Corretto - Proxy API (Claude Code, Codex, Cursor, Antigravity)
+- **Streaming rotto per Anthropic e OpenAI Responses**: la riga `event:` veniva separata dalla riga `data:`, quindi
+  tutti gli eventi arrivavano vuoti e gli SDK andavano in errore al primo evento. Nuovo parser SSE conforme.
+- Il testo trattenuto per ricomporre un'etichetta spezzata veniva perso a fine blocco; un unico buffer era
+  condiviso tra testo e argomenti dei tool (JSON corrotti). Ora buffer per blocco, svuotati a fine blocco.
+- Valori ripristinati negli argomenti JSON dei tool senza escape (virgolette/a capo rompevano il JSON).
+- I blocchi `thinking` firmati di Claude venivano modificati (firma non più valida).
+- Errori del servizio IA (es. 401) restituiti come stream 200 malformato; header `anthropic-beta` e parametri
+  `?beta=true` non inoltrati; `/v1/messages/count_tokens` mancante.
+- Prestazioni: una chiamata HTTP al motore per ogni messaggio e nessuna cache; ora un'unica chiamata a batch con
+  cache dei blocchi già analizzati.
+
+### Corretto - Stabilità
+- Il motore restava attivo (circa 6 GB di RAM) dopo la chiusura della finestra di Germano: ora si chiude da solo.
+- Importando `daemon.py`, il server cancellava alla chiusura il PID del motore ancora attivo (possibile doppio motore).
+- `.doc`/`.ppt`/`.rtf` tramite Word fallivano sempre nel thread di lavoro (CoInitialize mancante) e rischiavano di
+  chiudere il Word già aperto dall'utente; il `.ppt` veniva salvato in formato PPTX con estensione `.ppt`.
+- Nomi dei fogli Excel con un dato personale: l'XLSX finiva in `failed` (carattere `[` non ammesso).
+- `.xls`: le celle anonimizzate perdevano lo stile.
+- File elaborati mentre erano ancora in copia; file temporanei di Office (`~$`) e `Thumbs.db` finivano in `failed`;
+  file bloccati rielaborati all'infinito; output parziali in caso di arresto.
+- Timeout fisso di 5 minuti: i documenti lunghi fallivano sempre (ora 60 minuti configurabili, annullamento
+  cooperativo invece di thread lasciati in esecuzione).
+- Accesso concorrente ai modelli da più thread (errori casuali "Already borrowed"): ora serializzato.
+- Log letto per intero a ogni secondo e mai ruotato; scansione completa delle cartelle a ogni richiesta di stato.
+- `START.bat`: controllo `%errorlevel%` dentro un blocco (sempre valutato prima), cartelle di rete non supportate.
+
+### Sicurezza
+- Protezione anti DNS-rebinding (solo host locali) e anti CSRF (nessuna azione da siti web esterni) sull'API locale,
+  che espone il vault con i dati reali; `/api/start` e `/api/stop` solo in POST.
+- API interna del motore su porta dinamica, protetta da token (prima porta 8001 fissa, senza autenticazione).
+- Escape HTML nella Dashboard (nomi file e valori del vault).
+- Nessun dato dei documenti viene inviato in rete. L'unica connessione automatica è il controllo degli
+  aggiornamenti (vedi sopra), solo con Internet segnalato da Windows e disattivabile (`"check_updates": false`).
+- Conversioni Office in un processo separato, con macro disattivate e timeout.
+
+### Aggiunto
+- **RTF nativo** senza Microsoft Word (su Windows 11 24H2 non c'è più nemmeno WordPad).
+- **File firmati `.p7m` (CAdES)**: estrazione e anonimizzazione del documento interno (es. `fattura.xml.p7m`).
+- `.doc`/`.ppt`/`.xls` che sono in realtà RTF, DOCX, HTML o XML rinominati vengono riconosciuti senza Office;
+  conversione tramite LibreOffice se Microsoft Office non è presente.
+- Nuovi formati: `.json`, `.jsonl`, `.tsv`, `.md`, `.log`, codice sorgente, `.gif`, modelli Office (`.dotx`, `.potx`...).
+- RegEx validate: IBAN anche con spazi e di tutta Europa (checksum), codice fiscale con omocodia e variante tollerante
+  agli errori OCR, P.IVA, carte di pagamento (Luhn), telefoni nei formati reali (`333 123 4567`, `+39`, `02/...`),
+  date, targhe, CIE, catasto, ragioni sociali in maiuscolo (`ROSSI SRL`), chiavi API e password.
+- **Propagazione**: un nome rilevato in un punto viene oscurato in tutte le altre occorrenze del documento.
+- Campi FatturaPA (Nome, Cognome, CodiceFiscale, Indirizzo...) riconosciuti per struttura.
+- Precisione automatica del modello principale: FP32 con almeno 12 GB di RAM, BF16 (metà memoria) sotto.
+- Dashboard: avanzamento in tempo reale (file e pagina), motivo dei documenti non riusciti, banner di errore del
+  motore e di server non raggiungibile, trascinamento di intere cartelle, profilo PA/PD visibile, nuove opzioni
+  (precisione, timeout, nomi file anonimizzati, servizio Anthropic separato).
+- Blocco amministrativo delle impostazioni (`"lock_settings": true` in `config.json`) per il profilo PA.
+- Opzione per anonimizzare anche i nomi di file e cartelle (`anonymize_filenames`).
+- Avvio di `START.bat` con Germano già aperto: apre la Dashboard esistente invece di dare errore di porta occupata.
+- Avvisi di `START.bat` per Smart App Control, percorsi troppo lunghi e pacchetto incompleto.
+- Proxy: certificati di Windows (reti aziendali con ispezione TLS), log di sessione giornalieri in JSONL.
+
+### Modificato
+- `check_updates` è ora attivo di default (prima era spento), con le garanzie descritte sopra; nuovo `auto_update`.
+- Etichette della Dashboard: *Avvia motore* / *Arresta motore* al posto di *ATTIVA GERMANO* / *FERMA GERMANO*;
+  l'interruttore *Ripristino automatico dei dati originali* si trova sotto il riquadro per aggiungere i documenti.
+
+### Documentazione
+- Guida offline bilingue aggiornata e con il tema chiaro della Dashboard: sezione "Novità della v0.51", uso in blocco
+  passo per passo, le quattro schede della Modalità Avanzata, aggiornamenti automatici, istruzioni per passare dalla
+  0.50 alla 0.51 conservando Vault e impostazioni, endpoint `/api/v1/deanonymize_file`, sicurezza delle API locali,
+  campi per i servizi OpenAI e Anthropic nel setup di Claude Code, Codex, Cursor e Antigravity.
+- README e changelog anche in inglese (`README.en.md`, `CHANGELOG.en.md`).
 
 ## [0.50-alpha] - 2026-10-20
 ### Architettura Standalone & Compatibilità Windows 11 Vanilla (100% Offline)

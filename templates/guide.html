@@ -5,24 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Germano AI — Manuale & Documentazione Tecnica (100% Offline)</title>
     <style>
+        /* Tema chiaro, coerente con la Dashboard. Nessuna risorsa esterna: la guida funziona offline. */
         :root {
-            --bg-body: #0b1120;
-            --bg-card: #131c31;
-            --bg-card-alt: #18243d;
-            --bg-input: #0d1526;
-            --border: #263554;
-            --border-bright: #3b5280;
-            --text-main: #f8fafc;
-            --text-sec: #cbd5e1;
-            --text-muted: #94a3b8;
-            --blue: #3b82f6;
-            --blue-hover: #2563eb;
-            --green: #10b981;
-            --green-hover: #059669;
-            --purple: #8b5cf6;
-            --amber: #f59e0b;
-            --red: #ef4444;
-            --font-sans: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+            --bg-body: #f4f6f9;
+            --bg-card: #ffffff;
+            --bg-card-alt: #f8fafc;
+            --bg-input: #f1f5f9;
+            --border: #dbe2ec;
+            --border-soft: #e6ebf2;
+            --border-bright: #c3cddb;
+            --text-main: #0f172a;
+            --text-sec: #334155;
+            --text-muted: #56657a;
+            --navy: #0b1f3a;
+            --blue: #0b57a8;
+            --blue-hover: #08447f;
+            --blue-soft: #eaf2fb;
+            --blue-line: #cfe0f3;
+            --green: #047857;
+            --purple: #6d28d9;
+            --amber: #b45309;
+            --red: #b91c1c;
+            --brand-gradient: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+            --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 4px 12px -4px rgba(15, 23, 42, 0.08);
+            --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.05), 0 14px 32px -14px rgba(15, 23, 42, 0.2);
+            --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
             --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
         }
 
@@ -34,49 +41,61 @@
             font-family: var(--font-sans);
             line-height: 1.65;
             min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
         }
 
         /* Language Toggle Visibility Switch */
         body:not([data-lang="en"]) .lang-en { display: none !important; }
         body[data-lang="en"] .lang-it { display: none !important; }
 
-        /* Top Sticky Header */
+        /* Testata: bianca, con la linea sfumata del logo */
         .guide-header {
             position: sticky;
             top: 0;
             z-index: 100;
-            background: rgba(19, 28, 49, 0.95);
+            background: rgba(255, 255, 255, 0.96);
             backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--border);
-            padding: 14px 28px;
+            box-shadow: 0 10px 28px -24px rgba(15, 23, 42, 0.45);
+            padding: 15px 28px 12px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 16px;
             flex-wrap: wrap;
         }
+        .guide-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--brand-gradient);
+        }
         .header-brand {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 16px;
             text-decoration: none;
             color: inherit;
+            min-width: 0;
         }
-        .brand-icon-box {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #1e3a8a, #3b82f6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        .brand-logo {
+            height: 38px;
+            width: auto;
+            display: block;
+        }
+        .brand-divider {
+            width: 1px;
+            height: 34px;
+            background: var(--border);
         }
         .brand-text h1 {
-            font-size: 1.25rem;
-            font-weight: 800;
-            letter-spacing: -0.02em;
+            font-size: 1.04rem;
+            font-weight: 700;
+            color: var(--navy);
+            letter-spacing: -0.01em;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -89,22 +108,23 @@
             display: inline-block;
             font-size: 0.72rem;
             font-weight: 700;
-            padding: 2px 8px;
+            padding: 2px 9px;
             border-radius: 99px;
-            background: rgba(16, 185, 129, 0.15);
-            color: #6ee7b7;
-            border: 1px solid rgba(16, 185, 129, 0.3);
+            background: #ecfdf5;
+            color: var(--green);
+            border: 1px solid #a7f3d0;
         }
         .badge-version {
-            background: rgba(59, 130, 246, 0.15);
-            color: #93c5fd;
-            border-color: rgba(59, 130, 246, 0.3);
+            background: var(--blue-soft);
+            color: var(--blue);
+            border-color: var(--blue-line);
         }
 
         .header-controls {
             display: flex;
             align-items: center;
             gap: 12px;
+            flex-wrap: wrap;
         }
         .btn-back {
             display: inline-flex;
@@ -112,42 +132,45 @@
             gap: 6px;
             padding: 7px 14px;
             border-radius: 8px;
-            background: var(--bg-card-alt);
-            border: 1px solid var(--border);
-            color: var(--text-sec);
+            background: #ffffff;
+            border: 1px solid var(--border-bright);
+            color: var(--text-main);
             text-decoration: none;
             font-size: 0.86rem;
             font-weight: 600;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
             transition: all 0.2s;
         }
         .btn-back:hover {
-            background: var(--border);
-            color: #fff;
-            border-color: var(--border-bright);
+            border-color: var(--blue);
+            color: var(--blue);
         }
         .lang-switch-group {
             display: inline-flex;
-            background: var(--bg-card-alt);
+            background: #eef2f7;
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 9px;
             padding: 3px;
             gap: 2px;
         }
         .lang-btn {
             background: transparent;
-            border: none;
+            border: 1px solid transparent;
             color: var(--text-muted);
             padding: 5px 12px;
             font-size: 0.82rem;
             font-weight: 700;
-            border-radius: 6px;
+            font-family: inherit;
+            border-radius: 7px;
             cursor: pointer;
             transition: all 0.18s;
         }
+        .lang-btn:hover { color: var(--text-main); }
         .lang-btn.active {
-            background: var(--blue);
-            color: #fff;
-            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+            background: #ffffff;
+            color: var(--blue);
+            border-color: var(--border);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
         /* Layout Grid: Sidebar + Content */
@@ -157,7 +180,7 @@
             padding: 30px 24px 80px;
             display: grid;
             grid-template-columns: 290px 1fr;
-            gap: 36px;
+            gap: 32px;
         }
         @media (max-width: 1024px) {
             .layout-container { grid-template-columns: 1fr; }
@@ -167,26 +190,30 @@
         /* Sidebar Navigation */
         .sidebar {
             position: sticky;
-            top: 86px;
-            height: calc(100vh - 110px);
+            top: 92px;
+            height: calc(100vh - 116px);
             overflow-y: auto;
-            padding-right: 12px;
+            padding: 14px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: var(--shadow-sm);
         }
-        .sidebar::-webkit-scrollbar { width: 5px; }
-        .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        .sidebar::-webkit-scrollbar { width: 6px; }
+        .sidebar::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 4px; }
         .sidebar-title {
-            font-size: 0.78rem;
+            font-size: 0.74rem;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.1em;
             color: var(--text-muted);
-            font-weight: 800;
-            margin: 16px 0 8px 10px;
+            font-weight: 700;
+            margin: 4px 0 10px 10px;
         }
         .sidebar-nav {
             list-style: none;
             display: flex;
             flex-direction: column;
-            gap: 3px;
+            gap: 2px;
         }
         .sidebar-link {
             display: block;
@@ -200,10 +227,9 @@
             border-left: 2px solid transparent;
         }
         .sidebar-link:hover {
-            color: #fff;
-            background: var(--bg-card);
+            color: var(--blue);
+            background: var(--blue-soft);
             border-left-color: var(--blue);
-            padding-left: 15px;
         }
 
         /* Content Styling */
@@ -211,54 +237,56 @@
             min-width: 0;
             display: flex;
             flex-direction: column;
-            gap: 40px;
+            gap: 28px;
         }
         .doc-section {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 32px 36px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            box-shadow: var(--shadow-sm);
         }
         .section-header {
-            margin-bottom: 24px;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 16px;
+            margin-bottom: 22px;
+            border-bottom: 1px solid var(--border-soft);
+            padding-bottom: 14px;
         }
         .section-tag {
-            font-size: 0.75rem;
-            font-weight: 800;
+            font-size: 0.72rem;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.1em;
             color: var(--blue);
             margin-bottom: 6px;
             display: inline-block;
         }
         h2.section-title {
-            font-size: 1.65rem;
-            font-weight: 800;
-            color: var(--text-main);
-            letter-spacing: -0.02em;
+            font-size: 1.55rem;
+            font-weight: 700;
+            color: var(--navy);
+            letter-spacing: -0.015em;
         }
         h3.sub-title {
-            font-size: 1.22rem;
+            font-size: 1.14rem;
             font-weight: 700;
-            color: #93c5fd;
-            margin: 28px 0 12px;
+            color: var(--blue);
+            margin: 26px 0 10px;
             display: flex;
             align-items: center;
             gap: 8px;
         }
         h4.sub-sub-title {
-            font-size: 1.05rem;
+            font-size: 1.02rem;
             font-weight: 700;
-            color: #e2e8f0;
-            margin: 20px 0 8px;
+            color: var(--text-main);
+            margin: 18px 0 8px;
         }
         p { margin-bottom: 14px; color: var(--text-sec); font-size: 0.96rem; }
-        p strong { color: #fff; }
+        p strong, li strong { color: var(--text-main); }
         ul, ol { margin-left: 22px; margin-bottom: 16px; color: var(--text-sec); font-size: 0.95rem; }
         li { margin-bottom: 6px; }
+        .doc-section p a, .doc-section li a { color: var(--blue); text-decoration: underline; text-underline-offset: 2px; }
+        .doc-section p a:hover, .doc-section li a:hover { color: var(--blue-hover); }
 
         /* Callout Boxes */
         .callout {
@@ -270,18 +298,18 @@
             gap: 14px;
             align-items: flex-start;
         }
-        .callout-icon { font-size: 1.3rem; line-height: 1; flex-shrink: 0; margin-top: 2px; }
+        .callout-icon { font-size: 1.25rem; line-height: 1; flex-shrink: 0; margin-top: 2px; }
         .callout-content { flex: 1; }
         .callout-content p:last-child { margin-bottom: 0; }
-        .callout-info { background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); color: #bfdbfe; }
-        .callout-success { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); color: #a7f3d0; }
-        .callout-warning { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); color: #fde68a; }
-        .callout-purple { background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(139, 92, 246, 0.35); color: #ddd6fe; }
+        .callout-info { background: #f3f8fe; border: 1px solid var(--blue-line); border-left: 4px solid var(--blue); color: #1e3a5f; }
+        .callout-success { background: #f0fbf6; border: 1px solid #b7ebd3; border-left: 4px solid #059669; color: #064e3b; }
+        .callout-warning { background: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #d97706; color: #78350f; }
+        .callout-purple { background: #f7f4fe; border: 1px solid #ddd0f8; border-left: 4px solid var(--purple); color: #3b2370; }
 
         /* Step Cards */
         .step-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 16px;
             margin: 20px 0;
         }
@@ -294,35 +322,42 @@
             flex-direction: column;
             gap: 10px;
             position: relative;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .step-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
         }
         .step-num {
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
             border-radius: 8px;
-            background: var(--blue);
-            color: #fff;
-            font-weight: 800;
+            background: linear-gradient(180deg, #1868c4, #0b57a8);
+            color: #ffffff;
+            font-weight: 700;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
+            box-shadow: 0 6px 12px -6px rgba(11, 87, 168, 0.7);
         }
-        .step-card h4 { font-size: 1.05rem; font-weight: 700; color: #fff; }
+        .step-card h4 { font-size: 1.02rem; font-weight: 700; color: var(--text-main); }
         .step-card p { font-size: 0.88rem; margin: 0; color: var(--text-sec); }
 
         /* Folder Tree Visual */
         .folder-tree {
-            background: var(--bg-input);
+            background: var(--bg-card-alt);
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 16px 20px;
             font-family: var(--font-mono);
-            font-size: 0.88rem;
-            color: #e2e8f0;
+            font-size: 0.86rem;
+            color: var(--text-main);
             margin: 18px 0;
             line-height: 1.7;
+            overflow-x: auto;
         }
-        .tree-folder { color: #60a5fa; font-weight: 700; }
+        .tree-folder { color: var(--blue); font-weight: 700; }
         .tree-comment { color: var(--text-muted); font-style: italic; }
 
         /* Tables */
@@ -331,6 +366,7 @@
             margin: 18px 0;
             border: 1px solid var(--border);
             border-radius: 10px;
+            background: #ffffff;
         }
         table {
             width: 100%;
@@ -339,64 +375,66 @@
             text-align: left;
         }
         th {
-            background: var(--bg-card-alt);
-            color: #fff;
+            background: #f4f7fb;
+            color: var(--text-main);
             font-weight: 700;
-            padding: 12px 16px;
+            padding: 11px 16px;
             border-bottom: 1px solid var(--border);
-            font-size: 0.82rem;
+            font-size: 0.76rem;
             text-transform: uppercase;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.05em;
         }
         td {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border);
+            padding: 11px 16px;
+            border-bottom: 1px solid var(--border-soft);
             color: var(--text-sec);
             vertical-align: top;
         }
         tr:last-child td { border-bottom: none; }
-        tr:hover td { background: rgba(255, 255, 255, 0.02); }
+        tbody tr:hover td { background: var(--bg-card-alt); }
         code {
             font-family: var(--font-mono);
-            background: rgba(15, 23, 42, 0.7);
-            padding: 2px 6px;
+            background: var(--blue-soft);
+            padding: 1px 6px;
             border-radius: 5px;
             font-size: 0.85em;
-            color: #38bdf8;
-            border: 1px solid rgba(56, 189, 248, 0.2);
+            color: #08427f;
+            border: 1px solid var(--blue-line);
         }
 
-        /* Code Blocks */
+        /* Code Blocks: restano scuri, come in un terminale */
         .code-block {
-            background: #080d19;
-            border: 1px solid var(--border);
+            background: #0d1526;
+            border: 1px solid #1e293b;
             border-radius: 10px;
             margin: 16px 0;
             overflow: hidden;
+            box-shadow: 0 14px 28px -22px rgba(15, 23, 42, 0.6);
         }
         .code-header {
-            background: var(--bg-card-alt);
+            background: #131d33;
             padding: 8px 16px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
             font-size: 0.78rem;
-            color: var(--text-muted);
+            color: #94a3b8;
             font-family: var(--font-mono);
         }
         .copy-btn {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text-sec);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #cbd5e1;
             padding: 3px 10px;
             border-radius: 5px;
             font-size: 0.75rem;
             font-weight: 600;
+            font-family: inherit;
             cursor: pointer;
             transition: all 0.15s;
         }
-        .copy-btn:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
+        .copy-btn:hover { background: #2563eb; color: #ffffff; border-color: #2563eb; }
         pre {
             padding: 16px;
             overflow-x: auto;
@@ -405,10 +443,23 @@
             color: #e2e8f0;
             line-height: 1.55;
         }
+        pre code {
+            background: transparent;
+            border: 0;
+            padding: 0;
+            color: inherit;
+            font-size: inherit;
+        }
+
+        @media (max-width: 640px) {
+            .guide-header { padding: 14px 16px 10px; }
+            .brand-divider, .brand-text p { display: none; }
+            .doc-section { padding: 22px 18px; }
+        }
 
         /* Quick Jump Anchor Offset */
         :target {
-            scroll-margin-top: 90px;
+            scroll-margin-top: 96px;
         }
     </style>
 </head>
@@ -417,29 +468,26 @@
     <!-- TOP HEADER -->
     <header class="guide-header">
         <a href="/" class="header-brand">
-            <div class="brand-icon-box">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    <path d="M9 12l2 2 4-4"/>
-                </svg>
-            </div>
+            <!-- percorso relativo: funziona sia da /guide sia aprendo GUIDA_OFFLINE.html dalla cartella del programma -->
+            <img class="brand-logo" src="static/logo.svg" alt="germano.ai" width="202" height="56">
+            <span class="brand-divider" aria-hidden="true"></span>
             <div class="brand-text">
-                <h1>GERMANO AI <span class="badge-pill badge-version">v0.50-alpha</span></h1>
-                <p class="lang-it">Manuale Ufficiale & Documentazione Tecnica (100% Offline)</p>
-                <p class="lang-en">Official Guide & Technical Documentation (100% Offline)</p>
+                <h1><span class="lang-it">Manuale d'uso</span><span class="lang-en">User guide</span> <span class="badge-pill badge-version">v0.51-alpha</span></h1>
+                <p class="lang-it">Documentazione tecnica, consultabile offline</p>
+                <p class="lang-en">Technical documentation, available offline</p>
             </div>
         </a>
 
         <div class="header-controls">
-            <span class="badge-pill">🔒 100% Offline • Zero CDN • GDPR</span>
+            <span class="badge-pill">100% offline · GDPR</span>
             <div class="lang-switch-group">
                 <button type="button" class="lang-btn active" id="btn-it" onclick="setDocLang('it')">🇮🇹 Italiano</button>
                 <button type="button" class="lang-btn" id="btn-en" onclick="setDocLang('en')">🇬🇧 English</button>
             </div>
             <a href="/" class="btn-back">
-                <span>⬅️</span>
-                <span class="lang-it">Dashboard</span>
-                <span class="lang-en">Dashboard</span>
+                <span aria-hidden="true">←</span>
+                <span class="lang-it">Torna alla Dashboard</span>
+                <span class="lang-en">Back to the Dashboard</span>
             </a>
         </div>
     </header>
@@ -452,6 +500,7 @@
             <div class="sidebar-title lang-it">Indice Argomenti</div>
             <div class="sidebar-title lang-en">Table of Contents</div>
             <ul class="sidebar-nav">
+                <li><a href="#novita" class="sidebar-link lang-it">🆕 Novità della v0.51</a><a href="#novita" class="sidebar-link lang-en">🆕 What's new in v0.51</a></li>
                 <li><a href="#introduzione" class="sidebar-link lang-it">1. Introduzione & Principi Chiave</a><a href="#introduzione" class="sidebar-link lang-en">1. Introduction & Core Principles</a></li>
                 <li><a href="#modalita-semplice" class="sidebar-link lang-it">2. Guida Base (Modalità Semplice)</a><a href="#modalita-semplice" class="sidebar-link lang-en">2. Basic Guide (Simple Mode)</a></li>
                 <li><a href="#cartelle" class="sidebar-link lang-it">3. Le 5 Cartelle di Germano</a><a href="#cartelle" class="sidebar-link lang-en">3. The 5 Germano Folders</a></li>
@@ -472,6 +521,72 @@
         <main class="content">
 
             <!-- ========================================================================= -->
+            <!-- NOVITA' DELLA VERSIONE 0.51                                               -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="novita">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Note di Rilascio</span>
+                    <span class="section-tag lang-en">Release Notes</span>
+                    <h2 class="section-title lang-it">🆕 Novità della versione 0.51-alpha</h2>
+                    <h2 class="section-title lang-en">🆕 What's new in version 0.51-alpha</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>La 0.51 è una versione di <strong>consolidamento</strong> con una <strong>Dashboard tutta nuova</strong>: il motore è stato riscritto in moduli e ogni correzione è verificata da test ripetibili. Runtime, librerie e modelli IA sono gli stessi della 0.50 e funziona offline su Windows 11 appena installato.</p>
+                    <ul>
+                        <li><strong>Nuova Dashboard per il lavoro in blocco:</strong> grafica più sobria; si aggiungono file o intere cartelle (anche con i pulsanti <em>Seleziona file</em> e <em>Seleziona cartella</em>), <em>Apri cartella input</em> e <em>Apri cartella output</em> aprono le cartelle in Esplora file e i contatori <em>In attesa</em>, <em>Pronti</em> e <em>Non riusciti</em> mostrano l'andamento del lotto. I documenti non elaborati sono elencati con il motivo e si rimettono in coda con un clic; l'elenco si esporta in CSV per Excel (capitolo 2).</li>
+                        <li><strong>Endpoint per gli agenti AI:</strong> in Modalità Avanzata la scheda <em>Agenti AI e API</em> mostra gli indirizzi del Proxy (formato OpenAI e formato Anthropic) e, per ogni strumento (Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider, SDK OpenAI e Anthropic), dove impostarli, con le istruzioni da copiare; seguono gli esempi delle API REST locali (capitolo 12).</li>
+                        <li><strong>Aggiornamenti automatici:</strong> solo quando Windows segnala che il PC è connesso a Internet, Germano controlla su GitHub se esiste una nuova versione, la scarica da Google Drive, ne verifica l'impronta SHA-256 e la installa al successivo avvio (o subito, con <em>Installa ora e riavvia</em>). Documenti, Vault e impostazioni non vengono toccati e, se l'installazione non va a buon fine, torna al suo posto la versione precedente. Si disattiva in <em>Sistema e registro → Aggiornamenti</em> (capitolo 13).</li>
+                        <li><strong>Documenti Office intatti:</strong> Word, Excel, PowerPoint e OpenDocument vengono modificati direttamente nel loro XML. Grassetti, font, immagini, tabelle, formule e macro restano identici (la 0.50 cancellava formattazione e immagini dei DOCX). Vengono anonimizzati anche note a piè di pagina, caselle di testo, commenti e relativi autori, revisioni, note del relatore, grafici, metadati e miniature di anteprima.</li>
+                        <li><strong>PDF più sicuri:</strong> OCR anche sulle scansioni con timbro digitale (protocollo), oscuramento dei pixel sotto il testo delle scansioni "ricercabili", pagine ruotate gestite correttamente; anonimizzati campi modulo, commenti, segnalibri, metadati e allegati incorporati; le firme digitali PAdES (con nome e codice fiscale del firmatario) vengono rimosse.</li>
+                        <li><strong>Proxy API corretto:</strong> nella 0.50 lo streaming per Claude Code e Codex (formati Anthropic e OpenAI Responses) non funzionava. Ora funziona, anche con immagini e PDF allegati; gli argomenti dei tool restano JSON validi e un'analisi a batch con cache rende le conversazioni lunghe molto più veloci.</li>
+                        <li><strong>Nuovi formati:</strong> RTF nativo senza Word, file firmati <code>.p7m</code> (es. <code>fattura.xml.p7m</code>), JSON, TSV, Markdown, log, codice sorgente, GIF e modelli Office; i <code>.doc</code>/<code>.xls</code> che in realtà sono RTF, DOCX o HTML rinominati vengono riconosciuti senza Office.</li>
+                        <li><strong>Riconoscimento più preciso:</strong> il modello italiano analizza ora i documenti lunghi per intero (prima si fermava dopo poche righe); RegEx validate per IBAN europei, codici fiscali (anche omocodici o letti male dall'OCR), carte di pagamento, telefoni, targhe e CIE; un nome trovato in un punto viene oscurato in tutto il documento.</li>
+                        <li><strong>Affidabilità:</strong> il motore si chiude da solo con la finestra di Germano, i file vengono elaborati solo a copia completata, il Vault è protetto da scritture concorrenti, i documenti lunghi hanno fino a 60 minuti (configurabili) e la Dashboard mostra avanzamento e motivo di ogni errore.</li>
+                        <li><strong>Sicurezza:</strong> l'API locale rifiuta le richieste provenienti da siti web esterni e il motore interno è protetto da token. Nessun dato dei documenti viene inviato in rete: l'unico collegamento automatico è il controllo degli aggiornamenti, solo quando Windows segnala che il PC è connesso a Internet.</li>
+                        <li><strong>Per gli amministratori:</strong> blocco delle impostazioni per il profilo PA (<code>"lock_settings": true</code>), scelta della precisione del modello (FP32/BF16), anonimizzazione dei nomi dei file, servizio Anthropic configurabile a parte.</li>
+                    </ul>
+
+                    <h3 class="sub-title">Aggiornare dalla versione 0.50</h3>
+                    <ol>
+                        <li>Chiudi Germano 0.50 ed estrai la 0.51 in una <strong>nuova cartella</strong> (non sovrascrivere la vecchia).</li>
+                        <li>Per poter ancora ripristinare i dati veri nei documenti protetti con la 0.50, copia il file <code>extracted/deanonymize_vault.json</code> dalla vecchia cartella alla stessa posizione nella nuova.</li>
+                        <li>Se vuoi conservare le impostazioni, copia anche <code>config.json</code>: i valori vengono controllati e completati automaticamente con le nuove opzioni.</li>
+                        <li>Avvia <code>START.bat</code> dalla nuova cartella. Quando tutto funziona, puoi eliminare la cartella della 0.50.</li>
+                        <li>Dalla 0.51 in poi non serve ripetere questi passaggi: Germano si aggiorna da solo quando il PC è connesso a Internet, conservando documenti, Vault e impostazioni.</li>
+                    </ol>
+                    <p>L'elenco completo delle modifiche è nel file <code>CHANGELOG.md</code> (in inglese: <code>CHANGELOG.en.md</code>).</p>
+                </div>
+
+                <div class="lang-en">
+                    <p>0.51 is a <strong>consolidation</strong> release with a <strong>brand-new Dashboard</strong>: the engine has been rewritten as modules and every fix is verified by repeatable tests. Runtime, libraries and AI models are the same as in 0.50 and it works offline on a fresh Windows 11 installation.</p>
+                    <ul>
+                        <li><strong>New Dashboard built for batch work:</strong> a more sober design; add files or whole folders (also with the <em>Seleziona file</em> / <em>Seleziona cartella</em> buttons), open the folders in File Explorer with <em>Apri cartella input</em> / <em>Apri cartella output</em>, and follow the batch with the <em>In attesa</em> (pending), <em>Pronti</em> (ready) and <em>Non riusciti</em> (failed) counters. Documents that could not be processed are listed with the reason and can be queued again with one click; the list exports to CSV for Excel (chapter 2).</li>
+                        <li><strong>Endpoints for AI agents:</strong> in Advanced Mode the <em>Agenti AI e API</em> (AI agents and API) tab shows the Proxy addresses (OpenAI and Anthropic formats) and, for each tool (Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider, OpenAI and Anthropic SDKs), where to set them, with copy-ready instructions, followed by examples of the local REST APIs (chapter 12).</li>
+                        <li><strong>Automatic updates:</strong> only when Windows reports that the PC is connected to the Internet, Germano checks GitHub for a new version, downloads it from Google Drive, verifies its SHA-256 fingerprint and installs it at the next start (or right away with <em>Installa ora e riavvia</em>). Documents, Vault and settings are left untouched and, if the installation fails, the previous version is put back. Turn it off in <em>Sistema e registro → Aggiornamenti</em> (chapter 13).</li>
+                        <li><strong>Office documents left intact:</strong> Word, Excel, PowerPoint and OpenDocument files are edited directly in their XML. Bold text, fonts, images, tables, formulas and macros stay identical (0.50 removed formatting and pictures from DOCX files). Footnotes, text boxes, comments and their authors, tracked changes, speaker notes, charts, metadata and preview thumbnails are anonymized too.</li>
+                        <li><strong>Safer PDFs:</strong> OCR also runs on scans carrying a digital stamp (protocol number), the pixels under the text of "searchable" scans are blanked, rotated pages are handled correctly; form fields, comments, bookmarks, metadata and embedded files are anonymized; PAdES digital signatures (which contain the signer's name and tax code) are removed.</li>
+                        <li><strong>API Proxy fixed:</strong> in 0.50 streaming for Claude Code and Codex (Anthropic and OpenAI Responses formats) did not work. It now works, including attached images and PDFs; tool arguments remain valid JSON and batched analysis with caching makes long conversations much faster.</li>
+                        <li><strong>New formats:</strong> native RTF without Word, signed <code>.p7m</code> files (e.g. <code>fattura.xml.p7m</code>), JSON, TSV, Markdown, logs, source code, GIF and Office templates; <code>.doc</code>/<code>.xls</code> files that are actually renamed RTF, DOCX or HTML are recognized without Office.</li>
+                        <li><strong>More accurate detection:</strong> the Italian model now analyzes long documents in full (it used to stop after a few lines); validated RegEx for European IBANs, Italian tax codes (including omocodia and OCR misreads), payment cards, phone numbers, license plates and ID cards; a name found in one place is redacted everywhere in the document.</li>
+                        <li><strong>Reliability:</strong> the engine stops on its own when the Germano window is closed, files are processed only once fully copied, the Vault is protected against concurrent writes, long documents get up to 60 minutes (configurable) and the Dashboard shows the progress and the reason of every failure.</li>
+                        <li><strong>Security:</strong> the local API rejects requests coming from external websites and the internal engine is protected by a token. No document data is sent over the network: the only automatic connection is the update check, and only when Windows reports that the PC is connected to the Internet.</li>
+                        <li><strong>For administrators:</strong> settings lock for the PA profile (<code>"lock_settings": true</code>), main model precision (FP32/BF16), anonymization of file names, separately configurable Anthropic service.</li>
+                    </ul>
+
+                    <h3 class="sub-title">Upgrading from version 0.50</h3>
+                    <ol>
+                        <li>Close Germano 0.50 and extract 0.51 into a <strong>new folder</strong> (do not overwrite the old one).</li>
+                        <li>To keep restoring real data in documents protected with 0.50, copy <code>extracted/deanonymize_vault.json</code> from the old folder to the same place in the new one.</li>
+                        <li>To keep your settings, copy <code>config.json</code> as well: values are checked and completed automatically with the new options.</li>
+                        <li>Start <code>START.bat</code> from the new folder. Once everything works, you can delete the 0.50 folder.</li>
+                        <li>From 0.51 onwards there is no need to repeat these steps: Germano updates itself when the PC is connected to the Internet, keeping documents, Vault and settings.</li>
+                    </ol>
+                    <p>The full list of changes is in <code>CHANGELOG.en.md</code> (Italian: <code>CHANGELOG.md</code>).</p>
+                </div>
+            </section>
+
+            <!-- ========================================================================= -->
             <!-- 1. INTRODUZIONE                                                           -->
             <!-- ========================================================================= -->
             <section class="doc-section" id="introduzione">
@@ -489,7 +604,7 @@
                         <div class="callout-icon">🛡️</div>
                         <div class="callout-content">
                             <strong>100% Locale, Standalone e Air-Gapped:</strong>
-                            <p>Germano AI include un runtime Python 3.11 embedded, tutte le librerie native C++ di sistema e 6 modelli di Intelligenza Artificiale pre-installati. Funziona al primo colpo senza installare software, senza privilegi di amministratore e <strong>senza effettuare alcuna chiamata a Internet</strong>. Nessun dato lascia mai il tuo computer.</p>
+                            <p>Germano AI include un runtime Python 3.11 embedded, tutte le librerie native C++ di sistema e 6 modelli di Intelligenza Artificiale pre-installati. Funziona al primo colpo senza installare software, senza privilegi di amministratore e <strong>senza alcuna connessione a Internet per elaborare i documenti</strong>. Nessun dato personale lascia mai il tuo computer (con il Proxy API all'AI arrivano solo testi già anonimizzati); l'unico collegamento automatico è il controllo degli aggiornamenti, solo quando il PC è connesso e disattivabile (capitolo 13).</p>
                         </div>
                     </div>
                 </div>
@@ -501,7 +616,7 @@
                         <div class="callout-icon">🛡️</div>
                         <div class="callout-content">
                             <strong>100% Local, Standalone and Air-Gapped:</strong>
-                            <p>Germano AI ships with an embedded Python 3.11 runtime, all native Visual C++ runtime libraries, and 6 pre-packaged local AI models. It works right out-of-the-box without root/admin privileges, with zero setup, and <strong>with absolutely zero internet requests</strong>. No data ever leaves your machine.</p>
+                            <p>Germano AI ships with an embedded Python 3.11 runtime, all native Visual C++ runtime libraries, and 6 pre-packaged local AI models. It works right out-of-the-box without admin privileges, with zero setup, and <strong>with no Internet connection needed to process documents</strong>. No personal data ever leaves your machine (with the API Proxy, the AI only receives already anonymized text); the only automatic connection is the update check, only when the PC is online, and it can be turned off (chapter 13).</p>
                         </div>
                     </div>
                 </div>
@@ -519,77 +634,93 @@
                 </div>
 
                 <div class="lang-it">
-                    <p>Nella <strong>✨ Modalità Semplice</strong> (attiva di default all'apertura), l'interfaccia è pensata per essere immediata e intuitiva: non ci sono termini tecnici complicati né parametri da configurare.</p>
+                    <p>La <strong>Modalità Semplice</strong> (attiva all'apertura) mostra solo ciò che serve per lavorare: aggiungere i documenti, avviare il motore e ritirare i risultati. Per gli altri controlli scegli <strong>Avanzata</strong> nel selettore <em>Semplice / Avanzata</em> in alto.</p>
 
-                    <h3 class="sub-title">Come Avviare e Fermare Germano</h3>
-                    <p>In alto a destra trovi il pulsante principale con lo stato:</p>
+                    <h3 class="sub-title">Avviare e arrestare il motore</h3>
+                    <p>In alto a destra trovi lo stato del motore e il pulsante principale:</p>
                     <ul>
-                        <li><strong>In Pausa (Pulsante Verde "▶ ATTIVA GERMANO"):</strong> Il motore locale è fermo e non consuma memoria RAM né processore.</li>
-                        <li><strong>Protezione Attiva (Pulsante Rosso "■ FERMA GERMANO"):</strong> Il motore è attivo in background, pronto ad anonimizzare documenti all'istante.</li>
+                        <li><strong>Avvia motore:</strong> carica i modelli IA locali (servono da qualche decina di secondi a qualche minuto, a seconda del PC). Finché il motore è in pausa non consuma memoria né processore.</li>
+                        <li><strong>Arresta motore:</strong> ferma il motore e libera la memoria. I documenti in attesa restano nella cartella <code>input</code> e vengono elaborati al successivo avvio.</li>
                     </ul>
 
                     <div class="callout callout-info">
                         <div class="callout-icon">💡</div>
                         <div class="callout-content">
-                            <strong>Auto-Start Intelligente:</strong> Non serve nemmeno ricordarsi di premere il pulsante! Se Germano è in pausa e trascini un file o clicchi su "Proteggi Testo", Germano <strong>si attiva da solo automaticamente</strong> in pochi secondi.
+                            <strong>Avvio automatico:</strong> se aggiungi documenti dalla Dashboard o usi <em>Anonimizza testo</em>, il motore si avvia da solo. Se copi i file nella cartella <code>input</code> con Esplora file, compare l'avviso dei documenti in attesa con il pulsante <em>Avvia elaborazione</em>.
                         </div>
                     </div>
 
-                    <h3 class="sub-title">I 3 Modi per Usare Germano</h3>
+                    <h3 class="sub-title">Lavorare in blocco, passo per passo</h3>
                     <div class="step-grid">
                         <div class="step-card">
                             <div class="step-num">1</div>
-                            <h4>Trascina i Documenti</h4>
-                            <p>Trascina uno o più file (PDF, Word, Excel, immagini, ecc.) nel riquadro tratteggiato <em>"Passo 1: Trascina qui i tuoi documenti"</em>. Germano li protegge all'istante.</p>
+                            <h4>Aggiungi i documenti</h4>
+                            <p>Trascina file o intere cartelle nel riquadro <em>«Trascina qui file o cartelle»</em>, oppure usa <em>Seleziona file</em> / <em>Seleziona cartella</em>. Per lotti grandi copia i file direttamente nella cartella <code>input</code>: il pulsante <em>Apri cartella input</em> la apre in Esplora file. La struttura delle sottocartelle viene mantenuta.</p>
                         </div>
                         <div class="step-card">
                             <div class="step-num">2</div>
-                            <h4>Scarica i Risultati</h4>
-                            <p>Nel riquadro <em>"Passo 2: Scarica i file protetti"</em> vedrai comparire i file bonificati con un comodo pulsante <strong>"⬇ Scarica"</strong> per salvarli o aprirli subito.</p>
+                            <h4>Segui l'avanzamento</h4>
+                            <p>I contatori <em>In attesa</em>, <em>Pronti</em> e <em>Non riusciti</em> si aggiornano in tempo reale; il riquadro di stato mostra il documento in lavorazione e l'avanzamento del lotto. A lotto concluso compare il riepilogo dei documenti elaborati e di quelli non riusciti.</p>
                         </div>
                         <div class="step-card">
                             <div class="step-num">3</div>
-                            <h4>Proteggi Testo al Volo</h4>
-                            <p>Incolla un messaggio o testo contrattuale nel box di testo e premi <strong>"🛡️ Proteggi Testo"</strong>. Copia il risultato bonificato per incollarlo in ChatGPT o Claude.</p>
+                            <h4>Ritira i risultati</h4>
+                            <p>Nella tabella <em>Documenti</em>, scheda <em>Pronti</em>, ogni file ha i pulsanti per aprirlo, mostrarlo nella cartella o scaricarne una copia; <em>Apri cartella output</em> apre l'intera cartella dei risultati, con la stessa struttura delle cartelle di partenza.</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">4</div>
+                            <h4>Controlla i non riusciti</h4>
+                            <p>La scheda <em>Non riusciti</em> elenca i documenti che non è stato possibile elaborare, con il motivo (es. PDF protetto da password). Risolto il problema, usa <em>Rimetti in coda</em> sul singolo file o <em>Rimetti tutti in coda</em>. <em>Esporta elenco</em> salva la tabella in CSV, apribile con Excel.</p>
                         </div>
                     </div>
+
+                    <h3 class="sub-title">Anonimizzare un testo al volo</h3>
+                    <p>Nel riquadro <em>«Testo da inviare a un servizio di AI»</em> incolla un messaggio o un estratto e premi <em>Anonimizza testo</em>; con <em>Copia risultato</em> lo incolli in ChatGPT o Claude. Se incolli la risposta dell'AI con etichette come <code>[PERSONA_1]</code>, Germano rimette al loro posto i dati originali.</p>
                 </div>
 
                 <div class="lang-en">
-                    <p>In <strong>✨ Simple Mode</strong> (active by default), the interface is engineered to be crystal-clear and foolproof: zero technical jargon, zero complex terminology, and zero manual parameter tuning.</p>
+                    <p><strong>Simple Mode</strong> (active at startup) shows only what you need to work: add the documents, start the engine and collect the results. For the other controls, choose <strong>Avanzata</strong> (Advanced) in the <em>Semplice / Avanzata</em> selector at the top. The Dashboard labels are in Italian: their English meaning is given in brackets.</p>
 
-                    <h3 class="sub-title">Starting and Stopping Germano</h3>
-                    <p>At the top right corner of the header, you will find the main power button and status indicator:</p>
+                    <h3 class="sub-title">Starting and stopping the engine</h3>
+                    <p>At the top right you will find the engine status and the main button:</p>
                     <ul>
-                        <li><strong>Idle / Paused (Green Button "▶ START GERMANO"):</strong> The background AI engine is stopped, freeing up system RAM and CPU.</li>
-                        <li><strong>Protection Active (Red Button "■ STOP GERMANO"):</strong> The local AI engine is loaded and monitoring for documents to redact.</li>
+                        <li><strong>Avvia motore (Start engine):</strong> loads the local AI models (from a few tens of seconds to a few minutes, depending on the PC). While the engine is paused it uses no memory or CPU.</li>
+                        <li><strong>Arresta motore (Stop engine):</strong> stops the engine and frees the memory. Pending documents stay in the <code>input</code> folder and are processed at the next start.</li>
                     </ul>
 
                     <div class="callout callout-info">
                         <div class="callout-icon">💡</div>
                         <div class="callout-content">
-                            <strong>Intelligent Auto-Start:</strong> You don't even need to click the button! If Germano is currently idle and you drop a file or protect a text snippet, Germano <strong>wakes up automatically on its own</strong> within seconds.
+                            <strong>Automatic start:</strong> when you add documents from the Dashboard or use <em>Anonimizza testo</em> (Anonymize text), the engine starts on its own. If you copy files into the <code>input</code> folder with File Explorer, a pending-documents notice appears with an <em>Avvia elaborazione</em> (Start processing) button.
                         </div>
                     </div>
 
-                    <h3 class="sub-title">The 3 Easy Ways to Use Germano</h3>
+                    <h3 class="sub-title">Batch work, step by step</h3>
                     <div class="step-grid">
                         <div class="step-card">
                             <div class="step-num">1</div>
-                            <h4>Drag & Drop Files</h4>
-                            <p>Drag any file (PDF, Word, Excel, image, scan) into <em>"Step 1: Drag & drop your files"</em>. Germano redacts sensitive data instantly.</p>
+                            <h4>Add the documents</h4>
+                            <p>Drag files or whole folders into the <em>«Trascina qui file o cartelle»</em> (Drop files or folders here) box, or use <em>Seleziona file</em> / <em>Seleziona cartella</em> (Select files / Select folder). For large batches, copy the files straight into the <code>input</code> folder: the <em>Apri cartella input</em> (Open input folder) button opens it in File Explorer. The subfolder structure is preserved.</p>
                         </div>
                         <div class="step-card">
                             <div class="step-num">2</div>
-                            <h4>Download Results</h4>
-                            <p>In <em>"Step 2: Download protected files"</em>, your cleaned documents appear with a one-click <strong>"⬇ Download"</strong> button.</p>
+                            <h4>Follow the progress</h4>
+                            <p>The <em>In attesa</em> (pending), <em>Pronti</em> (ready) and <em>Non riusciti</em> (failed) counters update in real time; the status box shows the document being processed and the batch progress. When the batch is over, a summary of processed and failed documents appears.</p>
                         </div>
                         <div class="step-card">
                             <div class="step-num">3</div>
-                            <h4>Redact Text on the Fly</h4>
-                            <p>Paste contract snippets or emails into the text area and click <strong>"🛡️ Protect Text"</strong>. Copy the sanitized text into ChatGPT or Claude safely.</p>
+                            <h4>Collect the results</h4>
+                            <p>In the <em>Documenti</em> table, <em>Pronti</em> tab, every file has buttons to open it, show it in its folder or download a copy; <em>Apri cartella output</em> (Open output folder) opens the whole results folder, with the same structure as the source folders.</p>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">4</div>
+                            <h4>Check the failed ones</h4>
+                            <p>The <em>Non riusciti</em> tab lists the documents that could not be processed, with the reason (e.g. a password-protected PDF). Once the problem is solved, use <em>Rimetti in coda</em> (Queue again) on a single file or <em>Rimetti tutti in coda</em> (Queue all again). <em>Esporta elenco</em> (Export list) saves the table as CSV for Excel.</p>
                         </div>
                     </div>
+
+                    <h3 class="sub-title">Anonymizing a text on the fly</h3>
+                    <p>In the <em>«Testo da inviare a un servizio di AI»</em> (Text to send to an AI service) box, paste a message or an excerpt and press <em>Anonimizza testo</em>; <em>Copia risultato</em> (Copy result) lets you paste it into ChatGPT or Claude. If you paste the AI's answer containing tags such as <code>[PERSONA_1]</code>, Germano puts the original data back.</p>
                 </div>
             </section>
 
@@ -608,7 +739,7 @@
                     <p>All'interno della cartella del programma troverai 5 cartelle di lavoro fondamentali. Germano lavora <strong>esclusivamente</strong> all'interno di queste cartelle e non tocca mai documenti al di fuori di esse (niente cartelle <code>Download</code> o <code>Desktop</code> non autorizzate):</p>
 
                     <div class="folder-tree">
-                        📁 GermanoAI_Release_v0.50-alpha/<br>
+                        📁 GermanoAI_Release_v0.51-alpha/<br>
                         ├── 📁 <span class="tree-folder">input/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← La buca delle lettere: i file da proteggere vengono inseriti qui</span><br>
                         ├── 📁 <span class="tree-folder">output/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← I documenti pronti: file anonimizzati o con dati veri ripristinati</span><br>
                         ├── 📁 <span class="tree-folder">processed/</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← L'archivio storico: i documenti originali dopo l'elaborazione</span><br>
@@ -628,23 +759,23 @@
                             <tbody>
                                 <tr>
                                     <td><code>input/</code></td>
-                                    <td><strong>Ingresso Documenti:</strong> Puoi trascinare file dalla Web UI oppure incollarli direttamente a mano in questa cartella tramite Esplora File.</td>
-                                    <td>Germano rileva istantaneamente i nuovi file, li analizza e li processa uno dopo l'altro.</td>
+                                    <td><strong>Ingresso Documenti:</strong> Puoi trascinare file o intere cartelle dalla Web UI oppure copiarli direttamente in questa cartella tramite Esplora File.</td>
+                                    <td>Germano attende che la copia di ogni file sia completata, poi lo elabora (in ordine di arrivo). I file temporanei di Office (<code>~$...</code>), <code>Thumbs.db</code> e i download incompleti vengono ignorati.</td>
                                 </tr>
                                 <tr>
                                     <td><code>output/</code></td>
-                                    <td><strong>Uscita File Protetti:</strong> Contiene i file finiti con le parti sensibili annerite visivamente o sostituite con etichette sicure.</td>
-                                    <td>I file mantengono la stessa identica impaginazione, font e tabelle dell'originale.</td>
+                                    <td><strong>Uscita File Protetti:</strong> Contiene i file finiti con le parti sensibili annerite visivamente o sostituite con etichette sicure. I file di ritorno dall'AI, con i dati veri rimessi a posto, hanno il prefisso <code>ripristinato_</code>.</td>
+                                    <td>I file mantengono impaginazione, font, immagini e tabelle dell'originale. Il file viene scritto solo a elaborazione completata (mai file a metà).</td>
                                 </tr>
                                 <tr>
                                     <td><code>processed/</code></td>
                                     <td><strong>Archivio Originali:</strong> Per evitare che un file originale venga sovrascritto o perso, viene spostato qui appena completato.</td>
-                                    <td>Gli originali rimangono al sicuro sul tuo PC locale senza modifiche.</td>
+                                    <td>Gli originali non vengono mai sovrascritti: se esiste già un file diverso con lo stesso nome, il nuovo riceve il suffisso <code>(2)</code>, <code>(3)</code>...</td>
                                 </tr>
                                 <tr>
                                     <td><code>failed/</code></td>
-                                    <td><strong>Segnalazione Anomalie:</strong> Se un documento ha una password non fornita o è danneggiato, finisce qui.</td>
-                                    <td>Il demone scrive nel log l'errore dettagliato e prosegue con i file successivi senza bloccarsi.</td>
+                                    <td><strong>Segnalazione Anomalie:</strong> Se un documento ha una password non fornita, è danneggiato, è in un formato non supportato o supera il tempo massimo, finisce qui.</td>
+                                    <td>Il motivo è visibile nella Dashboard (scheda <em>Non riusciti</em>, da cui il file si rimette in coda) e nel registro; Germano prosegue con i file successivi senza bloccarsi.</td>
                                 </tr>
                                 <tr>
                                     <td><code>extracted/</code></td>
@@ -660,7 +791,7 @@
                     <p>Inside the program directory, you will find 5 core working directories. Germano operates <strong>strictly and exclusively</strong> within these folders and will never access or monitor folders outside its program directory (no unauthorized scanning of <code>Downloads</code> or <code>Desktop</code>):</p>
 
                     <div class="folder-tree">
-                        📁 GermanoAI_Release_v0.50-alpha/<br>
+                        📁 GermanoAI_Release_v0.51-alpha/<br>
                         ├── 📁 <span class="tree-folder">input/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Drop zone: place documents to be protected here</span><br>
                         ├── 📁 <span class="tree-folder">output/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Results: protected documents or automatically de-anonymized files</span><br>
                         ├── 📁 <span class="tree-folder">processed/</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Archive: original files are moved here after processing</span><br>
@@ -680,23 +811,23 @@
                             <tbody>
                                 <tr>
                                     <td><code>input/</code></td>
-                                    <td><strong>Incoming Files:</strong> Drop files via the Web UI or copy-paste them directly using Windows File Explorer.</td>
-                                    <td>Germano detects new files immediately and begins batch redaction.</td>
+                                    <td><strong>Incoming Files:</strong> Drop files or whole folders via the Web UI, or copy them directly using Windows File Explorer.</td>
+                                    <td>Germano waits until each file has been completely copied, then processes it (first in, first out). Office lock files (<code>~$...</code>), <code>Thumbs.db</code> and partial downloads are ignored.</td>
                                 </tr>
                                 <tr>
                                     <td><code>output/</code></td>
-                                    <td><strong>Redacted Results:</strong> Holds the resulting clean documents with visual blackouts or secure tags.</td>
-                                    <td>Maintains 1:1 original document formatting, typography, tables, and layouts.</td>
+                                    <td><strong>Redacted Results:</strong> Holds the resulting clean documents with visual blackouts or secure tags. Files returned by the AI, with real data restored, carry the <code>ripristinato_</code> prefix.</td>
+                                    <td>Preserves layout, fonts, images and tables. Files are written only when processing is complete (never half-written files).</td>
                                 </tr>
                                 <tr>
                                     <td><code>processed/</code></td>
                                     <td><strong>Originals Archive:</strong> Protects original documents by moving them here so nothing is ever overwritten.</td>
-                                    <td>Original files remain intact and accessible locally on your disk.</td>
+                                    <td>Originals are never overwritten: if a different file with the same name already exists, the new one gets a <code>(2)</code>, <code>(3)</code>... suffix.</td>
                                 </tr>
                                 <tr>
                                     <td><code>failed/</code></td>
-                                    <td><strong>Error Quarantine:</strong> Password-protected or corrupt files that fail parsing are isolated here.</td>
-                                    <td>Logs the exact reason to <code>daemon.log</code> and seamlessly continues to next file.</td>
+                                    <td><strong>Error Quarantine:</strong> Password-protected, corrupt, unsupported or timed-out files are isolated here.</td>
+                                    <td>The reason is shown in the Dashboard (<em>Non riusciti</em> tab, where the file can be queued again) and in <code>daemon.log</code>; Germano continues with the next files.</td>
                                 </tr>
                                 <tr>
                                     <td><code>extracted/</code></td>
@@ -727,7 +858,7 @@
                     <div class="callout callout-purple">
                         <div class="callout-icon">🔄</div>
                         <div class="callout-content">
-                            <strong>Switch Globale in Testata ("Rimetti a posto automaticamente i dati veri nel ritorno dall'AI"):</strong>
+                            <strong>Interruttore «Ripristino automatico dei dati originali» (sotto il riquadro per aggiungere i documenti):</strong>
                             <p>Quando questo interruttore è attivo (acceso di default), Germano assegna un'etichetta univoca numerata ad ogni persona o dato (es. <code>[PERSONA_1]</code>, <code>[COD.FISCALE/P.IVA_1]</code>, <code>[IBAN_1]</code>) e ne conserva la corrispondenza nella sua cassaforte protetta locale (Vault).</p>
                         </div>
                     </div>
@@ -736,7 +867,7 @@
                     <ol>
                         <li><strong>Invia all'IA:</strong> Trascini il contratto in Germano. Germano crea il file sicuro dove Mario Rossi diventa <code>[PERSONA_1]</code> e Via Roma diventa <code>[INDIRIZZO_1]</code>. Puoi caricare questo file protetto su ChatGPT in totale sicurezza (nessuna violazione di privacy).</li>
                         <li><strong>Chiedi all'IA:</strong> Chiedi a ChatGPT o Claude: <em>"Analizza questo contratto, riassumi le clausole e compila la lettera di accettazione"</em>. L'IA genererà la risposta parlando di <code>[PERSONA_1]</code>.</li>
-                        <li><strong>Ritorno Automatico:</strong> Scarica il file restituito dall'IA o copia il testo della risposta e rimettilo in Germano (nella cartella <code>input/</code> o nel box di testo). <strong>Germano si accorge da solo che è un testo di ritorno dall'IA</strong>, apre la sua cassaforte e sostituisce istantaneamente <code>[PERSONA_1]</code> con "Mario Rossi" e <code>[INDIRIZZO_1]</code> con "Via Roma"!</li>
+                        <li><strong>Ritorno Automatico:</strong> Scarica il file restituito dall'IA o copia il testo della risposta e rimettilo in Germano (trascinandolo nella Dashboard, nella cartella <code>input/</code> o nel riquadro del testo). <strong>Germano si accorge da solo che è un testo di ritorno dall'IA</strong>, apre la sua cassaforte e sostituisce istantaneamente <code>[PERSONA_1]</code> con "Mario Rossi" e <code>[INDIRIZZO_1]</code> con "Via Roma"!</li>
                     </ol>
 
                     <p>Non devi cliccare pulsanti speciali né riconfigurare nulla: <strong>avviene tutto in automatico!</strong></p>
@@ -749,7 +880,7 @@
                     <div class="callout callout-purple">
                         <div class="callout-icon">🔄</div>
                         <div class="callout-content">
-                            <strong>Global Header Switch ("Automatically restore real data in AI responses"):</strong>
+                            <strong>«Ripristino automatico dei dati originali» switch (Automatic restore of the original data, below the box for adding documents):</strong>
                             <p>When this switch is enabled (ON by default), Germano assigns unique numbered tags to each entity (e.g. <code>[PERSONA_1]</code>, <code>[COD.FISCALE/P.IVA_1]</code>, <code>[IBAN_1]</code>) and securely stores the bidirectional mapping inside its local Vault.</p>
                         </div>
                     </div>
@@ -791,53 +922,68 @@
                             <tbody>
                                 <tr>
                                     <td><code>.pdf</code></td>
-                                    <td><strong>Documenti PDF:</strong> Testo digitale vettoriale, PDF scansionati (immagini raster) e PDF ibridi.</td>
-                                    <td>Oscuramento visivo millimetrico (`fitz.Rect`) con applicazione di testo sostitutivo (es. `[PERSONA]`), rimozione metadati e OCR integrato per le scansioni.</td>
+                                    <td><strong>Documenti PDF:</strong> Testo digitale, PDF scansionati, scansioni con timbro digitale (es. protocollo), scansioni "ricercabili" e pagine ruotate.</td>
+                                    <td>Censura a livello di singolo carattere con etichetta sostitutiva (es. <code>[PERSONA_1]</code>); OCR e oscuramento dei pixel sulle scansioni; anonimizzazione di campi modulo, commenti, segnalibri, metadati e allegati incorporati. Le firme digitali (PAdES) vengono rimosse perché contengono i dati del firmatario.</td>
                                 </tr>
                                 <tr>
-                                    <td><code>.docx</code>, <code>.docm</code>, <code>.doc</code></td>
+                                    <td><code>.docx</code>, <code>.docm</code>, <code>.dotx</code></td>
                                     <td><strong>Microsoft Word:</strong> Contratti, perizie, relazioni e atti notarili.</td>
-                                    <td>Ispezione dei paragrafi, tabelle, intestazioni, piè di pagina e scansione OCR sulle immagini incorporate nel documento Word.</td>
+                                    <td>Modifica diretta dell'XML: formattazione, immagini e campi restano intatti. Coperti paragrafi, tabelle (anche annidate), intestazioni, piè di pagina, note, caselle di testo, commenti, revisioni, metadati (autore) e immagini incorporate (volti, firme, testo via OCR).</td>
                                 </tr>
                                 <tr>
                                     <td><code>.xlsx</code>, <code>.xlsm</code>, <code>.xls</code></td>
                                     <td><strong>Fogli di Calcolo Excel:</strong> Buste paga, bilanci, anagrafiche e fatture.</td>
-                                    <td>Scansione e sostituzione cella per cella su tutti i fogli di lavoro con preservazione integrale di formule matematiche e stili grafici.</td>
+                                    <td>Celle, commenti, intestazioni di stampa, grafici e nomi dei fogli (le formule vengono aggiornate al nuovo nome). Stili, formule e macro VBA sono preservati; nei file <code>.xls</code> lo stile di ogni cella è mantenuto.</td>
                                 </tr>
                                 <tr>
-                                    <td><code>.pptx</code>, <code>.ppt</code></td>
+                                    <td><code>.pptx</code>, <code>.pptm</code>, <code>.ppsx</code></td>
                                     <td><strong>Presentazioni PowerPoint:</strong> Slide aziendali e report di progetto.</td>
-                                    <td>Anonimizzazione di tutte le forme di testo, tabelle e note del relatore su ogni slide.</td>
+                                    <td>Testi, forme raggruppate, tabelle, SmartArt, grafici, note del relatore, commenti e immagini delle slide.</td>
                                 </tr>
                                 <tr>
-                                    <td><code>.txt</code>, <code>.csv</code></td>
-                                    <td><strong>Testo Semplice & CSV:</strong> Database, log di sistema ed elenchi anagrafici.</td>
-                                    <td>Sostituzione istantanea ad altissima velocità (migliaia di righe al secondo).</td>
+                                    <td><code>.doc</code>, <code>.ppt</code></td>
+                                    <td><strong>Vecchi formati Office (97-2003).</strong></td>
+                                    <td>Se il file è in realtà RTF, DOCX o HTML rinominato (frequente nei gestionali) viene elaborato direttamente. I veri file binari richiedono Microsoft Office o LibreOffice installato; in alternativa salvali come <code>.docx</code>/<code>.pptx</code>.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.rtf</code></td>
+                                    <td><strong>Rich Text Format.</strong></td>
+                                    <td>Elaborazione nativa (non serve Word): formattazione intatta, metadati e revisori anonimizzati.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.txt</code>, <code>.csv</code>, <code>.tsv</code>, <code>.json</code>, <code>.md</code>, <code>.log</code>, codice sorgente</td>
+                                    <td><strong>Testo e dati strutturati:</strong> Database, log di sistema, elenchi anagrafici, configurazioni.</td>
+                                    <td>Codifica originale preservata (UTF-8, UTF-16, ANSI: le lettere accentate non vanno perse); i CSV sono analizzati riga per riga con il contesto delle colonne.</td>
                                 </tr>
                                 <tr>
                                     <td><code>.html</code>, <code>.htm</code>, <code>.xml</code></td>
-                                    <td><strong>Pagine Web & Flussi Dati:</strong> Fatture elettroniche PA (XML), export web.</td>
-                                    <td>Parsing ad albero DOM che preserva i tag HTML/XML e bonifica esclusivamente il testo visibile.</td>
+                                    <td><strong>Pagine Web & Flussi Dati:</strong> Fatture elettroniche (FatturaPA), export web.</td>
+                                    <td>Struttura preservata; vengono analizzati testo, commenti e attributi (<code>title</code>, <code>alt</code>, <code>mailto:</code>, metadati). I campi FatturaPA come Nome, Cognome, CodiceFiscale, Indirizzo sono riconosciuti automaticamente.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.p7m</code></td>
+                                    <td><strong>File firmati digitalmente (CAdES):</strong> es. <code>fattura.xml.p7m</code>, <code>atto.pdf.p7m</code>.</td>
+                                    <td>Il documento interno viene estratto ed elaborato; in uscita si ottiene il documento anonimizzato senza firma (che conterrebbe nome e codice fiscale del firmatario).</td>
                                 </tr>
                                 <tr>
                                     <td><code>.eml</code></td>
                                     <td><strong>Email & Posta Elettronica:</strong> Messaggi salvati da Outlook, Thunderbird o PEC.</td>
-                                    <td>Anonimizzazione del mittente, destinatario, oggetto, corpo del messaggio e allegati.</td>
+                                    <td>Mittente, destinatari, oggetto, intestazioni tecniche, corpo testo/HTML, messaggi inoltrati e allegati (elaborati col proprio formato; quelli non elaborabili vengono sostituiti da un avviso).</td>
                                 </tr>
                                 <tr>
                                     <td><code>.odt</code>, <code>.ods</code>, <code>.odp</code></td>
                                     <td><strong>OpenDocument:</strong> Documenti creati con LibreOffice o OpenOffice.</td>
-                                    <td>Elaborazione XML nativa dell'archivio ODF.</td>
+                                    <td>Testo, intestazioni e piè di pagina, note, commenti, metadati e immagini; la miniatura di anteprima (che mostrava la prima pagina originale) viene sostituita.</td>
                                 </tr>
                                 <tr>
-                                    <td><code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.webp</code>, <code>.bmp</code>, <code>.tiff</code></td>
+                                    <td><code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.webp</code>, <code>.bmp</code>, <code>.tiff</code>, <code>.gif</code></td>
                                     <td><strong>Fotografie & Scansioni Raster:</strong> Carte d'identità, perizie incidenti stradali, cartelle cliniche fotografate.</td>
-                                    <td>OCR integrato con rilevamento e annerimento ottico di volti, targhe automobilistiche e firme autografe.</td>
+                                    <td>OCR con oscuramento delle sole parti personali, volti, targhe e firme autografe. Risoluzione originale e TIFF multipagina preservati, orientamento delle foto corretto, metadati EXIF/GPS rimossi.</td>
                                 </tr>
                                 <tr>
                                     <td><code>.zip</code></td>
                                     <td><strong>Archivi Compressi:</strong> Fascicoli documentali completi.</td>
-                                    <td>Decompressione in-memory, anonimizzazione ricorsiva di tutti i file contenuti e ri-creazione dell'archivio ZIP protetto.</td>
+                                    <td>Ogni file interno (anche ZIP annidati) viene elaborato col proprio formato. Per sicurezza i file non anonimizzabili (es. eseguibili, file protetti da password) <strong>non</strong> vengono copiati nell'archivio in uscita: l'elenco è nel report di audit.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -859,53 +1005,68 @@
                             <tbody>
                                 <tr>
                                     <td><code>.pdf</code></td>
-                                    <td><strong>PDF Documents:</strong> Vector digital text, scanned raster pages, and hybrid PDFs.</td>
-                                    <td>Pixel-perfect visual redaction boxes (`fitz.Rect`) with text replacement (e.g. `[PERSONA]`), metadata scrubbing, and automated OCR for scanned pages.</td>
+                                    <td><strong>PDF Documents:</strong> Digital text, scanned PDFs, scans with a digital stamp (e.g. protocol number), searchable scans and rotated pages.</td>
+                                    <td>Character-level redaction with replacement tags (e.g. <code>[PERSONA_1]</code>); OCR and pixel blanking on scans; anonymization of form fields, comments, bookmarks, metadata and embedded files. Digital signatures (PAdES) are removed because they contain the signer's data.</td>
                                 </tr>
                                 <tr>
-                                    <td><code>.docx</code>, <code>.docm</code>, <code>.doc</code></td>
+                                    <td><code>.docx</code>, <code>.docm</code>, <code>.dotx</code></td>
                                     <td><strong>Microsoft Word:</strong> Agreements, legal briefs, HR reviews, and reports.</td>
-                                    <td>Full traversal of paragraphs, tables, headers, footers, and OCR scanning of images embedded inside Word documents.</td>
+                                    <td>Direct XML editing: formatting, images and fields stay intact. Covers paragraphs, (nested) tables, headers, footers, footnotes, text boxes, comments, tracked changes, metadata (author) and embedded images (faces, signatures, OCR text).</td>
                                 </tr>
                                 <tr>
                                     <td><code>.xlsx</code>, <code>.xlsm</code>, <code>.xls</code></td>
                                     <td><strong>Excel Spreadsheets:</strong> Payroll, financial statements, and CRM exports.</td>
-                                    <td>Cell-by-cell redaction across all sheets while preserving mathematical formulas, formulas references, and formatting.</td>
+                                    <td>Cells, comments, print headers, charts and sheet names (formulas are updated to the new name). Styles, formulas and VBA macros are preserved; in <code>.xls</code> files each cell keeps its style.</td>
                                 </tr>
                                 <tr>
-                                    <td><code>.pptx</code>, <code>.ppt</code></td>
+                                    <td><code>.pptx</code>, <code>.pptm</code>, <code>.ppsx</code></td>
                                     <td><strong>PowerPoint Presentations:</strong> Decks and training slides.</td>
-                                    <td>Sanitization of text frames, tables, and speaker notes across all slides.</td>
+                                    <td>Text, grouped shapes, tables, SmartArt, charts, speaker notes, comments and slide images.</td>
                                 </tr>
                                 <tr>
-                                    <td><code>.txt</code>, <code>.csv</code></td>
-                                    <td><strong>Plain Text & CSV:</strong> Database dumps, transaction logs, and tabular data.</td>
-                                    <td>Ultra-high-throughput streaming replacement (thousands of lines per second).</td>
+                                    <td><code>.doc</code>, <code>.ppt</code></td>
+                                    <td><strong>Legacy Office formats (97-2003).</strong></td>
+                                    <td>Files that are actually renamed RTF, DOCX or HTML (common with management software) are processed directly. True binary files require Microsoft Office or LibreOffice; otherwise save them as <code>.docx</code>/<code>.pptx</code>.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.rtf</code></td>
+                                    <td><strong>Rich Text Format.</strong></td>
+                                    <td>Native processing (no Word needed): formatting intact, metadata and reviewers anonymized.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.txt</code>, <code>.csv</code>, <code>.tsv</code>, <code>.json</code>, <code>.md</code>, <code>.log</code>, source code</td>
+                                    <td><strong>Text & structured data:</strong> Database dumps, logs, registries, configuration files.</td>
+                                    <td>Original encoding preserved (UTF-8, UTF-16, ANSI: accented letters are never lost); CSV files are analyzed row by row with column context.</td>
                                 </tr>
                                 <tr>
                                     <td><code>.html</code>, <code>.htm</code>, <code>.xml</code></td>
-                                    <td><strong>Web Pages & Data Streams:</strong> Public electronic invoices (XML), web dumps.</td>
-                                    <td>DOM tree parsing that protects markup integrity while stripping sensitive PII text.</td>
+                                    <td><strong>Web Pages & Data Streams:</strong> Electronic invoices (FatturaPA), web dumps.</td>
+                                    <td>Structure preserved; text, comments and attributes (<code>title</code>, <code>alt</code>, <code>mailto:</code>, metadata) are analyzed. FatturaPA fields such as Nome, Cognome, CodiceFiscale, Indirizzo are recognized automatically.</td>
+                                </tr>
+                                <tr>
+                                    <td><code>.p7m</code></td>
+                                    <td><strong>Digitally signed files (CAdES):</strong> e.g. <code>fattura.xml.p7m</code>, <code>deed.pdf.p7m</code>.</td>
+                                    <td>The inner document is extracted and processed; the output is the anonymized document without signature (which would contain the signer's name and tax code).</td>
                                 </tr>
                                 <tr>
                                     <td><code>.eml</code></td>
                                     <td><strong>Emails:</strong> Saved messages from Outlook, Thunderbird, or certified email (PEC).</td>
-                                    <td>Redaction of sender, recipients, subject, body, and embedded attachments.</td>
+                                    <td>Sender, recipients, subject, technical headers, text/HTML body, forwarded messages and attachments (processed with their own format; unsupported ones are replaced by a notice).</td>
                                 </tr>
                                 <tr>
                                     <td><code>.odt</code>, <code>.ods</code>, <code>.odp</code></td>
                                     <td><strong>OpenDocument:</strong> LibreOffice and Apache OpenOffice suites.</td>
-                                    <td>Native XML processing inside the ODF zip archive.</td>
+                                    <td>Text, headers and footers, notes, comments, metadata and images; the preview thumbnail (which showed the original first page) is replaced.</td>
                                 </tr>
                                 <tr>
-                                    <td><code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.webp</code>, <code>.bmp</code>, <code>.tiff</code></td>
+                                    <td><code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.webp</code>, <code>.bmp</code>, <code>.tiff</code>, <code>.gif</code></td>
                                     <td><strong>Photos & Scans:</strong> Identity cards, driver licenses, incident scene photos.</td>
-                                    <td>Deep learning OCR combined with biometric face detection, license plate blurring, and handwritten signature detection.</td>
+                                    <td>OCR redaction of personal text only, faces, license plates and handwritten signatures. Original resolution and multi-page TIFFs preserved, photo orientation fixed, EXIF/GPS metadata removed.</td>
                                 </tr>
                                 <tr>
                                     <td><code>.zip</code></td>
                                     <td><strong>Compressed Archives:</strong> Multi-file case dossiers.</td>
-                                    <td>In-memory extraction, recursive multi-format processing of all nested files, and repacking of the clean ZIP archive.</td>
+                                    <td>Every inner file (including nested ZIPs) is processed with its own format. For safety, files that cannot be anonymized (e.g. executables, password-protected files) are <strong>not</strong> copied into the output archive: the list is in the audit report.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -925,30 +1086,26 @@
                 </div>
 
                 <div class="lang-it">
-                    <p>Cliccando sullo slider superiore <strong>"⚙️ Modalità Avanzata"</strong>, Germano svela il suo pannello di controllo completo. Questa modalità è studiata per DPO, responsabili privacy, programmatori e amministratori di sistema che necessitano di calibrare con precisione ogni singolo aspetto dell'elaborazione.</p>
+                    <p>Scegliendo <strong>Avanzata</strong> nel selettore in alto, sotto la testata compaiono quattro schede. Questa modalità è pensata per DPO, responsabili privacy, sviluppatori e amministratori di sistema che devono regolare con precisione l'elaborazione.</p>
 
-                    <h3 class="sub-title">Cosa Puoi Fare nella Modalità Avanzata:</h3>
+                    <h3 class="sub-title">Le quattro schede della Modalità Avanzata</h3>
                     <ul>
-                        <li><strong>Abilitare o Disabilitare Singoli Modelli IA:</strong> Puoi accendere o spegnere individualmente ciascuno dei 6 modelli IA locali (ad esempio spegnere il rilevamento volti se elabori solo contratti scritti, velocizzando l'esecuzione).</li>
-                        <li><strong>Abilitare o Disabilitare le Singole Categorie di Dati:</strong> Tramite 18 grandi checkbox, puoi decidere esattamente quali dati proteggere (ad esempio anonimizzare Codici Fiscali e IBAN ma lasciare visibili i nomi delle aziende).</li>
-                        <li><strong>Regolare la Soglia di Confidenza IA:</strong> Cursore dinamico da 0% (massima sicurezza preventiva) a 100%.</li>
-                        <li><strong>Selezionare l'Accelerazione Hardware:</strong> Passare tra GPU Fallback (NVIDIA CUDA / CPU), Solo CPU o DirectML.</li>
-                        <li><strong>Consultare e Svuotare il Vault:</strong> Visualizzare in tempo reale tutte le corrispondenze <code>[TAG] → Valore Reale</code> salvate in memoria.</li>
-                        <li><strong>Terminale Log in Tempo Reale:</strong> Leggere in diretta cosa sta facendo il demone locale riga per riga con evidenziazione a colori.</li>
+                        <li><strong>Elaborazione:</strong> la stessa schermata della Modalità Semplice, con in più la scheda <em>Originali</em> nella tabella dei documenti (gli originali archiviati nella cartella <code>processed</code>).</li>
+                        <li><strong>Agenti AI e API:</strong> gli indirizzi del Proxy da copiare (formato OpenAI <code>http://127.0.0.1:8000/v1</code> e formato Anthropic <code>http://127.0.0.1:8000</code>), una tabella che indica per Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider e gli SDK dove impostarli, i servizi di destinazione (<em>Servizio OpenAI o compatibile</em>, <em>Servizio Anthropic (Claude)</em>) e gli esempi delle API REST locali.</li>
+                        <li><strong>Filtri e modelli:</strong> profilo di protezione (<em>Tutto attivo (profilo PA)</em>, <em>Solo dati essenziali</em>, <em>Nessuna categoria</em>), sensibilità dei modelli (soglia da 0% a 95%), attivazione dei 6 modelli IA e del motore di regole, e le 18 categorie di dati. Le modifiche si applicano subito.</li>
+                        <li><strong>Sistema e registro:</strong> calcolo (automatico, solo CPU o GPU NVIDIA), precisione del modello principale (FP32/BF16), tempo massimo per documento, anonimizzazione dei nomi dei file, elenco delle cartelle di lavoro con il pulsante per aprirle, impostazioni degli <em>Aggiornamenti</em>, archivio delle corrispondenze (Vault) e registro delle attività in tempo reale.</li>
                     </ul>
                 </div>
 
                 <div class="lang-en">
-                    <p>By toggling the top switch to <strong>"⚙️ Advanced Mode"</strong>, Germano exposes its comprehensive engineering suite. This mode is designed for Data Protection Officers (DPO), privacy engineers, developers, and system administrators requiring granular control over redaction behaviors.</p>
+                    <p>Choosing <strong>Avanzata</strong> (Advanced) in the selector at the top shows four tabs below the header. This mode is designed for DPOs, privacy officers, developers and system administrators who need fine control over processing.</p>
 
-                    <h3 class="sub-title">Advanced Mode Capabilities:</h3>
+                    <h3 class="sub-title">The four Advanced Mode tabs</h3>
                     <ul>
-                        <li><strong>Individual AI Model Toggles:</strong> Enable or disable each of the 6 local AI models on demand (e.g. disable face detection when auditing pure text contracts for increased throughput).</li>
-                        <li><strong>18 Granular Data Feature Checkboxes:</strong> Configure exactly what entities get censored (e.g. mask Italian Tax Codes and Bank IBANs while keeping public organization names visible).</li>
-                        <li><strong>AI Confidence Threshold Slider:</strong> Fine-tune sensitivity from 0% (maximum GDPR compliance paranoia) to 100%.</li>
-                        <li><strong>Hardware Acceleration Selector:</strong> Switch between GPU Fallback (NVIDIA CUDA / CPU), CPU Only, or DirectML.</li>
-                        <li><strong>Vault Inspector & Reset:</strong> Audit the active <code>[TAG] → Real Value</code> mapping stored in memory with one-click purge.</li>
-                        <li><strong>Live Activity Terminal:</strong> Inspect real-time daemon logs with color-coded success, warning, and error syntax highlighting.</li>
+                        <li><strong>Elaborazione (Processing):</strong> the same screen as Simple Mode, plus the <em>Originali</em> (originals) tab in the documents table (the originals archived in the <code>processed</code> folder).</li>
+                        <li><strong>Agenti AI e API (AI agents and API):</strong> the Proxy addresses to copy (OpenAI format <code>http://127.0.0.1:8000/v1</code> and Anthropic format <code>http://127.0.0.1:8000</code>), a table showing where to set them in Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider and the SDKs, the target services (<em>Servizio OpenAI o compatibile</em>, <em>Servizio Anthropic (Claude)</em>) and examples of the local REST APIs.</li>
+                        <li><strong>Filtri e modelli (Filters and models):</strong> protection profile (all on / essential data only / no category), model sensitivity (threshold from 0% to 95%), the 6 AI models and the rule engine, and the 18 data categories. Changes apply immediately.</li>
+                        <li><strong>Sistema e registro (System and log):</strong> compute (automatic, CPU only or NVIDIA GPU), main model precision (FP32/BF16), time limit per document, file name anonymization, the list of working folders with a button to open them, the <em>Aggiornamenti</em> (updates) settings, the mapping archive (Vault) and the live activity log.</li>
                     </ul>
                 </div>
             </section>
@@ -979,7 +1136,7 @@
                             <tbody>
                                 <tr>
                                     <td>🧠 <strong>Velvet Privacy Filter</strong> (<code>enable_model_velvet</code>)</td>
-                                    <td>Transformer Multilingue 1.5B Parametri FP16 (<code>3000 MB</code>)</td>
+                                    <td>Transformer Multilingue 1.5B Parametri, pesi BF16 (<code>2,8 GB</code> su disco; circa 5,5 GB di RAM in FP32)</td>
                                     <td>Comprende il contesto grammaticale e semantico della frase. Rileva persone, indirizzi, date, numeri di conto, carte di credito e dati sensibili anche in presenza di refusi, abbreviazioni o dialetti.</td>
                                 </tr>
                                 <tr>
@@ -1032,7 +1189,7 @@
                             <tbody>
                                 <tr>
                                     <td>🧠 <strong>Velvet Privacy Filter</strong> (<code>enable_model_velvet</code>)</td>
-                                    <td>1.5B Parameter Multilingual Transformer FP16 (<code>3000 MB</code>)</td>
+                                    <td>1.5B Parameter Multilingual Transformer, BF16 weights (<code>2.8 GB</code> on disk; about 5.5 GB of RAM in FP32)</td>
                                     <td>Contextual semantic understanding. Detects personal names, addresses, dates, account numbers, and credentials even across typos, slang, and unstructured paragraphs.</td>
                                 </tr>
                                 <tr>
@@ -1321,13 +1478,27 @@
                     <h3 class="sub-title">Accelerazione Hardware</h3>
                     <p>Germano include 3 modalità di esecuzione selezionabili:</p>
                     <ol>
-                        <li><strong>GPU Fallback (Consigliato):</strong> Se nel PC è presente una scheda grafica NVIDIA compatibile CUDA, Germano sfrutta l'accelerazione GPU. Se la scheda non è presente o la memoria VRAM non basta, passa automaticamente alla CPU senza crashare.</li>
-                        <li><strong>Solo CPU:</strong> Esegue tutti i modelli sul processore centrale del computer (funziona su qualsiasi PC Windows 11 anche senza scheda video).</li>
-                        <li><strong>DirectML (AMD / Intel):</strong> Accelerazione sperimentale per schede grafiche AMD Radeon o Intel Iris/Arc tramite librerie Microsoft DirectML.</li>
+                        <li><strong>Automatico (Consigliato):</strong> usa una scheda NVIDIA (CUDA) se disponibile, altrimenti il processore. <em>Nota:</em> il pacchetto standard include PyTorch per CPU, che funziona su qualsiasi PC senza driver aggiuntivi; l'accelerazione GPU richiede di sostituire PyTorch con una versione CUDA.</li>
+                        <li><strong>Solo CPU:</strong> esegue tutti i modelli sul processore centrale (funziona su qualsiasi PC Windows 11).</li>
+                        <li><strong>Forza GPU NVIDIA:</strong> per installazioni con PyTorch CUDA; in caso di errore della GPU Germano passa comunque alla CPU.</li>
                     </ol>
 
+                    <h3 class="sub-title">Memoria RAM e Precisione del Modello</h3>
+                    <p>Il modello principale (1,5 miliardi di parametri) può essere caricato in due modi:</p>
+                    <ul>
+                        <li><strong>FP32 (veloce):</strong> circa 5,5 GB di RAM. Scelto automaticamente sui PC con almeno 12 GB di RAM.</li>
+                        <li><strong>BF16 (leggero):</strong> circa 2,8 GB di RAM, ma su processori meno recenti l'analisi del testo può essere molto più lenta. Scelto automaticamente sui PC con meno di 12 GB di RAM, per evitare che Windows rallenti per mancanza di memoria.</li>
+                    </ul>
+                    <p>Requisiti consigliati: 16 GB di RAM (minimo 8 GB) e 6 GB di spazio libero su disco. La scelta si può forzare in Modalità Avanzata (<em>Sistema e registro → Precisione del modello principale</em>) e vale dal successivo avvio del motore.</p>
+
                     <h3 class="sub-title">Gestione del Vault delle Corrispondenze</h3>
-                    <p>La tabella delle corrispondenze risiede localmente in <code>extracted/deanonymize_vault.json</code>. Cliccando su <strong>"👁️ Mostra Corrispondenze"</strong> in Modalità Avanzata puoi ispezionare tutti i tag attivi. Cliccando su <strong>"🗑️ Svuota Archivio"</strong> azzeri la memoria delle corrispondenze per iniziare una nuova sessione pulita.</p>
+                    <p>La tabella delle corrispondenze risiede localmente in <code>extracted/deanonymize_vault.json</code>. In Modalità Avanzata, scheda <em>Sistema e registro</em>, riquadro <em>Archivio delle corrispondenze</em>: <strong>Mostra</strong> visualizza tutte le etichette attive, <strong>Svuota</strong> azzera le corrispondenze per iniziare una nuova sessione pulita (i documenti protetti in precedenza non potranno più essere ripristinati).</p>
+                    <div class="callout callout-info">
+                        <div class="callout-icon">🔐</div>
+                        <div class="callout-content">
+                            <strong>Il Vault contiene i dati veri in chiaro:</strong> conserva la cartella del programma su un disco protetto (es. BitLocker) e con accesso riservato. Se disattivi l'interruttore <em>Ripristino automatico dei dati originali</em>, Germano usa etichette non numerate (es. <code>[PERSONA]</code>) e <strong>non</strong> salva più i dati nel Vault: l'anonimizzazione diventa irreversibile.
+                        </div>
+                    </div>
                 </div>
 
                 <div class="lang-en">
@@ -1341,13 +1512,27 @@
                     <h3 class="sub-title">Hardware Acceleration Modes</h3>
                     <p>Germano supports 3 selectable compute execution backends:</p>
                     <ol>
-                        <li><strong>GPU Fallback (Recommended):</strong> Utilizes NVIDIA CUDA acceleration if an active compatible GPU is detected. Gracefully falls back to CPU if VRAM is exhausted.</li>
-                        <li><strong>CPU Only:</strong> Executes models exclusively on the central CPU cores (guaranteed compatibility across all Windows 11 hardware).</li>
-                        <li><strong>DirectML (AMD / Intel):</strong> Experimental GPU acceleration via Microsoft DirectML for AMD Radeon and Intel GPUs.</li>
+                        <li><strong>Automatic (Recommended):</strong> uses an NVIDIA (CUDA) GPU when available, otherwise the CPU. <em>Note:</em> the standard package ships the CPU build of PyTorch, which works on any PC without extra drivers; GPU acceleration requires replacing PyTorch with a CUDA build.</li>
+                        <li><strong>CPU Only:</strong> executes models exclusively on the CPU (works on any Windows 11 PC).</li>
+                        <li><strong>Force NVIDIA GPU:</strong> for installations with CUDA PyTorch; on GPU errors Germano still falls back to the CPU.</li>
                     </ol>
 
+                    <h3 class="sub-title">RAM and Model Precision</h3>
+                    <p>The main model (1.5 billion parameters) can be loaded in two ways:</p>
+                    <ul>
+                        <li><strong>FP32 (fast):</strong> about 5.5 GB of RAM. Selected automatically on PCs with at least 12 GB of RAM.</li>
+                        <li><strong>BF16 (light):</strong> about 2.8 GB of RAM, but text analysis can be much slower on older CPUs. Selected automatically on PCs with less than 12 GB of RAM, so Windows does not run out of memory.</li>
+                    </ul>
+                    <p>Recommended: 16 GB of RAM (8 GB minimum) and 6 GB of free disk space. The choice can be forced in Advanced Mode (<em>Sistema e registro → Precisione del modello principale</em>, main model precision) and applies from the next engine start.</p>
+
                     <h3 class="sub-title">Vault Memory Management</h3>
-                    <p>The reverse de-anonymization dictionary is persisted locally in <code>extracted/deanonymize_vault.json</code>. In Advanced Mode, click <strong>"👁️ View Mappings"</strong> to inspect current associations, or click <strong>"🗑️ Clear Vault"</strong> to purge all remembered entities.</p>
+                    <p>The reverse de-anonymization dictionary is persisted locally in <code>extracted/deanonymize_vault.json</code>. In Advanced Mode, <em>Sistema e registro</em> tab, <em>Archivio delle corrispondenze</em> (mapping archive) box: <strong>Mostra</strong> (Show) displays the current associations, <strong>Svuota</strong> (Clear) purges them to start a clean session (previously protected documents can no longer be restored).</p>
+                    <div class="callout callout-info">
+                        <div class="callout-icon">🔐</div>
+                        <div class="callout-content">
+                            <strong>The Vault stores real data in clear text:</strong> keep the program folder on a protected disk (e.g. BitLocker) with restricted access. If you turn off the <em>Ripristino automatico dei dati originali</em> switch, Germano uses non-numbered tags (e.g. <code>[PERSONA]</code>) and does <strong>not</strong> store data in the Vault anymore: anonymization becomes irreversible.
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -1366,7 +1551,7 @@
                     <p>Germano AI espone un server HTTP locale su <code>http://127.0.0.1:8000</code>. Di seguito la documentazione completa di tutti gli endpoint REST pronti per essere integrati in script Python, Bash, Node.js o applicativi aziendali.</p>
 
                     <h3 class="sub-title">1. Anonimizzazione Testo (POST /api/v1/anonymize_text)</h3>
-                    <p>Anonimizza una stringa di testo arbitraria restituendo il testo bonificato e l'elenco delle entità rilevate.</p>
+                    <p>Anonimizza una stringa di testo arbitraria restituendo il testo bonificato e l'elenco delle entità rilevate. Se il testo contiene etichette del Vault (es. una risposta dell'AI) e lo switch di ripristino è attivo, viene invece restituito con i dati veri e il campo <code>"auto_restored": true</code>; per forzare comunque l'anonimizzazione invia <code>"force_anonymize": true</code>.</p>
                     <div class="code-block">
                         <div class="code-header">
                             <span>cURL Request</span>
@@ -1406,7 +1591,7 @@
                     </div>
 
                     <h3 class="sub-title">3. Anonimizzazione File Singolo (POST /api/v1/anonymize)</h3>
-                    <p>Invia un file multipart/form-data e riceve direttamente in streaming il file bonificato mantenendo il formato originale.</p>
+                    <p>Invia un file multipart/form-data e riceve direttamente il file bonificato nel formato originale (per i <code>.p7m</code> il documento interno). La risposta arriva a elaborazione completata, anche per documenti lunghi; il report di audit viene salvato in <code>extracted/api/</code>. Se il file contiene etichette del Vault viene invece restituito con i dati veri ripristinati. Codici di errore: <code>503</code> motore non avviato, <code>415</code> formato non supportato.</p>
                     <div class="code-block">
                         <div class="code-header">
                             <span>cURL Request</span>
@@ -1416,7 +1601,7 @@
                     </div>
 
                     <h3 class="sub-title">4. Stato e Metriche del Motore (GET /api/status)</h3>
-                    <p>Fornisce lo stato operativo (<code>running</code>, <code>loading_models</code>, <code>stopped</code>), il conteggio dei file nelle cartelle, l'uso CPU e RAM.</p>
+                    <p>Fornisce lo stato operativo (<code>running</code>, <code>loading_models</code>, <code>stopped</code>, <code>error</code> con il relativo messaggio), il conteggio dei file nelle cartelle, l'avanzamento del documento in lavorazione, il profilo attivo e l'uso di CPU e RAM.</p>
                     <div class="code-block">
                         <div class="code-header">
                             <span>cURL Request</span>
@@ -1424,13 +1609,30 @@
                         </div>
                         <pre><code>curl -X GET http://127.0.0.1:8000/api/status</code></pre>
                     </div>
+
+                    <h3 class="sub-title">5. Ripristino Dati Veri in un File (POST /api/v1/deanonymize_file)</h3>
+                    <p>Riceve uno o più file restituiti dall'AI (campo <code>files</code> o <code>file</code>) e rimette i dati veri al posto delle etichette del Vault, senza usare il motore IA. I file ripristinati vengono salvati in <code>output/</code> con il prefisso <code>ripristinato_</code>; con <code>?raw=1</code> e un solo file la risposta è direttamente il file.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copia</button>
+                        </div>
+                        <pre><code>curl -X POST "http://127.0.0.1:8000/api/v1/deanonymize_file?raw=1"   -F "file=@risposta_ai.docx"   --output "risposta_con_dati_veri.docx"</code></pre>
+                    </div>
+
+                    <div class="callout callout-info">
+                        <div class="callout-icon">🔐</div>
+                        <div class="callout-content">
+                            <strong>Sicurezza delle API locali:</strong> il server risponde solo agli indirizzi locali (<code>127.0.0.1</code>, <code>localhost</code>) e rifiuta le richieste di modifica inviate da pagine web di altri siti (protezione anti CSRF e anti DNS-rebinding). Script, gestionali e strumenti a riga di comando sullo stesso PC funzionano normalmente.
+                        </div>
+                    </div>
                 </div>
 
                 <div class="lang-en">
                     <p>Germano AI serves a local HTTP REST API on <code>http://127.0.0.1:8000</code>. Below is the technical specification for all endpoints ready to integrate into Python, Bash, Node.js, or enterprise backends.</p>
 
                     <h3 class="sub-title">1. Text Anonymization (POST /api/v1/anonymize_text)</h3>
-                    <p>Sanitizes arbitrary text strings, returning the clean string alongside an audit array of tagged entities.</p>
+                    <p>Sanitizes arbitrary text strings, returning the clean string alongside an audit array of tagged entities. If the text contains Vault tags (e.g. an AI response) and the restore switch is on, it is returned with real data restored and <code>"auto_restored": true</code> instead; send <code>"force_anonymize": true</code> to always anonymize.</p>
                     <div class="code-block">
                         <div class="code-header">
                             <span>cURL Request</span>
@@ -1470,7 +1672,7 @@
                     </div>
 
                     <h3 class="sub-title">3. Single File Redaction (POST /api/v1/anonymize)</h3>
-                    <p>Uploads a multipart document and streams back the sanitized version in its native file format.</p>
+                    <p>Uploads a multipart document and returns the sanitized version in its native file format (for <code>.p7m</code> files, the inner document). The response arrives when processing is complete, even for long documents; the audit report is saved in <code>extracted/api/</code>. If the file contains Vault tags, it is returned with real data restored instead. Error codes: <code>503</code> engine not started, <code>415</code> unsupported format.</p>
                     <div class="code-block">
                         <div class="code-header">
                             <span>cURL Request</span>
@@ -1480,13 +1682,30 @@
                     </div>
 
                     <h3 class="sub-title">4. Engine Status & Telemetry (GET /api/status)</h3>
-                    <p>Returns health state (<code>running</code>, <code>loading_models</code>, <code>stopped</code>), folder file counts, and system RAM/CPU load.</p>
+                    <p>Returns health state (<code>running</code>, <code>loading_models</code>, <code>stopped</code>, or <code>error</code> with its message), folder file counts, progress of the document being processed, the active profile, and system RAM/CPU load.</p>
                     <div class="code-block">
                         <div class="code-header">
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         </div>
                         <pre><code>curl -X GET http://127.0.0.1:8000/api/status</code></pre>
+                    </div>
+
+                    <h3 class="sub-title">5. Restore Real Data in a File (POST /api/v1/deanonymize_file)</h3>
+                    <p>Accepts one or more files returned by the AI (<code>files</code> or <code>file</code> field) and puts the real data back in place of the Vault tags, without using the AI engine. Restored files are saved in <code>output/</code> with the <code>ripristinato_</code> prefix; with <code>?raw=1</code> and a single file, the response is the file itself.</p>
+                    <div class="code-block">
+                        <div class="code-header">
+                            <span>cURL Request</span>
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        </div>
+                        <pre><code>curl -X POST "http://127.0.0.1:8000/api/v1/deanonymize_file?raw=1"   -F "file=@ai_answer.docx"   --output "answer_with_real_data.docx"</code></pre>
+                    </div>
+
+                    <div class="callout callout-info">
+                        <div class="callout-icon">🔐</div>
+                        <div class="callout-content">
+                            <strong>Local API security:</strong> the server only answers on local addresses (<code>127.0.0.1</code>, <code>localhost</code>) and rejects state-changing requests sent by web pages of other sites (CSRF and DNS-rebinding protection). Scripts, business applications and command-line tools on the same PC work normally.
+                        </div>
                     </div>
                 </div>
             </section>
@@ -1517,7 +1736,18 @@
                     <p>Nelle risposte in streaming (Server-Sent Events), i token arrivano spezzati frammento per frammento. Se un modello cloud restituisce un tag suddiviso in più token (es. <code>[PER</code> + <code>SONA_1]</code>), il buffer intelligente <code>StreamTagBuffer</code> di Germano trattiene temporaneamente i caratteri finché il tag non è completo, lo de-anonimizza al volo e rilascia immediatamente il testo originale senza ritardi evidenti.</p>
 
                     <h3 class="sub-title">Supporto Chiamate Funzione & Scrittura File (`tool_calls`)</h3>
-                    <p>Quando Google Antigravity o Codex invocano strumenti come <code>write_file</code> o <code>edit_file</code>, Germano de-anonimizza ricorsivamente la stringa JSON contenuta in <code>function.arguments</code>. In questo modo il file che l'agente scrive sul disco conterrà sempre i <strong>dati reali corretti</strong> senza alcuna etichetta residua!</p>
+                    <p>Quando Google Antigravity o Codex invocano strumenti come <code>write_file</code> o <code>edit_file</code>, Germano de-anonimizza ricorsivamente la stringa JSON contenuta in <code>function.arguments</code> (e in <code>input_json_delta</code> per Claude), con l'escape JSON corretto: il file che l'agente scrive sul disco conterrà sempre i <strong>dati reali corretti</strong> senza alcuna etichetta residua.</p>
+
+                    <h3 class="sub-title">Cosa viene anonimizzato e cosa viene bloccato</h3>
+                    <ul>
+                        <li><strong>Anonimizzati:</strong> messaggi, istruzioni di sistema, argomenti e risultati dei tool, riassunti del ragionamento, immagini (<code>image_url</code>, <code>input_image</code>, blocchi <code>image</code> di Claude) e documenti allegati (PDF, Word, Excel, testo) nei formati OpenAI, Responses e Anthropic.</li>
+                        <li><strong>Lasciati intatti:</strong> i blocchi <code>thinking</code> firmati di Claude (sono generati dall'AI a partire dal testo già anonimo e una modifica invaliderebbe la firma), definizioni dei tool e parametri tecnici.</li>
+                        <li><strong>Bloccati (fail-safe):</strong> audio (la voce è un dato biometrico) e allegati di formato sconosciuto; se il motore IA non è attivo la richiesta non viene inoltrata.</li>
+                        <li>Sono inoltrati gli header necessari (<code>Authorization</code>, <code>x-api-key</code>, <code>anthropic-version</code>, <code>anthropic-beta</code>...) e i parametri dell'indirizzo (es. <code>?beta=true</code>); è supportato anche <code>/v1/messages/count_tokens</code>.</li>
+                        <li>Le connessioni verso il servizio IA usano il proxy di sistema e i certificati di Windows (utile nelle reti aziendali con ispezione TLS).</li>
+                        <li>La mappa delle sostituzioni di ogni richiesta viene registrata in <code>extracted/proxy_sessions/AAAA-MM-GG.jsonl</code> (disattivabile con <code>"save_proxy_logs": false</code> in <code>config.json</code>).</li>
+                    </ul>
+                    <p><strong>Prestazioni:</strong> la prima richiesta di una conversazione lunga può richiedere alcune decine di secondi su CPU; i messaggi già analizzati vengono memorizzati, quindi le richieste successive analizzano solo il testo nuovo.</p>
                 </div>
 
                 <div class="lang-en">
@@ -1535,7 +1765,18 @@
                     <p>In streaming completions (Server-Sent Events), tokens arrive fragmented across tiny chunks. If an LLM emits a tag split across chunks (e.g. <code>[PER</code> + <code>SONA_1]</code>), Germano's <code>StreamTagBuffer</code> buffers fragments until the bracket closes, queries the local vault, and emits the real restored word without perceptible latency.</p>
 
                     <h3 class="sub-title">Native Tool Calls & File Editing (`tool_calls`)</h3>
-                    <p>When autonomous agents like Google Antigravity or Codex invoke file creation or patching tools (`write_file`, `edit_file`), Germano recursively de-anonymizes the JSON string within <code>function.arguments</code>. As a result, code or documents written to disk by the AI will always feature the <strong>authentic real data</strong> with zero leftover placeholder tags!</p>
+                    <p>When autonomous agents like Google Antigravity or Codex invoke file creation or patching tools (`write_file`, `edit_file`), Germano recursively de-anonymizes the JSON string within <code>function.arguments</code> (and <code>input_json_delta</code> for Claude) with correct JSON escaping. As a result, code or documents written to disk by the AI will always feature the <strong>authentic real data</strong> with zero leftover placeholder tags.</p>
+
+                    <h3 class="sub-title">What is anonymized and what is blocked</h3>
+                    <ul>
+                        <li><strong>Anonymized:</strong> messages, system instructions, tool arguments and results, reasoning summaries, images (<code>image_url</code>, <code>input_image</code>, Claude <code>image</code> blocks) and attached documents (PDF, Word, Excel, text) in the OpenAI, Responses and Anthropic formats.</li>
+                        <li><strong>Left untouched:</strong> Claude's signed <code>thinking</code> blocks (generated by the AI from already anonymized text; any change would invalidate the signature), tool definitions and technical parameters.</li>
+                        <li><strong>Blocked (fail-safe):</strong> audio (voice is biometric data) and attachments of unknown type; if the AI engine is not running the request is never forwarded.</li>
+                        <li>Required headers are forwarded (<code>Authorization</code>, <code>x-api-key</code>, <code>anthropic-version</code>, <code>anthropic-beta</code>...) together with URL parameters (e.g. <code>?beta=true</code>); <code>/v1/messages/count_tokens</code> is supported too.</li>
+                        <li>Connections to the AI service use the system proxy and the Windows certificate store (useful on corporate networks with TLS inspection).</li>
+                        <li>The replacement map of each request is logged to <code>extracted/proxy_sessions/YYYY-MM-DD.jsonl</code> (can be disabled with <code>"save_proxy_logs": false</code> in <code>config.json</code>).</li>
+                    </ul>
+                    <p><strong>Performance:</strong> the first request of a long conversation may take tens of seconds on CPU; already analyzed messages are cached, so following requests only analyze new text.</p>
                 </div>
             </section>
 
@@ -1551,10 +1792,17 @@
                 </div>
 
                 <div class="lang-it">
+                    <div class="callout callout-info">
+                        <div class="callout-icon">🔗</div>
+                        <div class="callout-content">
+                            <strong>Tutti gli indirizzi sono nella Dashboard:</strong> in Modalità Avanzata, scheda <em>Agenti AI e API</em>, trovi gli indirizzi del Proxy pronti da copiare e una tabella che indica, strumento per strumento (Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider, SDK OpenAI e Anthropic), dove impostarli. Se cambi la porta in <code>config.json</code>, gli indirizzi mostrati si aggiornano da soli.
+                        </div>
+                    </div>
+
                     <h3 class="sub-title">1. Configurazione Google Antigravity</h3>
                     <p>Per proteggere le conversazioni e i documenti manipolati all'interno di Google Antigravity:</p>
                     <ol>
-                        <li>In Germano AI (Dashboard), imposta l'URL target del tuo provider (es. <code>https://api.openai.com/v1/chat/completions</code>).</li>
+                        <li>In Germano AI (Modalità Avanzata, scheda <em>Agenti AI e API</em>, campo <em>«Servizio OpenAI o compatibile»</em>) imposta l'URL del tuo provider (predefinito <code>https://api.openai.com/v1/chat/completions</code>; per le richieste Claude/Anthropic c'è il campo separato <em>«Servizio Anthropic (Claude)»</em>).</li>
                         <li>Nelle impostazioni di rete o variabili d'ambiente di Antigravity, configura:
                             <div class="code-block">
                                 <pre><code>OPENAI_BASE_URL="http://127.0.0.1:8000/v1"</code></pre>
@@ -1586,7 +1834,7 @@ codex</code></pre>
                     </ol>
 
                     <h3 class="sub-title">4. Configurazione Claude Code (Anthropic)</h3>
-                    <p>Imposta l'endpoint di base Anthropic puntando al proxy locale di Germano:</p>
+                    <p>Imposta l'endpoint di base Anthropic puntando al proxy locale di Germano (senza <code>/v1</code>: Claude Code aggiunge da solo <code>/v1/messages</code>). Le richieste vengono inoltrate al servizio indicato nel campo <em>«Servizio Anthropic (Claude)»</em> della scheda <em>Agenti AI e API</em> (predefinito <code>https://api.anthropic.com/v1</code>):</p>
                     <div class="code-block">
                         <div class="code-header">
                             <span>PowerShell</span>
@@ -1598,10 +1846,17 @@ claude</code></pre>
                 </div>
 
                 <div class="lang-en">
+                    <div class="callout callout-info">
+                        <div class="callout-icon">🔗</div>
+                        <div class="callout-content">
+                            <strong>All addresses are in the Dashboard:</strong> in Advanced Mode, <em>Agenti AI e API</em> (AI agents and API) tab, you will find the Proxy addresses ready to copy and a table showing, tool by tool (Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider, OpenAI and Anthropic SDKs), where to set them. If you change the port in <code>config.json</code>, the addresses shown update on their own.
+                        </div>
+                    </div>
+
                     <h3 class="sub-title">1. Google Antigravity Setup</h3>
                     <p>To shield all prompts, context documents, and files processed by Google Antigravity:</p>
                     <ol>
-                        <li>In Germano AI Dashboard, confirm your upstream provider URL (e.g. <code>https://api.openai.com/v1/chat/completions</code>).</li>
+                        <li>In Germano AI (Advanced Mode, <em>Agenti AI e API</em> tab, <em>«Servizio OpenAI o compatibile»</em> field), confirm your upstream provider URL (default <code>https://api.openai.com/v1/chat/completions</code>; Claude/Anthropic requests use the separate <em>«Servizio Anthropic (Claude)»</em> field).</li>
                         <li>Configure Antigravity's target endpoint:
                             <div class="code-block">
                                 <pre><code>OPENAI_BASE_URL="http://127.0.0.1:8000/v1"</code></pre>
@@ -1624,6 +1879,7 @@ codex</code></pre>
                     <ol>
                         <li>Open Cursor and press <code>Ctrl + Shift + J</code> to open Settings.</li>
                         <li>Navigate to <strong>Models</strong> -> <strong>OpenAI API Key</strong>.</li>
+                        <li>Enter your real API key (Germano only uses it locally to forward the already anonymized request).</li>
                         <li>Enable <strong>Override OpenAI Base URL</strong> and enter:
                             <div class="code-block">
                                 <pre><code>http://127.0.0.1:8000/v1</code></pre>
@@ -1632,7 +1888,7 @@ codex</code></pre>
                     </ol>
 
                     <h3 class="sub-title">4. Claude Code Setup (Anthropic)</h3>
-                    <p>Direct Anthropic requests through Germano's local de-anonymizing proxy:</p>
+                    <p>Direct Anthropic requests through Germano's local de-anonymizing proxy (without <code>/v1</code>: Claude Code appends <code>/v1/messages</code> itself). Requests are forwarded to the service set in the <em>«Servizio Anthropic (Claude)»</em> field of the <em>Agenti AI e API</em> tab (default <code>https://api.anthropic.com/v1</code>):</p>
                     <div class="code-block">
                         <div class="code-header">
                             <span>PowerShell</span>
@@ -1657,30 +1913,68 @@ claude</code></pre>
 
                 <div class="lang-it">
                     <h3 class="sub-title">D: Germano AI invia qualcosa su Internet?</h3>
-                    <p><strong>R: Assolutamente NO.</strong> L'intero software è progettato e certificato per funzionare su computer isolati dalla rete (air-gapped). Tutti i 6 modelli IA risiedono nella cartella <code>models/</code> e il codice include protezioni che disabilitano qualsiasi telemetria.</p>
+                    <p><strong>R: Nessun dato dei documenti.</strong> L'anonimizzazione di documenti e testi avviene interamente sul PC: i 6 modelli IA risiedono nella cartella <code>models/</code> e la telemetria delle librerie è disattivata. Le sole connessioni sono il <strong>controllo degli aggiornamenti</strong>, solo se Windows segnala che il PC è connesso a Internet (legge da GitHub il numero dell'ultima versione e, se serve, scarica il pacchetto da Google Drive: vedi la domanda sugli aggiornamenti), e il <strong>Proxy API</strong>, solo se lo usi, che inoltra all'AI scelta da te le richieste già anonimizzate.</p>
 
-                    <h3 class="sub-title">D: Cosa succede se il programma indica "Porta 8000 già in uso"?</h3>
-                    <p><strong>R:</strong> Significa che hai già una finestra di Germano aperta in background o un altro server web locale. Chiudi la finestra precedente o apri il task manager e termina i processi <code>python.exe</code> inattivi.</p>
+                    <h3 class="sub-title">D: Quanta memoria serve?</h3>
+                    <p><strong>R:</strong> Consigliati 16 GB di RAM (minimo 8 GB). Con meno di 12 GB Germano carica automaticamente il modello principale in versione leggera (BF16): funziona, ma l'analisi del testo è più lenta. Vedi il capitolo 9.</p>
 
-                    <h3 class="sub-title">D: Perché vedo l'avviso "Processi secondari rimasti aperti"?</h3>
-                    <p><strong>R:</strong> Se la finestra di Germano è stata chiusa forzatamente in passato, potrebbe essere rimasto un processo in background. Basta cliccare sul pulsante rosso <strong>"Chiudi processi secondari"</strong> che compare in cima alla pagina per risolvere il problema con un solo clic.</p>
+                    <h3 class="sub-title">D: Il motore non parte o compare un messaggio rosso di errore</h3>
+                    <p><strong>R:</strong> Il messaggio in alto nella Dashboard indica la causa; il dettaglio completo è nel file <code>daemon.log</code> nella cartella del programma. Su alcuni PC appena installati la funzione di Windows <em>Smart App Control</em> o l'antivirus possono bloccare i componenti IA: <code>START.bat</code> lo segnala all'avvio. Evita anche percorsi molto lunghi (meglio <code>C:\GermanoAI</code>).</p>
+
+                    <h3 class="sub-title">D: Cosa succede se il programma indica che la porta 8000 è occupata?</h3>
+                    <p><strong>R:</strong> Se Germano è già aperto, facendo di nuovo doppio clic su <code>START.bat</code> si apre semplicemente la Dashboard esistente. Se la porta è usata da un altro programma, chiudilo oppure imposta un'altra porta in <code>config.json</code> (es. <code>"port": 8010</code>) e aggiorna di conseguenza l'indirizzo del Proxy negli editor.</p>
+
+                    <h3 class="sub-title">D: Perché vedo l'avviso «Sono rimasti aperti ... processi del motore»?</h3>
+                    <p><strong>R:</strong> Il motore IA si chiude da solo quando chiudi la finestra di Germano; l'avviso (visibile in Modalità Avanzata) può comparire solo dopo un arresto anomalo del PC. Basta cliccare <strong>Chiudi processi secondari</strong> nell'avviso in cima alla pagina.</p>
+
+                    <h3 class="sub-title">D: Perché un file .doc o .ppt finisce tra i «Non riusciti»?</h3>
+                    <p><strong>R:</strong> I vecchi formati binari di Office si possono convertire solo con Microsoft Office o LibreOffice installati. Su un PC senza Office salva il documento come <code>.docx</code>/<code>.pptx</code>, oppure installa LibreOffice: Germano lo usa automaticamente. Il motivo esatto di ogni errore è indicato nella scheda <em>Non riusciti</em>; risolto il problema, usa <em>Rimetti in coda</em>.</p>
+
+                    <h3 class="sub-title">D: Come funzionano gli aggiornamenti automatici?</h3>
+                    <p><strong>R:</strong> Circa 20 secondi dopo l'avvio e poi ogni 6 ore, <strong>solo se Windows segnala che il PC è connesso a Internet</strong>, Germano legge da GitHub il file <code>update.json</code> con il numero dell'ultima versione. Se è più recente, scarica il pacchetto da Google Drive nella cartella <code>update/</code>, ne verifica dimensione e impronta SHA-256 e lo prepara; l'installazione avviene al successivo avvio di <code>START.bat</code> oppure subito con <em>Installa ora e riavvia</em> nell'avviso in cima alla Dashboard. Cartelle di lavoro, Vault e <code>config.json</code> non vengono toccati; se l'installazione non va a buon fine torna al suo posto la versione precedente. Su un PC scollegato non avviene alcun tentativo di connessione.</p>
+                    <p>Le opzioni sono in Modalità Avanzata, <em>Sistema e registro → Aggiornamenti</em>: <em>Controlla le nuove versioni quando il computer è connesso a Internet</em> (<code>"check_updates"</code> in <code>config.json</code>) e <em>Scarica automaticamente gli aggiornamenti</em> (<code>"auto_update"</code>; se spenta, Germano si limita a segnalare la nuova versione). <em>Controlla ora</em> esegue subito un controllo.</p>
+
+                    <h3 class="sub-title">D: Come impedisco agli operatori di disattivare i filtri (Profilo PA)?</h3>
+                    <p><strong>R:</strong> L'amministratore imposta in <code>config.json</code> i valori <code>"compliance_mode": "PA"</code> e <code>"lock_settings": true</code>: da quel momento la Dashboard mostra il lucchetto 🔒 accanto al profilo e rifiuta ogni modifica dei filtri (resta possibile solo il cambio tra Modalità Semplice e Avanzata).</p>
 
                     <h3 class="sub-title">D: I file protetti mantengono la grafica e i font originali?</h3>
-                    <p><strong>R: SÌ al 100%.</strong> I PDF mantengono il loro layout esatto con annotazioni di copertura pixel per pixel. I file Word DOCX e i fogli Excel XLSX mantengono tutte le tabelle, immagini, bordi, formule matematiche e formattazioni originali.</p>
+                    <p><strong>R: Sì.</strong> Word, Excel, PowerPoint e OpenDocument vengono modificati direttamente nel loro XML: formattazione, immagini, tabelle, formule e macro restano intatte e cambia solo il testo personale (l'etichetta prende lo stile della prima parte del dato sostituito). Nei PDF le etichette vengono inserite al posto del testo rimosso, con un corpo ridotto se lo spazio è stretto.</p>
+
+                    <h3 class="sub-title">D: Ho la versione 0.50: come passo alla 0.51 senza perdere nulla?</h3>
+                    <p><strong>R:</strong> Estrai la 0.51 in una nuova cartella e copia dalla vecchia <code>extracted/deanonymize_vault.json</code> (serve per ripristinare i dati veri nei documenti già protetti) e, se vuoi, <code>config.json</code> con le tue impostazioni. I dettagli sono nella sezione <a href="#novita">Novità della v0.51</a>.</p>
                 </div>
 
                 <div class="lang-en">
                     <h3 class="sub-title">Q: Does Germano AI transmit any data over the Internet?</h3>
-                    <p><strong>A: Absolutely NOT.</strong> The entire platform is engineered and certified for air-gapped workstations. All 6 neural networks are housed inside <code>models/</code>, and internal runtime flags actively suppress any outbound telemetry.</p>
+                    <p><strong>A: No document data.</strong> Document and text anonymization runs entirely on the PC: all 6 AI models live in <code>models/</code> and library telemetry is disabled. The only connections are the <strong>update check</strong>, only when Windows reports that the PC is connected to the Internet (it reads the latest version number from GitHub and, if needed, downloads the package from Google Drive: see the question about updates), and the <strong>API Proxy</strong>, only if you use it, which forwards already anonymized requests to the AI service you chose.</p>
 
-                    <h3 class="sub-title">Q: What should I do if port 8000 is reported in use?</h3>
-                    <p><strong>A:</strong> This indicates an existing instance of Germano is already running in background or another dev server is bound to port 8000. Close the prior terminal window or terminate orphaned <code>python.exe</code> instances.</p>
+                    <h3 class="sub-title">Q: How much memory is needed?</h3>
+                    <p><strong>A:</strong> 16 GB of RAM recommended (8 GB minimum). With less than 12 GB Germano automatically loads the main model in its light version (BF16): it works, but text analysis is slower. See chapter 9.</p>
 
-                    <h3 class="sub-title">Q: Why do I see the "Orphaned processes detected" banner?</h3>
-                    <p><strong>A:</strong> If the command prompt was abruptly terminated in a prior session, an idle background process may persist. Simply click the red <strong>"Terminate Orphaned Processes"</strong> button to clean up in 1 click.</p>
+                    <h3 class="sub-title">Q: The engine does not start or a red error message appears</h3>
+                    <p><strong>A:</strong> The message at the top of the Dashboard shows the cause; full details are in <code>daemon.log</code> in the program folder. On some freshly installed PCs, Windows <em>Smart App Control</em> or the antivirus may block the AI components: <code>START.bat</code> reports it at startup. Also avoid very long paths (prefer <code>C:\GermanoAI</code>).</p>
+
+                    <h3 class="sub-title">Q: What if port 8000 is reported in use?</h3>
+                    <p><strong>A:</strong> If Germano is already open, double-clicking <code>START.bat</code> again simply opens the existing Dashboard. If another program uses the port, close it or set a different port in <code>config.json</code> (e.g. <code>"port": 8010</code>) and update the Proxy address in your editors.</p>
+
+                    <h3 class="sub-title">Q: Why do I see the «Sono rimasti aperti ... processi del motore» (engine processes left open) notice?</h3>
+                    <p><strong>A:</strong> The AI engine stops automatically when you close the Germano window; the notice (shown in Advanced Mode) can only appear after an abnormal shutdown of the PC. Simply click <strong>Chiudi processi secondari</strong> (Close orphaned processes) in the notice at the top of the page.</p>
+
+                    <h3 class="sub-title">Q: Why does a .doc or .ppt file end up among the «Non riusciti» (failed)?</h3>
+                    <p><strong>A:</strong> Legacy binary Office formats can only be converted with Microsoft Office or LibreOffice installed. On a PC without Office, save the document as <code>.docx</code>/<code>.pptx</code>, or install LibreOffice: Germano uses it automatically. The exact reason of each failure is shown in the <em>Non riusciti</em> tab; once the problem is solved, use <em>Rimetti in coda</em> (Queue again).</p>
+
+                    <h3 class="sub-title">Q: How do automatic updates work?</h3>
+                    <p><strong>A:</strong> About 20 seconds after startup and then every 6 hours, <strong>only when Windows reports that the PC is connected to the Internet</strong>, Germano reads the <code>update.json</code> file with the latest version number from GitHub. If it is newer, it downloads the package from Google Drive into the <code>update/</code> folder, verifies its size and SHA-256 fingerprint and prepares it; installation happens at the next <code>START.bat</code> start or right away with <em>Installa ora e riavvia</em> (Install now and restart) in the notice at the top of the Dashboard. Working folders, the Vault and <code>config.json</code> are left untouched; if the installation fails, the previous version is put back. On a disconnected PC no connection attempt is made.</p>
+                    <p>The options are in Advanced Mode, <em>Sistema e registro → Aggiornamenti</em>: check for new versions when the computer is online (<code>"check_updates"</code> in <code>config.json</code>) and download updates automatically (<code>"auto_update"</code>; when off, Germano only reports the new version). <em>Controlla ora</em> (Check now) runs a check immediately.</p>
+
+                    <h3 class="sub-title">Q: How do I prevent operators from disabling filters (PA profile)?</h3>
+                    <p><strong>A:</strong> The administrator sets <code>"compliance_mode": "PA"</code> and <code>"lock_settings": true</code> in <code>config.json</code>: the Dashboard then shows a 🔒 next to the profile and rejects any filter change (only switching between Simple and Advanced Mode remains possible).</p>
 
                     <h3 class="sub-title">Q: Do redacted files preserve their original typography and tables?</h3>
-                    <p><strong>A: 100% YES.</strong> PDFs preserve vector geometry and font metrics with pixel-perfect redact bounding boxes. Word DOCX and Excel XLSX documents preserve all styling, tables, formulas, and structural layouts.</p>
+                    <p><strong>A: Yes.</strong> Word, Excel, PowerPoint and OpenDocument files are edited directly in their XML: formatting, images, tables, formulas and macros stay intact and only personal text changes (the tag takes the style of the first part of the replaced data). In PDFs the tags are inserted where the text was removed, with a smaller font size when space is tight.</p>
+
+                    <h3 class="sub-title">Q: I have version 0.50: how do I move to 0.51 without losing anything?</h3>
+                    <p><strong>A:</strong> Extract 0.51 into a new folder and copy from the old one <code>extracted/deanonymize_vault.json</code> (needed to restore real data in documents you already protected) and, optionally, <code>config.json</code> with your settings. Details are in the <a href="#novita">What's new in v0.51</a> section.</p>
                 </div>
             </section>
 
