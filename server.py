@@ -1,7 +1,8 @@
 """Germano AI - server locale: Dashboard web, API REST e Proxy API per IDE/agenti IA.
 
-Ascolta solo su 127.0.0.1. Avvia il demone IA (daemon.py) su richiesta e lo controlla tramite i file
-in state/ e un'API interna protetta da token.
+Ascolta sempre su 127.0.0.1; solo con la parte Server della modalita' operativa si aggiunge un secondo ascolto
+sulla rete locale (token obbligatorio per Proxy, Studio e motore condiviso). Avvia il demone IA (daemon.py) su
+richiesta e lo controlla tramite i file in state/ e un'API interna protetta da token.
 """
 import io
 import os
@@ -39,15 +40,121 @@ app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 ** 3
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
 CFG = common.load_config()
-PORT = int(os.environ.get("GERMANO_PORT") or CFG.get("port") or 8000)
-ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
-ALLOWED_ORIGINS = {f"http://127.0.0.1:{PORT}", f"http://localhost:{PORT}", f"http://[::1]:{PORT}"}
+PORT = int(os.environ.get("GERMANO_PORT") or CFG.get("port") or 8181)
+# Il server principale ascolta SEMPRE solo su 127.0.0.1 (Dashboard e CLI di questo computer). La parte "Server"
+# della modalita' operativa aggiunge un secondo listener sulla rete (0.0.0.0, oppure l'IP indicato in bind_host)
+# che si accende e si spegne dalle Impostazioni senza riavviare: in Standalone e in Client nessuna porta di
+# Germano e' aperta verso la rete.
+MAIN_HOST = "127.0.0.1"
+_cfg_host = (os.environ.get("GERMANO_HOST") or CFG.get("bind_host") or "").strip()
+LAN_HOST = _cfg_host if _cfg_host and _cfg_host not in ("127.0.0.1", "localhost", "::1") else "0.0.0.0"
+DISCOVERY_PORT = common.discovery_port(CFG)
+LAN_MODE = False                                     # True mentre il listener di rete e' attivo
+LAN_TOKEN = CFG.get("lan_token") or ""              # generato quando si attiva la parte Server
+MACHINE_NAME = socket.gethostname().lower()
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+MODE_LABELS = {"standalone": "Standalone", "server": "Server", "client": "Client", "server+client": "Server + Client"}
+
+
+def _lang():
+    """Lingua dei messaggi: intestazione X-Germano-Lang (API, script) oppure il cookie germano_lang che la Dashboard
+    imposta con le bandierine IT/EN. Senza indicazioni si risponde in italiano, come nelle versioni precedenti."""
+    try:
+        value = request.headers.get("X-Germano-Lang") or request.cookies.get("germano_lang") or ""
+    except RuntimeError:   # fuori da una richiesta HTTP (es. all'avvio)
+        return "it"
+    return "en" if value.strip().lower().startswith("en") else "it"
+
+
+def _L(it, en):
+    return en if _lang() == "en" else it
+
+_LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+# Dalla LAN SENZA token: sola lettura, nessun dato personale.
+_LAN_OPEN = ("/", "/guide", "/guide.html", "/static/", "/favicon.ico",
+             "/api/status", "/api/ai/detect", "/api/discovery")
+# Dalla LAN CON token condiviso: Proxy verso le AI, protezione dello Studio e motore condiviso.
+_LAN_TOKEN_PATHS = ("/v1/messages", "/messages", "/v1/chat/completions", "/chat/completions",
+                    "/v1/responses", "/responses", "/v1/models", "/models", "/api/studio/send",
+                    "/api/engine/v1/")
+# Tutto il resto (controllo motore, impostazioni, modalita', vault, de-anonimizzazione, file) resta SOLO locale.
+
+
+def _path_matches(path, prefixes):
+    for p in prefixes:
+        if p == "/":
+            if path == "/":        # la radice e' solo esatta, non un prefisso di tutto
+                return True
+        elif p.endswith("/"):
+            if path.startswith(p):
+                return True
+        elif path == p or path.startswith(p + "/"):
+            return True
+    return False
+
+
+def _remote_is_local():
+    ra = request.remote_addr or ""
+    return ra in _LOOPBACK or ra.startswith("127.") or ra == "::1"
+
+
+def _host_allowed(hostname):
+    """Anti DNS-rebinding: si accettano solo loopback, IP letterali e il nome di questo computer
+    (un dominio controllato da un attaccante non corrisponde a nessuno di questi)."""
+    if hostname in _LOOPBACK or hostname == "[::1]":
+        return True
+    h = hostname.strip("[]")
+    try:
+        import ipaddress
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        pass
+    sn = (CFG.get("server_name") or "").lower()
+    return hostname == MACHINE_NAME or (bool(sn) and hostname == sn)
+
+
+def _origin_allowed(origin):
+    from urllib.parse import urlparse
+    try:
+        o = urlparse(origin)
+    except Exception:
+        return False
+    hn = (o.hostname or "").lower()
+    if not hn:
+        return False
+    if hn in _LOOPBACK or hn.startswith("127."):
+        return True
+    return hn == (request.host or "").split(":")[0].lower()   # stessa origine del server (LAN)
+
+
+def _lan_token_ok():
+    import hmac
+    tok = request.environ.get("germano.token") or request.headers.get("X-Germano-Auth", "")
+    return bool(LAN_TOKEN) and hmac.compare_digest(str(tok), LAN_TOKEN)
+
+
+# Prefisso opzionale /g/<token> nel percorso: permette a qualunque client (anche CLI che non inviano header
+# personalizzati) di autenticarsi alla LAN tramite il solo Base URL, es. http://<server>:8181/g/<token>/v1
+_real_wsgi_app = app.wsgi_app
+
+
+def _wsgi_token_prefix(environ, start_response):
+    path = environ.get("PATH_INFO", "")
+    if path.startswith("/g/"):
+        tok, _, tail = path[3:].partition("/")
+        environ["germano.token"] = tok
+        environ["PATH_INFO"] = "/" + tail
+    return _real_wsgi_app(environ, start_response)
+
+
+app.wsgi_app = _wsgi_token_prefix
 
 vault_reader = VaultReader()
 UPDATER = gupdater.Updater()
 _spawn_lock = threading.Lock()
 _cache = {}
+_DISCOVERY = None  # responder UDP di rilevamento (avviato in main() quando il server ascolta sulla LAN)
 _daemon_http = requests.Session()
 _daemon_http.trust_env = False  # le chiamate a 127.0.0.1 non devono mai passare da un proxy aziendale
 _upstream = requests.Session()  # verso gli LLM: usa proxy di sistema/ambiente se configurati
@@ -65,20 +172,153 @@ def cached(key, ttl, fn):
 
 
 # ------------------------------------------------------------------------------------------------
+# Modalita' operativa: Standalone / Server / Client / Server + Client
+# ------------------------------------------------------------------------------------------------
+_MODE_LOCK = threading.RLock()
+_LAN_SERVER = None   # listener werkzeug sulla rete (parte Server)
+
+
+def _ensure_identity():
+    """instance_id univoco per installazione e computer (serve a non rilevare se stessi in rete). Se la cartella
+    del programma e' stata copiata da un altro PC, l'identificativo viene rigenerato."""
+    cfg = common.load_config()
+    if not cfg.get("instance_id") or (cfg.get("instance_host") or "") != MACHINE_NAME:
+        common.save_config({"instance_id": uuid.uuid4().hex, "instance_host": MACHINE_NAME}, admin=True)
+
+
+def _ensure_lan_token():
+    global LAN_TOKEN
+    if not LAN_TOKEN:
+        LAN_TOKEN = common.load_config().get("lan_token") or uuid.uuid4().hex
+        common.save_config({"lan_token": LAN_TOKEN}, admin=True)
+    return LAN_TOKEN
+
+
+def _start_lan_listener():
+    """Parte Server: secondo listener sulla rete + rilevamento UDP. Restituisce un messaggio d'errore o None."""
+    global _LAN_SERVER, LAN_MODE, _DISCOVERY
+    with _MODE_LOCK:
+        if _LAN_SERVER is not None:
+            return None
+        _ensure_lan_token()
+        from werkzeug.serving import make_server
+        try:
+            srv = make_server(LAN_HOST, PORT, app, threaded=True)
+        except OSError as e:
+            return _L(f"impossibile mettersi in ascolto sulla rete ({LAN_HOST}:{PORT}): {e}",
+                      f"cannot listen on the network ({LAN_HOST}:{PORT}): {e}")
+        threading.Thread(target=srv.serve_forever, name="germano-lan", daemon=True).start()
+        _LAN_SERVER = srv
+        LAN_MODE = True
+        if common.load_config().get("discovery_enabled", True) and _DISCOVERY is None:
+            try:
+                from germano import discovery as gdiscovery
+                _DISCOVERY = gdiscovery.DiscoveryResponder(_server_info, DISCOVERY_PORT)
+                _DISCOVERY.start()
+            except Exception as e:
+                _DISCOVERY = None
+                return _L(f"in ascolto sulla rete, ma il rilevamento automatico (UDP {DISCOVERY_PORT}) non e' partito: {e}",
+                          f"listening on the network, but auto-discovery (UDP {DISCOVERY_PORT}) did not start: {e}")
+        return None
+
+
+def _stop_lan_listener():
+    """Spegne la parte Server: da quel momento i computer della rete non raggiungono piu' Germano."""
+    global _LAN_SERVER, LAN_MODE, _DISCOVERY
+    with _MODE_LOCK:
+        LAN_MODE = False
+        if _DISCOVERY is not None:
+            try:
+                _DISCOVERY.stop()
+            except Exception:
+                pass
+            _DISCOVERY = None
+        if _LAN_SERVER is not None:
+            srv, _LAN_SERVER = _LAN_SERVER, None
+            try:
+                srv.shutdown()
+                srv.server_close()
+            except Exception:
+                pass
+
+
+def _apply_operating_mode():
+    """Applica dal vivo la modalita' in vigore (rete accesa/spenta). Restituisce (modalita', avvisi)."""
+    mode = common.effective_operating_mode(common.load_config())
+    server_on, _client_on = common.mode_flags(mode)
+    notes = []
+    if server_on:
+        err = _start_lan_listener()
+        if err:
+            notes.append(err)
+    else:
+        _stop_lan_listener()
+    return mode, notes
+
+
+def _restart_daemon():
+    try:
+        stop_daemon()
+        time.sleep(0.5)
+        start_daemon()
+    except Exception as e:
+        common.log(f"Riavvio del motore non riuscito: {e}")
+
+
+def _sync_engine(prev_mode, new_mode, prev_remote, cfg):
+    """Il tipo di motore (locale o remoto) si sceglie all'avvio del demone: se cambia la parte Client, o i dati
+    del server remoto, il motore in esecuzione si riavvia. Server e Client avviano il motore da soli."""
+    prev_client = common.mode_flags(prev_mode)[1]
+    new_client = common.mode_flags(new_mode)[1]
+    remote_now = (cfg.get("remote_server"), cfg.get("remote_token"), cfg.get("client_fallback_local"))
+    running = is_daemon_running()
+    if running and (prev_client != new_client or (new_client and remote_now != prev_remote)):
+        threading.Thread(target=_restart_daemon, name="germano-restart", daemon=True).start()
+        return "restart"
+    if not running and new_mode != "standalone":
+        start_daemon()
+        return "start"
+    return None
+
+
+# ------------------------------------------------------------------------------------------------
 # Sicurezza: solo host locali (anti DNS-rebinding) e nessuna azione da siti web esterni (anti CSRF)
 # ------------------------------------------------------------------------------------------------
 @app.before_request
 def _guard():
     host = (request.host or "").lower()
     hostname = host.split("]")[0] + "]" if host.startswith("[") else host.split(":")[0]
-    if hostname not in ALLOWED_HOSTS:
-        return jsonify({"error": "Host non consentito: Germano AI accetta solo connessioni locali."}), 403
+    if not _host_allowed(hostname):
+        return jsonify({"error": _L("Host non consentito: usa l'indirizzo IP del server.",
+                                    "Host not allowed: use the server's IP address.")}), 403
+
+    if not _remote_is_local():
+        # Richiesta da un altro computer della rete locale.
+        if not LAN_MODE:
+            return jsonify({"error": _L("Germano non e' in ascolto sulla rete locale: accetta solo connessioni dal server.",
+                                        "Germano is not listening on the local network: it only accepts connections "
+                                        "from the server itself.")}), 403
+        path = request.path
+        if _path_matches(path, _LAN_OPEN):
+            pass  # sola lettura, nessun dato personale
+        elif _path_matches(path, _LAN_TOKEN_PATHS):
+            if not _lan_token_ok():   # senza un token valido (o se il server non ne ha) l'accesso e' sempre negato
+                return jsonify({"error": _L("Accesso negato: token di Germano Server mancante o errato. "
+                                            "Imposta il Base URL come http://<server>:%d/g/<token>/v1 oppure "
+                                            "l'intestazione X-Germano-Auth." % PORT,
+                                            "Access denied: Germano Server token missing or wrong. Set the Base URL "
+                                            "as http://<server>:%d/g/<token>/v1 or the X-Germano-Auth header." % PORT)}), 401
+        else:
+            return jsonify({"error": _L("Operazione riservata al computer del server (accessibile solo in locale).",
+                                        "Operation reserved to the server computer (local access only).")}), 403
+
+    # Anti-CSRF: nessuna azione di modifica avviata da un sito web esterno.
     if request.path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("Origin")
-        if origin and origin not in ALLOWED_ORIGINS:
-            return jsonify({"error": "Richiesta da un sito esterno bloccata."}), 403
+        if origin and not _origin_allowed(origin):
+            return jsonify({"error": _L("Richiesta da un sito esterno bloccata.", "Request from an external site blocked.")}), 403
         if request.headers.get("Sec-Fetch-Site") == "cross-site":
-            return jsonify({"error": "Richiesta da un sito esterno bloccata."}), 403
+            return jsonify({"error": _L("Richiesta da un sito esterno bloccata.", "Request from an external site blocked.")}), 403
     return None
 
 
@@ -136,6 +376,15 @@ def daemon_call(path, payload=None, timeout=60, method="POST"):
 
 def daemon_ready():
     return is_daemon_running() and os.path.exists(common.READY_FLAG) and bool(daemon_state().get("port"))
+
+
+def _daemon_error(r):
+    """Messaggio d'errore restituito dal motore (es. in modalita' Client: Germano Server non raggiungibile)."""
+    try:
+        msg = str((r.json() or {}).get("error") or "")
+    except Exception:
+        msg = r.text or ""
+    return msg[:300].strip().rstrip(".")
 
 
 def _rotate_log():
@@ -202,6 +451,17 @@ def stop_daemon(wait=6.0):
         common.remove_quietly(f)
 
 
+def _same_data_dir(proc):
+    """True se il demone usa la stessa cartella dati di questo server: con GERMANO_DATA_DIR piu' istanze possono
+    condividere la stessa installazione e il demone di un'altra istanza NON e' un processo orfano."""
+    try:
+        env = proc.environ()
+    except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+        return False   # nel dubbio non lo si considera nostro (mai chiudere il demone di un'altra istanza)
+    other = os.path.abspath(env.get("GERMANO_DATA_DIR") or BASE_DIR)
+    return os.path.normcase(other) == os.path.normcase(common.DATA_DIR)
+
+
 def _orphans():
     """Processi daemon.py di QUESTA installazione non registrati (es. finestra chiusa in modo anomalo)."""
     current = daemon_state().get("pid")
@@ -213,6 +473,8 @@ def _orphans():
             if p.info["pid"] == current or not any(c.endswith("daemon.py") for c in cmd):
                 continue
             if os.path.normcase(p.info.get("exe") or "") != exe:
+                continue
+            if not _same_data_dir(p):
                 continue
             out.append(p)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -237,12 +499,18 @@ def guide():
 # ------------------------------------------------------------------------------------------------
 # Stato, impostazioni, controllo motore
 # ------------------------------------------------------------------------------------------------
+def _is_document(root, name):
+    """File di lavoro da contare e mostrare: esclusi i temporanei di Germano e i file di sistema che il motore
+    ignora (Thumbs.db, desktop.ini, file nascosti), altrimenti risulterebbero «in attesa» per sempre."""
+    return not name.startswith(common.TMP_PREFIX) and not common.is_ignored_file(os.path.join(root, name))
+
+
 def _count(folder):
     n = dirs = size = 0
     for root, ds, files in os.walk(folder):
         dirs += len(ds)
         for f in files:
-            if f.startswith(common.TMP_PREFIX):
+            if not _is_document(root, f):
                 continue
             n += 1
             try:
@@ -286,43 +554,287 @@ def api_status():
         system = {"cpu_percent": 0, "ram_percent": 0, "ram_used_gb": 0, "ram_total_gb": 0}
     progress = common.read_json(common.STATUS_FILE, {}) if running else {}
     cfg = common.load_config()
+    eff = common.effective_operating_mode(cfg)
     return jsonify({
         "version": APP_VERSION, "running": running, "status": state, "error": err,
         "stats": st, "system": system, "progress": progress or {},
         "engine": daemon_state().get("engine") if running else None,
         "profile": cfg.get("compliance_mode"), "locked": bool(cfg.get("lock_settings")),
         "update": UPDATER.snapshot(),
+        "mode": {"effective": eff, "label": MODE_LABELS.get(eff, eff), "server": LAN_MODE,
+                 "client": common.mode_flags(eff)[1], "forced_by": common.mode_forced_by()},
     })
+
+
+@app.route("/api/ai/detect")
+def api_ai_detect():
+    """Elenco delle AI/CLI installate su questo computer. Solo file system e porte locali (nessun processo
+    avviato, nessuna rete): il risultato e' in cache per 30 s, con ?refresh=1 si forza una nuova scansione."""
+    from germano import ai_detect
+    if request.args.get("refresh") in ("1", "true", "yes"):
+        _cache.pop("ai_detect", None)
+    data = cached("ai_detect", 30.0, ai_detect.detect)
+    if not _remote_is_local():
+        # dalla rete solo nomi e versioni: i percorsi rivelerebbero il nome utente di Windows del server
+        data = {**data, "tools": [{k: v for k, v in t.items() if k != "path"} for t in data["tools"]]}
+    return jsonify(data)
+
+
+def _server_info():
+    """Metadati del server per il rilevamento (UDP e /api/discovery). Mai il token, mai dati personali."""
+    cfg = common.load_config()
+    eng = (daemon_state().get("engine") or {}) if is_daemon_running() else {}
+    engine_mode = eng.get("mode") or "local"
+    return {
+        "service": "germano-server",
+        "version": APP_VERSION,
+        "port": PORT,
+        "name": (cfg.get("server_name") or MACHINE_NAME),
+        "instance_id": cfg.get("instance_id") or "",
+        "operating_mode": common.effective_operating_mode(cfg),
+        "lan": LAN_MODE,
+        "token_required": True,   # dalla rete Proxy, Studio e motore richiedono sempre il token
+        "engine_ready": daemon_ready(),
+        "engine_mode": engine_mode,
+        # un server che delega a sua volta il calcolo non offre il proprio motore (niente catene)
+        "engine_shared": bool(LAN_MODE and engine_mode != "remote"),
+        "device": eng.get("device") if engine_mode != "remote" else None,
+    }
+
+
+@app.route("/api/discovery")
+def api_discovery():
+    return jsonify(_server_info())
+
+
+# ------------------------------------------------------------------------------------------------
+# Motore condiviso (parte Server): inferenza per i client Germano della rete. Mai il Vault: si restituiscono
+# solo posizioni, categorie e punteggi. Dalla rete richiede il token (vedi _LAN_TOKEN_PATHS).
+# ------------------------------------------------------------------------------------------------
+_ENGINE_KINDS = ("ocr", "faces", "signatures", "plates")
+
+
+def _engine_forward(path, payload, timeout):
+    if not daemon_ready():
+        return jsonify({"error": _L("Il motore di questo Germano Server non e' ancora pronto.",
+                                    "The engine of this Germano Server is not ready yet.")}), 503
+    try:
+        r = daemon_call(path, payload, timeout=timeout)
+    except Exception as e:
+        return jsonify({"error": _L(f"Motore non raggiungibile: {e}", f"Engine unreachable: {e}")}), 503
+    return Response(r.content, status=r.status_code, content_type="application/json")
+
+
+@app.route("/api/engine/v1/info")
+def api_engine_info():
+    cfg = common.load_config()
+    base = {"api": 1, "name": cfg.get("server_name") or MACHINE_NAME, "version": APP_VERSION,
+            "engine_ready": False, "engine_mode": "local"}
+    if not daemon_ready():
+        return jsonify(base)
+    try:
+        r = daemon_call("/internal/engine/info", method="GET", timeout=10)
+    except Exception:
+        return jsonify(base)
+    if r.status_code == 409:
+        base["engine_mode"] = "remote"
+        return jsonify(base), 409
+    if r.status_code != 200:
+        return jsonify(base)
+    info = r.json()
+    info.update(name=base["name"], version=APP_VERSION)
+    return jsonify(info)
+
+
+@app.route("/api/engine/v1/classify", methods=["POST"])
+def api_engine_classify():
+    payload = request.get_json(force=True, silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": _L("Corpo della richiesta non valido (JSON atteso).",
+                                    "Invalid request body (JSON expected).")}), 400
+    return _engine_forward("/internal/engine/classify", payload, timeout=3600)
+
+
+@app.route("/api/engine/v1/<kind>", methods=["POST"])
+def api_engine_image(kind):
+    import base64
+    if kind not in _ENGINE_KINDS:
+        return jsonify({"error": _L("Analisi sconosciuta.", "Unknown analysis.")}), 404
+    data = request.get_data(cache=False)
+    if not data:
+        return jsonify({"error": _L("Immagine mancante.", "Image missing.")}), 400
+    if len(data) > 80 * 1024 * 1024:
+        return jsonify({"error": _L("Immagine troppo grande.", "Image too large.")}), 413
+    return _engine_forward(f"/internal/engine/{kind}", {"png_b64": base64.b64encode(data).decode("ascii")},
+                           timeout=1800)
+
+
+# ------------------------------------------------------------------------------------------------
+# Modalita' operativa (solo da questo computer)
+# ------------------------------------------------------------------------------------------------
+def _mode_state():
+    from germano import discovery as gdiscovery
+    cfg = common.load_config()
+    eff = common.effective_operating_mode(cfg)
+    srv, cli = common.mode_flags(eff)
+    running = is_daemon_running()
+    return {
+        "saved": cfg.get("operating_mode") or "standalone",
+        "effective": eff,
+        "label": MODE_LABELS.get(eff, eff),
+        "forced_by": common.mode_forced_by(),
+        "first_run_done": bool(cfg.get("first_run_done")),
+        "locked": bool(cfg.get("lock_settings")),
+        "enable_tooltips": cfg.get("enable_tooltips", True),
+        "server": {
+            "enabled": srv, "listening": LAN_MODE, "host": LAN_HOST, "port": PORT,
+            "ips": gdiscovery.local_ipv4_addresses() if srv else [],
+            "token": LAN_TOKEN if srv else "", "discovery": _DISCOVERY is not None, "discovery_port": DISCOVERY_PORT,
+        },
+        "client": {
+            "enabled": cli, "remote_server": cfg.get("remote_server") or "",
+            "token_set": bool(cfg.get("remote_token")), "fallback_local": bool(cfg.get("client_fallback_local", True)),
+        },
+        "engine_running": running,
+        "engine_ready": daemon_ready(),
+        "engine": daemon_state().get("engine") if running else None,
+    }
+
+
+@app.route("/api/mode", methods=["GET", "POST"])
+def api_mode():
+    if request.method == "GET":
+        return jsonify(_mode_state())
+    data = request.get_json(silent=True) or {}
+    cfg = common.load_config()
+    mode = str(data.get("operating_mode") or "").strip().lower()
+    if mode not in common.OPERATING_MODES:
+        return jsonify({"status": "error", "message": _L("Modalita' operativa non valida.",
+                                                         "Invalid operating mode.")}), 400
+    updates = {"first_run_done": True}
+    if "enable_tooltips" in data:
+        updates["enable_tooltips"] = data["enable_tooltips"]
+    if cfg.get("lock_settings") and mode != (cfg.get("operating_mode") or "standalone"):
+        common.save_config(updates)   # le preferenze dell'interfaccia restano modificabili
+        return jsonify({"status": "locked", "message": _L("Modalita' operativa bloccata dall'amministratore "
+                                                          "(lock_settings in config.json).",
+                                                          "Operating mode locked by the administrator "
+                                                          "(lock_settings in config.json)."), **_mode_state()}), 403
+    updates["operating_mode"] = mode
+    if "client_fallback_local" in data:
+        updates["client_fallback_local"] = data["client_fallback_local"]
+    # Indirizzo e token del server remoto con le stesse regole di Germano Client: '192.168.1.10' diventa
+    # http://192.168.1.10:8181 e il Base URL copiato dalla Dashboard del server (.../g/<token>/v1) porta con se'
+    # il token. Un valore non valido viene segnalato, non scartato in silenzio.
+    token = str(data.get("remote_token") or "").strip()
+    if token and not common.TOKEN_RE.match(token):
+        return jsonify({"status": "error", "message": _L(
+            "Il token contiene caratteri non validi: copia esattamente quello mostrato dal server (lettere, cifre, - e _).",
+            "The token contains invalid characters: copy exactly the one shown by the server (letters, digits, - and _).")}), 400
+    if "remote_server" in data:
+        raw = str(data.get("remote_server") or "").strip()
+        if raw:
+            try:
+                base, url_token = common.parse_server_url(raw)
+            except ValueError:
+                shown = raw[:80]
+                return jsonify({"status": "error", "message": _L(
+                    f"Indirizzo del server non valido: «{shown}». Esempi: 192.168.1.10, 192.168.1.10:8181 oppure "
+                    "http://192.168.1.10:8181 (vuoto = ricerca automatica in rete).",
+                    f"Invalid server address: «{shown}». Examples: 192.168.1.10, 192.168.1.10:8181 or "
+                    "http://192.168.1.10:8181 (empty = automatic search on the network).")}), 400
+            updates["remote_server"] = base
+            if url_token and not token:
+                token = url_token
+        else:
+            updates["remote_server"] = ""
+    if token:
+        updates["remote_token"] = token
+    prev_mode = common.effective_operating_mode(cfg)
+    prev_remote = (cfg.get("remote_server"), cfg.get("remote_token"), cfg.get("client_fallback_local"))
+    new_cfg, _err = common.save_config(updates)
+    eff, notes = _apply_operating_mode()
+    engine_action = _sync_engine(prev_mode, eff, prev_remote, new_cfg)
+    state = _mode_state()
+    state.update(status="success", notes=notes, engine_action=engine_action)
+    return jsonify(state)
+
+
+@app.route("/api/mode/token", methods=["POST"])
+def api_mode_token():
+    """Nuovo token per i client della rete: quello precedente smette subito di funzionare."""
+    global LAN_TOKEN
+    if common.load_config().get("lock_settings"):
+        return jsonify({"status": "locked", "message": _L("Impostazioni bloccate dall'amministratore.",
+                                                          "Settings locked by the administrator.")}), 403
+    LAN_TOKEN = uuid.uuid4().hex
+    common.save_config({"lan_token": LAN_TOKEN}, admin=True)
+    return jsonify({"status": "success", "token": LAN_TOKEN})
+
+
+@app.route("/api/remote/servers")
+def api_remote_servers():
+    """Germano Server presenti sulla rete (ricerca UDP fatta da questo computer, esclusa questa installazione)."""
+    from germano import discovery as gdiscovery
+    cfg = common.load_config()
+    try:
+        found = gdiscovery.discover(timeout=1.5, port=DISCOVERY_PORT, broadcasts=gdiscovery.broadcast_addresses(),
+                                    exclude_instance=cfg.get("instance_id") or None)
+    except OSError as e:
+        return jsonify({"servers": [], "error": str(e)})
+    servers = [{
+        "name": s.get("name"), "url": f"http://{s.get('ip')}:{s.get('port')}", "version": s.get("version"),
+        "engine_ready": bool(s.get("engine_ready")), "engine_shared": bool(s.get("engine_shared")),
+        "device": s.get("device"), "operating_mode": s.get("operating_mode"),
+    } for s in found]
+    return jsonify({"servers": servers})
+
+
+# Rete e identita' si cambiano solo da /api/mode, che le applica dal vivo e in modo coerente. I token non tornano
+# mai alla pagina con le impostazioni: quello per i client compare solo in /api/mode, con la parte Server attiva.
+_MODE_ONLY_KEYS = ("operating_mode", "remote_server", "remote_token", "client_fallback_local",
+                   "lan_token", "instance_id", "instance_host")
+_SECRET_KEYS = ("lan_token", "remote_token")
+
+
+def _without_mode_keys(settings):
+    if not isinstance(settings, dict):
+        return settings
+    return {k: v for k, v in settings.items() if k not in _MODE_ONLY_KEYS}
+
+
+def _public_settings(cfg):
+    return {k: v for k, v in cfg.items() if k not in _SECRET_KEYS}
 
 
 @app.route("/api/settings", methods=["GET", "POST"])
 def api_settings():
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
-        settings = data.get("settings", data)
-        cfg, err = common.save_config(settings)
-        resp = {"status": "success" if not err else "locked", "settings": cfg}
+        cfg, err = common.save_config(_without_mode_keys(data.get("settings", data)))
+        resp = {"status": "success" if not err else "locked", "settings": _public_settings(cfg)}
         if err:
-            resp["message"] = err
+            resp["message"] = _L(err, "Settings locked by the administrator (lock_settings): changes ignored.")
         return jsonify(resp)
-    return jsonify(common.load_config())
+    return jsonify(_public_settings(common.load_config()))
 
 
 @app.route("/api/start", methods=["POST"])
 def api_start():
     data = request.get_json(silent=True) or {}
     if isinstance(data.get("settings"), dict) and data["settings"]:
-        common.save_config(data["settings"])
+        common.save_config(_without_mode_keys(data["settings"]))
     common.remove_quietly(common.STOP_FLAG)
     started = start_daemon()
-    return jsonify({"status": "success", "message": "Motore avviato" if started else "Motore gia' in esecuzione"})
+    return jsonify({"status": "success", "message": _L("Motore avviato", "Engine started") if started
+                    else _L("Motore gia' in esecuzione", "Engine already running")})
 
 
 @app.route("/api/stop", methods=["POST"])
 @app.route("/api/stop_daemon", methods=["POST"])
 def api_stop():
     stop_daemon()
-    return jsonify({"status": "success", "message": "Motore fermato"})
+    return jsonify({"status": "success", "message": _L("Motore fermato", "Engine stopped")})
 
 
 @app.route("/api/check_update", methods=["GET"])
@@ -388,11 +900,13 @@ def _germano_pids():
 @app.route("/api/update/install", methods=["POST"])
 def api_update_install():
     if not gupdater.read_ready():
-        return jsonify({"status": "error", "message": "Nessun aggiornamento pronto da installare."}), 400
+        return jsonify({"status": "error", "message": _L("Nessun aggiornamento pronto da installare.",
+                                                         "No update ready to install.")}), 400
     try:
         UPDATER.launch_install(_germano_pids(), restart=True)
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Impossibile avviare l'installazione: {e}"}), 500
+        return jsonify({"status": "error", "message": _L(f"Impossibile avviare l'installazione: {e}",
+                                                         f"Cannot start the installation: {e}")}), 500
 
     def shutdown():
         time.sleep(1.0)
@@ -415,7 +929,7 @@ def api_open_folder():
     data = request.get_json(silent=True) or {}
     folder = data.get("folder", "output")
     if folder not in common.WORK_FOLDERS:
-        return jsonify({"status": "error", "message": "Cartella non valida."}), 400
+        return jsonify({"status": "error", "message": _L("Cartella non valida.", "Invalid folder.")}), 400
     path = common.WORK_FOLDERS[folder]
     os.makedirs(path, exist_ok=True)
     try:
@@ -457,7 +971,7 @@ def _move_unique(src, dest):
 def api_upload_files():
     files = request.files.getlist("files") or request.files.getlist("file")
     if not files:
-        return jsonify({"status": "error", "message": "Nessun file selezionato."}), 400
+        return jsonify({"status": "error", "message": _L("Nessun file selezionato.", "No file selected.")}), 400
     rel_paths = request.form.getlist("paths")
     cfg = common.load_config()
     tag_map = vault_reader.tag_map() if cfg.get("enable_deanonymize", True) else {}
@@ -504,7 +1018,7 @@ def api_files():
             items = []
             for root, _dirs, files in os.walk(folder):
                 for f in files:
-                    if f.startswith(common.TMP_PREFIX):
+                    if not _is_document(root, f):
                         continue
                     full = os.path.join(root, f)
                     rel = os.path.relpath(full, folder).replace("\\", "/")
@@ -567,18 +1081,19 @@ def api_file_action():
     data = request.get_json(silent=True) or {}
     path = _work_file(data.get("folder"), data.get("name"))
     if not path:
-        return jsonify({"status": "error", "message": "File non trovato."}), 404
+        return jsonify({"status": "error", "message": _L("File non trovato.", "File not found.")}), 404
     action = data.get("action")
     try:
         if action == "reveal":
             subprocess.Popen(f'explorer.exe /select,"{path}"')
         elif action == "open":
             if os.path.splitext(path)[1].lower() not in OPENABLE_EXTS:
-                return jsonify({"status": "error", "message": "Per sicurezza questo tipo di file non viene aperto "
-                                                              "direttamente: usa «Mostra nella cartella»."}), 400
+                return jsonify({"status": "error", "message": _L(
+                    "Per sicurezza questo tipo di file non viene aperto direttamente: usa «Mostra nella cartella».",
+                    "For security this type of file is not opened directly: use «Show in folder».")}), 400
             os.startfile(path)
         else:
-            return jsonify({"status": "error", "message": "Azione non valida."}), 400
+            return jsonify({"status": "error", "message": _L("Azione non valida.", "Invalid action.")}), 400
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
     return jsonify({"status": "success"})
@@ -591,14 +1106,14 @@ def api_retry_failed():
     base = os.path.abspath(common.FAILED_DIR)
     if data.get("all"):
         names = [os.path.relpath(os.path.join(root, f), base) for root, _dirs, files in os.walk(base)
-                 for f in files if not f.startswith(common.TMP_PREFIX)]
+                 for f in files if _is_document(root, f)]
     else:
         names = [n for n in (data.get("names") or []) if isinstance(n, str)]
     moved, errors = [], []
     for name in names:
         src = _work_file("failed", name)
         if not src:
-            errors.append(f"{name}: file non trovato")
+            errors.append(f"{name}: " + _L("file non trovato", "file not found"))
             continue
         rel = os.path.relpath(src, base)
         try:
@@ -615,11 +1130,11 @@ def api_retry_failed():
 @app.route("/api/download/<folder>/<path:filename>", methods=["GET"])
 def api_download(folder, filename):
     if folder not in ("output", "extracted", "processed", "failed"):
-        return jsonify({"error": "Cartella non autorizzata"}), 403
+        return jsonify({"error": _L("Cartella non autorizzata", "Folder not allowed")}), 403
     base = os.path.abspath(common.WORK_FOLDERS[folder])
     target = os.path.abspath(os.path.join(base, filename))
     if os.path.commonpath([base, target]) != base or not os.path.isfile(target):
-        return jsonify({"error": "File non trovato"}), 404
+        return jsonify({"error": _L("File non trovato", "File not found")}), 404
     return send_file(target, as_attachment=True, download_name=os.path.basename(target))
 
 
@@ -648,7 +1163,7 @@ def api_logs():
     except FileNotFoundError:
         return jsonify({"logs": []})
     except Exception as e:
-        return jsonify({"logs": [f"Errore lettura registro: {e}"]})
+        return jsonify({"logs": [_L(f"Errore lettura registro: {e}", f"Cannot read the log: {e}")]})
 
 
 @app.route("/api/vault", methods=["GET"])
@@ -668,7 +1183,7 @@ def api_clear_vault():
             from germano.vault import Vault
             Vault().clear()
         _cache.pop("stats", None)
-        return jsonify({"status": "success", "message": "Archivio corrispondenze azzerato."})
+        return jsonify({"status": "success", "message": _L("Archivio corrispondenze azzerato.", "Mapping archive cleared.")})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -700,7 +1215,7 @@ def api_kill_orphans():
 def api_deanonymize_text():
     data = request.get_json(force=True, silent=True)
     if not isinstance(data, dict) or "text" not in data:
-        return jsonify({"error": "Fornire un JSON con il campo 'text'."}), 400
+        return jsonify({"error": _L("Fornire un JSON con il campo 'text'.", "Send a JSON body with the 'text' field.")}), 400
     tag_map = vault_reader.tag_map()
     return jsonify({"status": "success", "restored": restore_text(str(data["text"]), tag_map), "vault_count": len(tag_map)})
 
@@ -709,7 +1224,8 @@ def api_deanonymize_text():
 def api_deanonymize_file():
     files = request.files.getlist("files") or request.files.getlist("file")
     if not files:
-        return jsonify({"status": "error", "message": "Nessun file selezionato per il ripristino."}), 400
+        return jsonify({"status": "error", "message": _L("Nessun file selezionato per il ripristino.",
+                                                         "No file selected for restoration.")}), 400
     tag_map = vault_reader.tag_map()
     out = []
     for f in files:
@@ -726,11 +1242,12 @@ def api_deanonymize_file():
             n = os.path.basename(final)
             out.append({"name": n, "download_url": "/api/download/output/" + requests.utils.quote(n)})
         except Exception as e:
-            return jsonify({"status": "error", "message": f"Impossibile ripristinare {name}: {e}"}), 400
+            return jsonify({"status": "error", "message": _L(f"Impossibile ripristinare {name}: {e}",
+                                                             f"Cannot restore {name}: {e}")}), 400
         finally:
             common.remove_quietly(staged)
     if not out:
-        return jsonify({"status": "error", "message": "Impossibile ripristinare il file."}), 400
+        return jsonify({"status": "error", "message": _L("Impossibile ripristinare il file.", "Cannot restore the file.")}), 400
     if request.args.get("raw") == "1" and len(out) == 1:
         return send_file(os.path.join(common.OUTPUT_DIR, out[0]["name"]), as_attachment=True, download_name=out[0]["name"])
     return jsonify({"status": "success", "restored_count": len(out), "files": out, "vault_count": len(tag_map)})
@@ -740,7 +1257,7 @@ def api_deanonymize_file():
 def api_anonymize_text():
     data = request.get_json(force=True, silent=True)
     if not isinstance(data, dict) or "text" not in data:
-        return jsonify({"error": "Fornire un JSON con il campo 'text'."}), 400
+        return jsonify({"error": _L("Fornire un JSON con il campo 'text'.", "Send a JSON body with the 'text' field.")}), 400
     text = str(data["text"])
     force = bool(data.get("force_anonymize", False))
     if not force and common.load_config().get("enable_deanonymize", True):
@@ -749,12 +1266,17 @@ def api_anonymize_text():
             restored = restore_text(text, tag_map)
             return jsonify({"anonymized": restored, "restored": restored, "auto_restored": True, "extracted_data": []})
     if not daemon_ready():
-        return jsonify({"error": "Il motore IA non e' pronto: avvialo dalla Dashboard e attendi il caricamento."}), 503
+        return jsonify({"error": _L("Il motore IA non e' pronto: avvialo dalla Dashboard e attendi il caricamento.",
+                                    "The AI engine is not ready: start it from the Dashboard and wait for it to load.")}), 503
     try:
         r = daemon_call("/internal/anonymize_text", {"text": text, "force_anonymize": True}, timeout=900)
         if r.status_code == 200:
             return jsonify(r.json())
-        return jsonify({"error": f"Errore del motore IA ({r.status_code}): {r.text[:300]}"}), 500
+        if r.status_code == 503:
+            return jsonify({"error": _L(f"Motore IA non disponibile: {_daemon_error(r)}",
+                                        f"AI engine not available: {_daemon_error(r)}")}), 503
+        return jsonify({"error": _L(f"Errore del motore IA ({r.status_code}): {r.text[:300]}",
+                                    f"AI engine error ({r.status_code}): {r.text[:300]}")}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -764,7 +1286,8 @@ def api_anonymize_file():
     import base64
     f = request.files.get("file")
     if f is None or not f.filename:
-        return jsonify({"error": "Nessun file fornito. Usa multipart/form-data con la chiave 'file'."}), 400
+        return jsonify({"error": _L("Nessun file fornito. Usa multipart/form-data con la chiave 'file'.",
+                                    "No file provided. Use multipart/form-data with the 'file' key.")}), 400
     name = common.safe_filename(f.filename)
     data = f.read()
     cfg = common.load_config()
@@ -784,7 +1307,8 @@ def api_anonymize_file():
         finally:
             common.remove_quietly(staged)
     if not daemon_ready():
-        return jsonify({"error": "Il motore IA non e' pronto: avvialo dalla Dashboard e attendi il caricamento."}), 503
+        return jsonify({"error": _L("Il motore IA non e' pronto: avvialo dalla Dashboard e attendi il caricamento.",
+                                    "The AI engine is not ready: start it from the Dashboard and wait for it to load.")}), 503
     try:
         r = daemon_call("/internal/process_file", {"filename": name, "mode": "anonymize",
                                                     "data_b64": base64.b64encode(data).decode("ascii")}, timeout=6 * 3600)
@@ -795,7 +1319,8 @@ def api_anonymize_file():
             msg = r.json().get("error")
         except Exception:
             msg = r.text[:300]
-        return jsonify({"error": f"Elaborazione non riuscita: {msg}"}), 415 if r.status_code == 415 else 500
+        return jsonify({"error": _L(f"Elaborazione non riuscita: {msg}", f"Processing failed: {msg}")}), \
+            r.status_code if r.status_code in (415, 503) else 500
     res = r.json()
     try:
         audit_dir = os.path.join(common.EXTRACTED_DIR, "api")
@@ -807,6 +1332,118 @@ def api_anonymize_file():
         pass
     out_name = res.get("filename") or name
     return send_file(io.BytesIO(base64.b64decode(res["data_b64"])), as_attachment=True, download_name=out_name)
+
+
+# ------------------------------------------------------------------------------------------------
+# Studio AI: protezione di prompt e allegati prima dell'invio a un'AI
+# ------------------------------------------------------------------------------------------------
+STUDIO_MAX_PROMPT = 400_000      # caratteri del prompt
+STUDIO_MAX_ATTACH = 12           # numero di allegati per invio
+STUDIO_ATTACH_CHARS = 200_000    # caratteri estratti per allegato
+
+
+def _studio_attachment_text(filename, data):
+    """Estrae il testo di un allegato (per usarlo come contesto del prompt). Offline, nel processo server.
+    Restituisce '' per i contenuti non testuali (es. immagini: vanno elaborate come file, non come testo)."""
+    from germano import formats
+    name = common.safe_filename(filename or "allegato")
+    os.makedirs(common.UPLOAD_DIR, exist_ok=True)
+    staged = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + name)
+    try:
+        with open(staged, "wb") as f:
+            f.write(data)
+        return formats.sample_text(staged, max_chars=STUDIO_ATTACH_CHARS) or ""
+    except Exception:
+        return ""
+    finally:
+        common.remove_quietly(staged)
+
+
+def _studio_compose(clean_prompt, clean_attachments):
+    """Messaggio unico protetto: prompt + testo anonimizzato degli allegati."""
+    out = clean_prompt or ""
+    for a in clean_attachments:
+        out += f"\n\n----- {a['name']} -----\n{a['anonymized']}"
+    return out.strip()
+
+
+@app.route("/api/studio/send", methods=["POST"])
+def api_studio_send():
+    """Protegge il contenuto dello Studio: anonimizza prompt e allegati con il motore locale e restituisce il
+    testo pronto da inoltrare a un'AI, con l'elenco dei dati oscurati. Nessun dato lascia il computer da qui:
+    l'inoltro vero e proprio avviene tramite il Proxy (con la chiave dell'utente) o copiando il testo protetto."""
+    prompt = (request.form.get("prompt") or "").strip()
+    target = (request.form.get("target") or "clipboard").strip()
+    files = [f for f in request.files.getlist("files") if f and f.filename][:STUDIO_MAX_ATTACH]
+    if not prompt and not files:
+        return jsonify({"status": "error", "message": _L("Scrivi un prompt o allega un file.",
+                                                         "Write a prompt or attach a file.")}), 400
+    if len(prompt) > STUDIO_MAX_PROMPT:
+        return jsonify({"status": "error", "message": _L("Il prompt e' troppo lungo.", "The prompt is too long.")}), 413
+    if not daemon_ready():
+        return jsonify({"status": "blocked",
+                        "message": _L("Il motore IA non e' pronto: avvialo dalla Dashboard. Nessun dato lascia il computer.",
+                                      "The AI engine is not ready: start it from the Dashboard. No data leaves the "
+                                      "computer.")}), 503
+
+    attachments, parts = [], []
+    for f in files:
+        name = common.safe_filename(f.filename)
+        text = _studio_attachment_text(f.filename, f.read())
+        textual = bool(text.strip())
+        attachments.append({"name": name, "chars": len(text), "textual": textual})
+        if textual:
+            parts.append((name, text))
+
+    texts = ([prompt] if prompt else []) + [t for _, t in parts]
+    if not texts:
+        return jsonify({"status": "error",
+                        "message": _L("Gli allegati non contengono testo: usa l'anonimizzazione dei file (modalita' "
+                                      "Anonimizza file).",
+                                      "The attachments contain no text: use file anonymization (Anonymize files "
+                                      "mode).")}), 400
+    try:
+        r = daemon_call("/internal/anonymize_texts", {"texts": texts}, timeout=1800)
+    except Exception as e:
+        return jsonify({"status": "error", "message": _L(f"Motore IA non raggiungibile: {e}",
+                                                         f"AI engine unreachable: {e}")}), 502
+    if r.status_code == 503:
+        return jsonify({"status": "blocked", "message": _L(f"Motore IA non disponibile: {_daemon_error(r)}. "
+                                                           "Nessun dato lascia il computer.",
+                                                           f"AI engine not available: {_daemon_error(r)}. "
+                                                           "No data leaves the computer.")}), 503
+    if r.status_code != 200:
+        return jsonify({"status": "error", "message": _L(f"Anonimizzazione non riuscita ({r.status_code}).",
+                                                         f"Anonymization failed ({r.status_code}).")}), 502
+    results = r.json().get("results") or []
+    if len(results) != len(texts):
+        return jsonify({"status": "error", "message": _L("Risposta incompleta del motore IA.",
+                                                         "Incomplete answer from the AI engine.")}), 502
+
+    idx = 0
+    clean_prompt = ""
+    entities = []
+    if prompt:
+        clean_prompt = results[0]["anonymized"]
+        entities.extend(results[0].get("extracted_data") or [])
+        idx = 1
+    clean_attachments = []
+    for (name, _), res in zip(parts, results[idx:]):
+        clean_attachments.append({"name": name, "anonymized": res["anonymized"]})
+        entities.extend(res.get("extracted_data") or [])
+
+    _session_log(entities)
+    return jsonify({
+        "status": "success",
+        "target": target,
+        "clean_prompt": clean_prompt,
+        "clean_attachments": clean_attachments,
+        "composed": _studio_compose(clean_prompt, clean_attachments),
+        "attachments": attachments,
+        "entity_count": len(entities),
+        "labels": sorted({e["label"] for e in entities if e.get("label")}),
+        "vault_count": vault_reader.count(),
+    })
 
 
 # ------------------------------------------------------------------------------------------------
@@ -896,6 +1533,9 @@ def _anonymize_payload(payload, kind):
     extracted = []
     if job.texts:
         r = daemon_call("/internal/anonymize_texts", {"texts": job.texts}, timeout=1800)
+        if r.status_code == 503:   # es. modalita' Client con il Germano Server non raggiungibile
+            raise gproxy.ProxyBlock(f"Motore IA di Germano non disponibile ({_daemon_error(r)}): richiesta bloccata, "
+                                    "nessun dato inviato.", 503)
         if r.status_code != 200:
             raise gproxy.ProxyBlock(f"Anonimizzazione non riuscita ({r.status_code}): richiesta bloccata.", 500)
         results = r.json().get("results") or []
@@ -907,6 +1547,9 @@ def _anonymize_payload(payload, kind):
     for mime, data, setter, fname in job.media:
         r = daemon_call("/internal/process_file", {"filename": fname, "mode": "anonymize",
                                                     "data_b64": base64.b64encode(data).decode("ascii")}, timeout=3600)
+        if r.status_code == 503:
+            raise gproxy.ProxyBlock(f"Motore IA di Germano non disponibile ({_daemon_error(r)}): richiesta bloccata, "
+                                    "nessun dato inviato.", 503)
         if r.status_code != 200:
             raise gproxy.ProxyBlock(f"Allegato '{fname}' non anonimizzabile: richiesta bloccata.", 500)
         res = r.json()
@@ -1025,7 +1668,7 @@ def proxy_models():
 def _port_free(port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        s.bind(("127.0.0.1", port))
+        s.bind((MAIN_HOST, port))
         return True
     except OSError:
         return False
@@ -1100,16 +1743,44 @@ def main():
     except Exception:
         pass
     atexit.register(_shutdown)
-    print(f"Avvio Germano AI v{APP_VERSION} - Server locale")
+    _ensure_identity()
+    mode, notes = _apply_operating_mode()          # parte Server: rete + rilevamento UDP
+    server_on, client_on = common.mode_flags(mode)
+    forced = common.mode_forced_by()
+    print(f"Avvio Germano AI v{APP_VERSION} - modalita' {MODE_LABELS.get(mode, mode)}"
+          + (f" (impostata da {forced})" if forced else ""))
     print(f"Dashboard:   {url}")
     print(f"Proxy API:   {url}/v1")
+    if server_on:
+        from germano import discovery as gdiscovery
+        print("=" * 64)
+        if LAN_MODE:
+            print(" SERVER: in ascolto sulla RETE LOCALE. I computer della rete possono raggiungerlo:")
+            for ip in gdiscovery.local_ipv4_addresses() or ["<IP di questo computer>"]:
+                print(f"   Dashboard:  http://{ip}:{PORT}")
+                print(f"   Proxy CLI:  http://{ip}:{PORT}/v1")
+            print("")
+            print(" Token condiviso (richiesto dalla rete a Proxy, Studio e motore):")
+            print(f"   {LAN_TOKEN}")
+            print(f"   Base URL con token:  http://<IP-server>:{PORT}/g/{LAN_TOKEN}/v1")
+            if _DISCOVERY is not None:
+                print(f" Rilevamento automatico attivo (UDP {DISCOVERY_PORT}).")
+        for n in notes:
+            print(f" ATTENZIONE: {n}")
+        print("=" * 64)
+    if client_on:
+        print(" CLIENT: all'avvio del motore Germano cerca in rete un Germano Server a cui delegare il calcolo")
+        print("         (Vault, file ed etichette restano su questo computer).")
+    if mode != "standalone":
+        start_daemon()   # Server: offre subito il motore alla rete. Client: si collega subito al server.
+    print("La modalita' si cambia in qualsiasi momento dalle Impostazioni della Dashboard.")
     print("Chiudere questa finestra per arrestare Germano AI.")
     if os.environ.get("GERMANO_NO_BROWSER") != "1":
         _open_browser_when_ready(url)
     UPDATER.start_background()  # controlla solo se Windows segnala una connessione a Internet
     try:
         from werkzeug.serving import run_simple
-        run_simple("127.0.0.1", PORT, app, threaded=True, use_reloader=False, use_debugger=False)
+        run_simple(MAIN_HOST, PORT, app, threaded=True, use_reloader=False, use_debugger=False)
     except KeyboardInterrupt:
         pass
     return 0

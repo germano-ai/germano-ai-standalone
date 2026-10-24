@@ -6,6 +6,106 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [0.52-alpha] - 2026-10-24
+Germano now works in four **operating modes**, chosen on first launch and changeable at any time: **Standalone**
+(default, everything on this computer), **Server** (offers the engine and the proxy to the other office PCs),
+**Client** (hands the model computation over to a Germano Server on the network) or **Server + Client**. Every element
+of the Dashboard has a hover tooltip. Runtime and models are unchanged from 0.51; it works offline on a freshly
+installed Windows 11.
+
+### Added - Operating mode at startup
+- **Welcome dialog** on the first Dashboard launch: three checkboxes — **[x] Standalone** (default), **[ ] Server**,
+  **[ ] Client** — each one explained; Server and Client can be selected together. The dialog states that the mode
+  *can always be changed at any time in the Settings* («Questa modalità è sempre modificabile in qualsiasi momento
+  nelle Impostazioni»). Closing it without choosing confirms Standalone and it is not shown again.
+- New **Impostazioni** (Settings) button and mode indicator in the top bar (green = Server, blue = Client, orange =
+  attention, e.g. server unreachable); in Advanced mode the **Sistema › Rete e modalità operativa** panel summarizes
+  network listening, the connection to the server and the token.
+- The mode **applies immediately, without restarting Germano**: the Dashboard always and only listens on
+  `127.0.0.1`; the Server part adds and removes, live, a second network listener (`0.0.0.0`, or the `bind_host` IP)
+  and the UDP discovery. In **Standalone** and **Client** no Germano port is open to the network. Server and Client
+  start the engine by themselves; changing the Client part restarts the engine with the right type (local or remote).
+- With the Server part active, the Settings show the IP addresses, the client token (with **Nuovo token** — new
+  token — which immediately invalidates the previous one) and the auto-discovery status.
+- **`START_SERVER.bat`** now sets `GERMANO_MODE=server`: it forces Server mode for that run only, without changing
+  the saved choice (the Dashboard says so). `GERMANO_HOST=0.0.0.0` remains supported.
+- Changing the mode, the token and searching for servers are reserved to the computer itself (`/api/mode`,
+  `/api/mode/token`, `/api/remote/servers`, never from the network) and honor `lock_settings`: with settings locked by
+  the administrator the mode cannot be changed, the interface preferences can.
+
+### Added - Client mode (remote engine)
+- New `germano/remote_engine.py`: in Client mode the daemon **does not load the models** (a few MB of memory instead
+  of several GB) and sends the Germano Server only the texts and images to analyze; it receives positions,
+  categories and scores. **Vault, tags, files and restoration stay on this computer**: the server keeps nothing from
+  the clients and does not log their file names. The server applies the client's settings (models and threshold), so
+  the result matches the local engine's.
+- The server is found automatically through UDP discovery (a GPU server is preferred) or its address is entered in
+  the Settings, with a **Cerca server in rete** (search the network) button. The server token is mandatory.
+- **Fail-safe**: if the server does not answer Germano sends nothing, the proxy and the Studio block the request with
+  a clear message (HTTP 503) and documents stay in the `input` folder (not among the failed ones) until the server is
+  back; processing then resumes by itself. Optional: fall back to the local engine if no server answers at startup
+  (`client_fallback_local`).
+- Server shared engine: `GET /api/engine/v1/info`, `POST /api/engine/v1/classify` and
+  `/api/engine/v1/{ocr,faces,signatures,plates}`, always with the token. A server that delegates its own computation
+  does not share its engine (no chains) and no installation discovers itself (`instance_id`).
+
+### Added - Tooltips
+- An explanation on hover (and with the Tab key) for every element of the Dashboard: buttons, folder cards, live
+  statistics (CPU, RAM, throughput), engine and mode status, the Anonimizza file / Studio AI and Semplice / Avanzata
+  selectors, API address fields, models, data categories and threshold. On by default, they can be turned off in the
+  Settings (`enable_tooltips`).
+
+### Added - LAN Server mode
+- **LAN auto-discovery** (`germano/discovery.py`): a lightweight UDP responder on port **8182** answers
+  `GERMANO_DISCOVERY_PING` pings with the server's info (service, version, port, name, shared engine status) — never
+  the token, never personal data. `GET /api/discovery` returns the same over HTTP. The default Dashboard port is now
+  **8181**.
+- **Tiered security for network access** (nothing changes for `127.0.0.1`-only use):
+  - from the network, read-only and without a token: Dashboard, `/api/status`, `/api/ai/detect`, `/api/discovery`;
+  - from the network, with a **shared token**: the proxy to the AIs (`/v1/messages`, `/v1/chat/completions`, …),
+    `POST /api/studio/send` and the shared engine (`/api/engine/v1/…`). The token travels in the `X-Germano-Auth`
+    header **or** as a `/g/<token>` Base URL prefix (so it works with any CLI, unmodified). Without a valid token
+    access is always denied;
+  - **server computer only**: engine control, settings, mode, files, the mapping archive and de-anonymization
+    (`/api/v1/deanonymize_*`). Real data is never exposed to the network.
+  - Extended anti DNS-rebinding: only loopback hosts, IP literals and the computer name are accepted.
+- The shared token is generated randomly when the Server part is first enabled and saved in `config.json`;
+  `/api/settings` no longer returns any token.
+- New settings in `config.json`: `operating_mode`, `first_run_done`, `remote_server`, `remote_token`,
+  `client_fallback_local`, `enable_tooltips`, `bind_host`, `discovery_enabled`, `discovery_port`, `lan_token`,
+  `server_name`, `instance_id`, `instance_host`.
+- `GERMANO_DATA_DIR` variable: moves configuration, working folders, Vault and log to another folder (models and
+  runtime stay with the program); allows several independent instances of the same installation.
+- When opened from another computer, the Dashboard shows the proxy addresses with the server's real IP.
+- **Kimi, DeepSeek and Qwen Integration**: added to the local detection catalog (`ai_detect.py`) on both server and client. In AI Studio they are available directly as forwarding targets; in the *AI Agents and API* tab, 1-click preset buttons allow instantly setting the OpenAI target to: OpenAI, DeepSeek (`api.deepseek.com`), Kimi (`api.moonshot.cn`), Qwen (`dashscope.aliyuncs.com`), and Ollama.
+
+### Fixed - from the client/server test campaign of 24/10
+- **Privacy: damaged Office and OpenDocument files are no longer marked «ready» with personal data in clear.** If an
+  internal text part (e.g. `word/document.xml`, `styles.xml`) cannot be read, the file goes to *Non riusciti*
+  (failed) with the reason, instead of being copied to the output without anonymization.
+- A damaged or truncated PDF stayed stuck forever in the `input` folder (with a copy in `failed` and no reason): it
+  now goes to the failed documents with a clear message.
+- Images and scans: when the data covers only part of the line read by the OCR, the black box could leave the first
+  or last character uncovered (e.g. the first two letters of the tax code after «Codice fiscale:», the initial of a
+  name). The position now accounts for the different widths of the characters.
+- Understandable messages for damaged PDFs, images and archives (previously: technical errors with the full path).
+- `Thumbs.db`, `desktop.ini` and hidden files no longer count as pending documents: previously the batch never
+  showed as completed and the Dashboard stayed on «Documenti in arrivo».
+- `GET /api/ai/detect` requested from the network returns the names and versions of the AIs but not their
+  installation paths (they revealed the server's Windows user name).
+- **Network auto-discovery** (Client mode and Germano Client): on a PC without a local server the search stopped
+  right away, at the first «port unreachable» notice Windows returns for the ping to 127.0.0.1, and often missed the
+  LAN servers. It now listens for answers for the whole expected time; answers with an invalid port are discarded.
+- `START_SERVER.bat` uses Windows line endings (CRLF), like `START.bat`.
+
+### Added - Germano Client v0.01 (separate product)
+- New **`germano_client`** application (separate folder), very lightweight: it **contains no models** (28 MB of
+  runtime). It finds the server on the LAN by itself (UDP broadcast), falling back to `client_config.json` or a
+  command-line parameter, and routes local CLIs (Claude Code, Codex, Aider, Gemini CLI) to the server's proxy by
+  setting `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` with the `/g/<token>` prefix.
+- **`START_CLIENT.bat`** launcher with an interactive menu and `discover`, `status`, `launch <cli>`, `send`,
+  `config` commands. Documentation in `README.md` and `README.en.md`.
+
 ## [0.51-alpha] - 2026-10-22
 Consolidation release: full audit of the 0.50 code (bugs verified with reproducible tests), modular rewrite of the
 engine (`germano/`), a completely redesigned Dashboard and automatic updates. Runtime, libraries and models are
@@ -32,6 +132,25 @@ unchanged: it works offline on a freshly installed Windows 11.
   settings, mapping archive and live log.
 - New local APIs: `GET /api/folders`, `POST /api/file_action` (shows/opens a file; only documents are opened, never
   executables or scripts), `POST /api/retry_failed`, `GET /api/update/status`, `POST /api/update/check|download|install`.
+
+### Added - Dual mode and AI Studio
+- The Dashboard now has a main switch **📂 Anonimizza file** (Anonymize files) / **🧠 Studio AI** (the choice is
+  remembered).
+- **Anonymize files**: at the top of the view, a grid of **folder cards** (pending, ready, errors, originals,
+  vault/extracted) with live counters; clicking a card opens that folder in File Explorer. A **live stats** strip:
+  files processed/total in the batch, redacted PII, documents per minute, CPU and RAM usage, with a progress bar.
+- **AI Studio**: you write a prompt and attach files; the text and the attachments' content are **anonymized by the
+  local engine before** being forwarded to an AI. If the engine is not running the request is blocked and **no data
+  leaves the computer**. The conversation always shows *what* is sent (already with the labels) and the list of
+  redacted items; a button copies the protected text.
+- **Rileva AI** (Detect AI): a button that finds the AIs and CLIs installed on the computer (Claude Code, Claude
+  Desktop, Antigravity, Gemini CLI, Codex, Aider, Cursor, Windsurf, Ollama, LM Studio) by reading the file system and
+  local ports (no process started, no network): a chip with a green check for the ready ones and a target selector.
+  Detection is not limited to `PATH` (Claude Code and Antigravity install outside `PATH`).
+- **Configurazione Granulare** (Granular configuration): a button in the Studio that opens a drawer with the *protection
+  profile*, *analysis models* (sensitivity included) and *data categories* panels, to tune what gets redacted on the fly.
+- New local APIs: `GET /api/ai/detect` (list of installed AIs, cached for 30 s, `?refresh=1` to rescan) and
+  `POST /api/studio/send` (protects prompt and attachments and returns the text ready to send, with the redacted items).
 
 ### Added - Automatic updates
 - **Only when Windows reports that the PC is connected to the Internet** (Network List Manager: the check sends no

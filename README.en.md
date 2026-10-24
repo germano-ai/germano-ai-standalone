@@ -15,7 +15,7 @@ Germano AI is a powerful open-source suite designed for **intelligent and massiv
 ## ⚡ Quickstart (How it works)
 
 Germano AI works completely autonomously by "listening" to its folders. The basic operation is extremely simple (the Dashboard labels are in Italian; their meaning is given in brackets):
-1. Double-click the **`START.bat`** file to start the local server and open the Dashboard in your browser (`http://127.0.0.1:8000`).
+1. Double-click the **`START.bat`** file to start the local server and open the Dashboard in your browser (`http://127.0.0.1:8181`). On the first launch choose the operating mode (if in doubt keep **Standalone**: everything stays on your computer).
 2. Add the documents (whole folders with subfolders too): drag them into the **«Trascina qui file o cartelle»** (Drop files or folders here) box, use **Seleziona file** / **Seleziona cartella** (Select files / Select folder), or copy them into the **`input`** folder (the **Apri cartella input** button opens it in File Explorer).
 3. Click **Avvia motore** (Start engine) in the top right corner (when you add files from the Dashboard the engine starts on its own). Germano takes the files from `input`, redacts them and saves the clean documents in the **`output`** folder, preserving the folder and subfolder structure; the **In attesa / Pronti / Non riusciti** (pending / ready / failed) counters show the batch progress.
 4. Collect the results with **Apri cartella output** (Open output folder) or from the **Documenti** table. Originals are archived in **`processed`**; damaged or unsupported files go to **`failed`** and appear in the **Non riusciti** tab with the reason and a **Rimetti in coda** (Queue again) button. JSON audit logs are saved in **`extracted`**.
@@ -40,6 +40,18 @@ Germano AI is designed to adapt to both highly regulated environments and privat
 - Allows you to balance the AI filter threshold and individually toggle the 18 data categories and the 6 AI models (e.g. turn off image scanning) to optimize processing times.
 
 ---
+
+## 🆕 What's new in v0.52-alpha
+
+*   **Operating mode**, chosen on the first launch and *always changeable at any time in the Settings* (it applies immediately, without restarting):
+    *   **Standalone** (default): everything runs on this computer, isolated. No port open to the network, no network search.
+    *   **Server**: Germano listens on the local network, answers the auto-discovery (UDP 8182) and offers the anonymization engine and the proxy to the other office PCs, protected by a token. Ideal on the most powerful PC; `START_SERVER.bat` starts directly in this mode.
+    *   **Client**: at startup it looks for a Germano Server on the network and hands it the model computation (the client PC does not load them in memory). Vault, files and tags stay on the client; if the server does not answer no data leaves and documents stay queued.
+    *   **Server + Client** together.
+*   **100% Bilingual Interface (Italian / English)** with automatic browser language detection (English by default, Italian if `it`), instant flag switcher (🇮🇹 IT / 🇬🇧 EN) in the topbar and over 112 fully localized hover tooltips.
+*   **Dual Mode (Batch + AI Studio)**: "📂 Anonymize files" view for massive batch processing with interactive folder cards for `input`, `output`, `failed`, `processed`, `extracted` (one-click open in Windows File Explorer), live throughput, masked PII count, CPU and RAM metrics; and "🧠 AI Studio" view (Google Antigravity style) with local AI detection and granular privacy settings.
+*   **Germano Client v0.02**: separate ultra-lightweight client package (~28 MB, available as standalone download) with real-time UDP LAN auto-discovery, preflight fail-safe security and CLI profiles for Claude Code, Codex, Aider, Qwen, Kimi and DeepSeek.
+*   Default port **8181**. Full list in the [CHANGELOG](CHANGELOG.en.md).
 
 ## 🆕 What's new in v0.51-alpha
 
@@ -87,13 +99,13 @@ Germano AI is not just a Dashboard. Integrate the anonymization engine directly 
 
 ### File Anonymization Endpoint
 ```http
-POST http://127.0.0.1:8000/api/v1/anonymize
+POST http://127.0.0.1:8181/api/v1/anonymize
 ```
 Directly returns the binary stream of the "clean" file. Check the **[Official Documentation](https://germano.ai/guide.html)** on our website for usage examples.
 
 ### Text Anonymization Endpoint
 ```http
-POST http://127.0.0.1:8000/api/v1/anonymize_text
+POST http://127.0.0.1:8181/api/v1/anonymize_text
 ```
 Expects a JSON payload with the `{"text": "..."}` field and returns the anonymized text along with the detailed map of extracted entities.
 
@@ -107,7 +119,7 @@ Data anonymization is no longer limited to files! Germano AI includes a universa
 Normally, the IDE sends everything you write in the prompt (or drag into the chat) directly to online servers.
 By configuring your editor to point to Germano AI, the flow changes completely:
 
-1. **Interception**: When you ask the AI something or attach a file, the IDE sends the request to Germano AI (running offline on your PC at port 8000).
+1. **Interception**: When you ask the AI something or attach a file, the IDE sends the request to Germano AI (running offline on your PC at port 8181).
 2. **On-the-Fly Censorship**: Germano intercepts the request, extracts your text prompts, passes them instantly to the local privacy filter, and replaces sensitive data with indexed labels (e.g. `[PERSONA_1]`).
 3. **Traceable Mapping**: The exact map of replaced words is saved in a daily log (`extracted/proxy_sessions/YYYY-MM-DD.jsonl`), allowing you to easily link the AI labels back to real data.
 4. **Secure Forwarding**: Germano forwards the "purified" request to the real LLM provider (e.g. OpenAI). When the AI responds, it will in turn use the anonymized tags (e.g. "The contract is registered to [PERSONA_1]").
@@ -120,10 +132,10 @@ In Advanced Mode, the Dashboard's **Agenti AI e API** (AI agents and API) tab sh
 
 1. Start Germano AI by double-clicking on `START.bat`.
 2. Open your preferred AI editor and change the AI server base address:
-   - **Cursor**: Go to `Settings` -> `Models` -> Scroll to `OpenAI API Key` and insert your real key. Then, just below it, toggle on **Override OpenAI Base URL** and insert the following address: `http://127.0.0.1:8000/v1`.
-   - **Windsurf / Antigravity / Other IDEs**: In the AI Provider settings (under OpenAI or Custom Provider), find the **Base URL** (or API Base URL / Custom URL) field and insert: `http://127.0.0.1:8000/v1`.
-   - **Claude Code**: before starting it, set `ANTHROPIC_BASE_URL=http://127.0.0.1:8000` (in PowerShell: `$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8000"`).
-   - **OpenAI Codex CLI**: set `OPENAI_BASE_URL=http://127.0.0.1:8000/v1`.
+   - **Cursor**: Go to `Settings` -> `Models` -> Scroll to `OpenAI API Key` and insert your real key. Then, just below it, toggle on **Override OpenAI Base URL** and insert the following address: `http://127.0.0.1:8181/v1`.
+   - **Windsurf / Antigravity / Other IDEs**: In the AI Provider settings (under OpenAI or Custom Provider), find the **Base URL** (or API Base URL / Custom URL) field and insert: `http://127.0.0.1:8181/v1`.
+   - **Claude Code**: before starting it, set `ANTHROPIC_BASE_URL=http://127.0.0.1:8181` (in PowerShell: `$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8181"`).
+   - **OpenAI Codex CLI**: set `OPENAI_BASE_URL=http://127.0.0.1:8181/v1`.
 3. Make sure you enter your real API Key (OpenAI or Anthropic) in the editor. The IDE will send it to Germano AI, which will safely use it locally **exclusively** to forward the request to OpenAI's servers after finishing the anonymization of prompts and files!
 
 ### 🛡️ "Fail-Safe Privacy" (Hard Block Active)

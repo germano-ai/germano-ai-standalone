@@ -27,6 +27,7 @@ warnings.filterwarnings("ignore")
 
 from germano import formats  # noqa: E402
 from germano.engine import CancelledError, CancelToken, Engine  # noqa: E402
+from germano.remote_engine import EngineUnavailable  # noqa: E402
 from germano.vault import Vault, contains_tags, restore_text  # noqa: E402
 
 VERSION = common.get_version()
@@ -69,6 +70,20 @@ def _is_locked(path):
             return True
 
 
+def _friendly_error(err, rel):
+    """Motivo comprensibile per gli errori delle librerie sui file danneggiati (senza percorsi ne' nomi tecnici)."""
+    name = type(err).__name__
+    ext = os.path.splitext(rel)[1].lower()
+    if name in ("FileDataError", "EmptyFileError") or "Failed to open file" in str(err):
+        what = "PDF" if ext == ".pdf" else "File"
+        return f"{what} danneggiato o incompleto: non e' stato possibile aprirlo."
+    if name in ("UnidentifiedImageError", "DecompressionBombError") or (name == "OSError" and "image file" in str(err)):
+        return "Immagine danneggiata o in un formato non riconosciuto: non e' stato possibile aprirla."
+    if name == "BadZipFile":
+        return "Archivio o documento danneggiato: il contenuto compresso non e' leggibile."
+    return f"{name}: {err}"
+
+
 class Daemon:
     def __init__(self):
         common.ensure_dirs()
@@ -87,6 +102,8 @@ class Daemon:
                        "failed": 0, "restored": 0}
         self._status_ts = 0.0
         self._last_cleanup = 0.0
+        self._engine_wait_until = 0.0   # modalita' Client: pausa dei lotti finche' il server remoto non risponde
+        self._last_ping = 0.0
 
     # ------------------------------------------------------------------ stato
     def should_stop(self):
@@ -240,7 +257,16 @@ class Daemon:
                 return dest
             except PermissionError as e:
                 last = e
+                if i == 0:
+                    import gc
+                    gc.collect()   # oggetti in ciclo che tengono ancora aperto il file (es. documento non leggibile)
                 time.sleep(0.3 * (i + 1))
+        # shutil.move copia e poi cancella: se la cancellazione e' fallita non deve restare una copia a destinazione
+        try:
+            if os.path.exists(src) and os.path.exists(dest) and common.same_file_content(src, dest):
+                os.remove(dest)
+        except OSError:
+            pass
         raise last or PermissionError("file bloccato")
 
     def _record_failure(self, rel, reason):
@@ -309,6 +335,7 @@ class Daemon:
         tmp_prefix = f"{common.TMP_PREFIX}{uuid.uuid4().hex[:6]}_"
         tmp_out = os.path.join(out_dir, tmp_prefix + os.path.basename(out_rel))
         result = None
+        fail_reason = None
         try:
             if len(os.path.abspath(tmp_out)) >= 259:
                 raise formats.ProcessingError(
@@ -338,26 +365,33 @@ class Daemon:
             else:
                 self.status["done"] += 1
                 log(f"Completato: {rel} ({len(ctx.audit)} elementi censurati, {elapsed:.1f}s).")
+        except EngineUnavailable as e:
+            self._discard(result, tmp_out, tmp_prefix)
+            self._engine_unavailable(path, e)
         except CancelledError as e:
             self._discard(result, tmp_out, tmp_prefix)
             if e.reason == "stop":
                 log(f"Elaborazione di {rel} interrotta: il file resta in input e verra' ripreso al prossimo avvio.")
             else:
-                self._fail(path, rel, f"Tempo massimo superato ({timeout // 60} minuti). "
-                                      f"Aumentare 'file_timeout_minutes' in config.json per documenti molto grandi.")
+                fail_reason = (f"Tempo massimo superato ({timeout // 60} minuti). "
+                               f"Aumentare 'file_timeout_minutes' in config.json per documenti molto grandi.")
         except (formats.UnsupportedFormat, formats.ProcessingError, ValueError) as e:
             # errori "previsti" (formato, password, file danneggiato): messaggio chiaro senza dettagli tecnici
             self._discard(result, tmp_out, tmp_prefix)
             if isinstance(e, ValueError):
                 log(f"Dettaglio errore:\n{traceback.format_exc(limit=4)}")
-            self._fail(path, rel, str(e) or type(e).__name__)
+            fail_reason = str(e) or type(e).__name__
         except Exception as e:
             self._discard(result, tmp_out, tmp_prefix)
             detail = traceback.format_exc(limit=6)
             log(f"Dettaglio errore:\n{detail}")
-            self._fail(path, rel, f"{type(e).__name__}: {e}")
+            fail_reason = _friendly_error(e, rel)
         finally:
             self.set_status(state="idle", current=None, detail="", force=True)
+        if fail_reason is not None:
+            # Fuori dal blocco except: l'errore e i frame che trattiene sono gia' rilasciati, e con loro gli handle
+            # che la libreria che ha fallito teneva aperti sul file (es. PDF danneggiato), che ora si puo' spostare.
+            self._fail(path, rel, fail_reason)
 
     @staticmethod
     def _discard(result, tmp_out, tmp_prefix):
@@ -372,6 +406,14 @@ class Daemon:
                     common.remove_quietly(os.path.join(d, f))
         except OSError:
             pass
+
+    def _engine_unavailable(self, path, err):
+        """Modalita' Client, server remoto non disponibile: il documento NON finisce tra i non riusciti,
+        resta in input e viene elaborato appena il server torna a rispondere."""
+        self._engine_wait_until = time.time() + 20
+        rel = os.path.relpath(path, common.INPUT_DIR)
+        log(f"Motore remoto non disponibile ({str(err).rstrip('.')}): {rel} resta in input e verra' elaborato appena il server risponde.")
+        self.set_status(state="idle", current=None, detail="", force=True)
 
     def _fail(self, path, rel, reason):
         self.status["failed"] += 1
@@ -397,6 +439,51 @@ class Daemon:
         except Exception as e:
             log(f"Impossibile salvare il report di audit per {rel}: {e}")
 
+    # ------------------------------------------------------------------ scelta del motore
+    def _make_engine(self):
+        """Motore locale (modelli su questo computer) oppure, in modalita' Client, motore remoto: l'inferenza
+        avviene su un Germano Server della LAN, mentre Vault, etichette e file restano su questo computer."""
+        _server, client = common.mode_flags(common.effective_operating_mode(self.settings))
+        if not client:
+            return Engine()
+        from germano.remote_engine import RemoteEngine, find_server
+        url = (self.settings.get("remote_server") or "").strip()
+        token = self.settings.get("remote_token") or ""
+        start = time.time()
+        deadline = start + 30            # nessun server: si attende poco, poi eventuale ripiego locale
+        last = "nessun Germano Server trovato sulla rete locale"
+        while not self.should_stop():
+            base = url
+            try:
+                if not base:
+                    base, found = find_server(self.settings)
+                    if not base and found:
+                        # un server c'e' ma il suo motore sta ancora caricando i modelli: si aspetta di piu'
+                        last = "il Germano Server trovato non ha ancora il motore pronto"
+                        deadline = start + 240
+                if base:
+                    eng = RemoteEngine(base, token)
+                    eng.load(self.settings)
+                    log(f"Modalita' Client: motore remoto {eng.info.get('server_name') or base} ({base}, "
+                        f"{eng.info.get('device')}). Vault, file ed etichette restano su questo computer.")
+                    return eng
+            except EngineUnavailable as e:
+                last = str(e)
+                if "non e' ancora pronto" in last:
+                    deadline = start + 240
+            if time.time() > deadline:
+                break
+            self.set_status(state="loading", detail=f"ricerca del Germano Server: {last}", force=True)
+            self.stop_event.wait(3.0)
+        if self.should_stop():
+            return Engine()
+        if self.settings.get("client_fallback_local", True):
+            log(f"Modalita' Client: {last}. Uso il motore di questo computer.")
+            eng = Engine()
+            eng.fallback_reason = last
+            return eng
+        raise EngineUnavailable(last)
+
     # ------------------------------------------------------------------ ciclo principale
     def run(self):
         common.ensure_dirs()
@@ -408,7 +495,18 @@ class Daemon:
         log(f"Inizializzazione Germano AI Daemon v{VERSION}...")
         self.set_status(state="loading", force=True)
         try:
-            self.engine.load(self.settings)
+            self.engine = self._make_engine()
+            if self.should_stop():
+                log("Avvio annullato.")
+                return 0
+            if not getattr(self.engine, "is_remote", False):
+                self.engine.load(self.settings)
+                self.engine.info["mode"] = "local"
+                if getattr(self.engine, "fallback_reason", None):
+                    self.engine.info["fallback"] = self.engine.fallback_reason
+        except EngineUnavailable as e:
+            self.fatal(f"modalita' Client: {e}")
+            return 1
         except Exception as e:
             self.fatal(f"caricamento modelli IA non riuscito: {type(e).__name__}: {e}")
             log(traceback.format_exc(limit=8))
@@ -434,6 +532,14 @@ class Daemon:
             if time.time() - last_flush > 3:
                 self.vault.flush()
                 last_flush = time.time()
+            if getattr(self.engine, "is_remote", False) and time.time() - self._last_ping > 20:
+                self._last_ping = time.time()
+                if self.engine.ping():
+                    self._engine_wait_until = 0.0
+                self.write_state(status="ready")   # stato del server remoto visibile nella Dashboard
+            if time.time() < self._engine_wait_until:
+                self.stop_event.wait(1.0)          # server remoto non disponibile: i documenti restano in input
+                continue
             try:
                 files = self.scan_input()
             except Exception as e:
@@ -441,7 +547,7 @@ class Daemon:
                 files = []
             self.set_status(queue=len(files))
             for i, p in enumerate(files):
-                if self.should_stop():
+                if self.should_stop() or time.time() < self._engine_wait_until:
                     break
                 if not os.path.exists(p):
                     continue
@@ -449,6 +555,8 @@ class Daemon:
                 self.reload_settings()
                 try:
                     self.process_one(p)
+                except EngineUnavailable as e:
+                    self._engine_unavailable(p, e)
                 except Exception as e:
                     # un singolo file problematico (es. percorso troppo lungo) non deve fermare il motore
                     rel = os.path.relpath(p, common.INPUT_DIR)

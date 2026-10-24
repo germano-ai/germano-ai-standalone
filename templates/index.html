@@ -6,7 +6,7 @@
     <title>Germano AI — Anonimizzazione dei documenti</title>
     <link rel="stylesheet" href="/static/style.css?v={{ version }}">
 </head>
-<body class="mode-simple" data-view="work">
+<body class="mode-simple" data-view="work" data-app="batch">
 
     <!-- Icone (stile lineare, incluse nella pagina: nessuna risorsa esterna) -->
     <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
@@ -30,6 +30,7 @@
         <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
         <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
         <symbol id="i-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+        <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
         <symbol id="i-text" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
     </svg>
 
@@ -40,39 +41,54 @@
                 <img class="brand-logo" src="/static/logo.svg?v={{ version }}" alt="germano.ai" width="202" height="56">
                 <span class="brand-divider" aria-hidden="true"></span>
                 <span class="brand-text">
-                    <span class="brand-name">Anonimizzazione dei documenti</span>
-                    <span class="brand-sub">Elaborazione locale · v{{ version }}</span>
+                    <span class="brand-name" data-en="Document anonymization">Anonimizzazione dei documenti</span>
+                    <span class="brand-sub"><span data-en="Local processing">Elaborazione locale</span> · v{{ version }}</span>
                 </span>
             </a>
 
             <div class="topbar-controls">
-                <div class="segmented" role="group" aria-label="Modalità di visualizzazione">
-                    <button type="button" class="seg-btn active" id="btnModeSimple" data-target="simple">Semplice</button>
-                    <button type="button" class="seg-btn" id="btnModeAdvanced" data-target="advanced">Avanzata</button>
+                <div class="segmented segmented-app" role="group" aria-label="Modalità di Germano" data-en-aria-label="Germano mode">
+                    <button type="button" class="seg-btn active" id="btnAppBatch" data-app="batch" title="Anonimizza grandi quantità di file" data-en-title="Anonymize large numbers of files" data-en="📂 Anonymize files">📂 Anonimizza file</button>
+                    <button type="button" class="seg-btn" id="btnAppStudio" data-app="studio" title="Proteggi prompt e file prima di inviarli a un'AI" data-en-title="Protect prompts and files before sending them to an AI" data-en="🧠 AI Studio">🧠 Studio AI</button>
                 </div>
-                <span class="profile-tag" id="profilePill" title="Profilo di protezione attivo">Profilo PA</span>
+                <div class="segmented batch-only" role="group" aria-label="Livello di dettaglio" data-en-aria-label="Level of detail">
+                    <button type="button" class="seg-btn active" id="btnModeSimple" data-target="simple" data-en="Simple">Semplice</button>
+                    <button type="button" class="seg-btn" id="btnModeAdvanced" data-target="advanced" data-en="Advanced">Avanzata</button>
+                </div>
+                <span class="profile-tag" id="profilePill" title="Profilo di protezione attivo" data-en-title="Active protection profile" data-en="PA Profile">Profilo PA</span>
                 <div class="engine-status" id="engineStatusPill" role="status" aria-live="polite">
                     <span class="status-dot stopped" id="statusDot"></span>
-                    <span id="statusText">Motore in pausa</span>
+                    <span id="statusText" data-en="Engine paused">Motore in pausa</span>
                 </div>
+                <button type="button" class="mode-chip" id="modeChip" data-open-settings aria-label="Modalità operativa: apri le Impostazioni" data-en-aria-label="Operating mode: open Settings">
+                    <span class="mode-dot" id="modeDot"></span><span id="modeChipText" data-en="Standalone">Standalone</span>
+                </button>
                 <button type="button" id="mainToggleBtn" class="btn btn-start">
                     <svg class="icon icon-start" aria-hidden="true"><use href="#i-play"/></svg>
                     <svg class="icon icon-stop" aria-hidden="true"><use href="#i-stop"/></svg>
-                    <span id="mainToggleLabel">Avvia motore</span>
+                    <span id="mainToggleLabel" data-en="Start engine">Avvia motore</span>
                 </button>
-                <a href="/guide" target="_blank" rel="noopener" class="btn btn-topbar" id="btnOpenGuide" title="Manuale d'uso e documentazione tecnica (offline)">
+                <button type="button" class="btn btn-topbar" id="btnSettings" data-open-settings aria-label="Impostazioni" data-en-aria-label="Settings">
+                    <svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg>
+                    <span data-en="Settings">Impostazioni</span>
+                </button>
+                <a href="/guide" target="_blank" rel="noopener" class="btn btn-topbar" id="btnOpenGuide" title="Manuale d'uso e documentazione tecnica (offline)" data-en-title="User guide and technical documentation (offline)">
                     <svg class="icon" aria-hidden="true"><use href="#i-book"/></svg>
-                    <span>Guida</span>
+                    <span data-en="Guide">Guida</span>
                 </a>
+                <div class="lang-switcher" role="group" aria-label="Language Switcher">
+                    <button id="btn-it" class="lang-btn active" type="button" aria-pressed="true">🇮🇹 IT</button>
+                    <button id="btn-en" class="lang-btn" type="button" aria-pressed="false">🇬🇧 EN</button>
+                </div>
             </div>
         </div>
 
-        <nav class="viewbar adv-only" aria-label="Sezioni della modalità avanzata">
+        <nav class="viewbar adv-only batch-only" aria-label="Sezioni della modalità avanzata" data-en-aria-label="Advanced mode sections">
             <div class="viewbar-inner">
-                <button type="button" class="view-tab active" data-view="work"><svg class="icon" aria-hidden="true"><use href="#i-files"/></svg>Elaborazione</button>
-                <button type="button" class="view-tab" data-view="agents"><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg>Agenti AI e API</button>
-                <button type="button" class="view-tab" data-view="filters"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg>Filtri e modelli</button>
-                <button type="button" class="view-tab" data-view="system"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>Sistema e registro</button>
+                <button type="button" class="view-tab active" data-view="work"><svg class="icon" aria-hidden="true"><use href="#i-files"/></svg><span data-en="Processing">Elaborazione</span></button>
+                <button type="button" class="view-tab" data-view="agents"><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span data-en="AI agents &amp; APIs">Agenti AI e API</span></button>
+                <button type="button" class="view-tab" data-view="filters"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg><span data-en="Filters &amp; models">Filtri e modelli</span></button>
+                <button type="button" class="view-tab" data-view="system"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><span data-en="System &amp; log">Sistema e registro</span></button>
             </div>
         </nav>
     </header>
@@ -81,30 +97,30 @@
     <div class="banners">
         <div id="serverDownBanner" class="banner banner-danger" hidden>
             <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
-            <span>Germano non risponde: la finestra del programma è stata chiusa? Avvia di nuovo <strong>START.bat</strong>.</span>
+            <span data-en="Germano is not responding: was the program window closed? Start <strong>START.bat</strong> again.">Germano non risponde: la finestra del programma è stata chiusa? Avvia di nuovo <strong>START.bat</strong>.</span>
         </div>
         <div id="engineErrorBanner" class="banner banner-danger" hidden>
             <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
-            <span>Il motore si è fermato per un errore: <strong id="engineErrorText"></strong></span>
-            <button type="button" id="retryEngineBtn" class="btn btn-secondary btn-sm">Riprova</button>
+            <span><span data-en="The engine stopped because of an error:">Il motore si è fermato per un errore:</span> <strong id="engineErrorText"></strong></span>
+            <button type="button" id="retryEngineBtn" class="btn btn-secondary btn-sm" data-en="Retry">Riprova</button>
         </div>
         <div id="orphanWarning" class="banner banner-warning adv-only" hidden>
             <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
-            <span>Sono rimasti aperti <strong id="orphanCount">0</strong> processi del motore da una sessione precedente.</span>
-            <button type="button" id="killOrphansBtn" class="btn btn-secondary btn-sm">Chiudi processi secondari</button>
+            <span><span data-en="Engine processes still open from a previous session:">Processi del motore rimasti aperti da una sessione precedente:</span> <strong id="orphanCount">0</strong></span>
+            <button type="button" id="killOrphansBtn" class="btn btn-secondary btn-sm" data-en="Close leftover processes">Chiudi processi secondari</button>
         </div>
         <div id="lockedBanner" class="banner banner-info adv-only" hidden>
             <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
-            <span>Impostazioni bloccate dall'amministratore (<code>"lock_settings": true</code> in <code>config.json</code>): filtri e modelli non sono modificabili.</span>
+            <span data-en="Settings locked by the administrator (<code>&quot;lock_settings&quot;: true</code> in <code>config.json</code>): filters and models cannot be changed.">Impostazioni bloccate dall'amministratore (<code>"lock_settings": true</code> in <code>config.json</code>): filtri e modelli non sono modificabili.</span>
         </div>
         <div id="updateBanner" class="banner banner-info" hidden>
             <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
             <span id="updateBannerText"></span>
             <div class="progress progress-inline" id="updateProgress" hidden><div class="progress-bar" id="updateProgressBar"></div></div>
             <div class="btn-group">
-                <button type="button" class="btn btn-secondary btn-sm" id="btnUpdateDownload" hidden>Scarica aggiornamento</button>
-                <button type="button" class="btn btn-primary btn-sm" id="btnUpdateInstall" hidden>Installa ora e riavvia</button>
-                <button type="button" class="btn btn-secondary btn-sm" id="btnUpdateAck" hidden>Chiudi</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnUpdateDownload" hidden data-en="Download update">Scarica aggiornamento</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btnUpdateInstall" hidden data-en="Install now and restart">Installa ora e riavvia</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnUpdateAck" hidden data-en="Close">Chiudi</button>
             </div>
         </div>
     </div>
@@ -115,17 +131,51 @@
         <section class="view view-work" data-view="work">
 
             <div class="panel">
+                <div class="panel-header panel-header-tight">
+                    <div>
+                        <h2 class="panel-title" data-en="Work folders">Cartelle di lavoro</h2>
+                        <p class="panel-desc" data-en="Click a folder to open it in File Explorer. Counters update in real time.">Clicca una cartella per aprirla in Esplora file. I contatori si aggiornano in tempo reale.</p>
+                    </div>
+                    <div class="live-stats" id="liveStats" role="group" aria-label="Statistiche in tempo reale" data-en-aria-label="Real-time statistics">
+                        <span class="ls" title="Documenti elaborati nel lotto in corso" data-en-title="Documents processed in the current batch"><span class="ls-ico">⚙️</span><b id="lsDone">0</b><span class="ls-sep">/</span><span id="lsTotal">0</span><small data-en="files">file</small></span>
+                        <span class="ls" title="Dati personali oscurati nei documenti pronti" data-en-title="Personal data masked in ready documents"><span class="ls-ico">🔐</span><b id="lsPii">0</b><small>PII</small></span>
+                        <span class="ls" title="Documenti al minuto" data-en-title="Documents per minute"><span class="ls-ico">⚡</span><b id="lsThroughput">0</b><small>/min</small></span>
+                        <span class="ls" title="Uso del processore" data-en-title="Processor usage"><span class="ls-ico">🖥️</span><b id="lsCpu">0</b><small>% CPU</small></span>
+                        <span class="ls" title="Uso della memoria" data-en-title="Memory usage"><span class="ls-ico">💾</span><b id="lsRam">0</b><small>% RAM</small></span>
+                    </div>
+                </div>
+                <div class="progress live-progress" id="liveProgress" hidden><div class="progress-bar" id="liveProgressBar"></div></div>
+                <div class="folder-cards" id="folderCards">
+                    <button type="button" class="folder-card" data-open-folder="input" title="Apri la cartella input in Esplora file" data-en-title="Open the input folder in File Explorer">
+                        <span class="fc-ico">📥</span><span class="fc-name" data-en="Pending">In attesa</span><span class="fc-count" id="fcInput">0</span><span class="fc-sub" data-en="input">input</span>
+                    </button>
+                    <button type="button" class="folder-card fc-ok" data-open-folder="output" title="Apri la cartella output in Esplora file" data-en-title="Open the output folder in File Explorer">
+                        <span class="fc-ico">✅</span><span class="fc-name" data-en="Ready">Pronti</span><span class="fc-count" id="fcOutput">0</span><span class="fc-sub" data-en="output">output</span>
+                    </button>
+                    <button type="button" class="folder-card fc-fail" data-open-folder="failed" title="Apri la cartella failed in Esplora file" data-en-title="Open the failed folder in File Explorer">
+                        <span class="fc-ico">⚠️</span><span class="fc-name" data-en="Errors">Errori</span><span class="fc-count" id="fcFailed">0</span><span class="fc-sub">failed</span>
+                    </button>
+                    <button type="button" class="folder-card" data-open-folder="processed" title="Apri la cartella processed in Esplora file" data-en-title="Open the processed folder in File Explorer">
+                        <span class="fc-ico">🗂️</span><span class="fc-name" data-en="Originals">Originali</span><span class="fc-count" id="fcProcessed">0</span><span class="fc-sub" data-en="processed">processed</span>
+                    </button>
+                    <button type="button" class="folder-card" data-open-folder="extracted" title="Apri la cartella extracted (report e archivio) in Esplora file" data-en-title="Open the extracted folder (reports and archive) in File Explorer">
+                        <span class="fc-ico">🔐</span><span class="fc-name" data-en="Vault/extracted">Vault/estratti</span><span class="fc-count" id="fcExtracted">0</span><span class="fc-sub">extracted</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Elaborazione dei documenti</h2>
-                        <p class="panel-desc">Aggiungi documenti o intere cartelle: Germano li anonimizza e salva i risultati nella cartella <strong>output</strong> con la stessa struttura di sottocartelle. I documenti che non è possibile elaborare restano tra i <strong>Non riusciti</strong>, con il motivo.</p>
+                        <h2 class="panel-title" data-en="Document processing">Elaborazione dei documenti</h2>
+                        <p class="panel-desc" data-en="Add documents or whole folders: Germano anonymizes them and saves the results in the <strong>output</strong> folder with the same subfolder structure. Documents that cannot be processed stay among the <strong>Failed</strong> ones, with the reason.">Aggiungi documenti o intere cartelle: Germano li anonimizza e salva i risultati nella cartella <strong>output</strong> con la stessa struttura di sottocartelle. I documenti che non è possibile elaborare restano tra i <strong>Non riusciti</strong>, con il motivo.</p>
                     </div>
                     <div class="btn-group">
                         <button type="button" class="btn btn-secondary" data-open-folder="input">
-                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Apri cartella input
+                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span data-en="Open input folder">Apri cartella input</span>
                         </button>
                         <button type="button" class="btn btn-secondary" data-open-folder="output">
-                            <svg class="icon" aria-hidden="true"><use href="#i-folder-out"/></svg>Apri cartella output
+                            <svg class="icon" aria-hidden="true"><use href="#i-folder-out"/></svg><span data-en="Open output folder">Apri cartella output</span>
                         </button>
                     </div>
                 </div>
@@ -135,37 +185,37 @@
                         <input type="file" id="protectFileInput" multiple hidden>
                         <input type="file" id="protectFolderInput" webkitdirectory multiple hidden>
                         <svg class="icon icon-xl" aria-hidden="true"><use href="#i-upload"/></svg>
-                        <div class="dropzone-title">Trascina qui file o cartelle</div>
+                        <div class="dropzone-title" data-en="Drag files or folders here">Trascina qui file o cartelle</div>
                         <div class="dropzone-buttons">
-                            <button type="button" class="btn btn-primary" id="btnPickFiles">Seleziona file</button>
-                            <button type="button" class="btn btn-secondary" id="btnPickFolder">Seleziona cartella</button>
+                            <button type="button" class="btn btn-primary" id="btnPickFiles" data-en="Select files">Seleziona file</button>
+                            <button type="button" class="btn btn-secondary" id="btnPickFolder" data-en="Select folder">Seleziona cartella</button>
                         </div>
-                        <p class="dropzone-hint">In alternativa copia i documenti nella cartella <strong>input</strong> con Esplora file. I file restituiti da un servizio di AI con etichette come <code>[PERSONA_1]</code> vengono riconosciuti e ripristinati con i dati originali.</p>
+                        <p class="dropzone-hint" data-en="Or copy the documents into the <strong>input</strong> folder with File Explorer. Files returned by an AI service with tags such as <code>[PERSONA_1]</code> are recognized and restored with the original data.">In alternativa copia i documenti nella cartella <strong>input</strong> con Esplora file. I file restituiti da un servizio di AI con etichette come <code>[PERSONA_1]</code> vengono riconosciuti e ripristinati con i dati originali.</p>
                     </div>
 
                     <div class="batch-status">
                         <div class="kpi-grid">
-                            <button type="button" class="kpi" id="kpiPending" data-show-tab="input" title="Mostra i documenti in attesa">
-                                <span class="kpi-label">In attesa</span>
+                            <button type="button" class="kpi" id="kpiPending" data-show-tab="input" title="Mostra i documenti in attesa" data-en-title="Show pending documents">
+                                <span class="kpi-label" data-en="Pending">In attesa</span>
                                 <span class="kpi-value" id="countInput">0</span>
-                                <span class="kpi-sub">cartella input</span>
+                                <span class="kpi-sub" data-en="input folder">cartella input</span>
                             </button>
-                            <button type="button" class="kpi kpi-ok" id="kpiOutput" data-show-tab="output" title="Mostra i documenti pronti">
-                                <span class="kpi-label">Pronti</span>
+                            <button type="button" class="kpi kpi-ok" id="kpiOutput" data-show-tab="output" title="Mostra i documenti pronti" data-en-title="Show ready documents">
+                                <span class="kpi-label" data-en="Ready">Pronti</span>
                                 <span class="kpi-value" id="countOutput">0</span>
-                                <span class="kpi-sub">cartella output</span>
+                                <span class="kpi-sub" data-en="output folder">cartella output</span>
                             </button>
-                            <button type="button" class="kpi kpi-failed" id="kpiFailed" data-show-tab="failed" title="Mostra i documenti non riusciti e il motivo">
-                                <span class="kpi-label">Non riusciti</span>
+                            <button type="button" class="kpi kpi-failed" id="kpiFailed" data-show-tab="failed" title="Mostra i documenti non riusciti e il motivo" data-en-title="Show failed documents and the reason">
+                                <span class="kpi-label" data-en="Failed">Non riusciti</span>
                                 <span class="kpi-value" id="countFailed">0</span>
-                                <span class="kpi-sub">con il motivo</span>
+                                <span class="kpi-sub" data-en="with the reason">con il motivo</span>
                             </button>
                         </div>
 
                         <div class="job" id="currentJob">
                             <div class="job-head">
                                 <span class="spinner" id="jobSpinner" hidden></span>
-                                <span class="job-title" id="jobTitle">Motore in pausa</span>
+                                <span class="job-title" id="jobTitle" data-en="Engine paused">Motore in pausa</span>
                             </div>
                             <div class="job-file" id="jobFile"></div>
                             <div class="progress" id="batchProgress" hidden><div class="progress-bar" id="batchProgressBar"></div></div>
@@ -176,50 +226,50 @@
                             <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
                             <div class="callout-body">
                                 <strong id="pendingCtaText">Documenti in attesa</strong>
-                                <span>Il motore è in pausa: avvialo per elaborarli.</span>
+                                <span data-en="The engine is paused: start it to process them.">Il motore è in pausa: avvialo per elaborarli.</span>
                             </div>
-                            <button type="button" class="btn btn-primary btn-sm" id="btnStartFromCta">Avvia elaborazione</button>
+                            <button type="button" class="btn btn-primary btn-sm" id="btnStartFromCta" data-en="Start processing">Avvia elaborazione</button>
                         </div>
                     </div>
                 </div>
 
                 <div class="restore-row">
-                    <label class="switch" title="Ripristino automatico dei dati originali">
+                    <label class="switch" title="Ripristino automatico dei dati originali" data-en-title="Automatic restoration of the original data">
                         <input type="checkbox" id="enable_deanonymize" checked>
                         <span class="switch-track"></span>
                     </label>
                     <div>
-                        <div class="restore-title">Ripristino automatico dei dati originali <span class="badge badge-info" id="deanonStateBadge">Attivo</span></div>
-                        <p class="restore-desc">Le etichette sono numerate (es. <code>[PERSONA_1]</code>) e le corrispondenze restano nell'archivio locale (<strong id="vaultCountBadge">0</strong> voci): quando un testo o un file restituito da un servizio di AI le contiene, Germano rimette al loro posto i dati originali. Se disattivato, l'anonimizzazione è irreversibile.</p>
+                        <div class="restore-title"><span data-en="Automatic restoration of the original data">Ripristino automatico dei dati originali</span> <span class="badge badge-info" id="deanonStateBadge" data-en="Active">Attivo</span></div>
+                        <p class="restore-desc"><span data-en="Tags are numbered (e.g. <code>[PERSONA_1]</code>) and the mappings stay in the local archive: when a text or a file returned by an AI service contains them, Germano puts the original data back in place. If turned off, anonymization is irreversible.">Le etichette sono numerate (es. <code>[PERSONA_1]</code>) e le corrispondenze restano nell'archivio locale: quando un testo o un file restituito da un servizio di AI le contiene, Germano rimette al loro posto i dati originali. Se disattivato, l'anonimizzazione è irreversibile.</span> <span class="muted"><span data-en="Entries in the archive:">Voci in archivio:</span> <strong id="vaultCountBadge">0</strong></span></p>
                     </div>
                 </div>
             </div>
 
             <div class="panel">
                 <div class="panel-header panel-header-tight">
-                    <h2 class="panel-title">Documenti</h2>
+                    <h2 class="panel-title" data-en="Documents">Documenti</h2>
                 </div>
-                <div class="tabs" role="tablist" aria-label="Cartelle">
-                    <button type="button" class="tab active" data-folder="output" role="tab">Pronti <span class="tab-count" id="tabCountOutput">0</span></button>
-                    <button type="button" class="tab" data-folder="input" role="tab">In attesa <span class="tab-count" id="tabCountInput">0</span></button>
-                    <button type="button" class="tab tab-failed" data-folder="failed" role="tab">Non riusciti <span class="tab-count" id="tabCountFailed">0</span></button>
-                    <button type="button" class="tab adv-only" data-folder="processed" role="tab">Originali <span class="tab-count" id="tabCountProcessed">0</span></button>
+                <div class="tabs" role="tablist" aria-label="Cartelle" data-en-aria-label="Folders">
+                    <button type="button" class="tab active" data-folder="output" role="tab"><span data-en="Ready">Pronti</span> <span class="tab-count" id="tabCountOutput">0</span></button>
+                    <button type="button" class="tab" data-folder="input" role="tab"><span data-en="Pending">In attesa</span> <span class="tab-count" id="tabCountInput">0</span></button>
+                    <button type="button" class="tab tab-failed" data-folder="failed" role="tab"><span data-en="Failed">Non riusciti</span> <span class="tab-count" id="tabCountFailed">0</span></button>
+                    <button type="button" class="tab adv-only" data-folder="processed" role="tab"><span data-en="Originals">Originali</span> <span class="tab-count" id="tabCountProcessed">0</span></button>
                 </div>
                 <div class="table-toolbar">
                     <div class="search">
                         <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
-                        <input type="search" id="fileFilter" placeholder="Filtra per nome, cartella o motivo" aria-label="Filtra i documenti">
+                        <input type="search" id="fileFilter" placeholder="Filtra per nome, cartella o motivo" aria-label="Filtra i documenti" data-en-placeholder="Filter by name, folder or reason" data-en-aria-label="Filter documents">
                     </div>
                     <span class="toolbar-info" id="fileListInfo"></span>
                     <div class="toolbar-actions">
                         <button type="button" class="btn btn-secondary btn-sm" id="btnRetryAll" hidden>
-                            <svg class="icon" aria-hidden="true"><use href="#i-retry"/></svg>Rimetti tutti in coda
+                            <svg class="icon" aria-hidden="true"><use href="#i-retry"/></svg><span data-en="Requeue all">Rimetti tutti in coda</span>
                         </button>
                         <button type="button" class="btn btn-secondary btn-sm" id="btnOpenCurrentFolder">
-                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="btnOpenCurrentFolderLabel">Apri cartella output</span>
+                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="btnOpenCurrentFolderLabel" data-en="Open output folder">Apri cartella output</span>
                         </button>
-                        <button type="button" class="btn btn-secondary btn-sm" id="btnExportCsv" title="Scarica l'elenco in formato CSV (apribile con Excel)">
-                            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Esporta elenco
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnExportCsv" title="Scarica l'elenco in formato CSV (apribile con Excel)" data-en-title="Download the list as CSV (opens with Excel)">
+                            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg><span data-en="Export list">Esporta elenco</span>
                         </button>
                     </div>
                 </div>
@@ -227,11 +277,11 @@
                     <table class="table">
                         <thead>
                             <tr>
-                                <th class="col-name">Documento</th>
-                                <th class="col-status">Esito</th>
-                                <th class="col-size">Dimensione</th>
-                                <th class="col-date">Data</th>
-                                <th class="col-actions"><span class="sr-only">Azioni</span></th>
+                                <th class="col-name" data-en="Document">Documento</th>
+                                <th class="col-status" data-en="Result">Esito</th>
+                                <th class="col-size" data-en="Size">Dimensione</th>
+                                <th class="col-date" data-en="Date">Data</th>
+                                <th class="col-actions"><span class="sr-only" data-en="Actions">Azioni</span></th>
                             </tr>
                         </thead>
                         <tbody id="fileTableBody"></tbody>
@@ -243,27 +293,27 @@
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Testo da inviare a un servizio di AI</h2>
-                        <p class="panel-desc">Incolla un testo per anonimizzarlo prima di inviarlo a ChatGPT, Claude o altri servizi. Se incolli la risposta ricevuta e contiene etichette come <code>[PERSONA_1]</code>, i dati originali vengono ripristinati automaticamente.</p>
+                        <h2 class="panel-title" data-en="Text to send to an AI service">Testo da inviare a un servizio di AI</h2>
+                        <p class="panel-desc" data-en="Paste a text to anonymize it before sending it to ChatGPT, Claude or other services. If you paste the answer you received and it contains tags such as <code>[PERSONA_1]</code>, the original data are restored automatically.">Incolla un testo per anonimizzarlo prima di inviarlo a ChatGPT, Claude o altri servizi. Se incolli la risposta ricevuta e contiene etichette come <code>[PERSONA_1]</code>, i dati originali vengono ripristinati automaticamente.</p>
                     </div>
                     <span class="badge badge-ok" id="textEntityBadge" hidden></span>
                 </div>
                 <div class="text-grid">
                     <div class="field">
-                        <label for="manualInputText">Testo</label>
-                        <textarea id="manualInputText" placeholder="Incolla qui il testo da anonimizzare oppure la risposta dell'AI da ripristinare"></textarea>
+                        <label for="manualInputText" data-en="Text">Testo</label>
+                        <textarea id="manualInputText" placeholder="Incolla qui il testo da anonimizzare oppure la risposta dell'AI da ripristinare" data-en-placeholder="Paste here the text to anonymize, or the AI's answer to restore"></textarea>
                         <div class="field-actions">
                             <button type="button" id="anonymizeTextBtn" class="btn btn-primary">
-                                <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><span>Anonimizza testo</span>
+                                <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><span data-en="Anonymize text">Anonimizza testo</span>
                             </button>
                         </div>
                     </div>
                     <div class="field">
-                        <label for="manualOutputText">Risultato</label>
-                        <textarea id="manualOutputText" readonly placeholder="Qui compare il testo anonimizzato (es. con [PERSONA_1]) o il testo con i dati originali ripristinati"></textarea>
+                        <label for="manualOutputText" data-en="Result">Risultato</label>
+                        <textarea id="manualOutputText" readonly placeholder="Qui compare il testo anonimizzato (es. con [PERSONA_1]) o il testo con i dati originali ripristinati" data-en-placeholder="The anonymized text (e.g. with [PERSONA_1]) or the text with the original data restored appears here"></textarea>
                         <div class="field-actions">
                             <button type="button" id="copyTextBtn" class="btn btn-secondary">
-                                <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg>Copia risultato
+                                <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span data-en="Copy result">Copia risultato</span>
                             </button>
                         </div>
                     </div>
@@ -276,24 +326,24 @@
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Proxy per agenti e assistenti AI</h2>
-                        <p class="panel-desc">Configura lo strumento perché invii le richieste a Germano invece che direttamente al servizio cloud: prompt, file e immagini vengono anonimizzati prima dell'invio e le risposte tornano con i dati originali. Se il motore non è attivo le richieste vengono bloccate e nessun dato lascia il computer.</p>
+                        <h2 class="panel-title" data-en="Proxy for AI agents and assistants">Proxy per agenti e assistenti AI</h2>
+                        <p class="panel-desc" data-en="Configure the tool so that it sends its requests to Germano instead of directly to the cloud service: prompts, files and images are anonymized before being sent and the answers come back with the original data. If the engine is not running, requests are blocked and no data leaves the computer.">Configura lo strumento perché invii le richieste a Germano invece che direttamente al servizio cloud: prompt, file e immagini vengono anonimizzati prima dell'invio e le risposte tornano con i dati originali. Se il motore non è attivo le richieste vengono bloccate e nessun dato lascia il computer.</p>
                     </div>
                     <span class="badge" id="proxyStatus">Proxy non attivo</span>
                 </div>
                 <div class="endpoint-grid">
                     <div class="endpoint">
-                        <div class="endpoint-label">Formato OpenAI <span class="muted">— Chat Completions e Responses</span></div>
+                        <div class="endpoint-label" data-en="OpenAI format <span class='muted'>— Chat Completions and Responses</span>">Formato OpenAI <span class="muted">— Chat Completions e Responses</span></div>
                         <div class="endpoint-value">
-                            <code id="openaiBase">http://127.0.0.1:8000/v1</code>
-                            <button type="button" class="btn-icon" data-copy-from="openaiBase" title="Copia indirizzo" aria-label="Copia indirizzo formato OpenAI"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button>
+                            <code id="openaiBase">http://127.0.0.1:8181/v1</code>
+                            <button type="button" class="btn-icon" data-copy-from="openaiBase" title="Copia indirizzo" aria-label="Copia indirizzo formato OpenAI" data-en-title="Copy address" data-en-aria-label="Copy OpenAI-format address"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button>
                         </div>
                     </div>
                     <div class="endpoint">
-                        <div class="endpoint-label">Formato Anthropic <span class="muted">— Messages</span></div>
+                        <div class="endpoint-label" data-en="Anthropic format <span class='muted'>— Messages</span>">Formato Anthropic <span class="muted">— Messages</span></div>
                         <div class="endpoint-value">
-                            <code id="anthropicBase">http://127.0.0.1:8000</code>
-                            <button type="button" class="btn-icon" data-copy-from="anthropicBase" title="Copia indirizzo" aria-label="Copia indirizzo formato Anthropic"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button>
+                            <code id="anthropicBase">http://127.0.0.1:8181</code>
+                            <button type="button" class="btn-icon" data-copy-from="anthropicBase" title="Copia indirizzo" aria-label="Copia indirizzo formato Anthropic" data-en-title="Copy address" data-en-aria-label="Copy Anthropic-format address"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg></button>
                         </div>
                     </div>
                 </div>
@@ -301,35 +351,43 @@
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Strumento</th>
-                                <th>Formato</th>
-                                <th>Indirizzo da impostare</th>
-                                <th>Dove si imposta</th>
+                                <th data-en="Tool">Strumento</th>
+                                <th data-en="Format">Formato</th>
+                                <th data-en="Address to set">Indirizzo da impostare</th>
+                                <th data-en="Where to set it">Dove si imposta</th>
                             </tr>
                         </thead>
                         <tbody id="agentsTableBody"></tbody>
                     </table>
                 </div>
-                <p class="note">La chiave API resta quella del tuo servizio: Germano la usa solo per inoltrare la richiesta già anonimizzata. Le corrispondenze di ogni richiesta sono registrate in <code>extracted/proxy_sessions</code>.</p>
+                <p class="note" data-en="The API key stays the one of your service: Germano only uses it to forward the request once it has been anonymized. The mappings of each request are recorded in <code>extracted/proxy_sessions</code>. <strong>Tested</strong> = verified live; <strong>per documentation</strong> = according to the tool's documentation; <strong>not protectable</strong> = the tool cannot be routed through Germano: protect the text with the AI Studio instead.">La chiave API resta quella del tuo servizio: Germano la usa solo per inoltrare la richiesta già anonimizzata. Le corrispondenze di ogni richiesta sono registrate in <code>extracted/proxy_sessions</code>. <strong>Collaudato</strong> = verificato dal vivo; <strong>da documentazione</strong> = secondo la documentazione dello strumento; <strong>non proteggibile</strong> = lo strumento non si può far passare da Germano: proteggi il testo con lo Studio AI.</p>
             </div>
 
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Servizi di destinazione</h2>
-                        <p class="panel-desc">Indirizzi a cui Germano inoltra le richieste dopo averle anonimizzate.</p>
+                        <h2 class="panel-title" data-en="Destination services">Servizi di destinazione</h2>
+                        <p class="panel-desc" data-en="Addresses to which Germano forwards the requests after anonymizing them: one service per format.">Indirizzi a cui Germano inoltra le richieste dopo averle anonimizzate: un servizio per ciascun formato.</p>
                     </div>
                 </div>
                 <div class="form-grid">
                     <div class="field">
-                        <label for="target_api_url">Servizio OpenAI o compatibile</label>
+                        <label for="target_api_url" data-en="OpenAI or compatible service">Servizio OpenAI o compatibile</label>
                         <input type="text" id="target_api_url" class="input" spellcheck="false" placeholder="https://api.openai.com/v1/chat/completions">
-                        <div class="hint">Usato per <code>/v1/chat/completions</code> e <code>/v1/responses</code>.</div>
+                        <div class="preset-pills" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+                            <span class="muted" style="font-size:12px; align-self:center;" data-en="Preset:">Preimposta:</span>
+                            <button type="button" class="btn-chip preset-target" data-url="https://api.openai.com/v1/chat/completions">OpenAI</button>
+                            <button type="button" class="btn-chip preset-target" data-url="https://api.deepseek.com/v1/chat/completions">DeepSeek</button>
+                            <button type="button" class="btn-chip preset-target" data-url="https://api.moonshot.cn/v1/chat/completions">Kimi</button>
+                            <button type="button" class="btn-chip preset-target" data-url="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions">Qwen</button>
+                            <button type="button" class="btn-chip preset-target" data-url="http://127.0.0.1:11434/v1/chat/completions">Ollama</button>
+                        </div>
+                        <div class="hint" data-en="Used for <code>/v1/chat/completions</code> and <code>/v1/responses</code>.">Usato per <code>/v1/chat/completions</code> e <code>/v1/responses</code>.</div>
                     </div>
                     <div class="field">
-                        <label for="target_anthropic_url">Servizio Anthropic (Claude)</label>
+                        <label for="target_anthropic_url" data-en="Anthropic service (Claude)">Servizio Anthropic (Claude)</label>
                         <input type="text" id="target_anthropic_url" class="input" spellcheck="false" placeholder="https://api.anthropic.com/v1">
-                        <div class="hint">Usato per <code>/v1/messages</code> (Claude Code e SDK Anthropic).</div>
+                        <div class="hint" data-en="Used for <code>/v1/messages</code> (Claude Code and Anthropic SDK). For DeepSeek via Claude Code: <code>https://api.deepseek.com/anthropic</code>.">Usato per <code>/v1/messages</code> (Claude Code e SDK Anthropic). Per DeepSeek tramite Claude Code: <code>https://api.deepseek.com/anthropic</code>.</div>
                     </div>
                 </div>
             </div>
@@ -337,21 +395,21 @@
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">API REST locali</h2>
-                        <p class="panel-desc">Per integrare l'anonimizzazione in gestionali, protocollo informatico o script. Le API rispondono solo da questo computer; gli esempi usano <code>curl.exe</code>, incluso in Windows 10 e 11.</p>
+                        <h2 class="panel-title" data-en="Local REST APIs">API REST locali</h2>
+                        <p class="panel-desc" data-en="To integrate anonymization into management software, electronic records systems or scripts. The APIs answer only from this computer; the examples use <code>curl.exe</code>, included in Windows 10 and 11.">Per integrare l'anonimizzazione in gestionali, protocollo informatico o script. Le API rispondono solo da questo computer; gli esempi usano <code>curl.exe</code>, incluso in Windows 10 e 11.</p>
                     </div>
-                    <a class="btn btn-secondary btn-sm" href="/guide#api-rest" target="_blank" rel="noopener">
-                        <svg class="icon" aria-hidden="true"><use href="#i-book"/></svg>Documentazione
+                    <a class="btn btn-secondary btn-sm" href="/guide#api-rest" target="_blank" rel="noopener" data-guide-link>
+                        <svg class="icon" aria-hidden="true"><use href="#i-book"/></svg><span data-en="Documentation">Documentazione</span>
                     </a>
                 </div>
                 <div class="table-wrap table-wrap-static">
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Metodo</th>
-                                <th>Indirizzo</th>
-                                <th>Funzione</th>
-                                <th><span class="sr-only">Esempio</span></th>
+                                <th data-en="Method">Metodo</th>
+                                <th data-en="Address">Indirizzo</th>
+                                <th data-en="Function">Funzione</th>
+                                <th><span class="sr-only" data-en="Example">Esempio</span></th>
                             </tr>
                         </thead>
                         <tbody id="restTableBody"></tbody>
@@ -365,117 +423,130 @@
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Profilo di protezione</h2>
-                        <p class="panel-desc">Il profilo PA mantiene attivi tutti i modelli e tutte le categorie con la massima sensibilità. Qualsiasi modifica porta al profilo PD (configurazione personalizzata).</p>
+                        <h2 class="panel-title" data-en="Protection profile">Profilo di protezione</h2>
+                        <p class="panel-desc" data-en="The PA profile keeps all models and all categories active with the highest sensitivity. Any change switches to the PD profile (custom configuration).">Il profilo PA mantiene attivi tutti i modelli e tutte le categorie con la massima sensibilità. Qualsiasi modifica porta al profilo PD (configurazione personalizzata).</p>
                     </div>
                     <div class="btn-group">
-                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnPresetPA">Tutto attivo (profilo PA)</button>
-                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnPresetEssential">Solo dati essenziali</button>
-                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnPresetNone">Nessuna categoria</button>
+                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnPresetPA" data-en="All on (PA profile)">Tutto attivo (profilo PA)</button>
+                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnPresetEssential" data-en="Essential data only">Solo dati essenziali</button>
+                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnPresetNone" data-en="No categories">Nessuna categoria</button>
                     </div>
                 </div>
                 <div class="field field-range">
                     <div class="field-row">
-                        <label for="ai_threshold">Sensibilità dei modelli di analisi</label>
+                        <label for="ai_threshold" data-en="Sensitivity of the analysis models">Sensibilità dei modelli di analisi</label>
                         <span class="value-tag" id="thresholdValue">Massima (soglia 0%)</span>
                     </div>
                     <input type="range" id="ai_threshold" min="0" max="0.95" step="0.05" value="0" class="range">
-                    <div class="hint">Con soglia 0% viene oscurato ogni possibile dato personale. Una soglia più alta riduce i falsi positivi ma può lasciare in chiaro dati incerti.</div>
+                    <div class="hint" data-en="With a 0% threshold every possible personal data item is masked. A higher threshold reduces false positives but may leave uncertain data in clear.">Con soglia 0% viene oscurato ogni possibile dato personale. Una soglia più alta riduce i falsi positivi ma può lasciare in chiaro dati incerti.</div>
                 </div>
             </div>
 
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Modelli di analisi</h2>
-                        <p class="panel-desc">Sei modelli locali e un motore di regole. Le modifiche si applicano subito, senza riavviare.</p>
+                        <h2 class="panel-title" data-en="Analysis models">Modelli di analisi</h2>
+                        <p class="panel-desc" data-en="Six local models and a rule engine. Changes apply immediately, without restarting.">Sei modelli locali e un motore di regole. Le modifiche si applicano subito, senza riavviare.</p>
                     </div>
                     <div class="btn-group">
-                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnModelsAllOn">Attiva tutti</button>
-                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnModelsAllOff">Disattiva tutti</button>
+                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnModelsAllOn" data-en="Enable all">Attiva tutti</button>
+                        <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnModelsAllOff" data-en="Disable all">Disattiva tutti</button>
                     </div>
                 </div>
                 <div class="option-grid option-grid-2">
-                    <label class="option"><input type="checkbox" id="enable_model_velvet" class="model-check"><span class="option-body"><span class="option-title">Velvet Privacy Filter <span class="tag">testo</span></span><span class="option-desc">Modello linguistico contestuale multilingue (1,5 miliardi di parametri): nomi, recapiti, codici e segreti.</span></span></label>
-                    <label class="option"><input type="checkbox" id="enable_model_italian_ner" class="model-check"><span class="option-body"><span class="option-title">Italian NER XXL <span class="tag">testo</span></span><span class="option-desc">Modello specialistico italiano (58 classi): sanità, giustizia, catasto, finanza, professioni ed enti.</span></span></label>
-                    <label class="option"><input type="checkbox" id="enable_ocr" class="model-check"><span class="option-body"><span class="option-title">EasyOCR <span class="tag">immagini</span></span><span class="option-desc">Legge il testo di scansioni, fotografie e PDF scansionati per poterlo oscurare.</span></span></label>
-                    <label class="option"><input type="checkbox" id="enable_faces" class="model-check"><span class="option-body"><span class="option-title">Rilevamento volti (YuNet) <span class="tag">immagini</span></span><span class="option-desc">Individua e oscura volti e fototessere: <code>[VOLTO]</code>.</span></span></label>
-                    <label class="option"><input type="checkbox" id="enable_signatures" class="model-check"><span class="option-body"><span class="option-title">Rilevamento firme (YOLOS) <span class="tag">immagini</span></span><span class="option-desc">Individua e oscura firme autografe e sigle: <code>[FIRMA]</code>.</span></span></label>
-                    <label class="option"><input type="checkbox" id="enable_plate_vision" class="model-check"><span class="option-body"><span class="option-title">Rilevamento targhe (YOLOS) <span class="tag">immagini</span></span><span class="option-desc">Individua e oscura le targhe dei veicoli nelle fotografie: <code>[TARGA]</code>.</span></span></label>
-                    <label class="option"><input type="checkbox" id="enable_regex" class="model-check"><span class="option-body"><span class="option-title">Regole deterministiche <span class="tag">RegEx</span></span><span class="option-desc">Codici fiscali, partite IVA, IBAN, carte, telefoni, date, targhe, CIE e catasto, con verifica dei codici di controllo.</span></span></label>
+                    <label class="option"><input type="checkbox" id="enable_model_velvet" class="model-check"><span class="option-body"><span class="option-title" data-en="Velvet Privacy Filter <span class='tag'>text</span>">Velvet Privacy Filter <span class="tag">testo</span></span><span class="option-desc" data-en="Multilingual contextual language model (1.5 billion parameters): names, contacts, codes and secrets.">Modello linguistico contestuale multilingue (1,5 miliardi di parametri): nomi, recapiti, codici e segreti.</span></span></label>
+                    <label class="option"><input type="checkbox" id="enable_model_italian_ner" class="model-check"><span class="option-body"><span class="option-title" data-en="Italian NER XXL <span class='tag'>text</span>">Italian NER XXL <span class="tag">testo</span></span><span class="option-desc" data-en="Specialized Italian model (58 classes): health, justice, land registry, finance, professions and organizations.">Modello specialistico italiano (58 classi): sanità, giustizia, catasto, finanza, professioni ed enti.</span></span></label>
+                    <label class="option"><input type="checkbox" id="enable_ocr" class="model-check"><span class="option-body"><span class="option-title" data-en="EasyOCR <span class='tag'>images</span>">EasyOCR <span class="tag">immagini</span></span><span class="option-desc" data-en="Reads the text of scans, photos and scanned PDFs so that it can be masked.">Legge il testo di scansioni, fotografie e PDF scansionati per poterlo oscurare.</span></span></label>
+                    <label class="option"><input type="checkbox" id="enable_faces" class="model-check"><span class="option-body"><span class="option-title" data-en="Face detection (YuNet) <span class='tag'>images</span>">Rilevamento volti (YuNet) <span class="tag">immagini</span></span><span class="option-desc" data-en="Finds and masks faces and ID photos: <code>[VOLTO]</code>.">Individua e oscura volti e fototessere: <code>[VOLTO]</code>.</span></span></label>
+                    <label class="option"><input type="checkbox" id="enable_signatures" class="model-check"><span class="option-body"><span class="option-title" data-en="Signature detection (YOLOS) <span class='tag'>images</span>">Rilevamento firme (YOLOS) <span class="tag">immagini</span></span><span class="option-desc" data-en="Finds and masks handwritten signatures and initials: <code>[FIRMA]</code>.">Individua e oscura firme autografe e sigle: <code>[FIRMA]</code>.</span></span></label>
+                    <label class="option"><input type="checkbox" id="enable_plate_vision" class="model-check"><span class="option-body"><span class="option-title" data-en="License plate detection (YOLOS) <span class='tag'>images</span>">Rilevamento targhe (YOLOS) <span class="tag">immagini</span></span><span class="option-desc" data-en="Finds and masks vehicle license plates in photos: <code>[TARGA]</code>.">Individua e oscura le targhe dei veicoli nelle fotografie: <code>[TARGA]</code>.</span></span></label>
+                    <label class="option"><input type="checkbox" id="enable_regex" class="model-check"><span class="option-body"><span class="option-title" data-en="Deterministic rules <span class='tag'>RegEx</span>">Regole deterministiche <span class="tag">RegEx</span></span><span class="option-desc" data-en="Italian tax codes, VAT numbers, IBANs, cards, phone numbers, dates, plates, CIE and land registry data, with check-digit verification.">Codici fiscali, partite IVA, IBAN, carte, telefoni, date, targhe, CIE e catasto, con verifica dei codici di controllo.</span></span></label>
                 </div>
             </div>
 
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Categorie di dati</h2>
-                        <p class="panel-desc">Scegli quali informazioni oscurare. Accanto a ogni categoria l'etichetta usata nei documenti anonimizzati.</p>
+                        <h2 class="panel-title" data-en="Data categories">Categorie di dati</h2>
+                        <p class="panel-desc" data-en="Choose which information to mask. Next to each category, the tag used in the anonymized documents (tags are always in Italian).">Scegli quali informazioni oscurare. Accanto a ogni categoria l'etichetta usata nei documenti anonimizzati.</p>
                     </div>
                 </div>
                 <div class="option-grid option-grid-3">
-                    <label class="option"><input type="checkbox" id="censor_person" class="cat-check"><span class="option-body"><span class="option-title">Nomi e cognomi</span><span class="option-desc"><code>[PERSONA]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_profession" class="cat-check"><span class="option-body"><span class="option-title">Titoli e professioni</span><span class="option-desc"><code>[PROFESSIONE/TITOLO]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_address" class="cat-check"><span class="option-body"><span class="option-title">Indirizzi e luoghi</span><span class="option-desc"><code>[INDIRIZZO]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_cadastre" class="cat-check"><span class="option-body"><span class="option-title">Dati catastali</span><span class="option-desc"><code>[CATASTO]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_cf_iva" class="cat-check"><span class="option-body"><span class="option-title">Codici fiscali e partite IVA</span><span class="option-desc"><code>[COD.FISCALE/P.IVA]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_email" class="cat-check"><span class="option-body"><span class="option-title">Email e PEC</span><span class="option-desc"><code>[EMAIL]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_phone" class="cat-check"><span class="option-body"><span class="option-title">Telefoni e codici IMEI</span><span class="option-desc"><code>[TELEFONO]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_account" class="cat-check"><span class="option-body"><span class="option-title">IBAN, conti e carte</span><span class="option-desc"><code>[CONTO/CARTA]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_financial" class="cat-check"><span class="option-body"><span class="option-title">Importi e dati finanziari</span><span class="option-desc"><code>[IMPORTO/FINANZA]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_date" class="cat-check"><span class="option-body"><span class="option-title">Date ed età</span><span class="option-desc"><code>[DATA]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_org" class="cat-check"><span class="option-body"><span class="option-title">Aziende ed enti</span><span class="option-desc"><code>[AZIENDA/ENTE]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_plates_docs" class="cat-check"><span class="option-body"><span class="option-title">Targhe e documenti d'identità</span><span class="option-desc"><code>[TARGA/DOCUMENTO]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_medical" class="cat-check"><span class="option-body"><span class="option-title">Dati sanitari (art. 9 GDPR)</span><span class="option-desc"><code>[DATO_SANITARIO]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_medicine" class="cat-check"><span class="option-body"><span class="option-title">Farmaci e terapie</span><span class="option-desc"><code>[FARMACO/TERAPIA]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_legal" class="cat-check"><span class="option-body"><span class="option-title">Dati giudiziari (art. 10 GDPR)</span><span class="option-desc"><code>[DATO_GIUDIZIARIO]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_civil_status" class="cat-check"><span class="option-body"><span class="option-title">Stato civile</span><span class="option-desc"><code>[STATO_CIVILE]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_secret" class="cat-check"><span class="option-body"><span class="option-title">Password, PIN e chiavi</span><span class="option-desc"><code>[SEGRETO]</code></span></span></label>
-                    <label class="option"><input type="checkbox" id="censor_url" class="cat-check"><span class="option-body"><span class="option-title">Indirizzi IP, MAC e URL</span><span class="option-desc"><code>[URL]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_person" class="cat-check"><span class="option-body"><span class="option-title" data-en="First and last names">Nomi e cognomi</span><span class="option-desc"><code>[PERSONA]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_profession" class="cat-check"><span class="option-body"><span class="option-title" data-en="Titles and professions">Titoli e professioni</span><span class="option-desc"><code>[PROFESSIONE/TITOLO]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_address" class="cat-check"><span class="option-body"><span class="option-title" data-en="Addresses and places">Indirizzi e luoghi</span><span class="option-desc"><code>[INDIRIZZO]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_cadastre" class="cat-check"><span class="option-body"><span class="option-title" data-en="Land registry data">Dati catastali</span><span class="option-desc"><code>[CATASTO]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_cf_iva" class="cat-check"><span class="option-body"><span class="option-title" data-en="Tax codes and VAT numbers">Codici fiscali e partite IVA</span><span class="option-desc"><code>[COD.FISCALE/P.IVA]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_email" class="cat-check"><span class="option-body"><span class="option-title" data-en="Email and certified email (PEC)">Email e PEC</span><span class="option-desc"><code>[EMAIL]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_phone" class="cat-check"><span class="option-body"><span class="option-title" data-en="Phone numbers and IMEI codes">Telefoni e codici IMEI</span><span class="option-desc"><code>[TELEFONO]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_account" class="cat-check"><span class="option-body"><span class="option-title" data-en="IBANs, accounts and cards">IBAN, conti e carte</span><span class="option-desc"><code>[CONTO/CARTA]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_financial" class="cat-check"><span class="option-body"><span class="option-title" data-en="Amounts and financial data">Importi e dati finanziari</span><span class="option-desc"><code>[IMPORTO/FINANZA]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_date" class="cat-check"><span class="option-body"><span class="option-title" data-en="Dates and ages">Date ed età</span><span class="option-desc"><code>[DATA]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_org" class="cat-check"><span class="option-body"><span class="option-title" data-en="Companies and organizations">Aziende ed enti</span><span class="option-desc"><code>[AZIENDA/ENTE]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_plates_docs" class="cat-check"><span class="option-body"><span class="option-title" data-en="License plates and ID documents">Targhe e documenti d'identità</span><span class="option-desc"><code>[TARGA/DOCUMENTO]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_medical" class="cat-check"><span class="option-body"><span class="option-title" data-en="Health data (GDPR art. 9)">Dati sanitari (art. 9 GDPR)</span><span class="option-desc"><code>[DATO_SANITARIO]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_medicine" class="cat-check"><span class="option-body"><span class="option-title" data-en="Medicines and therapies">Farmaci e terapie</span><span class="option-desc"><code>[FARMACO/TERAPIA]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_legal" class="cat-check"><span class="option-body"><span class="option-title" data-en="Judicial data (GDPR art. 10)">Dati giudiziari (art. 10 GDPR)</span><span class="option-desc"><code>[DATO_GIUDIZIARIO]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_civil_status" class="cat-check"><span class="option-body"><span class="option-title" data-en="Marital status">Stato civile</span><span class="option-desc"><code>[STATO_CIVILE]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_secret" class="cat-check"><span class="option-body"><span class="option-title" data-en="Passwords, PINs and keys">Password, PIN e chiavi</span><span class="option-desc"><code>[SEGRETO]</code></span></span></label>
+                    <label class="option"><input type="checkbox" id="censor_url" class="cat-check"><span class="option-body"><span class="option-title" data-en="IP and MAC addresses, URLs">Indirizzi IP, MAC e URL</span><span class="option-desc"><code>[URL]</code></span></span></label>
                 </div>
             </div>
         </section>
 
         <!-- ============================================================== SISTEMA E REGISTRO -->
         <section class="view view-system adv-only" data-view="system">
+            <div class="panel" id="netPanel">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title" data-en="Network and operating mode">Rete e modalità operativa</h2>
+                        <p class="panel-desc" data-en="How this computer uses the network: <strong>Standalone</strong> (everything local and isolated), <strong>Server</strong> (offers the engine to the other PCs of the office), <strong>Client</strong> (hands the computation over to a Germano Server on the network) or Server and Client together. This mode can always be changed at any time.">Come usa la rete questo computer: <strong>Standalone</strong> (tutto locale e isolato), <strong>Server</strong> (offre il motore agli altri PC dell'ufficio), <strong>Client</strong> (affida il calcolo a un Germano Server della rete) oppure Server e Client insieme. Questa modalità è sempre modificabile in qualsiasi momento.</p>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnNetChange" data-open-settings>
+                        <svg class="icon" aria-hidden="true"><use href="#i-gear"/></svg><span data-en="Change mode…">Cambia modalità…</span>
+                    </button>
+                </div>
+                <div class="net-summary" id="netSummary"><span data-en="Loading...">Caricamento...</span></div>
+            </div>
+
             <div class="grid-2">
                 <div class="panel">
                     <div class="panel-header panel-header-tight">
-                        <h2 class="panel-title">Esecuzione</h2>
+                        <h2 class="panel-title" data-en="Execution">Esecuzione</h2>
                     </div>
                     <div class="form-stack">
                         <div class="field">
-                            <label for="hardware_mode">Calcolo</label>
+                            <label for="hardware_mode" data-en="Computation">Calcolo</label>
                             <select id="hardware_mode" class="input">
-                                <option value="gpu_fallback">Automatico (scheda video NVIDIA se disponibile, altrimenti processore)</option>
-                                <option value="cpu">Solo processore (CPU)</option>
-                                <option value="gpu">Scheda video NVIDIA (CUDA)</option>
+                                <option value="gpu_fallback" data-en="Automatic (NVIDIA graphics card if available, otherwise processor)">Automatico (scheda video NVIDIA se disponibile, altrimenti processore)</option>
+                                <option value="cpu" data-en="Processor only (CPU)">Solo processore (CPU)</option>
+                                <option value="gpu" data-en="NVIDIA graphics card (CUDA)">Scheda video NVIDIA (CUDA)</option>
                             </select>
                         </div>
                         <div class="field">
-                            <label for="precision">Precisione del modello principale</label>
+                            <label for="precision" data-en="Precision of the main model">Precisione del modello principale</label>
                             <select id="precision" class="input">
-                                <option value="auto">Automatica (FP32 con almeno 12 GB di RAM, altrimenti BF16)</option>
-                                <option value="fp32">FP32 – più veloce (circa 5,5 GB di RAM)</option>
-                                <option value="bf16">BF16 – metà memoria (circa 2,8 GB), più lenta sui processori meno recenti</option>
+                                <option value="auto" data-en="Automatic (FP32 with at least 12 GB of RAM, otherwise BF16)">Automatica (FP32 con almeno 12 GB di RAM, altrimenti BF16)</option>
+                                <option value="fp32" data-en="FP32 – faster (about 5.5 GB of RAM)">FP32 – più veloce (circa 5,5 GB di RAM)</option>
+                                <option value="bf16" data-en="BF16 – half the memory (about 2.8 GB), slower on older processors">BF16 – metà memoria (circa 2,8 GB), più lenta sui processori meno recenti</option>
                             </select>
-                            <div class="hint">Si applica al prossimo avvio del motore.</div>
+                            <div class="hint" data-en="Applies from the next engine start.">Si applica al prossimo avvio del motore.</div>
                         </div>
                         <div class="field">
-                            <label for="file_timeout_minutes">Tempo massimo per documento (minuti)</label>
+                            <label for="file_timeout_minutes" data-en="Maximum time per document (minutes)">Tempo massimo per documento (minuti)</label>
                             <input type="number" id="file_timeout_minutes" class="input input-narrow" min="5" max="1440" step="5" value="60">
-                            <div class="hint">Aumentalo per scansioni molto lunghe (centinaia di pagine).</div>
+                            <div class="hint" data-en="Increase it for very long scans (hundreds of pages).">Aumentalo per scansioni molto lunghe (centinaia di pagine).</div>
                         </div>
                         <label class="check-row">
                             <input type="checkbox" id="anonymize_filenames">
-                            <span>Anonimizza anche i nomi di file e cartelle in uscita (es. <code>CV_Mario_Rossi.pdf</code> → <code>CV_[PERSONA_1].pdf</code>)</span>
+                            <span data-en="Also anonymize the names of output files and folders (e.g. <code>CV_Mario_Rossi.pdf</code> → <code>CV_[PERSONA_1].pdf</code>)">Anonimizza anche i nomi di file e cartelle in uscita (es. <code>CV_Mario_Rossi.pdf</code> → <code>CV_[PERSONA_1].pdf</code>)</span>
                         </label>
                     </div>
                 </div>
 
                 <div class="panel">
                     <div class="panel-header panel-header-tight">
-                        <h2 class="panel-title">Cartelle di lavoro</h2>
+                        <h2 class="panel-title" data-en="Work folders">Cartelle di lavoro</h2>
                     </div>
                     <div class="folder-list" id="foldersList"></div>
                 </div>
@@ -484,21 +555,21 @@
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Aggiornamenti</h2>
-                        <p class="panel-desc">Solo quando Windows segnala che il computer è connesso a Internet, Germano controlla su <strong>download.germano.ai</strong> se esiste una nuova versione, la scarica, ne verifica l'integrità e la installa al successivo avvio (oppure subito, con «Installa ora»). Cartelle di lavoro, archivio delle corrispondenze e impostazioni non vengono toccati; la versione precedente resta disponibile finché la nuova non si avvia.</p>
+                        <h2 class="panel-title" data-en="Updates">Aggiornamenti</h2>
+                        <p class="panel-desc" data-en="Only when Windows reports that the computer is connected to the Internet, Germano checks <strong>download.germano.ai</strong> for a new version, downloads it, verifies its integrity and installs it at the next start (or right away, with «Install now»). Work folders, the mapping archive and the settings are not touched; the previous version stays available until the new one starts.">Solo quando Windows segnala che il computer è connesso a Internet, Germano controlla su <strong>download.germano.ai</strong> se esiste una nuova versione, la scarica, ne verifica l'integrità e la installa al successivo avvio (oppure subito, con «Installa ora»). Cartelle di lavoro, archivio delle corrispondenze e impostazioni non vengono toccati; la versione precedente resta disponibile finché la nuova non si avvia.</p>
                     </div>
                     <button type="button" class="btn btn-secondary btn-sm" id="btnUpdateCheck">
-                        <svg class="icon" aria-hidden="true"><use href="#i-retry"/></svg>Controlla ora
+                        <svg class="icon" aria-hidden="true"><use href="#i-retry"/></svg><span data-en="Check now">Controlla ora</span>
                     </button>
                 </div>
                 <div class="form-stack">
                     <label class="check-row">
                         <input type="checkbox" id="check_updates">
-                        <span>Controlla le nuove versioni quando il computer è connesso a Internet</span>
+                        <span data-en="Check for new versions when the computer is connected to the Internet">Controlla le nuove versioni quando il computer è connesso a Internet</span>
                     </label>
                     <label class="check-row">
                         <input type="checkbox" id="auto_update">
-                        <span>Scarica automaticamente gli aggiornamenti e installali al successivo avvio di Germano</span>
+                        <span data-en="Download updates automatically and install them at the next start of Germano">Scarica automaticamente gli aggiornamenti e installali al successivo avvio di Germano</span>
                     </label>
                     <div class="update-info" id="updateInfo"></div>
                 </div>
@@ -507,12 +578,12 @@
             <div class="panel">
                 <div class="panel-header">
                     <div>
-                        <h2 class="panel-title">Archivio delle corrispondenze</h2>
-                        <p class="panel-desc"><strong id="advVaultCount">0</strong> corrispondenze tra etichette e dati originali, conservate in <code>extracted/deanonymize_vault.json</code>. Il file contiene dati in chiaro: conserva la cartella del programma su un disco protetto (es. BitLocker).</p>
+                        <h2 class="panel-title" data-en="Mapping archive (Vault)">Archivio delle corrispondenze</h2>
+                        <p class="panel-desc"><span data-en="Mappings between tags and original data:">Corrispondenze tra etichette e dati originali:</span> <strong id="advVaultCount">0</strong>. <span data-en="Stored in <code>extracted/deanonymize_vault.json</code>. The file contains data in clear: keep the program folder on a protected disk (e.g. BitLocker).">Sono conservate in <code>extracted/deanonymize_vault.json</code>. Il file contiene dati in chiaro: conserva la cartella del programma su un disco protetto (es. BitLocker).</span></p>
                     </div>
                     <div class="btn-group">
                         <button type="button" class="btn btn-secondary btn-sm" id="btnShowVault">Mostra</button>
-                        <button type="button" class="btn btn-danger-outline btn-sm" id="btnClearVault">Svuota</button>
+                        <button type="button" class="btn btn-danger-outline btn-sm" id="btnClearVault" data-en="Clear">Svuota</button>
                     </div>
                 </div>
                 <div class="vault-box" id="vaultPreviewBox" hidden></div>
@@ -520,18 +591,173 @@
 
             <div class="panel">
                 <div class="panel-header">
-                    <h2 class="panel-title">Registro attività</h2>
+                    <h2 class="panel-title" data-en="Activity log">Registro attività</h2>
                     <div class="btn-group">
                         <span class="sys-usage" id="sysUsagePill">CPU 0% · RAM 0 GB</span>
-                        <button type="button" id="clearLogsBtn" class="btn btn-secondary btn-sm">Pulisci registro</button>
+                        <button type="button" id="clearLogsBtn" class="btn btn-secondary btn-sm" data-en="Clear log">Pulisci registro</button>
                     </div>
                 </div>
                 <div class="log" id="logTerminal">
-                    <div class="log-line">Nessuna attività registrata.</div>
+                    <div class="log-line" data-en="No activity recorded. Engine messages are in Italian.">Nessuna attività registrata.</div>
                 </div>
             </div>
         </section>
+
+        <!-- ============================================================== STUDIO AI -->
+        <section class="view-studio" id="studioView" aria-label="Studio AI">
+            <div class="panel studio-panel">
+                <div class="panel-header panel-header-tight">
+                    <div>
+                        <h2 class="panel-title" data-en="🧠 AI Studio">🧠 Studio AI</h2>
+                        <p class="panel-desc" data-en="Write a prompt and attach files or folders: Germano protects them with the Vault and local models &lt;strong&gt;before&lt;/strong&gt; forwarding to the AI. If the engine is stopped, no data leaves your computer.">Scrivi un prompt e allega file o cartelle: Germano li protegge con il Vault e i modelli locali <strong>prima</strong> di inoltrarli all'AI. Se il motore non è attivo nessun dato lascia il computer.</p>
+                    </div>
+                    <div class="studio-target">
+                        <label for="studioTarget" data-en="Send to">Invia a</label>
+                        <select id="studioTarget" class="input"></select>
+                        <span class="badge" id="studioTargetBadge" hidden></span>
+                    </div>
+                </div>
+
+                <div class="ai-strip" id="aiStrip" aria-live="polite">
+                    <span class="ai-strip-empty" data-en="Click &laquo;Detect AI&raquo; to scan for installed tools.">Premi «Rileva AI» per cercare gli strumenti installati.</span>
+                </div>
+
+                <div class="chat" id="studioChat">
+                    <div class="chat-hint" id="studioHint">
+                        <svg class="icon icon-xl" aria-hidden="true"><use href="#i-shield"/></svg>
+                        <p data-en="Messages appear here. Each submission shows &lt;strong&gt;what is sent to the AI&lt;/strong&gt;, already anonymized.">Qui compaiono i messaggi. Ogni invio mostra <strong>cosa viene inviato all'AI</strong>, già anonimizzato.</p>
+                    </div>
+                </div>
+
+                <div class="attach-chips" id="attachChips" hidden></div>
+
+                <form class="composer" id="studioComposer">
+                    <input type="file" id="studioFileInput" multiple hidden>
+                    <input type="file" id="studioFolderInput" webkitdirectory multiple hidden>
+                    <button type="button" class="btn-icon composer-attach" id="btnStudioAttach" title="Allega file o cartella" aria-label="Allega file o cartella">
+                        <svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>
+                    </button>
+                    <textarea id="studioPrompt" rows="1" placeholder="Scrivi il prompt. File e testo vengono protetti da Germano prima dell'invio all'AI." data-en-placeholder="Type prompt. Files and text are protected by Germano before being sent to the AI."></textarea>
+                    <button type="submit" class="btn btn-primary" id="btnStudioSend">
+                        <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><span data-en="Protect &amp; send">Proteggi e invia</span>
+                    </button>
+                </form>
+            </div>
+
+            <div class="studio-fab">
+                <button type="button" class="fab" id="btnDetectAI" title="Cerca di nuovo le AI installate" data-en-title="Scan again for installed AIs" data-en="&lt;svg class=&quot;icon&quot; aria-hidden=&quot;true&quot;&gt;&lt;use href=&quot;#i-search&quot;/&gt;&lt;/svg&gt;Detect AI">
+                    <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Rileva AI
+                </button>
+                <button type="button" class="fab fab-primary" id="btnGranularConfig" title="Modelli, sensibilità e categorie" data-en-title="Models, sensitivity and categories" data-en="&lt;svg class=&quot;icon&quot; aria-hidden=&quot;true&quot;&gt;&lt;use href=&quot;#i-sliders&quot;/&gt;&lt;/svg&gt;Granular Settings">
+                    <svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg>Configurazione Granulare
+                </button>
+            </div>
+        </section>
     </main>
+
+    <!-- Cassetto: configurazione granulare (riusa i pannelli di «Filtri e modelli») -->
+    <div class="drawer-scrim" id="configScrim" hidden></div>
+    <aside class="drawer" id="configDrawer" hidden aria-label="Configurazione granulare" aria-modal="true" role="dialog">
+        <div class="drawer-head">
+            <h2 class="panel-title" data-en="⚙️ Granular Configuration">⚙️ Configurazione Granulare</h2>
+            <button type="button" class="btn-icon" id="btnCloseConfig" title="Chiudi" aria-label="Chiudi">✕</button>
+        </div>
+        <div class="drawer-body" id="configDrawerBody"></div>
+    </aside>
+
+    <!-- Impostazioni: modalità operativa e interfaccia (alla prima apertura fa da benvenuto) -->
+    <div class="modal-scrim" id="settingsScrim" hidden></div>
+    <div class="modal" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+        <div class="modal-head">
+            <div>
+                <h2 class="modal-title" id="settingsTitle" data-en="Settings">Impostazioni</h2>
+                <p class="modal-sub" id="settingsSub" data-en="Operating mode of this computer and interface preferences.">Modalità operativa di questo computer e preferenze dell'interfaccia.</p>
+            </div>
+            <button type="button" class="btn-icon" id="btnCloseSettings" aria-label="Chiudi le Impostazioni">✕</button>
+        </div>
+        <div class="modal-body">
+            <section class="modal-section">
+                <h3 class="modal-h3" data-en="How do you want to use Germano on this computer?">Come vuoi usare Germano su questo computer?</h3>
+                <div class="mode-options" id="modeOptions">
+                    <label class="mode-card" id="cardStandalone">
+                        <input type="checkbox" id="optStandalone" checked>
+                        <span class="mode-card-body">
+                            <span class="mode-card-title" data-en="🖥️ Standalone &lt;span class=&quot;badge badge-info&quot;&gt;default&lt;/span&gt;">🖥️ Standalone <span class="badge badge-info">predefinita</span></span>
+                            <span class="mode-card-desc" data-en="Everything runs 100% on this computer, in complete isolation: Germano does not search for network servers and does not respond to network computers.">Tutto gira al 100% su questo computer, in modo isolato: Germano non cerca server in rete e non risponde ai computer della rete.</span>
+                        </span>
+                    </label>
+                    <label class="mode-card" id="cardServer">
+                        <input type="checkbox" id="optServer">
+                        <span class="mode-card-body">
+                            <span class="mode-card-title" data-en="📡 Server">📡 Server</span>
+                            <span class="mode-card-desc" data-en="Listens on the local network, responds to auto-discovery and offers the anonymization engine and Proxy to other computers (with a token). Ideal for the most powerful PC in the office.">Si mette in ascolto sulla rete locale, risponde al rilevamento automatico e offre il motore di anonimizzazione e il Proxy agli altri computer (con un token). Ideale sul PC più potente dell'ufficio.</span>
+                        </span>
+                    </label>
+                    <label class="mode-card" id="cardClient">
+                        <input type="checkbox" id="optClient">
+                        <span class="mode-card-body">
+                            <span class="mode-card-title" data-en="🌐 Client">🌐 Client</span>
+                            <span class="mode-card-desc" data-en="At startup automatically discovers a Germano Server on the network and delegates compute to it. Vault, files and mappings stay on this computer.">All'avvio cerca automaticamente in rete un Germano Server e gli affida il calcolo. Vault, file ed etichette restano su questo computer.</span>
+                        </span>
+                    </label>
+                </div>
+                <p class="mode-combo" id="modeCombo" data-en="Server and Client can be selected together: this computer offers its engine to the network and, if it finds a more powerful Germano Server, delegates compute to it.">Server e Client si possono scegliere insieme: questo computer offre il proprio motore alla rete e, se trova un Germano Server più potente, gli delega il calcolo.</p>
+
+                <div class="mode-detail" id="clientDetail" hidden>
+                    <h4 class="mode-detail-title" data-en="Connection to Germano Server">Collegamento al Germano Server</h4>
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="remoteServer" data-en="Server address">Indirizzo del server</label>
+                            <input type="text" id="remoteServer" class="input" spellcheck="false" placeholder="Automatico: ricerca in rete" data-en-placeholder="Automatic: network discovery">
+                        </div>
+                        <div class="field">
+                            <label for="remoteToken" data-en="Server token">Token del server</label>
+                            <input type="password" id="remoteToken" class="input" spellcheck="false" autocomplete="off" placeholder="Lo mostra il server nelle sue Impostazioni" data-en-placeholder="Shown by the server in its Settings">
+                        </div>
+                    </div>
+                    <div class="mode-detail-actions">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnFindServers" data-en="&lt;svg class=&quot;icon&quot; aria-hidden=&quot;true&quot;&gt;&lt;use href=&quot;#i-search&quot;/&gt;&lt;/svg&gt;Scan network for servers">
+                            <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Cerca server in rete
+                        </button>
+                        <label class="check-row">
+                            <input type="checkbox" id="clientFallback" checked>
+                            <span data-en="If no server responds, fallback to this computer's engine">Se nessun server risponde, usa il motore di questo computer</span>
+                        </label>
+                    </div>
+                    <div class="server-list" id="serverList"></div>
+                </div>
+
+                <div class="mode-detail" id="serverDetail" hidden>
+                    <h4 class="mode-detail-title" data-en="Network access">Accesso dalla rete</h4>
+                    <div class="server-info" id="serverInfo"></div>
+                </div>
+
+                <p class="mode-note" data-en="🔁 &lt;strong&gt;This mode can always be changed at any time in Settings&lt;/strong&gt; (Settings button at the top) and in &lt;em&gt;System › Network &amp; Operating Mode&lt;/em&gt;.">🔁 <strong>Questa modalità è sempre modificabile in qualsiasi momento nelle Impostazioni</strong> (pulsante «Impostazioni» in alto) e nella scheda <em>Sistema › Rete e modalità operativa</em>.</p>
+            </section>
+
+            <section class="modal-section">
+                <h3 class="modal-h3" data-en="Interface">Interfaccia</h3>
+                <div class="toggle-row">
+                    <label class="switch" for="enable_tooltips">
+                        <input type="checkbox" id="enable_tooltips" checked>
+                        <span class="switch-track"></span>
+                    </label>
+                    <div>
+                        <div class="restore-title" data-en="Tooltips">Suggerimenti (tooltips)</div>
+                        <p class="restore-desc" data-en="Hovering over buttons, folders, fields and indicators displays a brief explanation. Enabled by default.">Passando il mouse su pulsanti, cartelle, campi e indicatori compare una breve spiegazione. Attivi per impostazione predefinita.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+        <div class="modal-foot">
+            <span class="modal-msg" id="settingsMsg" aria-live="polite"></span>
+            <button type="button" class="btn btn-secondary" id="btnCancelSettings" data-en="Cancel">Annulla</button>
+            <button type="button" class="btn btn-primary" id="btnSaveSettings" data-en="Save">Salva</button>
+        </div>
+    </div>
+
+    <!-- Suggerimento al passaggio del mouse (un solo elemento riutilizzato) -->
+    <div class="g-tip" id="gTip" role="tooltip" hidden><div class="g-tip-title" id="gTipTitle"></div><div class="g-tip-text" id="gTipText"></div></div>
 
     <div id="toastContainer" class="toasts" aria-live="polite"></div>
 

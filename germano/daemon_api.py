@@ -10,10 +10,79 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import common, formats
 from .analyzer import Unit, apply_replacements
 from .engine import CancelledError, CancelToken
+from .remote_engine import API_VERSION, TEXT_SETTINGS, EngineUnavailable
 from .vault import contains_tags, restore_text
 
 MAX_BODY = 700 * 1024 * 1024
 REQUEST_TIMEOUT = 900
+ENGINE_MAX_TEXTS = 256              # motore condiviso: limiti per richiesta di un client della LAN
+ENGINE_MAX_CHARS = 2_000_000
+ENGINE_MAX_IMAGE = 80 * 1024 * 1024
+
+
+class EngineDelegated(Exception):
+    """Questo computer usa a sua volta un motore remoto: non puo' condividere il proprio (niente catene)."""
+
+
+# ------------------------------------------------------------------ motore condiviso (modalita' Server)
+# Inferenza pura sul motore locale: nessun accesso al Vault, nessuna etichetta, nessun dato salvato.
+# La cache del motore conserva solo posizioni, categorie e punteggi, mai il testo.
+def _local_engine(daemon):
+    if getattr(daemon.engine, "is_remote", False):
+        raise EngineDelegated()
+    return daemon.engine
+
+
+def handle_engine_info(daemon):
+    eng = _local_engine(daemon)
+    info = dict(getattr(eng, "info", {}) or {})
+    info.update(api=API_VERSION, engine_ready=True, engine_mode="local")
+    return info
+
+
+def handle_engine_classify(daemon, body):
+    eng = _local_engine(daemon)
+    texts = body.get("texts")
+    if not isinstance(texts, list) or len(texts) > ENGINE_MAX_TEXTS:
+        raise ValueError(f"'texts' deve essere una lista di al massimo {ENGINE_MAX_TEXTS} stringhe")
+    texts = [t if isinstance(t, str) else "" for t in texts]
+    if sum(len(t) for t in texts) > ENGINE_MAX_CHARS:
+        raise ValueError("richiesta troppo grande per il motore condiviso")
+    raw = body.get("settings") if isinstance(body.get("settings"), dict) else {}
+    # Vale la politica del client (modelli e soglia), validata come se fosse in config.json.
+    settings = {k: common._validate_value(k, raw.get(k, daemon.settings.get(k)), common.DEFAULT_SETTINGS[k])
+                for k in TEXT_SETTINGS}
+    cancel = CancelToken(deadline=time.time() + REQUEST_TIMEOUT, stop_check=daemon.should_stop)
+    res = eng.classify_many(texts, settings, cancel)
+    return {"results": [[[int(s[0]), int(s[1]), str(s[2]), float(s[3])] for s in spans] for spans in res]}
+
+
+def handle_engine_image(daemon, body, kind):
+    import base64 as b64
+    import io
+    eng = _local_engine(daemon)
+    try:
+        data = b64.b64decode(body.get("png_b64") or "", validate=True)
+    except Exception:
+        raise ValueError("immagine non valida")
+    if not data or len(data) > ENGINE_MAX_IMAGE:
+        raise ValueError("immagine mancante o troppo grande")
+    import numpy as np
+    from PIL import Image
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    if kind == "ocr":
+        out = eng.ocr(np.asarray(img))
+        return {"results": [[[[float(p[0]), float(p[1])] for p in box], str(text), float(conf)]
+                            for box, text, conf in out or []]}
+    if kind == "faces":
+        out = eng.detect_faces(np.asarray(img))
+    elif kind == "signatures":
+        out = eng.detect_signatures(img)
+    elif kind == "plates":
+        out = eng.detect_plates(img)
+    else:
+        raise ValueError("tipo di analisi sconosciuto")
+    return {"results": [[float(v) for v in b[:5]] for b in out or []]}
 
 
 class _Server(ThreadingHTTPServer):
@@ -137,6 +206,11 @@ def start_api(daemon):
                 return
             if self.path == "/internal/health":
                 self._json(200, {"status": "ok", "pid": os.getpid(), "engine": daemon.engine.info})
+            elif self.path == "/internal/engine/info":
+                try:
+                    self._json(200, handle_engine_info(daemon))
+                except EngineDelegated:
+                    self._json(409, {"error": "questo computer usa a sua volta un motore remoto", "engine_mode": "remote"})
             else:
                 self._json(404, {"error": "endpoint sconosciuto"})
 
@@ -162,12 +236,28 @@ def start_api(daemon):
                 elif self.path == "/internal/stop":
                     daemon.stop_event.set()
                     self._json(200, {"status": "ok"})
+                elif self.path == "/internal/engine/classify":
+                    self._json(200, handle_engine_classify(daemon, body))
+                elif self.path.startswith("/internal/engine/") and self.path.rsplit("/", 1)[-1] in (
+                        "ocr", "faces", "signatures", "plates"):
+                    self._json(200, handle_engine_image(daemon, body, self.path.rsplit("/", 1)[-1]))
                 else:
                     self._json(404, {"error": "endpoint sconosciuto"})
+            except EngineDelegated:
+                self._json(409, {"error": "questo computer usa a sua volta un motore remoto", "engine_mode": "remote"})
+            except EngineUnavailable as e:
+                # Modalita' Client: il server remoto non risponde. Nulla e' stato inviato al cloud.
+                self._json(503, {"error": str(e)})
             except CancelledError as e:
                 self._json(503, {"error": f"elaborazione annullata ({e.reason})"})
             except formats.UnsupportedFormat as e:
                 self._json(415, {"error": str(e)})
+            except ValueError as e:
+                if self.path.startswith("/internal/engine/"):
+                    self._json(400, {"error": str(e)})
+                else:
+                    common.log(f"API interna: errore su {self.path}: {type(e).__name__}: {e}")
+                    self._json(500, {"error": f"{type(e).__name__}: {e}"})
             except Exception as e:
                 common.log(f"API interna: errore su {self.path}: {type(e).__name__}: {e}")
                 self._json(500, {"error": f"{type(e).__name__}: {e}"})

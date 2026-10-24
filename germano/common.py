@@ -13,12 +13,17 @@ import time
 import unicodedata
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Cartella dei DATI (configurazione, stato, Vault, cartelle di lavoro, registro). Di norma coincide con la
+# cartella del programma; GERMANO_DATA_DIR permette di avviare una seconda istanza con dati separati usando
+# la stessa installazione (programma, runtime e modelli condivisi), ad esempio per provare Server e Client
+# sullo stesso computer senza copiare l'applicazione.
+DATA_DIR = os.path.abspath(os.environ.get("GERMANO_DATA_DIR") or BASE_DIR)
 
-INPUT_DIR = os.path.join(BASE_DIR, "input")
-OUTPUT_DIR = os.path.join(BASE_DIR, "output")
-PROCESSED_DIR = os.path.join(BASE_DIR, "processed")
-FAILED_DIR = os.path.join(BASE_DIR, "failed")
-EXTRACTED_DIR = os.path.join(BASE_DIR, "extracted")
+INPUT_DIR = os.path.join(DATA_DIR, "input")
+OUTPUT_DIR = os.path.join(DATA_DIR, "output")
+PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
+FAILED_DIR = os.path.join(DATA_DIR, "failed")
+EXTRACTED_DIR = os.path.join(DATA_DIR, "extracted")
 WORK_FOLDERS = {
     "input": INPUT_DIR,
     "output": OUTPUT_DIR,
@@ -27,15 +32,15 @@ WORK_FOLDERS = {
     "extracted": EXTRACTED_DIR,
 }
 
-STATE_DIR = os.path.join(BASE_DIR, "state")
-CACHE_DIR = os.path.join(BASE_DIR, "cache")
+STATE_DIR = os.path.join(DATA_DIR, "state")
+CACHE_DIR = os.path.join(BASE_DIR, "cache")      # cache dei modelli: legata al programma, non ai dati
 UPLOAD_DIR = os.path.join(STATE_DIR, "uploads")
 WORK_TMP_DIR = os.path.join(STATE_DIR, "tmp")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 VERSION_FILE = os.path.join(BASE_DIR, "VERSION")
-LOG_FILE = os.path.join(BASE_DIR, "daemon.log")
+LOG_FILE = os.path.join(DATA_DIR, "daemon.log")
 VAULT_FILE = os.path.join(EXTRACTED_DIR, "deanonymize_vault.json")
 
 DAEMON_STATE_FILE = os.path.join(STATE_DIR, "daemon.json")
@@ -74,26 +79,120 @@ DEFAULT_SETTINGS = {
     "save_proxy_logs": True,
     "check_updates": True,   # solo quando Windows segnala una connessione a Internet (germano/updater.py)
     "auto_update": True,     # scarica gli aggiornamenti e li installa al successivo avvio
-    "port": 8000,
+    "port": 8181,
+    # --- Server LAN (v0.52) ---
+    "bind_host": "127.0.0.1",   # parte Server: IP di rete su cui ascoltare (127.0.0.1 o 0.0.0.0 = tutte le schede)
+    "discovery_enabled": True,  # risponde ai ping UDP di rilevamento quando il server e' in ascolto sulla LAN
+    "discovery_port": 8182,     # porta UDP del rilevamento automatico
+    "lan_token": "",            # token richiesto ai client LAN per Proxy, Studio e motore (generato al 1o avvio Server)
+    "server_name": "",          # nome mostrato ai client nel rilevamento (vuoto = nome del computer)
+    # --- Modalita' operativa (v0.52) ---
+    "operating_mode": "standalone",  # standalone | server | client | server+client
+    "first_run_done": False,         # False: alla prima apertura la Dashboard chiede la modalita' operativa
+    "remote_server": "",             # Client: indirizzo del Germano Server (vuoto = ricerca automatica in rete)
+    "remote_token": "",              # Client: token del Germano Server remoto
+    "client_fallback_local": True,   # Client: se nessun server risponde si usa il motore di questo computer
+    "instance_id": "",               # identificativo di questa installazione (per non rilevare se stessa)
+    "instance_host": "",             # computer su cui e' stato generato instance_id
+    "enable_tooltips": True,         # suggerimenti al passaggio del mouse nella Dashboard
 }
 for _k in FEATURE_KEYS:
     DEFAULT_SETTINGS[_k] = True
 
 _BOOL_KEYS = set(FEATURE_KEYS) | {
     "enable_deanonymize", "lock_settings", "anonymize_filenames", "save_proxy_logs", "check_updates",
-    "auto_update",
+    "auto_update", "discovery_enabled", "first_run_done", "client_fallback_local", "enable_tooltips",
 }
+OPERATING_MODES = ("standalone", "server", "client", "server+client")
 _ENUM_KEYS = {
     "ui_mode": ("simple", "advanced"),
     "compliance_mode": ("PA", "PD"),
     "hardware_mode": ("gpu_fallback", "cpu", "gpu"),
     "precision": ("auto", "fp32", "bf16"),
+    "operating_mode": OPERATING_MODES,
 }
 _FLOAT_KEYS = {"ai_threshold": (0.0, 0.95)}
-_INT_KEYS = {"file_timeout_minutes": (5, 1440), "port": (1024, 65535)}
-_URL_KEYS = ("target_api_url", "target_anthropic_url")
-# Chiavi modificabili anche quando l'amministratore ha bloccato le impostazioni.
-_UNLOCKED_KEYS = {"ui_mode"}
+_INT_KEYS = {"file_timeout_minutes": (5, 1440), "port": (1024, 65535), "discovery_port": (1024, 65535)}
+_URL_KEYS = ("target_api_url", "target_anthropic_url", "remote_server")
+_HOST_KEYS = {"bind_host"}                       # 0.0.0.0, loopback o un IP letterale
+# stringhe libere (lunghezza massima)
+_STR_KEYS = {"lan_token": 128, "remote_token": 128, "server_name": 48, "instance_id": 64, "instance_host": 128}
+_TOKEN_KEYS = {"lan_token", "remote_token", "instance_id"}   # solo caratteri sicuri in URL e intestazioni
+# Chiavi modificabili anche quando l'amministratore ha bloccato le impostazioni (preferenze dell'interfaccia).
+# La modalita' operativa NO: decide se il computer si espone alla rete.
+_UNLOCKED_KEYS = {"ui_mode", "first_run_done", "enable_tooltips"}
+
+
+def mode_flags(mode):
+    """(server, client) per una modalita' operativa: 'server+client' attiva entrambe le parti."""
+    m = str(mode or "standalone").lower()
+    return ("server" in m, "client" in m)
+
+
+def effective_operating_mode(cfg=None):
+    """Modalita' in vigore per QUESTO avvio. GERMANO_MODE (es. da START_SERVER.bat) prevale sulla
+    configurazione salvata; per compatibilita' GERMANO_HOST non di loopback attiva la parte Server."""
+    forced = (os.environ.get("GERMANO_MODE") or "").strip().lower()
+    if forced in OPERATING_MODES:
+        return forced
+    mode = (cfg or {}).get("operating_mode") or "standalone"
+    if mode not in OPERATING_MODES:
+        mode = "standalone"
+    host = (os.environ.get("GERMANO_HOST") or "").strip()
+    if host and host not in ("127.0.0.1", "localhost", "::1"):
+        return "server+client" if mode_flags(mode)[1] else "server"
+    return mode
+
+
+def mode_forced_by():
+    """Origine di un'eventuale modalita' imposta all'avvio (None se vale quella salvata)."""
+    if (os.environ.get("GERMANO_MODE") or "").strip().lower() in OPERATING_MODES:
+        return "GERMANO_MODE"
+    host = (os.environ.get("GERMANO_HOST") or "").strip()
+    if host and host not in ("127.0.0.1", "localhost", "::1"):
+        return "GERMANO_HOST"
+    return None
+
+
+def discovery_port(cfg=None):
+    """Porta UDP del rilevamento, uguale per chi risponde e per chi cerca: GERMANO_DISCOVERY_PORT prevale su
+    config.json (come GERMANO_PORT per la porta HTTP)."""
+    try:
+        port = int(os.environ.get("GERMANO_DISCOVERY_PORT") or (cfg or {}).get("discovery_port") or 8182)
+    except (TypeError, ValueError):
+        return 8182
+    return port if 1024 <= port <= 65535 else 8182
+
+
+DEFAULT_SERVER_PORT = 8181
+TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")   # token di Germano Server: caratteri sicuri in URL e intestazioni
+
+
+def parse_server_url(text, default_port=DEFAULT_SERVER_PORT):
+    """Indirizzo di un Germano Server come lo scrive una persona: '192.168.1.10', '192.168.1.10:8181',
+    'http://pc-server:8181/' oppure il Base URL copiato dalla Dashboard del server ('.../g/<token>/v1').
+    Restituisce (base 'http://host:porta', token_trovato_nel_percorso | None); ValueError se non e' un indirizzo.
+    Stesse regole di Germano Client (parse_server in client.py)."""
+    import urllib.parse
+    raw = (text or "").strip()
+    if not raw or any(c.isspace() for c in raw):
+        raise ValueError(raw)
+    if "://" not in raw:
+        raw = "http://" + raw
+    u = urllib.parse.urlsplit(raw)
+    try:
+        port = u.port
+    except ValueError:
+        raise ValueError(raw) from None
+    scheme = (u.scheme or "").lower()
+    if scheme not in ("http", "https") or not u.hostname:
+        raise ValueError(raw)
+    host = f"[{u.hostname}]" if ":" in u.hostname else u.hostname
+    base = f"{scheme}://{host}:{port or (443 if scheme == 'https' else default_port)}"
+    m = re.match(r"^/g/([^/]+)", u.path or "")
+    token = m.group(1) if m and TOKEN_RE.match(m.group(1)) else None
+    return base, token
+
 
 _config_lock = threading.RLock()
 
@@ -118,7 +217,7 @@ def get_version():
                 return v
     except Exception:
         pass
-    return "0.51-alpha"
+    return "0.52-alpha"
 
 
 def ensure_dirs():
@@ -281,6 +380,27 @@ def _validate_value(key, value, current):
                 return DEFAULT_SETTINGS[key]
             if re.match(r"^https?://[^\s/$.?#][^\s]*$", s, re.I) and len(s) <= 500:
                 return s
+        return current
+    if key in _HOST_KEYS:
+        if isinstance(value, str):
+            s = value.strip()
+            if s in ("0.0.0.0", "127.0.0.1", "localhost", "::", "::1"):
+                return s
+            try:
+                import ipaddress
+                ipaddress.ip_address(s)   # accetta solo un IP letterale (niente nomi di dominio)
+                return s
+            except ValueError:
+                pass
+        return current
+    if key in _STR_KEYS:
+        if isinstance(value, str):
+            s = value.strip()[: _STR_KEYS[key]]
+            if key in _TOKEN_KEYS:
+                s = re.sub(r"[^A-Za-z0-9_\-]", "", s)   # token: solo caratteri sicuri in URL/header
+            else:
+                s = re.sub(r"[\x00-\x1f]", "", s)
+            return s
         return current
     return current
 

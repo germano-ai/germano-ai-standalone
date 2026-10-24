@@ -13,9 +13,18 @@ let serverDown = false;
 let filesSignature = '';
 let lastFilesFetch = 0;
 let foldersLoaded = false;
-let batch = { active: false, baseDone: 0, baseFailed: 0, done: 0, failed: 0, summary: null };
+let batch = { active: false, baseDone: 0, baseFailed: 0, done: 0, failed: 0, summary: null, startedAt: 0 };
 let updateInstalling = false;
 let pageVersion = null;
+let currentApp = 'batch';         // 'batch' (Anonimizza file) | 'studio' (Studio AI)
+let studioFiles = [];             // allegati in attesa di invio nello Studio
+let studioDetected = null;        // ultimo risultato di /api/ai/detect
+let configReturn = null;          // dove rimettere i pannelli di configurazione quando il cassetto si chiude
+let tooltipsEnabled = true;       // preferenza salvata (enable_tooltips): suggerimenti attivi di default
+let initialConfig = null;         // configurazione letta all'apertura (serve a riconoscere la prima apertura)
+let modeState = null;             // ultimo stato di /api/mode (modalita' operativa, rete, motore)
+let settingsWelcome = false;      // la finestra Impostazioni fa da benvenuto alla prima apertura
+let settingsDone = false;         // dopo il salvataggio in modalita' Server la finestra resta aperta per il token
 
 const VIEWS = ['work', 'agents', 'filters', 'system'];
 const ALL_MODEL_IDS = [
@@ -94,6 +103,16 @@ const FOLDER_INFO = [
     ['extracted', 'Report e archivio', 'report di audit, registri del proxy, corrispondenze']
 ];
 
+// Studio: destinazioni sempre disponibili (oltre alle CLI locali rilevate). mode: come si inoltra il testo protetto.
+const STUDIO_CLOUD_TARGETS = [
+    { id: 'deepseek', name: 'DeepSeek', mode: 'cloud' },
+    { id: 'kimi', name: 'Kimi (Moonshot)', mode: 'cloud' },
+    { id: 'qwen', name: 'Qwen (DashScope)', mode: 'cloud' },
+    { id: 'clipboard', name: 'Copia testo protetto', mode: 'clipboard' }
+];
+// Come si comporta Germano con il testo protetto, per tipo di destinazione.
+const STUDIO_TARGET_MODE = { cli: 'harness locale', app: 'harness locale', service: 'servizio locale', cloud: 'gateway cloud', clipboard: 'copia manuale' };
+
 // ------------------------------------------------------------------ UTILITÀ
 const $ = (id) => document.getElementById(id);
 
@@ -106,9 +125,42 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+const UI_STRINGS = {
+    'Motore in pausa': 'Engine paused',
+    'Motore attivo': 'Engine running',
+    'Avvio del motore...': 'Starting engine...',
+    'Arresto del motore...': 'Stopping engine...',
+    'Avvia motore': 'Start engine',
+    'Arresta motore': 'Stop engine',
+    'Germano non risponde': 'Germano is not responding',
+    'Aggiornamento in corso...': 'Updating...',
+    'In attesa': 'Pending',
+    'Pronti': 'Ready',
+    'Errori': 'Failed',
+    'Originali': 'Originals',
+    'Vault ed estratti': 'Vault & extracted',
+    'Attivo': 'Active',
+    'Disattivo': 'Inactive',
+    'Elaborazione in corso...': 'Processing in progress...',
+    'Completato': 'Completed',
+    'Nessun documento in attesa': 'No pending documents',
+    'Standalone': 'Standalone',
+    'Server': 'Server',
+    'Client': 'Client',
+    'Server + Client': 'Server + Client',
+    'Profilo PA': 'PA Profile',
+    'Profilo PD': 'PD Profile'
+};
+
 function setText(id, value) {
     const el = $(id);
-    if (el) el.textContent = value;
+    if (el) {
+        if (typeof currentLang !== 'undefined' && currentLang === 'en' && typeof value === 'string' && UI_STRINGS[value]) {
+            el.textContent = UI_STRINGS[value];
+        } else {
+            el.textContent = value;
+        }
+    }
 }
 
 function plural(n, one, many) {
@@ -180,8 +232,12 @@ async function copyText(text) {
 }
 
 function proxyBase() {
-    // sempre 127.0.0.1: alcuni strumenti risolvono "localhost" in IPv6, su cui Germano non è in ascolto
-    return `http://127.0.0.1:${location.port || '80'}`;
+    // In locale si usa 127.0.0.1 (alcuni strumenti risolvono "localhost" in IPv6, su cui Germano non è in ascolto).
+    // Se la Dashboard è aperta dalla rete, si usa l'host con cui è stata raggiunta (l'IP del server), così gli
+    // indirizzi da copiare funzionano anche dai client della LAN.
+    const h = location.hostname;
+    const host = (!h || h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1') ? '127.0.0.1' : h;
+    return `http://${host}:${location.port || '80'}`;
 }
 
 function iconSvg(name) {
@@ -224,7 +280,186 @@ function applyView(view, remember = true) {
     if (view === 'system') {
         loadFolders();
         pollLogs();
+        renderNetSummary();
     }
+}
+
+// ------------------------------------------------------------------ MODALITÀ APP (Batch / Studio)
+function applyAppMode(app, save = true) {
+    currentApp = app === 'studio' ? 'studio' : 'batch';
+    document.body.dataset.app = currentApp;
+    $('btnAppBatch')?.classList.toggle('active', currentApp === 'batch');
+    $('btnAppStudio')?.classList.toggle('active', currentApp === 'studio');
+    if (save) {
+        try { localStorage.setItem('germano_app', currentApp); } catch (e) { /* archivio non disponibile */ }
+    }
+    if (currentApp === 'studio') {
+        window.scrollTo(0, 0);
+        if (!studioDetected) detectAI(false);
+        if (!$('studioTarget').options.length) populateStudioTargets();
+    }
+}
+
+// ------------------------------------------------------------------ RILEVAMENTO AI (Studio)
+function aiChip(t) {
+    const ver = t.version ? ` <span class="ai-ver">${escapeHtml(t.version)}</span>` : '';
+    const mark = t.detected ? ' ✓' : '';
+    const where = t.path || (t.detected ? '' : 'non rilevato');   // dalla rete il server non comunica i percorsi
+    return `<span class="ai-chip ${t.detected ? 'on' : ''}" title="${escapeHtml(where)}"><span class="dot"></span>${escapeHtml(t.name)}${ver}${mark}</span>`;
+}
+
+function populateStudioTargets() {
+    const sel = $('studioTarget');
+    if (!sel) return;
+    const prev = sel.value;
+    const detected = (studioDetected || []).filter(t => t.detected && (t.kind === 'cli' || t.kind === 'app'));
+    const opts = detected.map(t => `<option value="${escapeHtml(t.id)}" data-kind="${t.kind}">${escapeHtml(t.name)}</option>`);
+    opts.push(...STUDIO_CLOUD_TARGETS.map(t => `<option value="${t.id}" data-kind="clipboard">${escapeHtml(t.name)}</option>`));
+    sel.innerHTML = opts.join('');
+    if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    updateStudioTargetBadge();
+}
+
+function updateStudioTargetBadge() {
+    const sel = $('studioTarget');
+    const badge = $('studioTargetBadge');
+    if (!sel || !badge) return;
+    const opt = sel.selectedOptions[0];
+    const kind = opt ? opt.dataset.kind : 'clipboard';
+    const label = STUDIO_TARGET_MODE[kind] || '';
+    badge.textContent = label;
+    badge.hidden = !label;
+}
+
+async function detectAI(force) {
+    const strip = $('aiStrip');
+    if (strip && force) strip.innerHTML = '<span class="ai-strip-empty">Ricerca in corso…</span>';
+    try {
+        const { ok, data } = await fetchJson('/api/ai/detect' + (force ? '?refresh=1' : ''));
+        if (!ok || !data.tools) return;
+        studioDetected = data.tools;
+        const found = data.tools.filter(t => t.detected);
+        if (strip) {
+            strip.innerHTML = found.length
+                ? found.map(aiChip).join('')
+                : '<span class="ai-strip-empty">Nessuna AI o CLI rilevata su questo computer.</span>';
+        }
+        populateStudioTargets();
+        if (force) showToast(`Rilevate ${plural(found.length, 'AI', 'AI')} su questo computer.`, found.length ? 'success' : 'info', 3000);
+    } catch (e) {
+        if (strip) strip.innerHTML = '<span class="ai-strip-empty">Rilevamento non riuscito.</span>';
+    }
+}
+
+// ------------------------------------------------------------------ STUDIO AI: allegati e invio
+function renderAttachChips() {
+    const box = $('attachChips');
+    if (!box) return;
+    box.hidden = studioFiles.length === 0;
+    box.innerHTML = studioFiles.map((f, i) =>
+        `<span class="attach-chip">${iconSvg('i-files')}${escapeHtml(f.name)} <small>(${formatBytes(f.size)})</small>` +
+        `<button type="button" data-remove-attach="${i}" title="Rimuovi" aria-label="Rimuovi allegato">✕</button></span>`
+    ).join('');
+}
+
+function addStudioFiles(fileList) {
+    for (const file of fileList) {
+        if (studioFiles.length >= 12) { showToast('Massimo 12 allegati per invio.', 'warn'); break; }
+        studioFiles.push(file);
+    }
+    renderAttachChips();
+}
+
+function appendStudioMessage(role, html) {
+    const chat = $('studioChat');
+    if (!chat) return null;
+    $('studioHint')?.remove();
+    const msg = document.createElement('div');
+    msg.className = `msg msg-${role}`;
+    msg.innerHTML = html;
+    chat.appendChild(msg);
+    chat.scrollTop = chat.scrollHeight;
+    return msg;
+}
+
+async function sendStudio() {
+    const promptEl = $('studioPrompt');
+    const prompt = (promptEl.value || '').trim();
+    if (!prompt && !studioFiles.length) { showToast('Scrivi un prompt o allega un file.', 'error'); return; }
+
+    const target = $('studioTarget').value || 'clipboard';
+    const targetName = $('studioTarget').selectedOptions[0]?.textContent || target;
+    const fileNames = studioFiles.map(f => f.name);
+    appendStudioMessage('user',
+        `<div class="msg-bubble">${escapeHtml(prompt) || '<em>(solo allegati)</em>'}</div>` +
+        (fileNames.length ? `<div class="msg-meta">${iconSvg('i-files')} ${fileNames.map(escapeHtml).join(', ')}</div>` : ''));
+
+    const fd = new FormData();
+    fd.append('prompt', prompt);
+    fd.append('target', target);
+    studioFiles.forEach(f => fd.append('files', f, f.name));
+
+    const btn = $('btnStudioSend');
+    btn.disabled = true;
+    const waiting = appendStudioMessage('germano', `<div class="msg-bubble"><span class="spinner"></span> Protezione in corso…</div>`);
+    promptEl.value = '';
+    promptEl.style.height = 'auto';
+    studioFiles = [];
+    renderAttachChips();
+
+    try {
+        const r = await fetch('/api/studio/send', { method: 'POST', body: fd });
+        const data = await r.json().catch(() => ({}));
+        waiting?.remove();
+        if (r.status === 503 || data.status === 'blocked') {
+            appendStudioMessage('germano',
+                `<div class="msg-bubble blocked">⛔ ${escapeHtml(data.message || 'Motore non attivo: nessun dato è uscito dal computer.')}</div>` +
+                `<div class="msg-actions"><button type="button" class="btn btn-primary btn-sm" data-studio-start>Avvia motore</button></div>`);
+            return;
+        }
+        if (!r.ok || data.status !== 'success') {
+            appendStudioMessage('germano', `<div class="msg-bubble blocked">⚠️ ${escapeHtml(data.message || 'Protezione non riuscita.')}</div>`);
+            return;
+        }
+        const labels = (data.labels || []).map(l => `<span class="msg-label">${escapeHtml(l)}</span>`).join('');
+        const nonTextual = (data.attachments || []).filter(a => !a.textual).map(a => a.name);
+        const note = nonTextual.length
+            ? `<div class="msg-meta">ℹ️ Allegati non testuali (es. immagini): ${nonTextual.map(escapeHtml).join(', ')} — usa «Anonimizza file» per oscurarli.</div>` : '';
+        const m = appendStudioMessage('germano',
+            `<div class="msg-meta">🛡️ Protetto da Germano · ${plural(data.entity_count || 0, 'dato oscurato', 'dati oscurati')} · pronto per <strong>${escapeHtml(targetName)}</strong></div>` +
+            (labels ? `<div class="msg-labels">${labels}</div>` : '') +
+            `<div class="msg-bubble protected">${escapeHtml(data.composed || '')}</div>` +
+            note +
+            `<div class="msg-actions">` +
+            `<button type="button" class="btn btn-secondary btn-sm" data-copy-protected>${iconSvg('i-copy')}Copia testo protetto</button>` +
+            `</div>`);
+        if (m) m._protected = data.composed || '';
+    } catch (e) {
+        waiting?.remove();
+        appendStudioMessage('germano', `<div class="msg-bubble blocked">⚠️ Errore di comunicazione con Germano.</div>`);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ------------------------------------------------------------------ CASSETTO CONFIGURAZIONE GRANULARE
+function openConfigDrawer() {
+    const body = $('configDrawerBody');
+    const filters = document.querySelector('.view-filters');
+    if (!body || !filters) return;
+    configReturn = { parent: filters, nodes: Array.from(filters.children) };
+    configReturn.nodes.forEach(n => body.appendChild(n));   // sposta i pannelli reali: stesse id, stessi eventi
+    $('configScrim').hidden = false;
+    $('configDrawer').hidden = false;
+}
+
+function closeConfigDrawer() {
+    if (configReturn) {
+        configReturn.nodes.forEach(n => configReturn.parent.appendChild(n));
+        configReturn = null;
+    }
+    $('configScrim').hidden = true;
+    $('configDrawer').hidden = true;
 }
 
 // ------------------------------------------------------------------ IMPOSTAZIONI
@@ -289,7 +524,8 @@ function gatherSettings() {
         file_timeout_minutes: parseInt(val('file_timeout_minutes', '60'), 10) || 60,
         anonymize_filenames: $('anonymize_filenames')?.checked ?? false,
         check_updates: $('check_updates')?.checked ?? true,
-        auto_update: $('auto_update')?.checked ?? true
+        auto_update: $('auto_update')?.checked ?? true,
+        enable_tooltips: tooltipsEnabled
     };
     ALL_MODEL_IDS.forEach(k => { out[k] = $(k)?.checked ?? true; });
     ALL_CATEGORY_IDS.forEach(k => { out[k] = $(k)?.checked ?? true; });
@@ -320,6 +556,8 @@ function applySettingsToUi(cfg) {
     $('anonymize_filenames').checked = Boolean(cfg.anonymize_filenames);
     $('check_updates').checked = cfg.check_updates !== false;
     $('auto_update').checked = cfg.auto_update !== false;
+    tooltipsEnabled = cfg.enable_tooltips !== false;
+    Tips.setEnabled(tooltipsEnabled);
     updatePresetButtons();
 }
 
@@ -344,6 +582,7 @@ async function loadInitialSettings() {
     try {
         const { ok, data } = await fetchJson('/api/settings');
         if (!ok) return;
+        initialConfig = data;
         applySettingsToUi(data);
         applyUiMode(data.ui_mode || 'simple', false);
     } catch (e) { /* server non raggiungibile: gestito da pollStatus */ }
@@ -537,6 +776,14 @@ function renderCounts(stats) {
     document.querySelector('.tab-failed')?.classList.toggle('has-items', stats.failed > 0);
     $('kpiPending').classList.toggle('attention', stats.pending > 0 && !engineActive());
 
+    // Card cartelle (vista Elaborazione)
+    setText('fcInput', stats.pending);
+    setText('fcOutput', stats.outputs);
+    setText('fcFailed', stats.failed);
+    setText('fcProcessed', stats.processed);
+    setText('fcExtracted', stats.extracted ?? 0);
+    document.querySelector('.folder-card.fc-fail')?.classList.toggle('has-items', stats.failed > 0);
+
     const cta = stats.pending > 0 && (currentStatus === 'stopped' || currentStatus === 'error');
     $('pendingCta').hidden = !cta;
     setText('pendingCtaText', stats.pending === 1
@@ -557,7 +804,7 @@ function updateBatch(data, pending, running, working) {
         batch.baseFailed = failed;
     }
     if (!batch.active && (pending > 0 || working)) {
-        batch = { active: true, baseDone: done, baseFailed: failed, done: 0, failed: 0, summary: null };
+        batch = { active: true, baseDone: done, baseFailed: failed, done: 0, failed: 0, summary: null, startedAt: Date.now() };
     }
     if (!batch.active) return;
     batch.done = done - batch.baseDone;
@@ -639,6 +886,34 @@ function renderSystem(data) {
     setText('sysUsagePill', t);
 }
 
+function renderLiveStats(data) {
+    const stats = data.stats || {};
+    const pending = stats.pending || 0;
+    const processed = batch.active ? batch.done + batch.failed : 0;
+    const total = batch.active ? processed + pending : 0;
+    setText('lsDone', processed);
+    setText('lsTotal', total);
+    // PII oscurate: somma dei dati oscurati nei documenti pronti (dato reale, da /api/files)
+    const pii = (cachedFiles.output || []).reduce((s, it) => s + (typeof it.entities === 'number' ? it.entities : 0), 0);
+    setText('lsPii', pii);
+    // Throughput: documenti al minuto nel lotto in corso
+    let tput = 0;
+    if (batch.active && batch.startedAt) {
+        const mins = (Date.now() - batch.startedAt) / 60000;
+        if (mins > 0.05) tput = Math.round(processed / mins);
+    }
+    setText('lsThroughput', tput);
+    if (data.system) {
+        setText('lsCpu', data.system.cpu_percent);
+        setText('lsRam', data.system.ram_percent);
+    }
+    const lp = $('liveProgress');
+    if (lp) {
+        lp.hidden = !batch.active;
+        if (batch.active) $('liveProgressBar').style.width = `${total ? Math.round((100 * processed) / total) : 0}%`;
+    }
+}
+
 async function pollStatus() {
     let data;
     try {
@@ -678,6 +953,8 @@ async function pollStatus() {
     }
     renderJob(data);
     renderSystem(data);
+    renderLiveStats(data);
+    renderModeChip(data);
 }
 
 // ------------------------------------------------------------------ DOCUMENTI
@@ -1049,16 +1326,895 @@ async function anonymizeText() {
     }
 }
 
+// ------------------------------------------------------------------ SUGGERIMENTI (TOOLTIPS)
+// Un suggerimento per ogni elemento dell'interfaccia: [selettore, titolo, testo]. Titolo e testo possono essere
+// funzioni (elemento, titolo_nativo) => stringa per i contenuti che dipendono dall'elemento. Hanno la precedenza
+// gli attributi data-tip / data-tip-title; i "title" nativi diventano suggerimenti (mai due finestrelle insieme).
+const NOTE_CINA = ' Server in Cina: i dati, anche se pseudonimizzati, escono dall\'Unione Europea verso un Paese senza ' +
+    'decisione di adeguatezza. Verifica con il DPO prima di usarlo con dati della PA.';
+const optTitle = (el) => (el.querySelector('.option-title')?.childNodes[0]?.textContent || '').trim();
+const TIPS = [
+    // --- intestazione
+    ['.brand', 'Germano AI', 'Torna alla pagina iniziale della Dashboard.'],
+    ['#btnAppBatch', '📂 Anonimizza file', 'Elaborazione in blocco di documenti (PDF, Word, Excel, immagini, e-mail): i risultati vanno nella cartella output.'],
+    ['#btnAppStudio', '🧠 Studio AI', 'Scrivi un prompt e allega file: Germano li anonimizza prima dell\'invio a un\'AI e ti mostra esattamente cosa viene inviato.'],
+    ['#btnModeSimple', 'Modalità Semplice', 'Solo le funzioni essenziali: aggiungi documenti, segui l\'avanzamento, scarica i risultati.'],
+    ['#btnModeAdvanced', 'Modalità Avanzata', 'Aggiunge le schede Agenti AI e API, Filtri e modelli, Sistema e registro.'],
+    ['#profilePill', 'Profilo di protezione', (el, n) => n || 'PA: tutti i modelli e tutte le categorie con sensibilità massima. PD: configurazione personalizzata.'],
+    ['#engineStatusPill', 'Stato del motore', () => {
+        let t = 'Il motore esegue i modelli di anonimizzazione. Verde = attivo, giallo = in avvio, grigio = in pausa, rosso = fermo per errore.';
+        const eng = (lastStatus && lastStatus.running && lastStatus.engine) || null;
+        if (eng && eng.mode === 'remote') t += ` Calcolo affidato al Germano Server «${eng.server_name || eng.server}» (${eng.server}).`;
+        else if (eng && eng.device) t += ` Calcolo su ${String(eng.device).toUpperCase()}${eng.precision ? `, precisione ${String(eng.precision).toUpperCase()}` : ''}.`;
+        return t;
+    }],
+    ['#modeChip', 'Modalità operativa', (el) => `Questo computer è in modalità «${(el.textContent || '').trim()}». Clicca per scegliere Standalone, Server, Client o Server + Client.`],
+    ['#mainToggleBtn', 'Avvia / arresta il motore', 'Avvia il motore per elaborare i documenti e proteggere le richieste del Proxy. A motore fermo il Proxy blocca ogni richiesta: nessun dato esce in chiaro.'],
+    ['#btnSettings', 'Impostazioni', 'Modalità operativa (Standalone, Server, Client) e preferenze dell\'interfaccia, compresi questi suggerimenti.'],
+    ['#btnOpenGuide', 'Guida', 'Manuale d\'uso e documentazione tecnica, consultabili offline in una nuova scheda.'],
+    ['.view-tab[data-view="work"]', 'Elaborazione', 'Cartelle di lavoro, aggiunta di documenti, avanzamento e risultati.'],
+    ['.view-tab[data-view="agents"]', 'Agenti AI e API', 'Indirizzi del Proxy per Claude Code, Codex, Cursor e altri strumenti, servizi di destinazione ed esempi delle API REST.'],
+    ['.view-tab[data-view="filters"]', 'Filtri e modelli', 'Profilo di protezione, sensibilità, modelli di analisi attivi e categorie di dati da oscurare.'],
+    ['.view-tab[data-view="system"]', 'Sistema e registro', 'Rete e modalità operativa, esecuzione, cartelle, aggiornamenti, archivio delle corrispondenze e registro attività.'],
+    // --- avvisi
+    ['#retryEngineBtn', 'Riprova', 'Riavvia il motore dopo l\'errore indicato.'],
+    ['#killOrphansBtn', 'Chiudi processi secondari', 'Chiude i processi del motore rimasti aperti da una sessione precedente e libera memoria.'],
+    ['#btnUpdateDownload', 'Scarica aggiornamento', 'Scarica la nuova versione da download.germano.ai e ne verifica l\'integrità.'],
+    ['#btnUpdateInstall', 'Installa ora', 'Chiude Germano, installa l\'aggiornamento e lo riapre. Cartelle, archivio e impostazioni non vengono toccati.'],
+    ['#btnUpdateAck', 'Chiudi avviso', 'Nasconde questo messaggio.'],
+    // --- cartelle e statistiche
+    ['.folder-card[data-open-folder="input"]', '📥 In attesa — cartella input', 'Documenti da elaborare. Clicca per aprire la cartella in Esplora file: puoi copiarci dentro file e intere cartelle.'],
+    ['.folder-card[data-open-folder="output"]', '✅ Pronti — cartella output', 'Documenti anonimizzati, con la stessa struttura di sottocartelle degli originali. Clicca per aprirla in Esplora file.'],
+    ['.folder-card[data-open-folder="failed"]', '⚠️ Errori — cartella failed', 'Documenti che non è stato possibile elaborare; il motivo è nella tabella «Non riusciti». Clicca per aprire la cartella.'],
+    ['.folder-card[data-open-folder="processed"]', '🗂️ Originali — cartella processed', 'Gli originali vengono spostati qui dopo l\'elaborazione. Clicca per aprire la cartella.'],
+    ['.folder-card[data-open-folder="extracted"]', '🔐 Vault ed estratti — cartella extracted', 'Archivio delle corrispondenze etichetta ↔ dato reale, report di audit e registri. Contiene dati in chiaro: conservala su un disco protetto (es. BitLocker).'],
+    ['.ls:has(#lsDone)', 'Documenti del lotto', 'Documenti già elaborati sul totale del lotto in corso.'],
+    ['.ls:has(#lsPii)', 'Dati personali oscurati', 'Totale dei dati personali sostituiti con etichette nei documenti pronti.'],
+    ['.ls:has(#lsThroughput)', 'Velocità', 'Documenti elaborati al minuto nel lotto in corso.'],
+    ['.ls:has(#lsCpu)', 'Processore', 'Uso attuale del processore di questo computer.'],
+    ['.ls:has(#lsRam)', 'Memoria', 'Uso attuale della memoria RAM di questo computer.'],
+    ['#liveProgress', 'Avanzamento del lotto', 'Quota di documenti già elaborati nel lotto in corso.'],
+    ['#protectDropzone', 'Aggiungi documenti', 'Trascina qui file o intere cartelle: vengono copiati nella cartella input ed elaborati dal motore.'],
+    ['#btnPickFiles', 'Seleziona file', 'Scegli uno o più documenti da anonimizzare.'],
+    ['#btnPickFolder', 'Seleziona cartella', 'Aggiungi un\'intera cartella: la struttura delle sottocartelle viene mantenuta in output.'],
+    ['.btn[data-open-folder="input"]', 'Apri cartella input', 'Apre in Esplora file la cartella dei documenti da elaborare.'],
+    ['.btn[data-open-folder="output"]', 'Apri cartella output', 'Apre in Esplora file la cartella dei documenti anonimizzati.'],
+    ['#kpiPending', 'In attesa', 'Mostra nella tabella i documenti ancora da elaborare.'],
+    ['#kpiOutput', 'Pronti', 'Mostra nella tabella i documenti già anonimizzati.'],
+    ['#kpiFailed', 'Non riusciti', 'Mostra nella tabella i documenti non elaborati, con il motivo.'],
+    ['#currentJob', 'Lavorazione in corso', 'Documento in elaborazione, fase attuale e avanzamento del lotto.'],
+    ['#btnStartFromCta', 'Avvia elaborazione', 'Avvia il motore per elaborare i documenti in attesa.'],
+    ['.restore-row .switch', 'Ripristino automatico dei dati', 'Le etichette sono numerate e le corrispondenze restano nell\'archivio locale: quando un testo o un file restituito dall\'AI le contiene, i dati originali tornano al loro posto. Disattivato: anonimizzazione irreversibile.'],
+    // --- documenti
+    ['.tab[data-folder="output"]', 'Pronti', 'Documenti anonimizzati (o ripristinati) disponibili nella cartella output.'],
+    ['.tab[data-folder="input"]', 'In attesa', 'Documenti nella cartella input, in coda o in lavorazione.'],
+    ['.tab[data-folder="failed"]', 'Non riusciti', 'Documenti non elaborati, con il motivo e il pulsante per rimetterli in coda.'],
+    ['.tab[data-folder="processed"]', 'Originali', 'Documenti originali archiviati dopo l\'elaborazione.'],
+    ['#fileFilter', 'Filtro', 'Mostra solo i documenti il cui nome, cartella o motivo contiene il testo scritto.'],
+    ['#btnRetryAll', 'Rimetti tutti in coda', 'Sposta di nuovo nella cartella input tutti i documenti non riusciti.'],
+    ['#btnOpenCurrentFolder', 'Apri cartella', 'Apre in Esplora file la cartella della scheda selezionata.'],
+    ['#btnExportCsv', 'Esporta elenco', 'Scarica l\'elenco in formato CSV (si apre con Excel; separatore «;»).'],
+    ['[data-action="open"]', 'Apri', 'Apre il documento con il programma predefinito di Windows.'],
+    ['[data-action="reveal"]', 'Mostra nella cartella', 'Apre Esplora file con il documento selezionato.'],
+    ['[data-action="retry"]', 'Rimetti in coda', 'Sposta il documento di nuovo nella cartella input per elaborarlo un\'altra volta.'],
+    ['.row-actions a[download]', 'Scarica una copia', 'Scarica una copia del documento tramite il browser.'],
+    // --- testo
+    ['#manualInputText', 'Testo', 'Incolla un testo da anonimizzare, oppure la risposta di un\'AI con etichette come [PERSONA_1] da ripristinare.'],
+    ['#anonymizeTextBtn', 'Anonimizza testo', 'Sostituisce i dati personali con etichette numerate, pronte da inviare a un servizio di AI.'],
+    ['#manualOutputText', 'Risultato', 'Testo anonimizzato oppure ripristinato con i dati originali.'],
+    ['#copyTextBtn', 'Copia risultato', 'Copia il risultato negli appunti.'],
+    // --- agenti AI e API
+    ['#proxyStatus', 'Stato del Proxy', 'Il Proxy protegge le richieste solo con il motore attivo; altrimenti le blocca e nessun dato esce in chiaro.'],
+    ['.endpoint:has(#openaiBase)', 'Indirizzo formato OpenAI', 'Base URL da impostare negli strumenti compatibili OpenAI (Chat Completions e Responses).'],
+    ['.endpoint:has(#anthropicBase)', 'Indirizzo formato Anthropic', 'Base URL per Claude Code e gli SDK Anthropic (variabile ANTHROPIC_BASE_URL).'],
+    ['#target_api_url', 'Servizio OpenAI o compatibile', 'Indirizzo a cui il Proxy inoltra le richieste in formato OpenAI dopo averle anonimizzate.'],
+    ['#target_anthropic_url', 'Servizio Anthropic (Claude)', 'Indirizzo a cui il Proxy inoltra le richieste in formato Anthropic dopo averle anonimizzate.'],
+    ['.preset-target', (el) => `Preimposta: ${(el.textContent || '').trim()}`, (el) => {
+        const url = el.dataset.url || '';
+        let t = `Imposta come servizio di destinazione in formato OpenAI: ${url}. La chiave API resta quella del servizio, inserita nel tuo strumento.`;
+        if (/deepseek\.com|moonshot\.cn|dashscope\.aliyuncs\.com/i.test(url)) t += NOTE_CINA;
+        if (/127\.0\.0\.1|localhost/i.test(url)) t += ' Modelli eseguiti su questo computer con Ollama: nessun dato esce in rete.';
+        return t;
+    }],
+    // --- filtri e modelli
+    ['#btnPresetPA', 'Tutto attivo (profilo PA)', 'Attiva tutti i modelli e tutte le categorie con sensibilità massima.'],
+    ['#btnPresetEssential', 'Solo dati essenziali', 'Oscura soltanto nomi, indirizzi, codici fiscali e partite IVA, email e telefoni.'],
+    ['#btnPresetNone', 'Nessuna categoria', 'Disattiva tutte le categorie: non viene oscurato alcun dato.'],
+    ['.field-range:has(#ai_threshold)', 'Sensibilità dei modelli', 'Soglia 0% = si oscura ogni possibile dato personale. Alzandola si riducono i falsi positivi, ma alcuni dati incerti possono restare in chiaro.'],
+    ['#btnModelsAllOn', 'Attiva tutti i modelli', 'Usa tutti i modelli locali e le regole deterministiche.'],
+    ['#btnModelsAllOff', 'Disattiva tutti i modelli', 'Nessun modello di analisi: verrebbe oscurato poco o nulla.'],
+    ['.option:has(.model-check)', optTitle, (el) => `${(el.querySelector('.option-desc')?.textContent || '').trim()} Clicca per attivare o disattivare il modello.`],
+    ['.option:has(.cat-check)', optTitle, (el) => `Etichetta usata nei documenti: ${(el.querySelector('.option-desc')?.textContent || '').trim()}. Clicca per oscurare o lasciare in chiaro questa categoria.`],
+    // --- sistema
+    ['#btnNetChange', 'Cambia modalità', 'Apre le Impostazioni per scegliere Standalone, Server, Client o Server + Client.'],
+    ['#netSummary', 'Rete e modalità operativa', 'Stato attuale: ascolto sulla rete, collegamento al Germano Server e token per i client.'],
+    ['.field:has(#hardware_mode)', 'Calcolo', 'Automatico usa una scheda video NVIDIA se presente, altrimenti il processore.'],
+    ['.field:has(#precision)', 'Precisione del modello', 'FP32 è più veloce ma usa più memoria; BF16 la dimezza ed è più lento sui processori meno recenti. Vale dal prossimo avvio del motore.'],
+    ['.field:has(#file_timeout_minutes)', 'Tempo massimo per documento', 'Oltre questo tempo il documento viene interrotto e spostato tra i non riusciti.'],
+    ['.check-row:has(#anonymize_filenames)', 'Anonimizza i nomi dei file', 'Anche i nomi di file e cartelle in uscita vengono anonimizzati (es. CV_[PERSONA_1].pdf).'],
+    ['.check-row:has(#check_updates)', 'Controllo aggiornamenti', 'Solo quando Windows segnala una connessione a Internet, Germano controlla se esiste una nuova versione.'],
+    ['.check-row:has(#auto_update)', 'Aggiornamento automatico', 'Scarica gli aggiornamenti e li installa al successivo avvio di Germano.'],
+    ['#btnUpdateCheck', 'Controlla ora', 'Controlla subito se è disponibile una nuova versione.'],
+    ['#btnShowVault', 'Mostra archivio', 'Mostra le corrispondenze tra etichette e dati originali (dati in chiaro).'],
+    ['#btnClearVault', 'Svuota archivio', 'Cancella tutte le corrispondenze: i documenti già anonimizzati non potranno più essere ripristinati.'],
+    ['#sysUsagePill', 'Risorse del computer', 'Uso del processore e della memoria; a seguire la precisione del modello principale.'],
+    ['#clearLogsBtn', 'Pulisci registro', 'Svuota il registro attività visualizzato.'],
+    ['#logTerminal', 'Registro attività', 'Messaggi del motore in tempo reale: elaborazioni, avvisi ed errori.'],
+    ['.folder-row [data-open-folder]', 'Apri', 'Apre la cartella in Esplora file di Windows.'],
+    // --- Studio AI
+    ['#studioTarget', 'Destinazione', 'Dove inviare il testo protetto: una CLI rilevata su questo computer oppure la copia negli appunti.'],
+    ['#aiStrip', 'AI rilevate', 'AI e CLI trovate su questo computer leggendo il disco e le porte locali, senza avviare programmi né usare la rete.'],
+    ['.ai-chip', (el) => (el.textContent || '').replace('✓', '').trim(), (el, n) => {
+        if (!el.classList.contains('on')) return 'Non trovata su questo computer.';
+        return n ? `Installata in: ${n}` : 'Installata sul computer che esegue Germano.';
+    }],
+    ['#btnStudioAttach', 'Allega file', 'Il testo degli allegati viene estratto e anonimizzato insieme al prompt (le immagini vanno elaborate con «Anonimizza file»).'],
+    ['#studioPrompt', 'Prompt', 'Scrivi la richiesta. Invio = invia, Maiusc+Invio = a capo. Il testo viene protetto prima dell\'invio.'],
+    ['#btnStudioSend', 'Proteggi e invia', 'Anonimizza prompt e allegati con il motore e mostra esattamente cosa riceverà l\'AI.'],
+    ['#btnDetectAI', 'Rileva AI', 'Cerca di nuovo le AI e le CLI installate su questo computer.'],
+    ['#btnGranularConfig', 'Configurazione granulare', 'Apre in un pannello laterale profilo di protezione, modelli e categorie di dati.'],
+    ['[data-copy-protected]', 'Copia testo protetto', 'Copia negli appunti il testo anonimizzato, pronto da incollare nell\'AI.'],
+    ['[data-studio-start]', 'Avvia motore', 'Avvia il motore: senza motore nessun dato viene inviato.'],
+    ['.attach-chip button', 'Rimuovi allegato', 'Toglie questo file dall\'invio.'],
+    ['#btnCloseConfig', 'Chiudi', 'Chiude il pannello di configurazione.'],
+    // --- Impostazioni e modalità operativa
+    ['#cardStandalone', 'Standalone', 'Disattiva Server e Client: Germano lavora solo su questo computer, senza alcuna attività di rete.'],
+    ['#cardServer', 'Server', 'Al primo avvio Windows può chiedere di consentire Python sulle reti private: rispondi Consenti, altrimenti gli altri computer non raggiungono il server.'],
+    ['#cardClient', 'Client', 'Serve il token che il Germano Server mostra nelle sue Impostazioni (sezione «Accesso dalla rete»).'],
+    ['.field:has(#remoteServer)', 'Indirizzo del server', 'Lascia vuoto per la ricerca automatica in rete, oppure scrivi ad esempio http://192.168.1.10:8181.'],
+    ['.field:has(#remoteToken)', 'Token del server', 'Lo trovi sul server in Impostazioni › Accesso dalla rete, oppure nella sua finestra all\'avvio.'],
+    ['#btnFindServers', 'Cerca server in rete', 'Invia un breve messaggio di rilevamento (UDP 8182) sulla rete locale ed elenca i Germano Server che rispondono.'],
+    ['.check-row:has(#clientFallback)', 'Ripiego sul motore locale', 'Se nessun server risponde, i modelli vengono caricati su questo computer (serve più memoria). Disattivato: i documenti restano in coda finché il server non risponde.'],
+    ['.server-row', 'Usa questo server', 'Imposta questo Germano Server come destinazione della modalità Client.'],
+    ['[data-regen-token]', 'Nuovo token', 'Genera un nuovo token: quello attuale smette subito di funzionare e va aggiornato su tutti i client.'],
+    ['.toggle-row .switch', 'Suggerimenti', 'Attiva o disattiva queste spiegazioni al passaggio del mouse.'],
+    ['#btnSaveSettings', 'Salva', 'Applica subito la modalità scelta: l\'ascolto sulla rete si accende o si spegne senza riavviare Germano.'],
+    ['#btnCancelSettings', 'Annulla', 'Chiude senza modificare nulla.'],
+    ['#btnCloseSettings', 'Chiudi', 'Chiude le Impostazioni.'],
+];
+
+
+const TIPS_EN = {
+    // --- header
+    '.brand': ['Germano AI', 'Return to the Dashboard home page.'],
+    '#btnAppBatch': ['📂 Anonymize files', 'Batch processing of documents (PDF, Word, Excel, images, email): results are placed in the output folder.'],
+    '#btnAppStudio': ['🧠 AI Studio', 'Write a prompt and attach files: Germano anonymizes them before sending to an AI and shows you exactly what is sent.'],
+    '#btnModeSimple': ['Simple Mode', 'Only essential features: add documents, monitor progress, download ready files.'],
+    '#btnModeAdvanced': ['Advanced Mode', 'Adds AI Agents & APIs, Filters & Models, System & Log tabs.'],
+    '#profilePill': ['Protection profile', (el, n) => n || 'PA: all models and categories with maximum sensitivity. PD: custom configuration.'],
+    '#engineStatusPill': ['Engine status', () => {
+        let t = 'The engine runs anonymization models. Green = active, yellow = starting, gray = paused, red = error.';
+        const eng = (lastStatus && lastStatus.running && lastStatus.engine) || null;
+        if (eng && eng.mode === 'remote') t += ` Computing delegated to Germano Server «${eng.server_name || eng.server}» (${eng.server}).`;
+        else if (eng && eng.device) t += ` Running on ${String(eng.device).toUpperCase()}${eng.precision ? `, precision ${String(eng.precision).toUpperCase()}` : ''}.`;
+        return t;
+    }],
+    '#modeChip': ['Operating mode', (el) => `This computer is in «${(el.textContent || '').trim()}» mode. Click to choose Standalone, Server, Client, or Server + Client.`],
+    '#mainToggleBtn': ['Start / stop engine', 'Starts the engine to process documents and protect Proxy requests. While stopped, the Proxy blocks all requests: zero data leaves in the clear.'],
+    '#btnSettings': ['Settings', 'Operating mode (Standalone, Server, Client) and interface preferences, including these tooltips.'],
+    '#btnOpenGuide': ['Guide', 'User manual and technical documentation, accessible offline in a new tab.'],
+    '.view-tab[data-view="work"]': ['Processing', 'Work folders, document ingestion, live progress and results.'],
+    '.view-tab[data-view="agents"]': ['AI Agents & APIs', 'Proxy endpoints for Claude Code, Codex, Cursor and other tools, upstream targets and REST API examples.'],
+    '.view-tab[data-view="filters"]': ['Filters & models', 'Protection profile, sensitivity threshold, active analysis models and masked categories.'],
+    '.view-tab[data-view="system"]': ['System & log', 'Network and operating mode, execution runtime, folders, updates, mappings vault and activity log.'],
+    // --- banners
+    '#retryEngineBtn': ['Retry', 'Restarts the engine after the indicated error.'],
+    '#killOrphansBtn': ['Close leftover processes', 'Closes leftover engine processes from previous sessions and frees RAM.'],
+    '#btnUpdateDownload': ['Download update', 'Downloads the new version from download.germano.ai and verifies integrity.'],
+    '#btnUpdateInstall': ['Install now', 'Closes Germano, installs the update and reopens. Folders, vault and settings remain intact.'],
+    '#btnUpdateAck': ['Dismiss alert', 'Hides this notification.'],
+    // --- folders & stats
+    '.folder-card[data-open-folder="input"]': ['📥 Pending — input folder', 'Documents to process. Click to open in File Explorer: you can copy files and entire folders here.'],
+    '.folder-card[data-open-folder="output"]': ['✅ Ready — output folder', 'Anonymized documents, preserving the exact folder structure. Click to open in File Explorer.'],
+    '.folder-card[data-open-folder="failed"]': ['⚠️ Errors — failed folder', 'Documents that could not be processed; see reason in Failed table. Click to open.'],
+    '.folder-card[data-open-folder="processed"]': ['🗂️ Originals — processed folder', 'Original documents moved here after successful processing. Click to open.'],
+    '.folder-card[data-open-folder="extracted"]': ['🔐 Vault & extracted', 'Mapping archive between tags ↔ real data, audit reports and logs. Contains data in the clear: keep on an encrypted disk (BitLocker).'],
+    '.ls:has(#lsDone)': ['Batch documents', 'Documents processed out of total in current batch.'],
+    '.ls:has(#lsPii)': ['Masked personal data', 'Total personal data entries replaced with tags in ready documents.'],
+    '.ls:has(#lsThroughput)': ['Throughput', 'Documents processed per minute in current batch.'],
+    '.ls:has(#lsCpu)': ['CPU Usage', 'Current processor usage of this computer.'],
+    '.ls:has(#lsRam)': ['RAM Usage', 'Current memory usage of this computer.'],
+    '#liveProgress': ['Batch progress', 'Share of documents already processed in current batch.'],
+    '#protectDropzone': ['Add documents', 'Drag & drop files or folders here: copied to input folder and processed automatically.'],
+    '#btnPickFiles': ['Select files', 'Choose one or more documents to anonymize.'],
+    '#btnPickFolder': ['Select folder', 'Add an entire folder: subdirectory hierarchy is preserved in output.'],
+    '.btn[data-open-folder="input"]': ['Open input folder', 'Opens the pending documents folder in File Explorer.'],
+    '.btn[data-open-folder="output"]': ['Open output folder', 'Opens the ready anonymized documents folder in File Explorer.'],
+    '#kpiPending': ['Pending', 'Show documents waiting to be processed.'],
+    '#kpiOutput': ['Ready', 'Show documents already anonymized.'],
+    '#kpiFailed': ['Failed', 'Show documents that failed processing, along with failure reasons.'],
+    '#currentJob': ['Active job', 'Current document being processed, pipeline stage and batch progress.'],
+    '#btnStartFromCta': ['Start processing', 'Starts the engine to process pending documents.'],
+    '.restore-row .switch': ['Automatic de-anonymization', 'Tags are numbered and mappings saved locally: when an AI response contains them, real data is restored. If disabled: irreversible anonymization.'],
+    // --- documents table
+    '.tab[data-folder="output"]': ['Ready', 'Anonymized (or restored) documents available in output folder.'],
+    '.tab[data-folder="input"]': ['Pending', 'Documents in input folder, queued or currently processing.'],
+    '.tab[data-folder="failed"]': ['Failed', 'Unprocessed documents with reason and retry button.'],
+    '.tab[data-folder="processed"]': ['Originals', 'Archived original documents after processing.'],
+    '#fileFilter': ['Filter', 'Filter documents by name, path or failure reason.'],
+    '#btnRetryAll': ['Retry all', 'Moves all failed documents back to input folder.'],
+    '#btnOpenCurrentFolder': ['Open folder', 'Opens File Explorer for the currently selected tab.'],
+    '#btnExportCsv': ['Export list', 'Downloads document list as CSV (Excel compatible).'],
+    '[data-action="open"]': ['Open', 'Opens document with Windows default application.'],
+    '[data-action="reveal"]': ['Show in folder', 'Opens File Explorer with document highlighted.'],
+    '[data-action="retry"]': ['Retry', 'Moves document back to input folder for re-processing.'],
+    '.row-actions a[download]': ['Download copy', 'Downloads a copy of the document via browser.'],
+    // --- text tab
+    '#manualInputText': ['Text', 'Paste text to anonymize, or AI response with tags like [PERSON_1] to restore.'],
+    '#anonymizeTextBtn': ['Anonymize text', 'Replaces personal data with numbered tags, ready for AI services.'],
+    '#deanonymizeTextBtn': ['Restore text', 'Restores real data into AI responses containing numbered tags.'],
+    '#copyManualOutputBtn': ['Copy text', 'Copies result to clipboard.'],
+    // --- AI agents & API
+    '.preset-chip': ['AI Preset', (el) => `Configures Proxy port and model settings for ${(el.textContent || '').trim()}.`],
+    '#proxyPort': ['Proxy port', 'Local port for HTTP proxy (default 8181).'],
+    '#customUpstreamUrl': ['Custom upstream URL', 'Base URL of target AI service if not using default.'],
+    '#saveProxyBtn': ['Save proxy settings', 'Applies proxy configuration changes.'],
+    '#copyApiKeyBtn': ['Copy API key', 'Copies dummy API key for local proxy auth.'],
+    // --- settings & operational mode
+    '#cardStandalone': ['Standalone', 'Disables Server and Client: Germano runs strictly locally with zero network activity.'],
+    '#cardServer': ['Server', 'Listens on local network and provides anonymization engine to other PCs with token authentication.'],
+    '#cardClient': ['Client', 'Delegates compute to a remote Germano Server while keeping Vault and files locally.'],
+    '.field:has(#remoteServer)': ['Server address', 'Leave blank for automatic LAN discovery, or enter IP (e.g. http://192.168.1.10:8181).'],
+    '.field:has(#remoteToken)': ['Server token', 'Found on the server under Settings › Network Access.'],
+    '#btnFindServers': ['Scan network for servers', 'Sends UDP discovery beacon (port 8182) and lists available Germano Servers.'],
+    '.check-row:has(#clientFallback)': ['Fallback to local engine', 'If no remote server responds, loads models locally.'],
+    '.server-row': ['Use this server', 'Sets this Germano Server as the remote compute target.'],
+    '[data-regen-token]': ['Generate new token', 'Generates a new security token, revoking the previous one.'],
+    '.toggle-row .switch': ['Tooltips', 'Toggle hover tooltips across the entire interface.'],
+    '#btnSaveSettings': ['Save', 'Immediately applies mode settings without restarting Germano.'],
+    '#btnCancelSettings': ['Cancel', 'Closes without making changes.'],
+    '#btnCloseSettings': ['Close', 'Closes Settings modal.'],
+    // --- Studio AI
+    '#studioTarget': ['Destination', 'Target AI: detected local CLI or copy to clipboard.'],
+    '#aiStrip': ['Detected AIs', 'AIs and CLIs found on this machine by filesystem scan, safely offline.'],
+    '#btnStudioAttach': ['Attach file', 'Extracts and anonymizes attachments alongside the prompt.'],
+    '#studioPrompt': ['Prompt', 'Type request. Enter = send, Shift+Enter = newline. Protected before sending.'],
+    '#btnStudioSend': ['Protect & send', 'Anonymizes prompt and attachments with local engine.'],
+    '#btnDetectAI': ['Detect AI', 'Scans again for installed AIs and CLIs on this PC.'],
+    '#btnGranularConfig': ['Granular Settings', 'Opens sidebar for models, threshold and PII categories.'],
+    '[data-copy-protected]': ['Copy protected text', 'Copies anonymized text to clipboard ready for AI.'],
+    '[data-studio-start]': ['Start engine', 'Starts engine: required before sending prompts.'],
+    '.attach-chip button': ['Remove attachment', 'Removes this file from submission.'],
+    '#btnCloseConfig': ['Close', 'Closes configuration panel.']
+};
+
+const Tips = (() => {
+    let enabled = true;
+    let timer = null;
+    let current = null;
+    let keyboard = false;
+    const SELECTOR = ['[data-tip]', '[title]', '[data-native-title]'].concat(TIPS.map(t => t[0])).join(',');
+
+    function lookup(el) {
+        const native = el.getAttribute('title') || el.dataset.nativeTitle || '';
+        if (el.hasAttribute('title')) {   // il title diventa suggerimento: niente doppia finestrella del browser
+            el.dataset.nativeTitle = native;
+            if (!el.getAttribute('aria-label') && !(el.textContent || '').trim()) el.setAttribute('aria-label', native);
+            el.removeAttribute('title');
+        }
+        if (el.dataset.tip) return { title: el.dataset.tipTitle || '', text: el.dataset.tip };
+        const isEn = (typeof currentLang !== 'undefined' && currentLang === 'en');
+        for (const [sel, t, d] of TIPS) {
+            let match = false;
+            try { match = el.matches(sel); } catch (e) { match = false; }
+            if (!match) continue;
+            let titleVal = t;
+            let textVal = d;
+            if (isEn && typeof TIPS_EN !== 'undefined' && TIPS_EN[sel]) {
+                titleVal = TIPS_EN[sel][0];
+                textVal = TIPS_EN[sel][1];
+            }
+            const title = typeof titleVal === 'function' ? titleVal(el, native) : titleVal;
+            const text = typeof textVal === 'function' ? textVal(el, native) : textVal;
+            if (title || text) return { title: title || '', text: text || '' };
+        }
+        return native ? { title: '', text: native } : null;
+    }
+
+    function candidate(node) {
+        if (!(node instanceof Element)) return null;
+        try { return node.closest(SELECTOR); } catch (e) { return null; }
+    }
+
+    function place(target, box) {
+        const r = target.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const w = box.offsetWidth;
+        const h = box.offsetHeight;
+        let top = r.top - h - 10;
+        let below = false;
+        if (top < 8) {
+            top = r.bottom + 10;
+            below = true;
+            if (top + h > vh - 8) top = Math.max(8, vh - h - 8);
+        }
+        const left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, vw - w - 8));
+        box.style.left = `${Math.round(left)}px`;
+        box.style.top = `${Math.round(top)}px`;
+        box.style.setProperty('--tip-arrow-x', `${Math.round(Math.max(12, Math.min(w - 12, r.left + r.width / 2 - left)))}px`);
+        box.classList.toggle('is-below', below);
+        box.classList.toggle('is-above', !below);
+    }
+
+    function show(target) {
+        timer = null;
+        if (!enabled || !document.body.contains(target)) return;
+        const tip = lookup(target);
+        const box = $('gTip');
+        if (!tip || !box) return;
+        $('gTipTitle').textContent = tip.title;
+        $('gTipText').textContent = tip.text;
+        box.classList.remove('is-visible');
+        box.hidden = false;
+        place(target, box);
+        requestAnimationFrame(() => box.classList.add('is-visible'));
+        target.setAttribute('aria-describedby', 'gTip');
+        current = target;
+    }
+
+    function hide() {
+        clearTimeout(timer);
+        timer = null;
+        const box = $('gTip');
+        if (box) {
+            box.classList.remove('is-visible');
+            box.hidden = true;
+        }
+        if (current) {
+            current.removeAttribute('aria-describedby');
+            current = null;
+        }
+    }
+
+    function schedule(el) {
+        clearTimeout(timer);
+        if (current && current !== el) hide();
+        timer = setTimeout(() => show(el), 350);
+    }
+
+    function onOver(e) {
+        const el = candidate(e.target);
+        if (!el || el === current) return;
+        if (!enabled) {
+            if (el.hasAttribute('title')) lookup(el);   // suggerimenti spenti: niente finestrelle, neppure native
+            return;
+        }
+        schedule(el);
+    }
+
+    function onOut(e) {
+        const el = candidate(e.target);
+        if (!el) return;
+        if (e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) return;
+        if (el === current || timer) hide();
+    }
+
+    function init() {
+        document.addEventListener('mouseover', onOver, true);
+        document.addEventListener('mouseout', onOut, true);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') keyboard = true;
+            if (e.key === 'Escape') hide();
+        }, true);
+        document.addEventListener('mousedown', () => { keyboard = false; hide(); }, true);
+        document.addEventListener('focusin', (e) => {   // tastiera: il suggerimento compare anche con il Tab
+            if (!enabled || !keyboard) return;
+            const el = candidate(e.target);
+            if (el) schedule(el);
+        });
+        document.addEventListener('focusout', hide);
+        ['scroll', 'resize', 'blur'].forEach(ev => window.addEventListener(ev, hide, true));
+        document.body.dataset.tipsReady = '1';
+        document.body.dataset.tipsCount = String(document.querySelectorAll(SELECTOR).length);
+    }
+
+    return {
+        init,
+        hide,
+        setEnabled(v) {
+            enabled = Boolean(v);
+            if (!enabled) hide();
+            if (document.body) document.body.dataset.tips = enabled ? 'on' : 'off';
+        },
+        isEnabled: () => enabled,
+    };
+})();
+
+// ------------------------------------------------------------------ MODALITÀ OPERATIVA E IMPOSTAZIONI
+const MODE_TEXT = { standalone: 'Standalone', server: 'Server', client: 'Client', 'server+client': 'Server + Client' };
+const FORCED_TEXT = { GERMANO_MODE: 'START_SERVER.bat', GERMANO_HOST: 'la variabile GERMANO_HOST' };
+
+function setSettingsMsg(text, isError = false) {
+    const el = $('settingsMsg');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('error', Boolean(isError));
+}
+
+function modeFromChecks() {
+    const s = $('optServer').checked;
+    const c = $('optClient').checked;
+    if (s && c) return 'server+client';
+    if (s) return 'server';
+    if (c) return 'client';
+    return 'standalone';
+}
+
+function setModeChecks(mode) {
+    const m = String(mode || 'standalone');
+    $('optServer').checked = m.includes('server');
+    $('optClient').checked = m.includes('client');
+    $('optStandalone').checked = !m.includes('server') && !m.includes('client');
+    syncModeDetails();
+}
+
+function onModeCheck(which) {
+    const st = $('optStandalone');
+    const sv = $('optServer');
+    const cl = $('optClient');
+    if (which === 'standalone') {
+        if (st.checked) {
+            sv.checked = false;
+            cl.checked = false;
+        } else if (!sv.checked && !cl.checked) {
+            st.checked = true;   // serve sempre una scelta: Standalone resta finché non si sceglie altro
+        }
+    } else {
+        st.checked = !sv.checked && !cl.checked;
+    }
+    syncModeDetails();
+}
+
+function syncModeDetails() {
+    $('clientDetail').hidden = !$('optClient').checked;
+    $('serverDetail').hidden = !$('optServer').checked;
+    renderServerInfo();
+}
+
+function renderServerInfo() {
+    const box = $('serverInfo');
+    if (!box || !$('optServer').checked) return;
+    const s = (modeState && modeState.server) || {};
+    if (!s.enabled || !s.listening) {
+        box.innerHTML = '<span class="muted">Dopo il salvataggio Germano si mette in ascolto sulla rete e qui compaiono gli ' +
+            'indirizzi e il token da comunicare ai client. Al primo avvio Windows può chiedere di consentire Python sulle ' +
+            'reti private: rispondi «Consenti».</span>';
+        return;
+    }
+    const ips = (s.ips || []).map(ip => `<code>http://${escapeHtml(ip)}:${escapeHtml(s.port)}</code>`).join(' ');
+    box.innerHTML = `
+        <div><strong>In ascolto sulla rete</strong> · ${ips || '<span class="muted">nessun indirizzo IPv4 trovato</span>'}</div>
+        <div class="copy-line">Token per i client: <code>${escapeHtml(s.token)}</code>${copyButton(s.token, 'Copia token')}
+            <button type="button" class="btn btn-secondary btn-sm" data-regen-token>Nuovo token</button></div>
+        <div class="muted">Rilevamento automatico: ${s.discovery ? `attivo (UDP ${escapeHtml(s.discovery_port)})` : 'non attivo'}.
+            I client Germano inseriscono il token nelle loro Impostazioni; le CLI possono usare
+            <code>http://&lt;IP&gt;:${escapeHtml(s.port)}/g/&lt;token&gt;/v1</code>.</div>`;
+}
+
+async function openSettings(opts = {}) {
+    settingsWelcome = Boolean(opts.welcome);
+    settingsDone = false;
+    const modal = $('settingsModal');
+    modal.classList.toggle('is-welcome', settingsWelcome);
+    setText('settingsTitle', settingsWelcome ? '👋 Benvenuto in Germano AI' : 'Impostazioni');
+    setText('settingsSub', settingsWelcome
+        ? 'Prima di iniziare scegli come usare Germano su questo computer. Nel dubbio lascia Standalone: tutto resta su questo PC.'
+        : 'Modalità operativa di questo computer e preferenze dell\'interfaccia.');
+    setText('btnSaveSettings', settingsWelcome ? 'Conferma e inizia' : 'Salva');
+    $('btnCancelSettings').hidden = settingsWelcome;
+    setSettingsMsg('');
+    $('enable_tooltips').checked = tooltipsEnabled;
+    $('serverList').innerHTML = '';
+    let remoteViewer = '';   // Dashboard aperta da un altro computer: la modalità si sceglie solo sul server
+    try {
+        const { ok, status, data } = await fetchJson('/api/mode', { cache: 'no-store' });
+        if (ok) modeState = data;
+        else if (status === 403) remoteViewer = data.error || 'Le Impostazioni si cambiano solo dal computer su cui è installato Germano.';
+    } catch (e) { /* si usa l'ultimo stato noto */ }
+    const st = modeState || {};
+    const cl = st.client || {};
+    setModeChecks(st.saved || 'standalone');
+    $('remoteServer').value = cl.remote_server || '';
+    $('remoteToken').value = '';
+    $('remoteToken').placeholder = cl.token_set
+        ? '•••••••• già impostato (lascia vuoto per non cambiarlo)'
+        : 'Lo mostra il server nelle sue Impostazioni';
+    $('clientFallback').checked = cl.fallback_local !== false;
+    const locked = Boolean(st.locked) || Boolean(remoteViewer);
+    ['optStandalone', 'optServer', 'optClient', 'remoteServer', 'remoteToken', 'clientFallback', 'btnFindServers']
+        .forEach(id => { if ($(id)) $(id).disabled = locked; });
+    $('enable_tooltips').disabled = Boolean(remoteViewer);
+    $('btnSaveSettings').disabled = Boolean(remoteViewer);
+    document.querySelectorAll('.mode-card').forEach(c => c.classList.toggle('is-disabled', locked));
+    if (remoteViewer) {
+        setSettingsMsg(remoteViewer, true);
+    } else if (st.locked) {
+        setSettingsMsg('Modalità bloccata dall\'amministratore (lock_settings): si possono cambiare solo le preferenze dell\'interfaccia.');
+    } else if (st.forced_by) {
+        setSettingsMsg(`Per questo avvio la modalità è «${MODE_TEXT[st.effective] || st.effective}», impostata da ` +
+            `${FORCED_TEXT[st.forced_by] || st.forced_by}: la scelta salvata qui vale dai prossimi avvii con START.bat.`);
+    }
+    Tips.hide();
+    $('settingsScrim').hidden = false;
+    modal.hidden = false;
+    setTimeout(() => (settingsWelcome ? $('btnSaveSettings') : $('btnCloseSettings')).focus(), 30);
+}
+
+function hideSettings() {
+    $('settingsModal').hidden = true;
+    $('settingsScrim').hidden = true;
+    settingsWelcome = false;
+    settingsDone = false;
+}
+
+function dismissSettings() {
+    // Chiudere il benvenuto senza scegliere conferma la modalità predefinita (Standalone): non viene richiesto di nuovo.
+    if (settingsWelcome) saveSettings({ keepMode: true });
+    else hideSettings();
+}
+
+function applyTooltipsPref(value) {
+    tooltipsEnabled = Boolean(value);
+    Tips.setEnabled(tooltipsEnabled);
+    if (initialConfig) initialConfig.enable_tooltips = tooltipsEnabled;
+}
+
+async function saveSettings({ keepMode = false } = {}) {
+    const st = modeState || {};
+    const mode = keepMode ? (st.saved || 'standalone') : modeFromChecks();
+    const body = { operating_mode: mode, enable_tooltips: $('enable_tooltips').checked };
+    if (!keepMode && mode.includes('client')) {
+        body.remote_server = ($('remoteServer').value || '').trim();
+        if (($('remoteToken').value || '').trim()) body.remote_token = $('remoteToken').value.trim();
+        body.client_fallback_local = $('clientFallback').checked;
+    }
+    const btn = $('btnSaveSettings');
+    btn.disabled = true;
+    try {
+        const { ok, status, data } = await postJson('/api/mode', body);
+        if (status === 403 && data.status === 'locked') {
+            applyTooltipsPref(body.enable_tooltips);   // le preferenze dell'interfaccia vengono comunque salvate
+            setSettingsMsg(data.message, true);
+            return;
+        }
+        if (!ok) {
+            setSettingsMsg(data.message || data.error || 'Impossibile salvare le impostazioni.', true);
+            return;
+        }
+        modeState = data;
+        applyTooltipsPref(body.enable_tooltips);
+        if (initialConfig) initialConfig.first_run_done = true;
+        const label = MODE_TEXT[data.saved] || data.saved;
+        let msg = 'Impostazioni salvate.';
+        if (settingsWelcome) msg = `Modalità ${label} confermata.`;
+        else if (data.saved !== (st.saved || 'standalone')) msg = `Modalità ${label} attivata.`;
+        if (data.forced_by && data.effective !== data.saved) {
+            msg += ` Per questo avvio resta «${MODE_TEXT[data.effective] || data.effective}» (${FORCED_TEXT[data.forced_by] || data.forced_by}).`;
+        }
+        if (data.server && data.server.listening) msg += ' Germano è in ascolto sulla rete locale.';
+        if (data.engine_action === 'restart') msg += ' Il motore si riavvia per applicarla.';
+        if (data.engine_action === 'start') msg += ' Avvio del motore in corso.';
+        (data.notes || []).forEach(n => showToast(n, 'warn', 9000));
+        pollStatus();
+        renderNetSummary();
+        if (!keepMode && String(data.saved).includes('server') && data.server && data.server.listening) {
+            // La finestra resta aperta: l'amministratore deve vedere indirizzi e token da dare ai client.
+            settingsWelcome = false;
+            settingsDone = true;
+            $('settingsModal').classList.remove('is-welcome');
+            $('btnCancelSettings').hidden = true;
+            setText('btnSaveSettings', 'Fatto');
+            renderServerInfo();
+            setSettingsMsg(`✅ ${msg} Comunica ai client l'indirizzo e il token qui sopra.`);
+            return;
+        }
+        hideSettings();
+        showToast(msg, 'success', 5000);
+    } catch (e) {
+        setSettingsMsg('Germano non risponde: impossibile salvare.', true);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function findServers() {
+    const list = $('serverList');
+    const btn = $('btnFindServers');
+    list.innerHTML = '<div class="server-empty">Ricerca in corso…</div>';
+    btn.disabled = true;
+    try {
+        const { ok, data } = await fetchJson('/api/remote/servers', { cache: 'no-store' });
+        const servers = (ok && data.servers) || [];
+        list.innerHTML = servers.length ? servers.map(s => {
+            const engine = s.engine_shared ? (s.engine_ready ? '🟢 motore pronto' : '🟡 motore in avvio') : '⚪ motore non condiviso';
+            const dev = s.device ? ` · ${escapeHtml(String(s.device).toUpperCase())}` : '';
+            return `<button type="button" class="server-row" data-server-url="${escapeHtml(s.url)}">
+                <span class="server-name">${escapeHtml(s.name || s.url)}</span><code>${escapeHtml(s.url)}</code>
+                <span class="server-meta">${engine}${dev} · v${escapeHtml(s.version || '?')}</span></button>`;
+        }).join('') : '<div class="server-empty">Nessun Germano Server trovato sulla rete locale. Sul server scegli la modalità ' +
+            'Server (oppure avvia START_SERVER.bat) e verifica che il firewall di Windows consenta le reti private.</div>';
+    } catch (e) {
+        list.innerHTML = '<div class="server-empty">Ricerca non riuscita: Germano non risponde.</div>';
+    } finally {
+        btn.disabled = Boolean(modeState && modeState.locked);
+    }
+}
+
+async function regenToken() {
+    if (!confirm('Generare un nuovo token?\nIl token attuale smette subito di funzionare e va inserito di nuovo su tutti i client.')) return;
+    try {
+        const { ok, data } = await postJson('/api/mode/token', {});
+        if (ok && data.token) {
+            if (modeState && modeState.server) modeState.server.token = data.token;
+            renderServerInfo();
+            renderNetSummary();
+            showToast('Nuovo token generato: aggiornalo sui client.', 'success');
+        } else {
+            showToast(data.message || 'Operazione non riuscita.', 'error');
+        }
+    } catch (e) {
+        showToast('Germano non risponde.', 'error');
+    }
+}
+
+function renderModeChip(data) {
+    const chip = $('modeChip');
+    if (!chip || !data || !data.mode) return;
+    const m = data.mode;
+    const eng = data.engine || {};
+    const eff = m.effective || 'standalone';
+    let text = m.label || MODE_TEXT[eff] || 'Standalone';
+    const cls = [];
+    const wantServer = eff.includes('server');
+    if (m.server && m.client) cls.push('is-both');
+    else if (m.server) cls.push('is-server');
+    else if (m.client) cls.push('is-client');
+    if (wantServer && !m.server) cls.push('is-warn');   // Server richiesto ma non in ascolto (es. porta occupata)
+    if (m.client && data.running) {
+        if (eng.mode === 'remote') {
+            text += ` · ${eng.server_name || 'server'}`;
+            if (eng.ok === false) { text += ' (non raggiungibile)'; cls.push('is-warn'); }
+        } else if (eng.fallback) {
+            text += ' · motore locale';
+            cls.push('is-warn');
+        }
+    }
+    chip.className = ['mode-chip', ...cls].join(' ');
+    setText('modeChipText', text);
+    chip.dataset.mode = eff;
+}
+
+async function renderNetSummary() {
+    const box = $('netSummary');
+    if (!box || currentUiMode !== 'advanced' || currentView !== 'system') return;
+    try {
+        const { ok, data } = await fetchJson('/api/mode', { cache: 'no-store' });
+        if (!ok) return;
+        modeState = data;
+        const s = data.server || {};
+        const c = data.client || {};
+        const eng = data.engine || {};
+        let clientValue = 'disattivato';
+        let clientSub = 'il calcolo avviene su questo computer';
+        if (c.enabled) {
+            if (eng.mode === 'remote' && eng.ok === false) {
+                clientValue = `${eng.server_name || eng.server} non raggiungibile`;
+                clientSub = `${eng.server} · nessun dato inviato, i documenti restano in coda`;
+            } else if (eng.mode === 'remote') {
+                clientValue = `collegato a ${eng.server_name || eng.server}`;
+                clientSub = `${eng.server} · ${eng.latency_ms ?? '?'} ms`;
+            } else if (data.engine_running && eng.fallback) {
+                clientValue = 'motore locale (nessun server)';
+                clientSub = eng.fallback;
+            } else {
+                clientValue = data.engine_running ? 'collegamento in corso…' : 'motore non avviato';
+                clientSub = c.remote_server || 'ricerca automatica in rete';
+            }
+        }
+        const items = [
+            ['Modalità', MODE_TEXT[data.effective] || data.effective,
+                data.forced_by ? `impostata da ${FORCED_TEXT[data.forced_by] || data.forced_by} per questo avvio` : 'modificabile in qualsiasi momento'],
+            ['Server', s.enabled ? (s.listening ? 'in ascolto sulla rete' : 'non in ascolto') : 'disattivato',
+                s.enabled && s.listening ? (s.ips || []).map(ip => `${ip}:${s.port}`).join(', ') || 'nessun IPv4' : 'nessuna porta aperta verso la rete'],
+            ['Client', clientValue, clientSub],
+            ['Token per i client', s.enabled && s.token ? `${s.token.slice(0, 6)}…` : '—',
+                s.enabled ? 'completo in Impostazioni › Accesso dalla rete' : 'serve solo in modalità Server'],
+        ];
+        box.innerHTML = items.map(([l, v, sub]) => `<div class="net-item"><div class="net-item-label">${escapeHtml(l)}</div>` +
+            `<div class="net-item-value">${escapeHtml(v)}</div><div class="net-item-sub">${escapeHtml(sub)}</div></div>`).join('');
+    } catch (e) { /* Germano non risponde: gestito da pollStatus */ }
+}
+
 // ------------------------------------------------------------------ AVVIO PAGINA
+
+// ------------------------------------------------------------------ INTERNAZIONALIZZAZIONE (i18n)
+let currentLang = 'it';
+function getLang() { return currentLang; }
+
+function setLanguage(lang) {
+    currentLang = (lang === 'en') ? 'en' : 'it';
+    try { localStorage.setItem('germano_lang', currentLang); } catch (e) {}
+    
+    // Aggiorna attributo documento
+    document.documentElement.lang = currentLang;
+
+    // Aggiorna stato pulsanti bandierina
+    const btnIt = $('btn-it');
+    const btnEn = $('btn-en');
+    if (btnIt && btnEn) {
+        btnIt.classList.toggle('active', currentLang === 'it');
+        btnIt.setAttribute('aria-pressed', currentLang === 'it');
+        btnEn.classList.toggle('active', currentLang === 'en');
+        btnEn.setAttribute('aria-pressed', currentLang === 'en');
+    }
+
+    // Scambia contenuti con data-en
+    document.querySelectorAll('[data-en]').forEach(el => {
+        if (!el.hasAttribute('data-it')) {
+            el.setAttribute('data-it', el.innerHTML);
+        }
+        el.innerHTML = (currentLang === 'en') ? el.getAttribute('data-en') : el.getAttribute('data-it');
+    });
+
+    // Scambia attributi title
+    document.querySelectorAll('[data-en-title]').forEach(el => {
+        if (!el.hasAttribute('data-it-title')) {
+            el.setAttribute('data-it-title', el.getAttribute('title') || el.dataset.nativeTitle || '');
+        }
+        const val = (currentLang === 'en') ? el.getAttribute('data-en-title') : el.getAttribute('data-it-title');
+        if (el.hasAttribute('title')) el.setAttribute('title', val);
+        if (el.dataset.nativeTitle) el.dataset.nativeTitle = val;
+    });
+
+    // Scambia placeholder
+    document.querySelectorAll('[data-en-placeholder]').forEach(el => {
+        if (!el.hasAttribute('data-it-placeholder')) {
+            el.setAttribute('data-it-placeholder', el.getAttribute('placeholder') || '');
+        }
+        el.setAttribute('placeholder', (currentLang === 'en') ? el.getAttribute('data-en-placeholder') : el.getAttribute('data-it-placeholder'));
+    });
+
+    // Scambia aria-label
+    document.querySelectorAll('[data-en-aria-label]').forEach(el => {
+        if (!el.hasAttribute('data-it-aria-label')) {
+            el.setAttribute('data-it-aria-label', el.getAttribute('aria-label') || '');
+        }
+        el.setAttribute('aria-label', (currentLang === 'en') ? el.getAttribute('data-en-aria-label') : el.getAttribute('data-it-aria-label'));
+    });
+
+    // Aggiorna elementi dinamici
+    if (typeof lastStatus !== 'undefined' && lastStatus) {
+        try { renderStatus(lastStatus); } catch (e) {}
+    }
+}
+
+function initLanguage() {
+    let initialLang = 'it';
+    try {
+        const saved = localStorage.getItem('germano_lang');
+        if (saved === 'en' || saved === 'it') {
+            initialLang = saved;
+        } else {
+            const navLang = (navigator.language || navigator.userLanguage || 'it').toLowerCase();
+            initialLang = navLang.startsWith('it') ? 'it' : 'en';
+        }
+    } catch (e) {}
+
+    const btnIt = $('btn-it');
+    const btnEn = $('btn-en');
+    if (btnIt) btnIt.addEventListener('click', () => setLanguage('it'));
+    if (btnEn) btnEn.addEventListener('click', () => setLanguage('en'));
+
+    setLanguage(initialLang);
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    initLanguage();
+    Tips.init();
     await loadInitialSettings();
+    Tips.setEnabled(tooltipsEnabled);
+    let savedApp = 'batch';
+    try { savedApp = localStorage.getItem('germano_app') || 'batch'; } catch (e) { /* archivio non disponibile */ }
+    applyAppMode(savedApp, false);
     renderAgents();
     await pollStatus();
     await fetchFiles();
 
+    // Impostazioni: modalità operativa (Standalone / Server / Client) e preferenze dell'interfaccia
+    $('optStandalone').addEventListener('change', () => onModeCheck('standalone'));
+    $('optServer').addEventListener('change', () => onModeCheck('server'));
+    $('optClient').addEventListener('change', () => onModeCheck('client'));
+    $('btnFindServers').addEventListener('click', findServers);
+    ['input', 'change'].forEach(ev => $('settingsModal').addEventListener(ev, () => {
+        if (!settingsDone) return;   // modificata di nuovo dopo il salvataggio: «Fatto» torna «Salva»
+        settingsDone = false;
+        setText('btnSaveSettings', 'Salva');
+    }));
+    $('btnSaveSettings').addEventListener('click', () => (settingsDone ? hideSettings() : saveSettings()));
+    $('btnCancelSettings').addEventListener('click', hideSettings);
+    $('btnCloseSettings').addEventListener('click', dismissSettings);
+    $('settingsScrim').addEventListener('click', dismissSettings);
+    $('serverList').addEventListener('click', (e) => {
+        const row = e.target.closest('[data-server-url]');
+        if (!row) return;
+        $('remoteServer').value = row.dataset.serverUrl;
+        $('serverList').querySelectorAll('.server-row').forEach(r => r.classList.toggle('is-selected', r === row));
+        $('remoteToken').focus();
+        const tokenSet = Boolean(modeState && modeState.client && modeState.client.token_set);
+        setSettingsMsg(`Server selezionato: ${row.dataset.serverUrl}. ` + (tokenSet
+            ? 'Salva per usarlo (scrivi il token solo se è diverso da quello già impostato).'
+            : 'Inserisci il suo token e salva.'));
+    });
+    $('settingsModal').addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            dismissSettings();
+            return;
+        }
+        if (e.key !== 'Tab') return;   // il Tab resta dentro la finestra
+        const items = Array.from($('settingsModal').querySelectorAll('button, input, select, textarea, a[href]'))
+            .filter(el => !el.disabled && el.offsetParent !== null);
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    });
+    // Prima apertura: la finestra fa da benvenuto e chiede la modalità operativa (predefinita Standalone)
+    if (initialConfig && initialConfig.first_run_done !== true) openSettings({ welcome: true });
+
     $('btnModeSimple').addEventListener('click', () => applyUiMode('simple', true));
     $('btnModeAdvanced').addEventListener('click', () => applyUiMode('advanced', true));
     document.querySelectorAll('.view-tab').forEach(t => t.addEventListener('click', () => applyView(t.dataset.view)));
+
+    // Commutatore Anonimizza file / Studio AI
+    $('btnAppBatch').addEventListener('click', () => applyAppMode('batch', true));
+    $('btnAppStudio').addEventListener('click', () => applyAppMode('studio', true));
+
+    // Studio AI: rilevamento, destinazione, allegati, invio
+    $('btnDetectAI').addEventListener('click', () => detectAI(true));
+    $('studioTarget').addEventListener('change', updateStudioTargetBadge);
+    $('btnStudioAttach').addEventListener('click', () => $('studioFileInput').click());
+    $('studioFileInput').addEventListener('change', (e) => { addStudioFiles(e.target.files); e.target.value = ''; });
+    $('attachChips').addEventListener('click', (e) => {
+        const rm = e.target.closest('[data-remove-attach]');
+        if (rm) { studioFiles.splice(parseInt(rm.dataset.removeAttach, 10), 1); renderAttachChips(); }
+    });
+    $('studioComposer').addEventListener('submit', (e) => { e.preventDefault(); sendStudio(); });
+    const promptBox = $('studioPrompt');
+    promptBox.addEventListener('input', () => { promptBox.style.height = 'auto'; promptBox.style.height = Math.min(200, promptBox.scrollHeight) + 'px'; });
+    promptBox.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendStudio(); }
+    });
+    $('studioChat').addEventListener('click', (e) => {
+        const copyBtn = e.target.closest('[data-copy-protected]');
+        if (copyBtn) { const m = copyBtn.closest('.msg'); if (m && m._protected) copyText(m._protected); return; }
+        if (e.target.closest('[data-studio-start]')) { startEngine().then(pollStatus); showToast('Avvio del motore in corso…', 'info'); }
+    });
+
+    // Preset rapidi per target_api_url (OpenAI, DeepSeek, Kimi, Qwen, Ollama)
+    document.querySelectorAll('.preset-target').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const input = $('target_api_url');
+            if (input && btn.dataset.url) {
+                input.value = btn.dataset.url;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                showToast(`Servizio impostato su ${btn.textContent}`, 'success', 2500);
+            }
+        });
+    });
+
+    // Cassetto «Configurazione Granulare»
+    $('btnGranularConfig').addEventListener('click', openConfigDrawer);
+    $('btnCloseConfig').addEventListener('click', closeConfigDrawer);
+    $('configScrim').addEventListener('click', closeConfigDrawer);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('configDrawer').hidden) closeConfigDrawer(); });
 
     // Avvio / arresto del motore
     $('mainToggleBtn').addEventListener('click', async () => {
@@ -1088,8 +2244,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         pollStatus();
     });
 
-    // Pulsanti generici: apertura cartelle e copia negli appunti
+    // Pulsanti generici: Impostazioni, apertura cartelle, nuovo token e copia negli appunti
     document.addEventListener('click', (e) => {
+        if (e.target.closest('[data-open-settings]')) {
+            openSettings();
+            return;
+        }
+        if (e.target.closest('[data-regen-token]')) {
+            regenToken();
+            return;
+        }
         const folderBtn = e.target.closest('[data-open-folder]');
         if (folderBtn) {
             openLocalFolder(folderBtn.dataset.openFolder);
@@ -1249,4 +2413,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     setInterval(pollStatus, 1500);
     setInterval(pollLogs, 2000);
+    setInterval(renderNetSummary, 5000);   // aggiorna solo se è aperta la scheda Sistema
 });

@@ -500,6 +500,7 @@
             <div class="sidebar-title lang-it">Indice Argomenti</div>
             <div class="sidebar-title lang-en">Table of Contents</div>
             <ul class="sidebar-nav">
+                <li><a href="#modalita-operativa" class="sidebar-link lang-it">🌐 Novità v0.52: Modalità operativa</a><a href="#modalita-operativa" class="sidebar-link lang-en">🌐 New in v0.52: Operating mode</a></li>
                 <li><a href="#novita" class="sidebar-link lang-it">🆕 Novità della v0.51</a><a href="#novita" class="sidebar-link lang-en">🆕 What's new in v0.51</a></li>
                 <li><a href="#introduzione" class="sidebar-link lang-it">1. Introduzione & Principi Chiave</a><a href="#introduzione" class="sidebar-link lang-en">1. Introduction & Core Principles</a></li>
                 <li><a href="#modalita-semplice" class="sidebar-link lang-it">2. Guida Base (Modalità Semplice)</a><a href="#modalita-semplice" class="sidebar-link lang-en">2. Basic Guide (Simple Mode)</a></li>
@@ -519,6 +520,44 @@
 
         <!-- MAIN DOCUMENTATION CONTENT -->
         <main class="content">
+
+            <!-- ========================================================================= -->
+            <!-- NOVITA' DELLA VERSIONE 0.52: MODALITA' OPERATIVA                          -->
+            <!-- ========================================================================= -->
+            <section class="doc-section" id="modalita-operativa">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Note di Rilascio 0.52</span>
+                    <span class="section-tag lang-en">0.52 Release Notes</span>
+                    <h2 class="section-title lang-it">🌐 Modalità operativa: Standalone, Server, Client</h2>
+                    <h2 class="section-title lang-en">🌐 Operating mode: Standalone, Server, Client</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>Alla prima apertura della Dashboard una finestra di benvenuto chiede come usare Germano su questo computer. <strong>Questa modalità è sempre modificabile in qualsiasi momento nelle Impostazioni</strong> (pulsante <em>Impostazioni</em> in alto, oppure <em>Sistema e registro › Rete e modalità operativa</em>) e si applica subito, senza riavviare.</p>
+                    <ul>
+                        <li><strong>🖥️ Standalone</strong> (predefinita): tutto gira al 100% su questo computer, in modo isolato. Germano non cerca server in rete e non risponde ai computer della rete: la Dashboard e il Proxy ascoltano solo su <code>127.0.0.1</code>.</li>
+                        <li><strong>📡 Server</strong>: Germano si mette in ascolto anche sulla rete locale, risponde al rilevamento automatico (UDP 8182) e offre agli altri computer il proprio motore di anonimizzazione e il Proxy, protetti da un <strong>token</strong>. Le Impostazioni mostrano gli indirizzi IP e il token da comunicare ai client; <em>Nuovo token</em> invalida subito quello precedente. Al primo avvio Windows può chiedere di consentire Python sulle reti private: rispondi <em>Consenti</em>. <code>START_SERVER.bat</code> avvia direttamente in questa modalità (solo per quell'avvio).</li>
+                        <li><strong>🌐 Client</strong>: all'avvio del motore Germano cerca in rete un Germano Server (oppure usa l'indirizzo indicato) e gli affida il calcolo dei modelli: questo computer non li carica in memoria. Al server vanno solo i testi e le immagini da analizzare; <strong>Vault, etichette, file e ripristino restano su questo computer</strong>. Serve il token del server. Se il server non risponde nessun dato esce: Proxy e Studio bloccano la richiesta e i documenti restano nella cartella <code>input</code> finché il server torna disponibile (in alternativa si può scegliere di usare il motore locale).</li>
+                        <li><strong>Server + Client</strong>: le due parti insieme. Un computer che delega il calcolo non condivide però il proprio motore con altri (niente catene).</li>
+                    </ul>
+                    <p>Il cambio di modalità è possibile solo dal computer stesso, mai dalla rete; con <code>"lock_settings": true</code> l'amministratore la blocca. In <code>config.json</code> la scelta è salvata in <code>operating_mode</code> (<code>standalone</code>, <code>server</code>, <code>client</code>, <code>server+client</code>).</p>
+                    <h3 class="sub-title">Suggerimenti al passaggio del mouse</h3>
+                    <p>Passando il mouse (o spostandosi con il tasto Tab) su pulsanti, cartelle, campi, filtri e indicatori compare una breve spiegazione. I suggerimenti sono attivi per impostazione predefinita e si disattivano nelle Impostazioni, sezione <em>Interfaccia</em> (<code>enable_tooltips</code>).</p>
+                </div>
+
+                <div class="lang-en">
+                    <p>On the first Dashboard launch a welcome dialog asks how to use Germano on this computer. <strong>The mode can always be changed at any time in the Settings</strong> (the <em>Impostazioni</em> button at the top, or <em>Sistema e registro › Rete e modalità operativa</em>) and applies immediately, without restarting.</p>
+                    <ul>
+                        <li><strong>🖥️ Standalone</strong> (default): everything runs 100% on this computer, isolated. Germano does not search the network for servers and does not answer the computers on the network: the Dashboard and the proxy only listen on <code>127.0.0.1</code>.</li>
+                        <li><strong>📡 Server</strong>: Germano also listens on the local network, answers the auto-discovery (UDP 8182) and offers the other computers its anonymization engine and the proxy, protected by a <strong>token</strong>. The Settings show the IP addresses and the token to give to the clients; <em>Nuovo token</em> (new token) immediately invalidates the previous one. On first start Windows may ask to allow Python on private networks: answer <em>Allow</em>. <code>START_SERVER.bat</code> starts directly in this mode (for that run only).</li>
+                        <li><strong>🌐 Client</strong>: when the engine starts, Germano looks for a Germano Server on the network (or uses the address entered) and hands it the model computation: this computer does not load the models in memory. Only the texts and images to analyze go to the server; <strong>Vault, tags, files and restoration stay on this computer</strong>. The server token is required. If the server does not answer no data leaves: the proxy and the Studio block the request and documents stay in the <code>input</code> folder until the server is back (alternatively you can choose to use the local engine).</li>
+                        <li><strong>Server + Client</strong>: both parts together. A computer that delegates its computation does not share its own engine with others (no chains).</li>
+                    </ul>
+                    <p>The mode can only be changed from the computer itself, never from the network; with <code>"lock_settings": true</code> the administrator locks it. In <code>config.json</code> the choice is saved in <code>operating_mode</code> (<code>standalone</code>, <code>server</code>, <code>client</code>, <code>server+client</code>).</p>
+                    <h3 class="sub-title">Hover tooltips</h3>
+                    <p>Hovering with the mouse (or moving with the Tab key) over buttons, folders, fields, filters and indicators shows a short explanation. Tooltips are on by default and can be turned off in the Settings, <em>Interfaccia</em> (interface) section (<code>enable_tooltips</code>).</p>
+                </div>
+            </section>
 
             <!-- ========================================================================= -->
             <!-- NOVITA' DELLA VERSIONE 0.51                                               -->
@@ -1091,7 +1130,7 @@
                     <h3 class="sub-title">Le quattro schede della Modalità Avanzata</h3>
                     <ul>
                         <li><strong>Elaborazione:</strong> la stessa schermata della Modalità Semplice, con in più la scheda <em>Originali</em> nella tabella dei documenti (gli originali archiviati nella cartella <code>processed</code>).</li>
-                        <li><strong>Agenti AI e API:</strong> gli indirizzi del Proxy da copiare (formato OpenAI <code>http://127.0.0.1:8000/v1</code> e formato Anthropic <code>http://127.0.0.1:8000</code>), una tabella che indica per Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider e gli SDK dove impostarli, i servizi di destinazione (<em>Servizio OpenAI o compatibile</em>, <em>Servizio Anthropic (Claude)</em>) e gli esempi delle API REST locali.</li>
+                        <li><strong>Agenti AI e API:</strong> gli indirizzi del Proxy da copiare (formato OpenAI <code>http://127.0.0.1:8181/v1</code> e formato Anthropic <code>http://127.0.0.1:8181</code>), una tabella che indica per Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider e gli SDK dove impostarli, i servizi di destinazione (<em>Servizio OpenAI o compatibile</em>, <em>Servizio Anthropic (Claude)</em>) e gli esempi delle API REST locali.</li>
                         <li><strong>Filtri e modelli:</strong> profilo di protezione (<em>Tutto attivo (profilo PA)</em>, <em>Solo dati essenziali</em>, <em>Nessuna categoria</em>), sensibilità dei modelli (soglia da 0% a 95%), attivazione dei 6 modelli IA e del motore di regole, e le 18 categorie di dati. Le modifiche si applicano subito.</li>
                         <li><strong>Sistema e registro:</strong> calcolo (automatico, solo CPU o GPU NVIDIA), precisione del modello principale (FP32/BF16), tempo massimo per documento, anonimizzazione dei nomi dei file, elenco delle cartelle di lavoro con il pulsante per aprirle, impostazioni degli <em>Aggiornamenti</em>, archivio delle corrispondenze (Vault) e registro delle attività in tempo reale.</li>
                     </ul>
@@ -1103,7 +1142,7 @@
                     <h3 class="sub-title">The four Advanced Mode tabs</h3>
                     <ul>
                         <li><strong>Elaborazione (Processing):</strong> the same screen as Simple Mode, plus the <em>Originali</em> (originals) tab in the documents table (the originals archived in the <code>processed</code> folder).</li>
-                        <li><strong>Agenti AI e API (AI agents and API):</strong> the Proxy addresses to copy (OpenAI format <code>http://127.0.0.1:8000/v1</code> and Anthropic format <code>http://127.0.0.1:8000</code>), a table showing where to set them in Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider and the SDKs, the target services (<em>Servizio OpenAI o compatibile</em>, <em>Servizio Anthropic (Claude)</em>) and examples of the local REST APIs.</li>
+                        <li><strong>Agenti AI e API (AI agents and API):</strong> the Proxy addresses to copy (OpenAI format <code>http://127.0.0.1:8181/v1</code> and Anthropic format <code>http://127.0.0.1:8181</code>), a table showing where to set them in Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider and the SDKs, the target services (<em>Servizio OpenAI o compatibile</em>, <em>Servizio Anthropic (Claude)</em>) and examples of the local REST APIs.</li>
                         <li><strong>Filtri e modelli (Filters and models):</strong> protection profile (all on / essential data only / no category), model sensitivity (threshold from 0% to 95%), the 6 AI models and the rule engine, and the 18 data categories. Changes apply immediately.</li>
                         <li><strong>Sistema e registro (System and log):</strong> compute (automatic, CPU only or NVIDIA GPU), main model precision (FP32/BF16), time limit per document, file name anonymization, the list of working folders with a button to open them, the <em>Aggiornamenti</em> (updates) settings, the mapping archive (Vault) and the live activity log.</li>
                     </ul>
@@ -1548,7 +1587,7 @@
                 </div>
 
                 <div class="lang-it">
-                    <p>Germano AI espone un server HTTP locale su <code>http://127.0.0.1:8000</code>. Di seguito la documentazione completa di tutti gli endpoint REST pronti per essere integrati in script Python, Bash, Node.js o applicativi aziendali.</p>
+                    <p>Germano AI espone un server HTTP locale su <code>http://127.0.0.1:8181</code>. Di seguito la documentazione completa di tutti gli endpoint REST pronti per essere integrati in script Python, Bash, Node.js o applicativi aziendali.</p>
 
                     <h3 class="sub-title">1. Anonimizzazione Testo (POST /api/v1/anonymize_text)</h3>
                     <p>Anonimizza una stringa di testo arbitraria restituendo il testo bonificato e l'elenco delle entità rilevate. Se il testo contiene etichette del Vault (es. una risposta dell'AI) e lo switch di ripristino è attivo, viene invece restituito con i dati veri e il campo <code>"auto_restored": true</code>; per forzare comunque l'anonimizzazione invia <code>"force_anonymize": true</code>.</p>
@@ -1557,7 +1596,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copia</button>
                         </div>
-                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/anonymize_text   -H "Content-Type: application/json"   -d '{
+                        <pre><code>curl -X POST http://127.0.0.1:8181/api/v1/anonymize_text   -H "Content-Type: application/json"   -d '{
     "text": "Il contratto è firmato da Mario Rossi, CF RSSMRA80A01H501U residente in Via Roma 10 a Milano.",
     "force_anonymize": true
   }'</code></pre>
@@ -1585,7 +1624,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copia</button>
                         </div>
-                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/deanonymize_text   -H "Content-Type: application/json"   -d '{
+                        <pre><code>curl -X POST http://127.0.0.1:8181/api/v1/deanonymize_text   -H "Content-Type: application/json"   -d '{
     "text": "Confermo che [PERSONA_1] ha saldato la fattura."
   }'</code></pre>
                     </div>
@@ -1597,7 +1636,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copia</button>
                         </div>
-                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/anonymize   -F "file=@contratto_riservato.docx"   --output "contratto_protetto.docx"</code></pre>
+                        <pre><code>curl -X POST http://127.0.0.1:8181/api/v1/anonymize   -F "file=@contratto_riservato.docx"   --output "contratto_protetto.docx"</code></pre>
                     </div>
 
                     <h3 class="sub-title">4. Stato e Metriche del Motore (GET /api/status)</h3>
@@ -1607,7 +1646,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copia</button>
                         </div>
-                        <pre><code>curl -X GET http://127.0.0.1:8000/api/status</code></pre>
+                        <pre><code>curl -X GET http://127.0.0.1:8181/api/status</code></pre>
                     </div>
 
                     <h3 class="sub-title">5. Ripristino Dati Veri in un File (POST /api/v1/deanonymize_file)</h3>
@@ -1617,7 +1656,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copia</button>
                         </div>
-                        <pre><code>curl -X POST "http://127.0.0.1:8000/api/v1/deanonymize_file?raw=1"   -F "file=@risposta_ai.docx"   --output "risposta_con_dati_veri.docx"</code></pre>
+                        <pre><code>curl -X POST "http://127.0.0.1:8181/api/v1/deanonymize_file?raw=1"   -F "file=@risposta_ai.docx"   --output "risposta_con_dati_veri.docx"</code></pre>
                     </div>
 
                     <div class="callout callout-info">
@@ -1629,7 +1668,7 @@
                 </div>
 
                 <div class="lang-en">
-                    <p>Germano AI serves a local HTTP REST API on <code>http://127.0.0.1:8000</code>. Below is the technical specification for all endpoints ready to integrate into Python, Bash, Node.js, or enterprise backends.</p>
+                    <p>Germano AI serves a local HTTP REST API on <code>http://127.0.0.1:8181</code>. Below is the technical specification for all endpoints ready to integrate into Python, Bash, Node.js, or enterprise backends.</p>
 
                     <h3 class="sub-title">1. Text Anonymization (POST /api/v1/anonymize_text)</h3>
                     <p>Sanitizes arbitrary text strings, returning the clean string alongside an audit array of tagged entities. If the text contains Vault tags (e.g. an AI response) and the restore switch is on, it is returned with real data restored and <code>"auto_restored": true</code> instead; send <code>"force_anonymize": true</code> to always anonymize.</p>
@@ -1638,7 +1677,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         </div>
-                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/anonymize_text   -H "Content-Type: application/json"   -d '{
+                        <pre><code>curl -X POST http://127.0.0.1:8181/api/v1/anonymize_text   -H "Content-Type: application/json"   -d '{
     "text": "The contract is executed by John Doe, Tax ID RSSMRA80A01H501U residing in Milan.",
     "force_anonymize": true
   }'</code></pre>
@@ -1666,7 +1705,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         </div>
-                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/deanonymize_text   -H "Content-Type: application/json"   -d '{
+                        <pre><code>curl -X POST http://127.0.0.1:8181/api/v1/deanonymize_text   -H "Content-Type: application/json"   -d '{
     "text": "I hereby confirm that [PERSONA_1] has completed payment."
   }'</code></pre>
                     </div>
@@ -1678,7 +1717,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         </div>
-                        <pre><code>curl -X POST http://127.0.0.1:8000/api/v1/anonymize   -F "file=@confidential_agreement.docx"   --output "protected_agreement.docx"</code></pre>
+                        <pre><code>curl -X POST http://127.0.0.1:8181/api/v1/anonymize   -F "file=@confidential_agreement.docx"   --output "protected_agreement.docx"</code></pre>
                     </div>
 
                     <h3 class="sub-title">4. Engine Status & Telemetry (GET /api/status)</h3>
@@ -1688,7 +1727,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         </div>
-                        <pre><code>curl -X GET http://127.0.0.1:8000/api/status</code></pre>
+                        <pre><code>curl -X GET http://127.0.0.1:8181/api/status</code></pre>
                     </div>
 
                     <h3 class="sub-title">5. Restore Real Data in a File (POST /api/v1/deanonymize_file)</h3>
@@ -1698,7 +1737,7 @@
                             <span>cURL Request</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         </div>
-                        <pre><code>curl -X POST "http://127.0.0.1:8000/api/v1/deanonymize_file?raw=1"   -F "file=@ai_answer.docx"   --output "answer_with_real_data.docx"</code></pre>
+                        <pre><code>curl -X POST "http://127.0.0.1:8181/api/v1/deanonymize_file?raw=1"   -F "file=@ai_answer.docx"   --output "answer_with_real_data.docx"</code></pre>
                     </div>
 
                     <div class="callout callout-info">
@@ -1728,7 +1767,7 @@
                         <div class="callout-icon">⚡</div>
                         <div class="callout-content">
                             <strong>Come Funziona il Proxy:</strong>
-                            <p>Gli editor o agenti IA (come <strong>Google Antigravity</strong>, <strong>OpenAI Codex CLI</strong>, <strong>Cursor</strong>, <strong>Windsurf</strong>, <strong>Claude Code</strong>) indirizzano le loro chiamate API verso <code>http://127.0.0.1:8000/v1</code> invece che direttamente verso il cloud. Germano intercetta la chiamata in uscita, <strong>anonimizza al volo</strong> prompt, messaggi, immagini e argomenti delle funzioni (`tool_calls`), inoltra la richiesta al provider prescelto e, quando la risposta torna indietro, <strong>rimette automaticamente i dati veri al loro posto</strong> prima di passarla all'editor!</p>
+                            <p>Gli editor o agenti IA (come <strong>Google Antigravity</strong>, <strong>OpenAI Codex CLI</strong>, <strong>Cursor</strong>, <strong>Windsurf</strong>, <strong>Claude Code</strong>) indirizzano le loro chiamate API verso <code>http://127.0.0.1:8181/v1</code> invece che direttamente verso il cloud. Germano intercetta la chiamata in uscita, <strong>anonimizza al volo</strong> prompt, messaggi, immagini e argomenti delle funzioni (`tool_calls`), inoltra la richiesta al provider prescelto e, quando la risposta torna indietro, <strong>rimette automaticamente i dati veri al loro posto</strong> prima di passarla all'editor!</p>
                         </div>
                     </div>
 
@@ -1757,7 +1796,7 @@
                         <div class="callout-icon">⚡</div>
                         <div class="callout-content">
                             <strong>How the Proxy Operates:</strong>
-                            <p>AI editors and coding harnesses (such as <strong>Google Antigravity</strong>, <strong>OpenAI Codex CLI</strong>, <strong>Cursor</strong>, <strong>Windsurf</strong>, <strong>Claude Code</strong>) point their API requests to <code>http://127.0.0.1:8000/v1</code> rather than direct cloud endpoints. Germano intercepts outgoing traffic, <strong>redacts on the fly</strong> prompts, system instructions, images, and function arguments (`tool_calls`), forwards the clean request to OpenAI/Anthropic, and when the stream returns, <strong>transparently re-injects real data</strong> before handing the response back to your editor!</p>
+                            <p>AI editors and coding harnesses (such as <strong>Google Antigravity</strong>, <strong>OpenAI Codex CLI</strong>, <strong>Cursor</strong>, <strong>Windsurf</strong>, <strong>Claude Code</strong>) point their API requests to <code>http://127.0.0.1:8181/v1</code> rather than direct cloud endpoints. Germano intercepts outgoing traffic, <strong>redacts on the fly</strong> prompts, system instructions, images, and function arguments (`tool_calls`), forwards the clean request to OpenAI/Anthropic, and when the stream returns, <strong>transparently re-injects real data</strong> before handing the response back to your editor!</p>
                         </div>
                     </div>
 
@@ -1805,7 +1844,7 @@
                         <li>In Germano AI (Modalità Avanzata, scheda <em>Agenti AI e API</em>, campo <em>«Servizio OpenAI o compatibile»</em>) imposta l'URL del tuo provider (predefinito <code>https://api.openai.com/v1/chat/completions</code>; per le richieste Claude/Anthropic c'è il campo separato <em>«Servizio Anthropic (Claude)»</em>).</li>
                         <li>Nelle impostazioni di rete o variabili d'ambiente di Antigravity, configura:
                             <div class="code-block">
-                                <pre><code>OPENAI_BASE_URL="http://127.0.0.1:8000/v1"</code></pre>
+                                <pre><code>OPENAI_BASE_URL="http://127.0.0.1:8181/v1"</code></pre>
                             </div>
                         </li>
                     </ol>
@@ -1817,7 +1856,7 @@
                             <span>PowerShell</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copia</button>
                         </div>
-                        <pre><code>$env:OPENAI_BASE_URL = "http://127.0.0.1:8000/v1"
+                        <pre><code>$env:OPENAI_BASE_URL = "http://127.0.0.1:8181/v1"
 codex</code></pre>
                     </div>
 
@@ -1828,7 +1867,7 @@ codex</code></pre>
                         <li>Inserisci la tua chiave API reale (oppure inserisci una chiave fittizia se usi Germano con chiave preconfigurata).</li>
                         <li>Clicca su <strong>Override OpenAI Base URL</strong> e imposta:
                             <div class="code-block">
-                                <pre><code>http://127.0.0.1:8000/v1</code></pre>
+                                <pre><code>http://127.0.0.1:8181/v1</code></pre>
                             </div>
                         </li>
                     </ol>
@@ -1840,7 +1879,7 @@ codex</code></pre>
                             <span>PowerShell</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copia</button>
                         </div>
-                        <pre><code>$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8000"
+                        <pre><code>$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8181"
 claude</code></pre>
                     </div>
                 </div>
@@ -1859,7 +1898,7 @@ claude</code></pre>
                         <li>In Germano AI (Advanced Mode, <em>Agenti AI e API</em> tab, <em>«Servizio OpenAI o compatibile»</em> field), confirm your upstream provider URL (default <code>https://api.openai.com/v1/chat/completions</code>; Claude/Anthropic requests use the separate <em>«Servizio Anthropic (Claude)»</em> field).</li>
                         <li>Configure Antigravity's target endpoint:
                             <div class="code-block">
-                                <pre><code>OPENAI_BASE_URL="http://127.0.0.1:8000/v1"</code></pre>
+                                <pre><code>OPENAI_BASE_URL="http://127.0.0.1:8181/v1"</code></pre>
                             </div>
                         </li>
                     </ol>
@@ -1871,7 +1910,7 @@ claude</code></pre>
                             <span>PowerShell</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         </div>
-                        <pre><code>$env:OPENAI_BASE_URL = "http://127.0.0.1:8000/v1"
+                        <pre><code>$env:OPENAI_BASE_URL = "http://127.0.0.1:8181/v1"
 codex</code></pre>
                     </div>
 
@@ -1882,7 +1921,7 @@ codex</code></pre>
                         <li>Enter your real API key (Germano only uses it locally to forward the already anonymized request).</li>
                         <li>Enable <strong>Override OpenAI Base URL</strong> and enter:
                             <div class="code-block">
-                                <pre><code>http://127.0.0.1:8000/v1</code></pre>
+                                <pre><code>http://127.0.0.1:8181/v1</code></pre>
                             </div>
                         </li>
                     </ol>
@@ -1894,7 +1933,7 @@ codex</code></pre>
                             <span>PowerShell</span>
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         </div>
-                        <pre><code>$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8000"
+                        <pre><code>$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8181"
 claude</code></pre>
                     </div>
                 </div>
@@ -1921,7 +1960,7 @@ claude</code></pre>
                     <h3 class="sub-title">D: Il motore non parte o compare un messaggio rosso di errore</h3>
                     <p><strong>R:</strong> Il messaggio in alto nella Dashboard indica la causa; il dettaglio completo è nel file <code>daemon.log</code> nella cartella del programma. Su alcuni PC appena installati la funzione di Windows <em>Smart App Control</em> o l'antivirus possono bloccare i componenti IA: <code>START.bat</code> lo segnala all'avvio. Evita anche percorsi molto lunghi (meglio <code>C:\GermanoAI</code>).</p>
 
-                    <h3 class="sub-title">D: Cosa succede se il programma indica che la porta 8000 è occupata?</h3>
+                    <h3 class="sub-title">D: Cosa succede se il programma indica che la porta 8181 è occupata?</h3>
                     <p><strong>R:</strong> Se Germano è già aperto, facendo di nuovo doppio clic su <code>START.bat</code> si apre semplicemente la Dashboard esistente. Se la porta è usata da un altro programma, chiudilo oppure imposta un'altra porta in <code>config.json</code> (es. <code>"port": 8010</code>) e aggiorna di conseguenza l'indirizzo del Proxy negli editor.</p>
 
                     <h3 class="sub-title">D: Perché vedo l'avviso «Sono rimasti aperti ... processi del motore»?</h3>
@@ -1954,7 +1993,7 @@ claude</code></pre>
                     <h3 class="sub-title">Q: The engine does not start or a red error message appears</h3>
                     <p><strong>A:</strong> The message at the top of the Dashboard shows the cause; full details are in <code>daemon.log</code> in the program folder. On some freshly installed PCs, Windows <em>Smart App Control</em> or the antivirus may block the AI components: <code>START.bat</code> reports it at startup. Also avoid very long paths (prefer <code>C:\GermanoAI</code>).</p>
 
-                    <h3 class="sub-title">Q: What if port 8000 is reported in use?</h3>
+                    <h3 class="sub-title">Q: What if port 8181 is reported in use?</h3>
                     <p><strong>A:</strong> If Germano is already open, double-clicking <code>START.bat</code> again simply opens the existing Dashboard. If another program uses the port, close it or set a different port in <code>config.json</code> (e.g. <code>"port": 8010</code>) and update the Proxy address in your editors.</p>
 
                     <h3 class="sub-title">Q: Why do I see the «Sono rimasti aperti ... processi del motore» (engine processes left open) notice?</h3>
@@ -2015,11 +2054,14 @@ claude</code></pre>
             let initialLang = 'it';
             try {
                 const urlLang = new URLSearchParams(window.location.search).get('lang');
-                const savedLang = localStorage.getItem('germano_guide_lang');
+                const savedLang = localStorage.getItem('germano_guide_lang') || localStorage.getItem('germano_lang');
                 if (urlLang === 'en' || urlLang === 'it') {
                     initialLang = urlLang;
                 } else if (savedLang === 'en' || savedLang === 'it') {
                     initialLang = savedLang;
+                } else {
+                    const navLang = (navigator.language || navigator.userLanguage || 'it').toLowerCase();
+                    initialLang = navLang.startsWith('it') ? 'it' : 'en';
                 }
             } catch (e) {}
             setDocLang(initialLang);

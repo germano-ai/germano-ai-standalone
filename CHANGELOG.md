@@ -5,6 +5,107 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.52-alpha] - 2026-10-24
+Germano lavora ora in quattro **modalità operative**, scelte alla prima apertura e modificabili in qualsiasi momento:
+**Standalone** (predefinita, tutto su questo computer), **Server** (offre motore e Proxy agli altri PC dell'ufficio),
+**Client** (affida il calcolo dei modelli a un Germano Server della rete) oppure **Server + Client**. Ogni elemento
+della Dashboard ha un suggerimento al passaggio del mouse. Runtime e modelli invariati rispetto alla 0.51; funziona
+offline su Windows 11 appena installato.
+
+### Aggiunto - Modalità operativa all'avvio
+- **Finestra di benvenuto** alla prima apertura della Dashboard: tre caselle — **[x] Standalone** (predefinita),
+  **[ ] Server**, **[ ] Client** — con la spiegazione di ciascuna; Server e Client si possono scegliere insieme.
+  La finestra ricorda che *«Questa modalità è sempre modificabile in qualsiasi momento nelle Impostazioni»*.
+  Chiudendola senza scegliere si conferma Standalone e non viene più riproposta.
+- Nuovo pulsante **Impostazioni** e indicatore della modalità nella barra in alto (verde = Server, blu = Client,
+  arancione = attenzione, es. server non raggiungibile); in Avanzata, il riquadro **Sistema › Rete e modalità
+  operativa** riassume ascolto in rete, collegamento al server e token.
+- La modalità **si applica subito, senza riavviare Germano**: la Dashboard ascolta sempre e solo su `127.0.0.1`; la
+  parte Server aggiunge e toglie dal vivo un secondo ascolto sulla rete (`0.0.0.0`, o l'IP di `bind_host`) e il
+  rilevamento UDP. In **Standalone** e in **Client** nessuna porta di Germano è aperta verso la rete. Server e
+  Client avviano il motore da soli; cambiando la parte Client il motore si riavvia con il tipo giusto (locale o remoto).
+- Con la parte Server attiva le Impostazioni mostrano indirizzi IP, token per i client (con **Nuovo token**, che
+  invalida subito il precedente) e stato del rilevamento automatico.
+- **`START_SERVER.bat`** ora imposta `GERMANO_MODE=server`: forza la modalità Server solo per quell'avvio, senza
+  modificare la scelta salvata (la Dashboard lo segnala). Resta compatibile `GERMANO_HOST=0.0.0.0`.
+- Il cambio di modalità, il token e la ricerca dei server sono riservati al computer stesso (`/api/mode`,
+  `/api/mode/token`, `/api/remote/servers`, mai dalla rete) e rispettano `lock_settings`: con le impostazioni
+  bloccate dall'amministratore la modalità non si cambia, le preferenze dell'interfaccia sì.
+
+### Aggiunto - Modalità Client (motore remoto)
+- Nuovo `germano/remote_engine.py`: in modalità Client il demone **non carica i modelli** (pochi MB di memoria
+  invece di alcuni GB) e invia al Germano Server soltanto i testi e le immagini da analizzare; riceve posizioni,
+  categorie e punteggi. **Vault, etichette, file e ripristino restano su questo computer**: il server non conserva
+  nulla dei client e non ne registra i nomi dei file. Il server applica le impostazioni del client (modelli e
+  soglia), quindi il risultato coincide con quello del motore locale.
+- Il server si trova da solo con il rilevamento UDP (preferendo un server con GPU) oppure si indica l'indirizzo
+  nelle Impostazioni, con il pulsante **Cerca server in rete**. Il token del server è obbligatorio.
+- **A prova di guasto**: se il server non risponde Germano non invia nulla, il Proxy e lo Studio bloccano la
+  richiesta con un messaggio chiaro (HTTP 503) e i documenti restano nella cartella `input` (non tra i non riusciti)
+  finché il server torna disponibile; l'elaborazione riprende da sola. Facoltativo: ripiego sul motore locale se
+  nessun server risponde all'avvio (`client_fallback_local`).
+- Motore condiviso del server: `GET /api/engine/v1/info`, `POST /api/engine/v1/classify` e
+  `/api/engine/v1/{ocr,faces,signatures,plates}`, sempre con token. Un server che a sua volta delega il calcolo non
+  condivide il proprio motore (niente catene) e nessuna installazione rileva se stessa (`instance_id`).
+
+### Aggiunto - Suggerimenti (tooltips)
+- Spiegazione al passaggio del mouse (e con il tasto Tab) su ogni elemento della Dashboard: pulsanti, card delle
+  cartelle, statistiche in tempo reale (CPU, RAM, velocità), stato del motore e della modalità, selettori
+  Anonimizza file / Studio AI e Semplice / Avanzata, campi degli indirizzi API, modelli, categorie di dati e soglia.
+  Attivi per impostazione predefinita, si disattivano nelle Impostazioni (`enable_tooltips`).
+
+### Aggiunto - Modalità Server LAN
+- **Rilevamento automatico sulla LAN** (`germano/discovery.py`): un leggero responder UDP sulla porta **8182**
+  risponde ai ping `GERMANO_DISCOVERY_PING` con le informazioni del server (servizio, versione, porta, nome, stato del
+  motore condiviso) — mai il token, mai dati personali. Anche `GET /api/discovery` restituisce le stesse informazioni.
+  La porta predefinita della Dashboard è ora **8181**.
+- **Sicurezza a livelli per l'accesso di rete** (il modello non cambia per chi usa solo `127.0.0.1`):
+  - dalla rete, in sola lettura e senza token: Dashboard, `/api/status`, `/api/ai/detect`, `/api/discovery`;
+  - dalla rete, con **token condiviso**: il Proxy verso le AI (`/v1/messages`, `/v1/chat/completions`, …),
+    `POST /api/studio/send` e il motore condiviso (`/api/engine/v1/…`). Il token si passa nell'intestazione
+    `X-Germano-Auth` **oppure** nel Base URL come prefisso `/g/<token>` (così funziona con qualunque CLI, senza
+    modificarla). Senza un token valido l'accesso è sempre negato;
+  - **solo dal computer del server**: controllo del motore, impostazioni, modalità, file, archivio delle
+    corrispondenze e de-anonimizzazione (`/api/v1/deanonymize_*`). I dati reali non sono mai esposti alla rete.
+  - Protezione anti DNS-rebinding estesa: si accettano solo host loopback, IP letterali e il nome del computer.
+- Il token condiviso viene generato in modo casuale alla prima attivazione della parte Server e salvato in
+  `config.json`; `/api/settings` non restituisce più alcun token.
+- Nuove impostazioni in `config.json`: `operating_mode`, `first_run_done`, `remote_server`, `remote_token`,
+  `client_fallback_local`, `enable_tooltips`, `bind_host`, `discovery_enabled`, `discovery_port`, `lan_token`,
+  `server_name`, `instance_id`, `instance_host`.
+- Variabile `GERMANO_DATA_DIR`: sposta configurazione, cartelle di lavoro, Vault e registro in un'altra cartella
+  (modelli e runtime restano nel programma); consente più istanze indipendenti della stessa installazione.
+- La Dashboard, se aperta da un altro computer, mostra gli indirizzi del Proxy con l'IP reale del server.
+- **Integrazione Kimi, DeepSeek e Qwen**: aggiunti al catalogo di rilevamento locale (`ai_detect.py`) sia sul server che sul client. Nello Studio AI sono disponibili direttamente come destinazioni di inoltro; nella scheda *Agenti AI e API* sono presenti pulsanti di pre-configurazione rapida a 1 clic per impostare come target OpenAI: OpenAI, DeepSeek (`api.deepseek.com`), Kimi (`api.moonshot.cn`), Qwen (`dashscope.aliyuncs.com`) e Ollama.
+
+### Corretto - dal collaudo client/server del 24/10
+- **Privacy: documenti Office e OpenDocument danneggiati non vengono piu' segnati «Pronti» con i dati in chiaro.**
+  Se una parte interna con testo (es. `word/document.xml`, `styles.xml`) non e' leggibile, il file va tra i
+  *Non riusciti* con il motivo, invece di essere copiato in uscita senza anonimizzazione.
+- Un PDF danneggiato o troncato restava bloccato per sempre nella cartella `input` (con una copia in `failed` e
+  senza motivo): ora finisce tra i *Non riusciti* con un messaggio chiaro.
+- Immagini e scansioni: quando il dato occupa solo una parte della riga letta dall'OCR, il riquadro nero poteva
+  lasciare scoperti il primo o l'ultimo carattere (es. le prime due lettere del codice fiscale dopo «Codice
+  fiscale:», l'iniziale di un nome). La posizione ora tiene conto della diversa larghezza dei caratteri.
+- Messaggi comprensibili per PDF, immagini e archivi danneggiati (prima: errori tecnici con il percorso completo).
+- `Thumbs.db`, `desktop.ini` e i file nascosti non contano piu' come documenti «In attesa»: prima il lotto non
+  risultava mai completato e la Dashboard restava su «Documenti in arrivo».
+- `GET /api/ai/detect` chiesto dalla rete restituisce nomi e versioni delle AI ma non i percorsi di installazione
+  (rivelavano il nome utente di Windows del server).
+- **Rilevamento automatico in rete** (modalità Client e Germano Client): su un PC senza un server locale la ricerca si
+  interrompeva subito, al primo avviso «porta irraggiungibile» che Windows restituisce per il ping a 127.0.0.1, e
+  spesso non trovava i server della LAN. Ora ascolta le risposte per tutto il tempo previsto; vengono scartate anche
+  le risposte con una porta non valida.
+- `START_SERVER.bat` usa i fine riga di Windows (CRLF), come `START.bat`.
+
+### Aggiunto - Germano Client v0.01 (prodotto separato)
+- Nuova applicazione **`germano_client`** (cartella a parte), leggerissima: **non contiene modelli** (28 MB di
+  runtime). Trova il server sulla LAN da solo (broadcast UDP) con ripiego su `client_config.json` o parametro
+  da riga di comando, e incanala le CLI locali (Claude Code, Codex, Aider, Gemini CLI) verso il Proxy del server
+  impostando `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` con il prefisso `/g/<token>`.
+- Lanciatore **`START_CLIENT.bat`** con menu interattivo e comandi `discover`, `status`, `launch <cli>`, `send`,
+  `config`. Documentazione in `README.md` e `README.en.md`.
+
 ## [0.51-alpha] - 2026-10-22
 Versione di consolidamento: audit completo del codice 0.50 (bug verificati con test riproducibili), riscrittura
 modulare del motore (`germano/`), Dashboard completamente rinnovata e aggiornamenti automatici. Runtime, librerie e
@@ -30,6 +131,25 @@ modelli invariati: funziona offline su Windows 11 appena installato.
   impostazioni degli aggiornamenti, archivio delle corrispondenze e registro in tempo reale.
 - Nuove API locali: `GET /api/folders`, `POST /api/file_action` (mostra/apre un file; si aprono solo documenti, mai
   eseguibili o script), `POST /api/retry_failed`, `GET /api/update/status`, `POST /api/update/check|download|install`.
+
+### Aggiunto - Doppia modalità e Studio AI
+- La Dashboard ha ora un commutatore principale **📂 Anonimizza file** / **🧠 Studio AI** (la scelta è ricordata).
+- **Anonimizza file**: in cima alla vista, una griglia di **card delle cartelle** (In attesa, Pronti, Errori,
+  Originali, Vault/estratti) con i contatori in tempo reale; cliccando una card si apre quella cartella in Esplora
+  file. Striscia di **statistiche live**: file elaborati/totali del lotto, PII oscurate, documenti al minuto,
+  uso di CPU e RAM, con barra di avanzamento.
+- **Studio AI**: si scrive un prompt e si allegano file; il testo e il contenuto degli allegati vengono
+  **anonimizzati dal motore locale prima** di essere inoltrati a un'AI. Se il motore non è attivo la richiesta è
+  bloccata e **nessun dato lascia il computer**. La conversazione mostra sempre *cosa* viene inviato (già con le
+  etichette) e l'elenco dei dati oscurati; pulsante per copiare il testo protetto.
+- **Rileva AI**: pulsante che individua le AI e le CLI installate sul computer (Claude Code, Claude Desktop,
+  Antigravity, Gemini CLI, Codex, Aider, Cursor, Windsurf, Ollama, LM Studio) leggendo file system e porte locali
+  (nessun processo avviato, nessuna rete): chip con spunta verde per quelle pronte e selettore della destinazione.
+  Il rilevamento non si limita al `PATH` (Claude Code e Antigravity si installano fuori dal `PATH`).
+- **Configurazione Granulare**: pulsante nello Studio che apre un cassetto con i pannelli *Profilo di protezione*,
+  *Modelli di analisi* (sensibilità compresa) e *Categorie di dati*, per regolare al volo cosa oscurare.
+- Nuove API locali: `GET /api/ai/detect` (elenco delle AI installate, in cache 30 s, `?refresh=1` per riscansionare)
+  e `POST /api/studio/send` (protegge prompt e allegati e restituisce il testo pronto da inviare, con i dati oscurati).
 
 ### Aggiunto - Aggiornamenti automatici
 - **Solo quando Windows segnala che il PC è connesso a Internet** (Network List Manager: la verifica non invia

@@ -73,7 +73,7 @@ if exist "update\ready.json" (
 )
 
 echo [3/3] Avvio del Server Locale e della Dashboard Web...
-echo       La Dashboard si apre nel browser (http://127.0.0.1:8000).
+echo       La Dashboard si apre nel browser (http://127.0.0.1:8181).
 echo       Per chiudere Germano AI chiudi questa finestra.
 echo.
 "runtime\python.exe" server.py
