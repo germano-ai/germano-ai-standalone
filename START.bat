@@ -1,12 +1,36 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul 2>&1
-REM pushd (invece di cd) funziona anche se il programma si trova su una cartella di rete \\server\condivisione
 pushd "%~dp0" || (echo Impossibile accedere alla cartella del programma. & pause & exit /b 1)
 
-set "GERMANO_VER=0.51-alpha"
+set "GERMANO_VER=0.52-alpha"
 if exist "VERSION" set /p GERMANO_VER=<VERSION
 TITLE Germano AI v%GERMANO_VER% - Local Privacy Engine ^& API Proxy
+
+REM ==============================================================
+REM GESTIONE PRIVILEGI AMMINISTRATORE E FIREWALL RETE (Zero-Config)
+REM ==============================================================
+net session >nul 2>&1
+if errorlevel 1 (
+    if not "%~1"=="elevated_skip" (
+        echo [*] Configurazione automatica autorizzazioni di rete e firewall...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/c \"\"%~f0\" elevated_skip\"' -Verb RunAs" 2>nul
+        if not errorlevel 1 exit /b 0
+        echo [!] Avvio standard senza privilegi elevati...
+    )
+) else (
+    REM Configura automaticamente le regole firewall di Windows per porta 8181, 8182 e runtime
+    netsh advfirewall firewall show rule name="Germano AI HTTP (8181)" >nul 2>&1
+    if errorlevel 1 (
+        echo [*] Configurazione automatica porte di rete e Firewall di Windows...
+        netsh advfirewall firewall add rule name="Germano AI HTTP (8181)" dir=in action=allow protocol=TCP localport=8181 profile=any >nul 2>&1
+        netsh advfirewall firewall add rule name="Germano AI Discovery (UDP 8182)" dir=in action=allow protocol=UDP localport=8182 profile=any >nul 2>&1
+        if exist "%CD%\runtime\python.exe" (
+            netsh advfirewall firewall add rule name="Germano AI Python Runtime" dir=in action=allow program="%CD%\runtime\python.exe" enable=yes profile=any >nul 2>&1
+        )
+        echo [*] Regole firewall configurate con successo.
+    )
+)
 
 REM Ambiente 100% offline e portatile (nessuna cache nel profilo utente, nessuna telemetria)
 set "PYTHONIOENCODING=utf-8"
@@ -21,7 +45,7 @@ set "PATH=%CD%\runtime;%CD%\runtime\Scripts;%PATH%"
 echo ==============================================================
 echo                      GERMANO.AI v%GERMANO_VER%
 echo        Suite Locale di Anonimizzazione Documentale ^& IA
-echo              100%% Offline  ^|  Standalone  ^|  GDPR
+echo      100%% Offline  ^|  Standalone / Server / Client  ^|  GDPR
 echo ==============================================================
 echo.
 
@@ -58,12 +82,6 @@ if exist "runtime\msvcp140.dll" (
         echo       Librerie di sistema Visual C++ rilevate [OK]
     )
 )
-set "GERMANO_SAC="
-for /f "tokens=3" %%A in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy" /v VerifiedAndReputablePolicyState 2^>nul ^| find "0x"') do set "GERMANO_SAC=%%A"
-if "%GERMANO_SAC%"=="0x1" (
-    echo       ATTENZIONE: "Smart App Control" di Windows e' attivo e potrebbe bloccare i componenti IA.
-    echo       Se l'avvio fallisce: Sicurezza di Windows ^> Controllo delle app e del browser ^> Smart App Control.
-)
 
 REM Aggiornamento gia' scaricato e verificato (update\ready.json): si installa prima dell'avvio
 if exist "update\ready.json" (
@@ -72,14 +90,15 @@ if exist "update\ready.json" (
     if errorlevel 10 if not errorlevel 11 goto :updating
 )
 
-echo [3/3] Avvio del Server Locale e della Dashboard Web...
+echo [3/3] Avvio del Motore e della Dashboard Web...
 echo       La Dashboard si apre nel browser (http://127.0.0.1:8181).
+echo       Tutte le modalita' (Standalone, Server LAN, Client) sono gestibili
+echo       direttamente dall'interfaccia e dalle Impostazioni.
 echo       Per chiudere Germano AI chiudi questa finestra.
 echo.
 "runtime\python.exe" server.py
 set "GERMANO_EXIT=%ERRORLEVEL%"
 if "%GERMANO_EXIT%"=="0" goto :end
-REM 10 = chiusura per installare un aggiornamento (prosegue in un'altra finestra)
 if "%GERMANO_EXIT%"=="10" goto :end
 
 echo.
