@@ -41,57 +41,48 @@ Germano AI is designed to adapt to both highly regulated environments and privat
 
 ---
 
-## 🆕 What's new in v0.52-alpha
+## 🏛️ Architecture & Operating Modes (Tri-Mode & Dual Mode)
 
-*   **Operating mode**, chosen on the first launch and *always changeable at any time in the Settings* (it applies immediately, without restarting):
-    *   **Standalone** (default): everything runs on this computer, isolated. No port open to the network, no network search.
-    *   **Server**: Germano listens on the local network, answers the auto-discovery (UDP 8182) and offers the anonymization engine and the proxy to the other office PCs, protected by a token. Ideal on the most powerful PC; `START_SERVER.bat` starts directly in this mode.
-    *   **Client**: at startup it looks for a Germano Server on the network and hands it the model computation (the client PC does not load them in memory). Vault, files and tags stay on the client; if the server does not answer no data leaves and documents stay queued.
-    *   **Server + Client** together.
-*   **100% Bilingual Interface (Italian / English)** with automatic browser language detection (English by default, Italian if `it`), instant flag switcher (🇮🇹 IT / 🇬🇧 EN) in the topbar and over 112 fully localized hover tooltips.
-*   **Dual Mode (Batch + AI Studio)**: "📂 Anonymize files" view for massive batch processing with interactive folder cards for `input`, `output`, `failed`, `processed`, `extracted` (one-click open in Windows File Explorer), live throughput, masked PII count, CPU and RAM metrics; and "🧠 AI Studio" view (Google Antigravity style) with local AI detection and granular privacy settings.
-*   **Germano Client v0.02**: separate ultra-lightweight client package (~28 MB, available as standalone download) with real-time UDP LAN auto-discovery, preflight fail-safe security and CLI profiles for Claude Code, Codex, Aider, Qwen, Kimi and DeepSeek.
-*   Default port **8181**. Full list in the [CHANGELOG](CHANGELOG.en.md).
+Germano AI implements a modular hybrid architecture, selectable on initial launch and configurable at any time in Settings (taking effect immediately, zero restarts required):
 
-## 🆕 What's new in v0.51-alpha
+### Three Native Operating Modes:
+*   **🖥️ Standalone (Default & 100% Offline):** everything runs locally on this computer in complete isolation. Zero open ports to the external network and zero client discovery. All 6 local AI models load into local memory, the encryption Vault remains on local disk, and zero packets leave the workstation.
+*   **📡 LAN Server (Shared Inference Engine):** Germano listens on the local network (default port **8181**) and responds to UDP broadcast auto-discovery (port **8182**). It exposes the local inference engine and the AI Proxy to authorized workstations across the office or studio, protected by Bearer Token authentication. Launches directly via `START_SERVER.bat`.
+*   **🌐 Client (Lightweight Germano Client ~28 MB):** an agile, portable executable designed for laptops or workstations with limited resources. On launch, it automatically discovers the LAN Germano Server and offloads heavy model inference. **Original documents, anonymized files, and the de-anonymization vault strictly reside on the client workstation**: if the server is unreachable, zero data leaves the client and documents remain queued.
+*   **Server + Client together:** the host workstation shares inference across the LAN while concurrently processing its own local queue.
 
-*   **New Dashboard, sober and built for batch work:** buttons to open the `input` and `output` folders, adding files or whole folders, pending / ready / failed counters, a list of the documents that could not be processed with the reason and a **Rimetti in coda** (Queue again) button, CSV export of the list.
-*   **Endpoints for AI agents:** in Advanced Mode the **Agenti AI e API** (AI agents and API) tab shows the Proxy addresses (OpenAI and Anthropic formats) and where to set them in Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider and the SDKs, followed by REST API examples.
-*   **Automatic updates:** only when Windows reports that the PC is connected to the Internet, Germano looks for a new version on download.germano.ai, downloads it, verifies its integrity and installs it on restart, keeping documents, Vault and settings (details below).
-*   **Formatting and images preserved** in Word, Excel, PowerPoint and OpenDocument (v0.50 removed bold text, fonts and pictures from DOCX files); footnotes, text boxes, comments, speaker notes, metadata and thumbnails are now anonymized too.
-*   **Stronger PDF redaction:** OCR on scans carrying a digital stamp, pixel blanking on searchable scans, correct rotated pages, form fields, comments, bookmarks, embedded attachments; signatures (PAdES) removed.
-*   **API Proxy fixed for Claude Code and Codex** (SSE streaming was broken in v0.50), images and PDFs in Anthropic/Responses format anonymized, faster batch analysis with caching.
-*   **New formats:** native RTF (no Word needed), signed `.p7m` files (e.g. `fattura.xml.p7m`), JSON, TSV, Markdown, logs and source code.
-*   **Reliability and security:** thread-safe vault, the engine stops when the window is closed, files are processed only once fully copied, live progress and failure reasons in the Dashboard, protection of the local API against malicious websites; no document data is ever sent over the network.
-*   Full list in the [CHANGELOG](CHANGELOG.en.md).
+### Dual Mode & User Interface:
+*   **Dual Mode (Batch + AI Studio):** toggle instantly with a single click between:
+    *   **📁 Anonymize files (Batch Processing):** clear and focused interface for massive batch processing, featuring quick-access buttons to open `input` and `output` folders, interactive tabs for `input`, `output`, `failed`, `processed`, and `extracted`, real-time throughput metrics (files/min, redacted PII), hardware monitoring (CPU/RAM), detailed error diagnostics with a **Re-queue** button, and CSV export.
+    *   **🤖 AI Studio (Local Harness):** interactive workbench styled after Google Antigravity, featuring automatic detection of installed local AI agents and CLIs (Claude Code, OpenAI Codex CLI, Google Antigravity, Aider, Qwen, Kimi, DeepSeek) with granular model configuration.
+*   **100% Bilingual Interface & Contextual Tooltips (Italian / English):** automatic browser language detection (`it` -> Italian, otherwise English by default), quick flag toggle (🇮🇹 IT / 🇬🇧 EN) in the top navigation bar, and over 112 localized interactive hover tooltips across all controls, toggled in Settings.
 
-**Upgrading from v0.50:** extract v0.51 into a new folder and copy `extracted/deanonymize_vault.json` from the old one (so documents you already protected can still be restored) and, optionally, `config.json`. From v0.51 onwards updates install themselves.
+---
 
-**Requirements:** Windows 10/11 64-bit, 8 GB RAM (16 GB recommended), about 6 GB of free disk space. No installation and no administrator privileges.
+## 🌟 Main Features
 
-## 🚀 Main Features (v0.51-alpha)
-
-*   **100% Offline & Vanilla Windows 11 Ready:** Bundles embedded Python 3.11, all 12 native 64-bit Microsoft Visual C++ Redistributable DLLs directly in the runtime (zero administrator privileges required), a zero-CDN offline Web UI, and **6 pre-installed local AI models**.
+*   **100% Offline & Vanilla Windows 11 Ready:** Bundles embedded Python 3.11, all 12 native 64-bit Microsoft Visual C++ Redistributable DLLs pre-integrated (zero admin privileges required), an offline Web UI free of external CDNs, and **6 pre-installed local AI models**.
 *   **Simple / Advanced Mode selector:**
-    *   **Simple Mode:** zero technical jargon; add the documents, the engine starts on its own and the results are one click away.
-    *   **Advanced Mode:** four tabs. **Elaborazione** (Processing, archived originals included), **Agenti AI e API** (AI agents and API: Proxy addresses, per-tool setup, target services, REST examples), **Filtri e modelli** (Filters and models: profile, sensitivity, **18 categories and 7 analysis engines**: Names, Professions/Titles, Addresses, Cadastre, Fiscal Codes/VAT, Emails/PEC, Phones, IBAN/Accounts, Amounts/Financials, Dates, Companies/Orgs, License Plates/Docs, Medical/Health Data (GDPR Art. 9), Medications/Therapies, Judicial/Legal Data (GDPR Art. 10), Civil Status, Passwords/Secrets, and URLs/IPs), **Sistema e registro** (System and log: compute and precision, working folders, updates, Vault, live log).
-*   **📖 Complete Offline Guide & Technical Documentation:** *"Guida"* (Guide) button integrated in the Dashboard header (available at `/guide` and as a standalone `GUIDA_OFFLINE.html` file), bilingual (instant Italian/English toggle), featuring foolproof explanations, guide to the 5 internal folders, complete REST API specs, and step-by-step setup for Google Antigravity, OpenAI Codex, Cursor, and Claude Code.
-*   **🔄 Automatic De-Anonymization via API Proxy and Internal Folders:** With the *"Ripristino automatico dei dati originali"* (automatic restore of the original data) switch on (default), Germano stores the mapping for `[PERSONA_1]`, `[INDIRIZZO_1]`, etc. in the local Vault (`extracted/deanonymize_vault.json`). Across the local API Proxy (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` for **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) and the internal `input/` folder, responses and files returned by the AI automatically have all original real data restored on the fly (without ever scanning folders outside the program directory).
+    *   **Simple Mode:** zero technical jargon; add documents, the engine processes automatically, and results are retrieved with one click.
+    *   **Advanced Mode:** four comprehensive tabs. **Processing** (including archived original files), **AI Agents and API** (Proxy URLs, per-tool setup, target services, REST examples), **Filters and models** (compliance profiles, sensitivity, **18 categories and 7 analysis engines**: Names, Professions/Titles, Addresses, Cadastral, Tax Codes/VAT, Email/PEC, Phone Numbers, IBAN/Bank accounts, Amounts/Finance, Dates, Companies/Entities, License Plates/IDs, Health Data (GDPR Art. 9), Medications/Therapies, Judicial Data (GDPR Art. 10), Marital Status, Passwords/Secrets, and URLs/IPs), **System and logs** (compute precision, working directories, update checks, Vault, live log console).
+*   **📖 Complete Offline Guide & Technical Documentation:** *"Guida"* (Guide) button integrated into the Dashboard (available at `/guide` and as standalone file `GUIDA_OFFLINE.html`), fully bilingual (Italian and English), featuring step-by-step guides, 5-folder workflow breakdown, REST API specifications, and setup instructions for Google Antigravity, OpenAI Codex, Cursor, and Claude Code.
+*   **🔑 Automatic De-Anonymization via API Proxy and Internal Folders:** When *"Ripristino automatico dei dati originali"* (Automatic data restoration) is active (default), Germano logs entity mappings in the local Vault (`extracted/deanonymize_vault.json`). In API Proxy integrations (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` for **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) and in the local `input/` folder, AI responses and returned documents are **automatically de-anonymized** with their true original values.
 *   **6 Integrated 100% Offline AI Engines (`models/`):**
-    1. **Velvet Privacy Filter (1.5B, BF16 weights):** Multilingual contextual Transformer model for PII detection (based on OpenAI Privacy Filter, Apache-2.0).
-    2. **Italian NER XXL v2 (58 classes):** Specialized NER model for legal, medical, banking, cadastral, and administrative entities.
+    1. **Velvet Privacy Filter (1.5B, BF16 weights):** Multilingual contextual Transformer model for PII (based on OpenAI Privacy Filter, Apache-2.0 license).
+    2. **Italian NER XXL v2 (58 classes):** Specialized NER model for legal, medical, banking, cadastral, and administrative Italian documents.
     3. **EasyOCR (CRAFT + Latin G2):** Local Optical Character Recognition on scanned PDFs and photos.
     4. **YuNet Face Detector (OpenCV 5 DNN):** Biometric face detection and redaction (`[VOLTO]`).
     5. **YOLOS-Tiny Signature Detector:** Visual detection and redaction of handwritten signatures (`[FIRMA]`).
     6. **YOLOS-Small License Plate Detector:** Visual detection and redaction of vehicle license plates (`[TARGA]`).
-*   **Advanced Multi-Format Management:**
-    *   📄 **PDF & PDF Portfolios:** Character-level redaction, OCR and *visual redaction* on scans (including mixed scans with a digital stamp), form fields, comments, bookmarks, metadata and recursive anonymization of embedded attachments.
-    *   🖼️ **Images (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`, `GIF`):** Local OCR and visual redaction of faces, signatures, and license plates preserving format and resolution; EXIF/GPS metadata removed.
-    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonymizes and de-anonymizes texts, tables, headers, footers, footnotes, text boxes, comments and embedded objects without altering formatting. `DOC`/`PPT` require Microsoft Office or LibreOffice (unless they are renamed RTF/DOCX/HTML files).
-    *   📊 **Spreadsheets & Presentations (`XLSX`, `XLSM`, `XLS`, `CSV`, `TSV`, `PPTX`, `PPT`):** Redacts and restores data in cells, sheet names, charts, slides, speaker notes and comments while preserving formulas and VBA Macros.
-    *   🌐 **Web, Data, Email & Archives (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Native DOM/MIME processing, email attachments, recursive `.zip` inspection and signed `.p7m` files.
+*   **Advanced Multi-Format Management with Layout Preservation:**
+    *   📄 **PDF & PDF Portfolios:** Character-level redaction, OCR and *visual redaction* on scans (including stamped scans), form fields, comments, bookmarks, metadata, and recursive redaction of embedded attachments. PAdES digital signatures cleanly stripped to prevent visual validation conflicts.
+    *   🖼️ **Images (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`, `GIF`):** Local OCR and visual redaction of faces, signatures, and license plates retaining original dimensions and resolution; EXIF/GPS metadata removed.
+    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonymizes and de-anonymizes body text, tables, headers, footers, footnotes, text frames, comments, speaker notes, and embedded objects without altering document layout, fonts, bolding, or images. `DOC`/`PPT` require Microsoft Office or LibreOffice (unless renamed RTF/DOCX/HTML).
+    *   📊 **Spreadsheets & Presentations (`XLSX`, `XLSM`, `XLS`, `CSV`, `TSV`, `PPTX`, `PPT`):** Redacts and restores cell data, sheet names, charts, slides, presenter notes, and comments, preserving underlying formulas and VBA Macros.
+    *   🌐 **Web, Data, Email & Archives (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Native DOM/MIME handling, email attachment recursion, archive traversal for `.zip`, and PKCS#7 signed file parsing (`.p7m`).
+*   **Reliability & Concurrency:** Thread-safe Vault operations, atomic file processing only after copy completion, and clean graceful shutdown.
 
----
+**Requirements:** Windows 10/11 64-bit, 8 GB RAM (16 GB recommended), about 6 GB of free disk space. Zero installation and zero administrator privileges required.
 
 ## 🔌 REST API Integration
 
