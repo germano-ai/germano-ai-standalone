@@ -472,7 +472,7 @@
             <img class="brand-logo" src="static/logo.svg" alt="germano.ai" width="202" height="56">
             <span class="brand-divider" aria-hidden="true"></span>
             <div class="brand-text">
-                <h1><span class="lang-it">Manuale d'uso</span><span class="lang-en">User guide</span> <span class="badge-pill badge-version">v0.51-alpha</span></h1>
+                <h1><span class="lang-it">Manuale d'uso</span><span class="lang-en">User guide</span> <span class="badge-pill badge-version">v0.52-alpha</span></h1>
                 <p class="lang-it">Documentazione tecnica, consultabile offline</p>
                 <p class="lang-en">Technical documentation, available offline</p>
             </div>
@@ -501,7 +501,7 @@
             <div class="sidebar-title lang-en">Table of Contents</div>
             <ul class="sidebar-nav">
                 <li><a href="#modalita-operativa" class="sidebar-link lang-it">🌐 Novità v0.52: Modalità operativa</a><a href="#modalita-operativa" class="sidebar-link lang-en">🌐 New in v0.52: Operating mode</a></li>
-                <li><a href="#novita" class="sidebar-link lang-it">🆕 Novità della v0.51</a><a href="#novita" class="sidebar-link lang-en">🆕 What's new in v0.51</a></li>
+                <li><a href="#architettura" class="sidebar-link lang-it">🆕 Novità della v0.52</a><a href="#architettura" class="sidebar-link lang-en">🆕 What's new in v0.52</a></li>
                 <li><a href="#introduzione" class="sidebar-link lang-it">1. Introduzione & Principi Chiave</a><a href="#introduzione" class="sidebar-link lang-en">1. Introduction & Core Principles</a></li>
                 <li><a href="#modalita-semplice" class="sidebar-link lang-it">2. Guida Base (Modalità Semplice)</a><a href="#modalita-semplice" class="sidebar-link lang-en">2. Basic Guide (Simple Mode)</a></li>
                 <li><a href="#cartelle" class="sidebar-link lang-it">3. Le 5 Cartelle di Germano</a><a href="#cartelle" class="sidebar-link lang-en">3. The 5 Germano Folders</a></li>
@@ -560,18 +560,18 @@
             </section>
 
             <!-- ========================================================================= -->
-            <!-- NOVITA' DELLA VERSIONE 0.51                                               -->
+            <!-- NOVITA' DELLA VERSIONE 0.52                                               -->
             <!-- ========================================================================= -->
             <section class="doc-section" id="novita">
                 <div class="section-header">
                     <span class="section-tag lang-it">Note di Rilascio</span>
                     <span class="section-tag lang-en">Release Notes</span>
-                    <h2 class="section-title lang-it">🆕 Novità della versione 0.51-alpha</h2>
-                    <h2 class="section-title lang-en">🆕 What's new in version 0.51-alpha</h2>
+                    <h2 class="section-title lang-it">🆕 Novità della versione 0.52-alpha</h2>
+                    <h2 class="section-title lang-en">🆕 What's new in version 0.52-alpha</h2>
                 </div>
 
                 <div class="lang-it">
-                    <p>La 0.51 è una versione di <strong>consolidamento</strong> con una <strong>Dashboard tutta nuova</strong>: il motore è stato riscritto in moduli e ogni correzione è verificata da test ripetibili. Runtime, librerie e modelli IA sono gli stessi della 0.50 e funziona offline su Windows 11 appena installato.</p>
+                    <p>La 0.52 è una versione di <strong>consolidamento</strong> con una <strong>Dashboard tutta nuova</strong>: il motore è stato riscritto in moduli e ogni correzione è verificata da test ripetibili. Runtime, librerie e modelli IA sono gli stessi della 0.50 e funziona offline su Windows 11 appena installato.</p>
                     <ul>
                         <li><strong>Nuova Dashboard per il lavoro in blocco:</strong> grafica più sobria; si aggiungono file o intere cartelle (anche con i pulsanti <em>Seleziona file</em> e <em>Seleziona cartella</em>), <em>Apri cartella input</em> e <em>Apri cartella output</em> aprono le cartelle in Esplora file e i contatori <em>In attesa</em>, <em>Pronti</em> e <em>Non riusciti</em> mostrano l'andamento del lotto. I documenti non elaborati sono elencati con il motivo e si rimettono in coda con un clic; l'elenco si esporta in CSV per Excel (capitolo 2).</li>
                         <li><strong>Endpoint per gli agenti AI:</strong> in Modalità Avanzata la scheda <em>Agenti AI e API</em> mostra gli indirizzi del Proxy (formato OpenAI e formato Anthropic) e, per ogni strumento (Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider, SDK OpenAI e Anthropic), dove impostarli, con le istruzioni da copiare; seguono gli esempi delle API REST locali (capitolo 12).</li>
@@ -588,17 +588,17 @@
 
                     <h3 class="sub-title">Aggiornare dalla versione 0.50</h3>
                     <ol>
-                        <li>Chiudi Germano 0.50 ed estrai la 0.51 in una <strong>nuova cartella</strong> (non sovrascrivere la vecchia).</li>
+                        <li>Chiudi Germano 0.50 ed estrai la 0.52 in una <strong>nuova cartella</strong> (non sovrascrivere la vecchia).</li>
                         <li>Per poter ancora ripristinare i dati veri nei documenti protetti con la 0.50, copia il file <code>extracted/deanonymize_vault.json</code> dalla vecchia cartella alla stessa posizione nella nuova.</li>
                         <li>Se vuoi conservare le impostazioni, copia anche <code>config.json</code>: i valori vengono controllati e completati automaticamente con le nuove opzioni.</li>
                         <li>Avvia <code>START.bat</code> dalla nuova cartella. Quando tutto funziona, puoi eliminare la cartella della 0.50.</li>
-                        <li>Dalla 0.51 in poi non serve ripetere questi passaggi: Germano si aggiorna da solo quando il PC è connesso a Internet, conservando documenti, Vault e impostazioni.</li>
+                        <li>Dalla 0.52 in poi non serve ripetere questi passaggi: Germano si aggiorna da solo quando il PC è connesso a Internet, conservando documenti, Vault e impostazioni.</li>
                     </ol>
                     <p>L'elenco completo delle modifiche è nel file <code>CHANGELOG.md</code> (in inglese: <code>CHANGELOG.en.md</code>).</p>
                 </div>
 
                 <div class="lang-en">
-                    <p>0.51 is a <strong>consolidation</strong> release with a <strong>brand-new Dashboard</strong>: the engine has been rewritten as modules and every fix is verified by repeatable tests. Runtime, libraries and AI models are the same as in 0.50 and it works offline on a fresh Windows 11 installation.</p>
+                    <p>0.52 is a <strong>consolidation</strong> release with a <strong>brand-new Dashboard</strong>: the engine has been rewritten as modules and every fix is verified by repeatable tests. Runtime, libraries and AI models are the same as in 0.50 and it works offline on a fresh Windows 11 installation.</p>
                     <ul>
                         <li><strong>New Dashboard built for batch work:</strong> a more sober design; add files or whole folders (also with the <em>Seleziona file</em> / <em>Seleziona cartella</em> buttons), open the folders in File Explorer with <em>Apri cartella input</em> / <em>Apri cartella output</em>, and follow the batch with the <em>In attesa</em> (pending), <em>Pronti</em> (ready) and <em>Non riusciti</em> (failed) counters. Documents that could not be processed are listed with the reason and can be queued again with one click; the list exports to CSV for Excel (chapter 2).</li>
                         <li><strong>Endpoints for AI agents:</strong> in Advanced Mode the <em>Agenti AI e API</em> (AI agents and API) tab shows the Proxy addresses (OpenAI and Anthropic formats) and, for each tool (Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider, OpenAI and Anthropic SDKs), where to set them, with copy-ready instructions, followed by examples of the local REST APIs (chapter 12).</li>
@@ -615,11 +615,11 @@
 
                     <h3 class="sub-title">Upgrading from version 0.50</h3>
                     <ol>
-                        <li>Close Germano 0.50 and extract 0.51 into a <strong>new folder</strong> (do not overwrite the old one).</li>
+                        <li>Close Germano 0.50 and extract 0.52 into a <strong>new folder</strong> (do not overwrite the old one).</li>
                         <li>To keep restoring real data in documents protected with 0.50, copy <code>extracted/deanonymize_vault.json</code> from the old folder to the same place in the new one.</li>
                         <li>To keep your settings, copy <code>config.json</code> as well: values are checked and completed automatically with the new options.</li>
                         <li>Start <code>START.bat</code> from the new folder. Once everything works, you can delete the 0.50 folder.</li>
-                        <li>From 0.51 onwards there is no need to repeat these steps: Germano updates itself when the PC is connected to the Internet, keeping documents, Vault and settings.</li>
+                        <li>From 0.52 onwards there is no need to repeat these steps: Germano updates itself when the PC is connected to the Internet, keeping documents, Vault and settings.</li>
                     </ol>
                     <p>The full list of changes is in <code>CHANGELOG.en.md</code> (Italian: <code>CHANGELOG.md</code>).</p>
                 </div>
@@ -778,7 +778,7 @@
                     <p>All'interno della cartella del programma troverai 5 cartelle di lavoro fondamentali. Germano lavora <strong>esclusivamente</strong> all'interno di queste cartelle e non tocca mai documenti al di fuori di esse (niente cartelle <code>Download</code> o <code>Desktop</code> non autorizzate):</p>
 
                     <div class="folder-tree">
-                        📁 GermanoAI_Release_v0.51-alpha/<br>
+                        📁 GermanoAI_Release_v0.52-alpha/<br>
                         ├── 📁 <span class="tree-folder">input/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← La buca delle lettere: i file da proteggere vengono inseriti qui</span><br>
                         ├── 📁 <span class="tree-folder">output/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← I documenti pronti: file anonimizzati o con dati veri ripristinati</span><br>
                         ├── 📁 <span class="tree-folder">processed/</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← L'archivio storico: i documenti originali dopo l'elaborazione</span><br>
@@ -830,7 +830,7 @@
                     <p>Inside the program directory, you will find 5 core working directories. Germano operates <strong>strictly and exclusively</strong> within these folders and will never access or monitor folders outside its program directory (no unauthorized scanning of <code>Downloads</code> or <code>Desktop</code>):</p>
 
                     <div class="folder-tree">
-                        📁 GermanoAI_Release_v0.51-alpha/<br>
+                        📁 GermanoAI_Release_v0.52-alpha/<br>
                         ├── 📁 <span class="tree-folder">input/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Drop zone: place documents to be protected here</span><br>
                         ├── 📁 <span class="tree-folder">output/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Results: protected documents or automatically de-anonymized files</span><br>
                         ├── 📁 <span class="tree-folder">processed/</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">← Archive: original files are moved here after processing</span><br>
@@ -1979,8 +1979,8 @@ claude</code></pre>
                     <h3 class="sub-title">D: I file protetti mantengono la grafica e i font originali?</h3>
                     <p><strong>R: Sì.</strong> Word, Excel, PowerPoint e OpenDocument vengono modificati direttamente nel loro XML: formattazione, immagini, tabelle, formule e macro restano intatte e cambia solo il testo personale (l'etichetta prende lo stile della prima parte del dato sostituito). Nei PDF le etichette vengono inserite al posto del testo rimosso, con un corpo ridotto se lo spazio è stretto.</p>
 
-                    <h3 class="sub-title">D: Ho la versione 0.50: come passo alla 0.51 senza perdere nulla?</h3>
-                    <p><strong>R:</strong> Estrai la 0.51 in una nuova cartella e copia dalla vecchia <code>extracted/deanonymize_vault.json</code> (serve per ripristinare i dati veri nei documenti già protetti) e, se vuoi, <code>config.json</code> con le tue impostazioni. I dettagli sono nella sezione <a href="#novita">Novità della v0.51</a>.</p>
+                    <h3 class="sub-title">D: Ho la versione 0.50: come passo alla 0.52 senza perdere nulla?</h3>
+                    <p><strong>R:</strong> Estrai la 0.52 in una nuova cartella e copia dalla vecchia <code>extracted/deanonymize_vault.json</code> (serve per ripristinare i dati veri nei documenti già protetti) e, se vuoi, <code>config.json</code> con le tue impostazioni. I dettagli sono nella sezione <a href="#architettura">Novità della v0.52</a>.</p>
                 </div>
 
                 <div class="lang-en">
@@ -2012,8 +2012,8 @@ claude</code></pre>
                     <h3 class="sub-title">Q: Do redacted files preserve their original typography and tables?</h3>
                     <p><strong>A: Yes.</strong> Word, Excel, PowerPoint and OpenDocument files are edited directly in their XML: formatting, images, tables, formulas and macros stay intact and only personal text changes (the tag takes the style of the first part of the replaced data). In PDFs the tags are inserted where the text was removed, with a smaller font size when space is tight.</p>
 
-                    <h3 class="sub-title">Q: I have version 0.50: how do I move to 0.51 without losing anything?</h3>
-                    <p><strong>A:</strong> Extract 0.51 into a new folder and copy from the old one <code>extracted/deanonymize_vault.json</code> (needed to restore real data in documents you already protected) and, optionally, <code>config.json</code> with your settings. Details are in the <a href="#novita">What's new in v0.51</a> section.</p>
+                    <h3 class="sub-title">Q: I have version 0.50: how do I move to 0.52 without losing anything?</h3>
+                    <p><strong>A:</strong> Extract 0.52 into a new folder and copy from the old one <code>extracted/deanonymize_vault.json</code> (needed to restore real data in documents you already protected) and, optionally, <code>config.json</code> with your settings. Details are in the <a href="#architettura">What's new in v0.52</a> section.</p>
                 </div>
             </section>
 
