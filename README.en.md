@@ -47,7 +47,7 @@ Germano AI implements a modular hybrid architecture, selectable on initial launc
 
 ### Three Native Operating Modes:
 *   **🖥️ Standalone (Default & 100% Offline):** everything runs locally on this computer in complete isolation. Zero open ports to the external network and zero client discovery. All 6 local AI models load into local memory, the encryption Vault remains on local disk, and zero packets leave the workstation.
-*   **📡 LAN Server (Shared Inference Engine):** Germano listens on the local network (default port **8181**) and responds to UDP broadcast auto-discovery (port **8182**). It exposes the local inference engine and the AI Proxy to authorized workstations across the office or studio, protected by Bearer Token authentication. Launches directly via `START_SERVER.bat`.
+*   **📡 LAN Server (Shared Inference Engine):** Germano listens on the local network (default port **8181**) and responds to UDP broadcast auto-discovery (port **8182**). It exposes the local inference engine and the AI Proxy to authorized workstations across the office or studio, protected by Bearer Token authentication. Launches directly via `START.bat`.
 *   **🌐 Client (Lightweight Germano Client ~28 MB):** an agile, portable executable designed for laptops or workstations with limited resources. On launch, it automatically discovers the LAN Germano Server and offloads heavy model inference. **Original documents, anonymized files, and the de-anonymization vault strictly reside on the client workstation**: if the server is unreachable, zero data leaves the client and documents remain queued.
 *   **Server + Client together:** the host workstation shares inference across the LAN while concurrently processing its own local queue.
 
