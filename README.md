@@ -41,43 +41,32 @@ Germano AI è progettato per adattarsi sia ad ambienti altamente regolamentati c
 
 ---
 
-## 🆕 Novità della v0.52-alpha
+## 🏛️ Architettura & Modalità Operative (Tri-Mode & Dual Mode)
 
-*   **Modalità operativa**, scelta alla prima apertura e *sempre modificabile in qualsiasi momento nelle Impostazioni* (si applica subito, senza riavviare):
-    *   **Standalone** (predefinita): tutto gira su questo computer, in modo isolato. Nessuna porta aperta verso la rete, nessuna ricerca in rete.
-    *   **Server**: Germano si mette in ascolto sulla rete locale, risponde al rilevamento automatico (UDP 8182) e offre il motore di anonimizzazione e il Proxy agli altri PC dell'ufficio, protetti da un token. Ideale sul PC più potente; `START_SERVER.bat` avvia direttamente in questa modalità.
-    *   **Client**: all'avvio cerca in rete un Germano Server e gli affida il calcolo dei modelli (il PC client non li carica in memoria). Vault, file ed etichette restano sul client; se il server non risponde nessun dato esce e i documenti restano in coda.
-    *   **Server + Client** insieme.
-*   **Suggerimenti al passaggio del mouse** su pulsanti, cartelle, campi, filtri e indicatori: attivi di default, si disattivano nelle Impostazioni.
-*   **Interfaccia Bilingue al 100% (Italiano / Inglese)** con auto-rilevamento della lingua del browser (`it` -> italiano, altrimenti inglese di default), selettore rapido a bandierine (🇮🇹 IT / 🇬🇧 EN) nella barra in alto e oltre 112 suggerimenti (tooltips) completamente localizzati.
-*   **Dual Mode (Batch + Studio AI)**: visualizzazione "📂 Anonimizza file" per elaborazione massiva con schede interattive per `input`, `output`, `failed`, `processed`, `extracted` (apribili con un clic in Esplora risorse), statistiche live (file/min, PII oscurate, CPU, RAM); e visualizzazione "🧠 Studio AI" stile Google Antigravity con rilevamento automatico delle AI/CLI locali e configurazione granulare.
-*   **Germano Client v0.02**: applicazione separata e leggerissima (~28 MB, scaricabile singolarmente) con motore discovery UDP in tempo reale, pre-flight check di sicurezza e supporto per Claude Code, Codex, Aider, Qwen, Kimi e DeepSeek.
-*   Porta predefinita **8181**. Elenco completo nel [CHANGELOG](CHANGELOG.md).
+Germano AI implementa un'architettura ibrida e modulare, configurabile al primo avvio e modificabile in qualsiasi momento nelle Impostazioni (con effetto immediato, senza riavvio):
 
-## 🆕 Novità della v0.51-alpha
+### Le Tre Modalità Operative:
+*   **🖥️ Standalone (Predefinita e 100% Offline):** tutto viene eseguito in locale su questa macchina in modo ermeticamente isolato. Nessuna porta aperta verso la rete esterna e nessuna ricerca di client. I 6 modelli IA locali sono caricati nella memoria del PC, il Vault delle chiavi resta su disco locale e nessun dato lascia la workstation.
+*   **📡 Server LAN (Inference Engine Condiviso):** Germano si mette in ascolto sulla rete locale (porta predefinita **8181**) e risponde al protocollo di rilevamento automatico broadcast UDP (porta **8182**). Offre il motore di inferenza locale e il Proxy AI a tutte le postazioni dell'ufficio o dello studio, protetto da Token di autenticazione Bearer. Si avvia direttamente con `START_SERVER.bat`.
+*   **🌐 Client (Germano Client Leggero ~28 MB):** applicazione snella e portatile pensata per notebook o postazioni prive di GPU o con risorse limitate. All'avvio individua automaticamente il Germano Server in rete locale e gli delega il calcolo inferenziale dei modelli pesanti. **I documenti originali, i file anonimizzati e il Vault di de-anonimizzazione rimangono rigorosamente sul client**: se il server non è raggiungibile nessun dato lascia la postazione e i file restano in coda.
+*   **Server + Client insieme:** la macchina principale condivide il calcolo con la LAN e contemporaneamente elabora la propria coda locale.
 
-*   **Nuova Dashboard, sobria e pensata per il lavoro in blocco:** pulsanti per aprire le cartelle `input` e `output`, aggiunta di file o intere cartelle, contatori In attesa / Pronti / Non riusciti, elenco dei documenti non elaborati con il motivo e **Rimetti in coda**, esportazione dell'elenco in CSV.
-*   **Endpoint per gli agenti AI:** in Modalità Avanzata la scheda **Agenti AI e API** mostra gli indirizzi del Proxy (formato OpenAI e Anthropic) e, per Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider e gli SDK, dove impostarli; seguono gli esempi delle API REST.
-*   **Aggiornamenti automatici:** solo quando Windows segnala che il PC è connesso a Internet, Germano cerca una nuova versione su download.germano.ai, la scarica, ne verifica l'integrità e la installa al riavvio, conservando documenti, Vault e impostazioni (dettagli più sotto).
-*   **Formattazione e immagini preservate** in Word, Excel, PowerPoint e OpenDocument (la v0.50 cancellava grassetti, font e immagini dai DOCX); anonimizzati anche note a piè di pagina, caselle di testo, commenti, note del relatore, metadati e miniature.
-*   **Censura PDF più sicura:** OCR sulle scansioni con timbro digitale, oscuramento dei pixel nelle scansioni ricercabili, pagine ruotate corrette, campi modulo, commenti, segnalibri e allegati incorporati; firme digitali PAdES rimosse.
-*   **Proxy API corretto per Claude Code e Codex** (nella v0.50 lo streaming SSE era rotto), immagini e PDF anonimizzati anche nei formati Anthropic/Responses, analisi a batch con cache molto più veloce.
-*   **Nuovi formati:** RTF nativo (senza Word), file firmati `.p7m` (es. `fattura.xml.p7m`), JSON, TSV, Markdown, log e codice sorgente.
-*   **Affidabilità e sicurezza:** vault protetto da accessi concorrenti, il motore si chiude con la finestra, i file vengono elaborati solo a copia completata, avanzamento e motivo degli errori visibili nella Dashboard, API locale protetta dai siti web malevoli; nessun dato dei documenti viene inviato in rete.
-*   Elenco completo nel [CHANGELOG](CHANGELOG.md).
+### Dual Mode & Interfaccia Utente:
+*   **Dual Mode (Batch + Studio AI):** passaggio istantaneo con un clic tra:
+    *   **📁 Anonimizza file (Batch Processing):** vista sobria per l'elaborazione massiva di lotti con pulsanti rapidi per aprire le cartelle `input` e `output`, schede interattive per `input`, `output`, `failed`, `processed`, `extracted`, statistiche di throughput in tempo reale (file/minuto, PII rimosse), monitoraggio hardware (CPU/RAM), visualizzazione dei motivi di scarto con pulsante **Rimetti in coda** ed esportazione elenco in CSV.
+    *   **🤖 Studio AI (Local Harness):** interfaccia interattiva stile Google Antigravity con rilevamento automatico degli agenti AI installati sul sistema (Claude Code, OpenAI Codex CLI, Google Antigravity, Aider, Qwen, Kimi, DeepSeek) e configurazione granulare.
+*   **Interfaccia e Tooltips Bilingui al 100% (Italiano / Inglese):** rilevamento automatico della lingua del browser (`it` -> italiano, altrimenti inglese di default), commutatore rapido con bandierine (🇮🇹 IT / 🇬🇧 EN) nella barra superiore e oltre 112 suggerimenti contestuali interattivi (tooltips) al passaggio del mouse su ogni controllo, disattivabili nelle Impostazioni.
 
-**Aggiornamento dalla v0.50:** estrai la v0.51 in una nuova cartella e copia dalla vecchia `extracted/deanonymize_vault.json` (così i documenti già protetti restano ripristinabili) e, se vuoi, `config.json`. Dalla v0.51 in poi gli aggiornamenti si installano da soli.
+---
 
-**Requisiti:** Windows 10/11 a 64 bit, 8 GB di RAM (16 GB consigliati), circa 6 GB di spazio libero. Nessuna installazione e nessun privilegio di amministratore.
-
-## 🚀 Funzionalità Principali (v0.51-alpha)
+## 🌟 Funzionalità Principali
 
 *   **100% Offline & Windows 11 Vanilla Ready:** Include Python 3.11 embedded, tutte le 12 librerie native Microsoft Visual C++ Redistributable (x64) pre-integrate nel runtime (zero privilegi di amministratore richiesti), interfaccia Web priva di CDN esterni e **6 modelli IA locali pre-installati**.
 *   **Selettore Modalità Semplice / Avanzata:**
     *   **Modalità Semplice:** nessun termine tecnico; si aggiungono i documenti, il motore parte da solo e i risultati si ritirano con un clic.
     *   **Modalità Avanzata:** quattro schede. **Elaborazione** (anche gli originali archiviati), **Agenti AI e API** (indirizzi del Proxy, configurazione per ogni strumento, servizi di destinazione, esempi REST), **Filtri e modelli** (profilo, sensibilità, **18 categorie e 7 motori di analisi**: Nomi, Professioni/Titoli, Indirizzi, Catasto, Codici Fiscali/P.IVA, Email/PEC, Telefoni, IBAN/Conti, Importi/Finanza, Date, Aziende/Enti, Targhe/Documenti, Dati Sanitari (Art. 9 GDPR), Farmaci/Terapie, Dati Giudiziari (Art. 10 GDPR), Stato Civile, Password/Segreti e URL/IP), **Sistema e registro** (calcolo e precisione, cartelle di lavoro, aggiornamenti, Vault, registro in tempo reale).
 *   **📖 Guida Completa & Documentazione Offline:** Pulsante *"Guida"* integrato nella Dashboard (disponibile su `/guide` e come file autonomo `GUIDA_OFFLINE.html`), bilingue (italiano e inglese commutabile all'istante), con spiegazioni a prova di errore, guida alle 5 cartelle, specifiche REST API e setup passo-passo per Google Antigravity, OpenAI Codex, Cursor e Claude Code.
-*   **🔄 De-Anonimizzazione Automatica tramite Proxy API e Cartelle Interne:** Con l'interruttore *"Ripristino automatico dei dati originali"* attivo (predefinito), Germano memorizza nel Vault locale (`extracted/deanonymize_vault.json`) i dati associati a `[PERSONA_1]`, `[INDIRIZZO_1]`, ecc. Nelle integrazioni via Proxy API locale (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` per **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) e nella cartella interna `input/`, le risposte e i file restituiti dall'AI vengono rimessi in chiaro con tutti i dati veri in modo **completamente automatico** (senza mai controllare cartelle esterne al programma).
+*   **🔑 De-Anonimizzazione Automatica tramite Proxy API e Cartelle Interne:** Con l'interruttore *"Ripristino automatico dei dati originali"* attivo (predefinito), Germano memorizza nel Vault locale (`extracted/deanonymize_vault.json`) i dati associati a `[PERSONA_1]`, `[INDIRIZZO_1]`, ecc. Nelle integrazioni via Proxy API locale (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` per **Google Antigravity, Codex, Cursor, Claude Code, OpenCode**) e nella cartella interna `input/`, le risposte e i file restituiti dall'AI vengono rimessi in chiaro con tutti i dati veri in modo **completamente automatico** (senza mai controllare cartelle esterne al programma).
 *   **6 Motori di Intelligenza Artificiale 100% Offline Integrati (`models/`):**
     1. **Velvet Privacy Filter (1.5B, pesi BF16):** Modello linguistico contestuale multilingue per dati personali (basato su OpenAI Privacy Filter, licenza Apache-2.0).
     2. **Italian NER XXL v2 (58 classi):** Modello specializzato nel dominio legale, sanitario, bancario, catastale e burocratico italiano.
@@ -85,14 +74,15 @@ Germano AI è progettato per adattarsi sia ad ambienti altamente regolamentati c
     4. **YuNet Face Detector (OpenCV 5 DNN):** Oscuramento biometrico dei volti e fototessere (`[VOLTO]`).
     5. **YOLOS-Tiny Signature Detector:** Rilevamento visivo e oscuramento delle firme autografe manoscritte (`[FIRMA]`).
     6. **YOLOS-Small License Plate Detector:** Rilevamento visivo e oscuramento delle targhe di veicoli nelle foto (`[TARGA]`).
-*   **Gestione Multi-Formato Avanzata:**
-    *   📄 **PDF & Portfolio PDF:** Censura a livello di carattere, OCR e *censura visiva* sulle scansioni (anche miste con timbro digitale), campi modulo, commenti, segnalibri, metadati e anonimizzazione ricorsiva degli allegati incorporati.
+*   **Gestione Multi-Formato Avanzata con Preservazione Formattazione:**
+    *   📄 **PDF & Portfolio PDF:** Censura a livello di carattere, OCR e *censura visiva* sulle scansioni (anche miste con timbro digitale), campi modulo, commenti, segnalibri, metadati e anonimizzazione ricorsiva degli allegati incorporati. Firme digitali PAdES rimosse per evitare inconsistenze.
     *   🖼️ **Immagini (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`, `GIF`):** OCR locale e oscuramento biometrico di volti, firme e targhe con formato e risoluzione originali; metadati EXIF/GPS rimossi.
-    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonimizza e de-anonimizza testi, tabelle, intestazioni, piè di pagina, note, caselle di testo, commenti e oggetti incorporati senza alterare la formattazione. `DOC`/`PPT` richiedono Microsoft Office o LibreOffice (salvo che siano RTF/DOCX/HTML rinominati).
+    *   📝 **Word (`DOCX`, `DOCM`, `DOC`, `RTF`) & OpenDocument (`ODT`, `ODS`, `ODP`):** Anonimizza e de-anonimizza testi, tabelle, intestazioni, piè di pagina, note, caselle di testo, commenti, note del relatore e oggetti incorporati senza alterare la formattazione, font, grassetti o immagini. `DOC`/`PPT` richiedono Microsoft Office o LibreOffice (salvo che siano RTF/DOCX/HTML rinominati).
     *   📊 **Fogli di Calcolo & Presentazioni (`XLSX`, `XLSM`, `XLS`, `CSV`, `TSV`, `PPTX`, `PPT`):** Oscura e ripristina i dati in celle, nomi dei fogli, grafici, slide, note del relatore e commenti, preservando formule e Macro VBA.
-    *   🌐 **Web, Dati, Email & Archivi (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Elaborazione DOM/MIME nativa, allegati email, ispezione ricorsiva di archivi `.zip` e file firmati `.p7m`.
+    *   🌐 **Web, Dati, Email & Archivi (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Elaborazione DOM/MIME nativa, allegati email, ispezione ricorsiva di archivi `.zip` e file firmati `.p7m` (es. `fattura.xml.p7m`).
+*   **Affidabilità e Concorrenza:** Vault protetto da accessi concorrenti, elaborazione file solo a copia completata per evitare letture parziali, chiusura pulita del motore al termine della sessione.
 
----
+**Requisiti:** Windows 10/11 a 64 bit, 8 GB di RAM (16 GB consigliati), circa 6 GB di spazio libero. Nessuna installazione e nessun privilegio di amministratore.
 
 ## 🔌 Integrazione REST API
 
