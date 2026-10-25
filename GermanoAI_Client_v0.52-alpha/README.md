@@ -1,88 +1,98 @@
-# Germano Client v0.52-alpha
+# 🛡️ Germano AI Client
 
 👉 *Read this in other languages: [English](README.en.md)*
 
-**Germano Client** è il compagno leggero (~28 MB) di **Germano Server**. Non richiede modelli di intelligenza artificiale pesanti in locale: il calcolo inferenziale viene delegato interamente al Server Germano presente sulla rete locale (LAN).
+**Germano AI Client** è l'applicazione client ultraleggera (~26 MB) progettata per connettere qualsiasi postazione di lavoro (notebook, PC standard) a un **Germano Server** attivo sulla rete locale (LAN).
 
-Il Client svolge tre compiti fondamentali:
-1. **Esposizione dei Modelli del Server**: rileva ed elenca all'utente tutti i modelli e le AI/CLI installate ed esposte dal Germano Server (es. Claude Code, Google Antigravity, OpenAI Codex, Aider, Qwen, DeepSeek). Permette di interrogarle ed eseguirle direttamente dal client anche se non sono installate su questa macchina.
-2. **Instradamento Trasparente delle CLI Locali**: per le AI installate localmente su questo PC, imposta le variabili d'ambiente (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`) per instradarle in modo sicuro attraverso il Proxy di Privacy del Server con autenticazione Bearer Token.
-3. **Anonimizzazione Rapida e File Transfer**: protegge al volo testi e documenti prima della trasmissione, garantendo la totale privacy del dato.
+Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in locale: tutto il carico computazionale, l'OCR e l'inferenza IA vengono delegati al Server centrale, mentre i documenti originali e il Vault di de-anonimizzazione rimangono saldamente e sovranamente sulla postazione client locale.
 
-## Come funziona
+---
+
+## ⚡ Caratteristiche Principali
+
+1. **Rilevamento Automatico del Server (Broadcast UDP 8182)**:
+   All'avvio, il Client ricerca automaticamente sulla rete locale i Server Germano attivi, stabilendo una connessione istantanea protetta da Bearer Token di sicurezza.
+2. **Esposizione delle AI e dei Modelli del Server**:
+   Il Client interroga il Server ed elenca tutte le intelligenze artificiali e gli agenti CLI configurati (es. Claude Code, Google Antigravity, OpenAI Codex, Aider, Qwen, DeepSeek). Permette di interrogarli ed eseguirli direttamente dalla propria postazione, anche se non sono installati localmente.
+3. **Instradamento Trasparente per Agenti AI Locali**:
+   Per gli agenti installati localmente, configura automaticamente le variabili d'ambiente (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`) reindirizzando il traffico verso il Proxy di Privacy del Server con de-anonimizzazione trasparente al ritorno.
+4. **Protezione dei Documenti e dei File**:
+   Tratta file e testi al volo prima della trasmissione: il server riceve unicamente dati con placeholder anonimizzati (`[PERSONA_1]`, `[COD.FISCALE_1]`, ecc.), garantendo la piena conformità GDPR e CAD.
+5. **Nuova Interfaccia Applicativa Dedicata**:
+   Disponibile sia in finestra grafica dedicata (senza barre di navigazione generiche né console nera) sia tramite interfaccia a riga di comando (`client.py`) per automazioni e script.
+
+---
+
+## 🏗️ Architettura del Flusso
 
 ```
-  [ Postazione Client: Claude / Antigravity / Codex / Aider / Qwen ]
-                │  ANTHROPIC_BASE_URL / OPENAI_BASE_URL (con Token Bearer)
-                ▼
-  [ GERMANO SERVER sulla LAN :8181 ]  (la macchina con i 6 modelli locali)
-     1. Riceve le richieste e applica i modelli di privacy locali
-     2. Anonimizza prompt e documenti (sostituzione PII con token [PERSONA_1], ecc.)
-     3. Registra i mapping nel Vault protetto
-     4. Inoltra all'LLM di destinazione solo il contenuto cifrato/anonimizzato
+  [ Postazione Client: Notebook / PC Ufficio ]
+     │  Interfaccia Grafica o CLI (Claude / Antigravity / Codex / Aider)
+     │  Instradamento con Bearer Token protetto
+     ▼
+  [ GERMANO SERVER sulla LAN :8181 ]  (Workstation con i 6 modelli IA locali)
+     1. Riceve le richieste e applica i modelli di privacy locali offline
+     2. Anonimizza prompt e documenti (sostituzione PII con token)
+     3. Registra i mapping nel Vault protetto locale del client
+     4. Inoltra all'LLM di destinazione solo il testo anonimizzato
      5. Ripristina i dati reali nella risposta e la restituisce in chiaro al Client
 ```
 
-- **Due modalità operative principali:**
-  - `launch`: avvia su **questo** PC una CLI o agente AI installato in locale, configurando automaticamente il routing verso il Proxy del Server.
-  - `ask`: interroga ed esegue direttamente un'AI o modello installato sul **server** (eseguito dal server e protetto dal suo proxy), ideale quando la macchina client non dispone dell'ambiente o delle dipendenze necessarie.
-  - `models`: interroga il Server Germano e mostra la lista completa delle AI, dei modelli e delle CLI disponibili sulla macchina server.
+---
 
-## Requisiti
-- Windows 10/11 a 64 bit. Nessuna installazione complessa né privilegi di amministratore richiesti: il Client include un runtime Python autonomo e compatto.
-- Un'istanza attiva di **Germano Server** raggiungibile sulla stessa rete locale (LAN) avviata tramite `START.bat`.
+## 📦 Installazione Multipiattaforma
 
-## Avvio rapido
-1. Fai doppio clic su **`START.bat`**: il client esegue un pre-flight check e apre il menu interattivo.
-2. **1) Cerca il server sulla rete**: individua automaticamente il Server Germano tramite broadcast UDP (porta 8182).
-3. **5) Imposta server e token**: specifica l'indirizzo del server (es. `http://192.168.1.10:8181`) e il token di autorizzazione visualizzato sulla dashboard del Server.
-4. **2) Stato della connessione**: verifica che il collegamento sia attivo e il motore pronto.
-5. **3) AI e modelli del server**: visualizza i modelli installati sul server pronti per l'uso.
-6. **4) Chiedi a un'AI del server**: esegue prompt e task delegando l'esecuzione al server.
-7. **5) Avvia una CLI protetta**: avvia strumenti locali (Claude, Codex, Aider) instradati su Germano.
-8. **6) Proteggi un testo o file**: invia documenti per l'anonimizzazione istantanea.
+Tutti gli installer ufficiali del Client sono disponibili direttamente su **[download.germano.ai](https://download.germano.ai/)**:
 
-## Riga di comando
+### 🪟 Windows (10 / 11 64-bit)
+1. **Download:** Scarica `germano-client-0.60.exe` (oppure `Installa_Germano.exe`).
+2. **Installazione:** Doppio clic sull'eseguibile. L'applicazione si installa nello spazio utente `%LOCALAPPDATA%\Programs\Germano AI` **senza richiedere diritti di amministratore (zero UAC)** e crea automaticamente la cartella `Documenti\Germano AI` e il collegamento sul Desktop.
+3. **Avvio:** Doppio clic sull'icona **Germano** per aprire il pannello grafico in finestra dedicata.
+
+### 🍎 macOS (Apple Silicon & Intel)
+1. **Download:** Scarica `germano-client-0.60.command`.
+2. **Installazione:** Doppio clic per eseguire l'installer guidato nativo: installa `Germano.app` in `~/Applications` e predispone la cartella sicura `~/Documents/Germano AI` senza richiedere permessi root o sudo.
+3. **Avvio:** Apri **Germano.app** da Launchpad o dalla cartella Applicazioni.
+
+### 🐧 Linux (Ubuntu, Debian, Fedora, Arch)
+1. **Download:** Scarica `germano-client-0.60.sh`.
+2. **Installazione:** Esegui con doppio clic o da terminale con `bash germano-client-0.60.sh`. Si installa in `~/.local/share/germano`, integra il lanciatore sul Desktop e nel Menu Applicazioni, e crea `~/Documents/Germano AI`.
+3. **Avvio:** Avvia Germano direttamente dal menu Applicazioni o dalla Scrivania.
+
+---
+
+## 💻 Utilizzo da Riga di Comando (Opzionale)
+
+Per script, pipeline CI/CD o utenti avanzati, il Client offre una completa interfaccia CLI:
+
 ```bash
-START.bat discover                          # Cerca i server Germano attivi sulla LAN (UDP 8182)
-START.bat status                            # Verifica connessione, token e stato del motore
-START.bat config --server 192.168.1.10 --token ABC123   # Configura indirizzo server e token
-START.bat models                            # Elenca le AI e i modelli installati sul SERVER
-START.bat ask claude-code "Riassumi: ..."   # Esegue la query su un'AI installata sul SERVER
-START.bat launch claude-code                # Avvia Claude Code locale instradato sul Server
-START.bat launch antigravity                # Avvia Google Antigravity instradato sul Server
-START.bat launch codex --dry-run            # Mostra le variabili d'ambiente senza avviare
-START.bat send "Lettera per Mario Rossi" doc.docx  # Anonimizza testo e file
+# Mostra la lista dei server attivi sulla LAN
+python client.py discover
+
+# Mostra i modelli e le AI esposte dal server
+python client.py models
+
+# Chiede direttamente a un'AI del server
+python client.py ask "Spiega il principio di privacy by design"
+
+# Avvia un agente locale reindirizzandolo verso il server
+python client.py launch claude
+python client.py launch antigravity
+
+# Anonimizza un documento locale tramite il server
+python client.py send documento.pdf
 ```
 
-## Compatibilità CLI e Agenti AI
+---
 
-| Strumento | Modalità di Instradamento | Stato |
-|---|---|---|
-| **Claude Code** (`claude-code`) | `ANTHROPIC_BASE_URL` + Header `X-Germano-Auth` | Supportato e collaudato |
-| **Google Antigravity** | `OPENAI_BASE_URL` su endpoint proxy locale | Supportato e collaudato |
-| **OpenAI Codex** (`codex`) | `OPENAI_BASE_URL` | Supportato nativamente |
-| **Aider** (`aider`) | `OPENAI_API_BASE` / `OPENAI_BASE_URL` | Supportato nativamente |
-| **Qwen Code** (`qwen`) | `OPENAI_BASE_URL` con inoltro provider | Supportato |
-| **Kimi Code CLI** (`kimi`) | Variabili d'ambiente e parametri CLI | Supportato |
-| **DeepSeek** (`deepseek`) | Compatibilità OpenAI / Anthropic proxy | Supportato |
+## 📖 Documentazione Completa
+Per tutti i dettagli tecnici su API, token di sicurezza e configurazione avanzata, consulta il manuale integrato:
+- **[GUIDA_OFFLINE.html](GUIDA_OFFLINE.html)** (100% offline, inclusa in ogni pacchetto)
+- **[Guida Online Ufficiale](https://germano.ai/guide.html)**
 
-## Sicurezza e Pre-flight Check
-Prima di trasmettere qualsiasi informazione, il Client verifica:
-- La raggiungibilità autentica del Server Germano e la validità del Bearer Token.
-- Lo stato di prontezza del motore di anonimizzazione locale.
-- Se il server non è raggiungibile o non è pronto, **nessun dato viene trasmesso** e i documenti restano protetti sul client.
+---
 
-## Configurazione manuale (`client_config.json`)
-```json
-{
-  "server_url": "http://192.168.1.10:8181",
-  "token": "il-tuo-token-server",
-  "discovery_port": 8182
-}
-```
-
-## Risoluzione Problemi
-- **Nessun server trovato**: assicurati che Germano Server sia avviato con `START.bat` sulla stessa subnet LAN e che il firewall consenta il traffico su porta 8181 (TCP) e 8182 (UDP).
-- **Token errato o mancante**: copia il token mostrato nella console del server o nelle Impostazioni (*Accesso dalla rete*).
-- **Motore non pronto**: il server sta caricando i modelli IA in memoria; attendi qualche istante e ripeti con `START.bat status`.
+<p align="center">
+  <b>Germano AI Client</b> — Un progetto Open Source distribuito con licenza <b>GNU GPL v3</b>.<br>
+  Sviluppato con orgoglio da <a href="https://www.yesc.it/">Yes Consulting</a>.
+</p>
