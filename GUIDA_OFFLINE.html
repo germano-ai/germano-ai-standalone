@@ -620,7 +620,7 @@
 
                 <div class="lang-it">
                     <p><strong>Germano Client</strong> è un prodotto a parte, leggerissimo (circa 28 MB, <strong>senza modelli IA</strong>), per i PC che devono solo far passare le proprie AI a riga di comando attraverso un Germano Server della rete. Richiede Windows 10/11 e un Germano Server  in modalità Server sulla stessa rete. Download: l'asset <code>GermanoAI_Client_.zip</code> della Release GitHub .</p>
-                    <p>Si estrae e si avvia con <code>START.bat</code> (menu: cerca il server, stato, AI e modelli del server, chiedi a un'AI del server, avvia una CLI protetta, proteggi testo/file, impostazioni). Comandi principali:</p>
+                    <p>Si avvia direttamente con <code>Germano</code> (menu: cerca il server, stato, AI e modelli del server, chiedi a un'AI del server, avvia una CLI protetta, proteggi testo/file, impostazioni). Comandi principali:</p>
                     <div class="code-block"><pre><code>client discover                         cerca i server sulla rete
 client status                           server, motore e token: tutto pronto?
 client config --server 192.168.1.10 --token ABC123
@@ -636,7 +636,7 @@ client send "Scrivi a Mario Rossi" lettera.docx   protegge testo e file e mostra
 
                 <div class="lang-en">
                     <p><strong>Germano Client</strong> is a separate, very light product (about 28 MB, <strong>with no AI models</strong>), for PCs that only need to route their command-line AIs through a Germano Server on the network. It requires Windows 10/11 and a Germano Server  in Server mode on the same network. Download: the <code>GermanoAI_Client_.zip</code> asset of the  GitHub Release.</p>
-                    <p>Unzip and start it with <code>START.bat</code> (menu: find the server, status, the server's AIs and models, ask an AI on the server, launch a protected CLI, protect text/files, settings). Main commands:</p>
+                    <p>Start it directly with <code>Germano</code> (menu: find the server, status, the server's AIs and models, ask an AI on the server, launch a protected CLI, protect text/files, settings). Main commands:</p>
                     <div class="code-block"><pre><code>client discover                         find servers on the local network
 client status                           server, engine and token: is everything ready?
 client config --server 192.168.1.10 --token ABC123
@@ -1996,7 +1996,7 @@ claude</code></pre>
                     <p><strong>R:</strong> Il messaggio in alto nella Dashboard indica la causa; il dettaglio completo è nel file <code>daemon.log</code> nella cartella del programma. Su alcuni PC appena installati la funzione di Windows <em>Smart App Control</em> o l'antivirus possono bloccare i componenti IA: <code>START.bat</code> lo segnala all'avvio. Evita anche percorsi molto lunghi (meglio <code>C:\GermanoAI</code>).</p>
 
                     <h3 class="sub-title">D: Cosa succede se il programma indica che la porta 8181 è occupata?</h3>
-                    <p><strong>R:</strong> Se Germano è già aperto, facendo di nuovo doppio clic su <code>START.bat</code> si apre semplicemente la Dashboard esistente. Se la porta è usata da un altro programma, chiudilo oppure imposta un'altra porta in <code>config.json</code> (es. <code>"port": 8010</code>) e aggiorna di conseguenza l'indirizzo del Proxy negli editor.</p>
+                    <p><strong>R:</strong> Se Germano è già aperto, un nuovo avvio di <code>Germano</code> si apre semplicemente la Dashboard esistente. Se la porta è usata da un altro programma, chiudilo oppure imposta un'altra porta in <code>config.json</code> (es. <code>"port": 8010</code>) e aggiorna di conseguenza l'indirizzo del Proxy negli editor.</p>
 
                     <h3 class="sub-title">D: Perché vedo l'avviso «Sono rimasti aperti ... processi del motore»?</h3>
                     <p><strong>R:</strong> Il motore IA si chiude da solo quando chiudi la finestra di Germano; l'avviso (visibile in Modalità Avanzata) può comparire solo dopo un arresto anomalo del PC. Basta cliccare <strong>Chiudi processi secondari</strong> nell'avviso in cima alla pagina.</p>
@@ -2005,7 +2005,7 @@ claude</code></pre>
                     <p><strong>R:</strong> I vecchi formati binari di Office si possono convertire solo con Microsoft Office o LibreOffice installati. Su un PC senza Office salva il documento come <code>.docx</code>/<code>.pptx</code>, oppure installa LibreOffice: Germano lo usa automaticamente. Il motivo esatto di ogni errore è indicato nella scheda <em>Non riusciti</em>; risolto il problema, usa <em>Rimetti in coda</em>.</p>
 
                     <h3 class="sub-title">D: Come funzionano gli aggiornamenti automatici?</h3>
-                    <p><strong>R:</strong> Circa 20 secondi dopo l'avvio e poi ogni 6 ore, <strong>solo se Windows segnala che il PC è connesso a Internet</strong>, Germano apre <code>https://download.germano.ai</code>, l'indirizzo ufficiale di download che rimanda alla cartella pubblica dei pacchetti, e cerca lo ZIP <code>GermanoAI_Release_v&lt;versione&gt;.zip</code> più recente. Se è più nuovo della versione installata lo scarica nella cartella <code>update/</code>, controlla che sia completo e integro (impronta SHA-256 se nella cartella c'è anche il file <code>.sha256</code>, controllo di ogni file dello ZIP, versione uguale a quella del nome) e lo prepara; l'installazione avviene al successivo avvio di <code>START.bat</code> oppure subito con <em>Installa ora e riavvia</em> nell'avviso in cima alla Dashboard. Cartelle di lavoro, Vault e <code>config.json</code> non vengono toccati; se l'installazione non va a buon fine torna al suo posto la versione precedente. Su un PC scollegato non avviene alcun tentativo di connessione.</p>
+                    <p><strong>R:</strong> Circa 20 secondi dopo l'avvio e poi periodicamente, <strong>solo se il sistema segnala che il PC è connesso a Internet</strong>, Germano contatta direttamente il server ufficiale <code>https://download.germano.ai</code> per verificare la presenza di una nuova versione dell'installer. Se presente, scarica il pacchetto direttamente dal server ufficiale e lo prepara per l'aggiornamento; l'installazione avviene in modo pulito (oppure subito con <em>Installa ora e riavvia</em> nella Dashboard). Cartelle di lavoro, Vault e <code>config.json</code> nella cartella <code>Documenti/Germano AI</code> non vengono toccati. Su un PC isolato o offline non avviene alcun tentativo di connessione.</p>
                     <p>Le opzioni sono in Modalità Avanzata, <em>Sistema e registro → Aggiornamenti</em>: <em>Controlla le nuove versioni quando il computer è connesso a Internet</em> (<code>"check_updates"</code> in <code>config.json</code>) e <em>Scarica automaticamente gli aggiornamenti</em> (<code>"auto_update"</code>; se spenta, Germano si limita a segnalare la nuova versione). <em>Controlla ora</em> esegue subito un controllo.</p>
 
                     <h3 class="sub-title">D: Come impedisco agli operatori di disattivare i filtri (Profilo PA)?</h3>
@@ -2029,7 +2029,7 @@ claude</code></pre>
                     <p><strong>A:</strong> The message at the top of the Dashboard shows the cause; full details are in <code>daemon.log</code> in the program folder. On some freshly installed PCs, Windows <em>Smart App Control</em> or the antivirus may block the AI components: <code>START.bat</code> reports it at startup. Also avoid very long paths (prefer <code>C:\GermanoAI</code>).</p>
 
                     <h3 class="sub-title">Q: What if port 8181 is reported in use?</h3>
-                    <p><strong>A:</strong> If Germano is already open, double-clicking <code>START.bat</code> again simply opens the existing Dashboard. If another program uses the port, close it or set a different port in <code>config.json</code> (e.g. <code>"port": 8010</code>) and update the Proxy address in your editors.</p>
+                    <p><strong>A:</strong> If Germano is already open, launching <code>Germano</code> again simply opens the existing Dashboard. If another program uses the port, close it or set a different port in <code>config.json</code> (e.g. <code>"port": 8010</code>) and update the Proxy address in your editors.</p>
 
                     <h3 class="sub-title">Q: Why do I see the «Sono rimasti aperti ... processi del motore» (engine processes left open) notice?</h3>
                     <p><strong>A:</strong> The AI engine stops automatically when you close the Germano window; the notice (shown in Advanced Mode) can only appear after an abnormal shutdown of the PC. Simply click <strong>Chiudi processi secondari</strong> (Close orphaned processes) in the notice at the top of the page.</p>
