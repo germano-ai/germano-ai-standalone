@@ -1993,7 +1993,7 @@ claude</code></pre>
                     <p><strong>R:</strong> Consigliati 16 GB di RAM (minimo 8 GB). Con meno di 12 GB Germano carica automaticamente il modello principale in versione leggera (BF16): funziona, ma l'analisi del testo è più lenta. Vedi il capitolo 9.</p>
 
                     <h3 class="sub-title">D: Il motore non parte o compare un messaggio rosso di errore</h3>
-                    <p><strong>R:</strong> Il messaggio in alto nella Dashboard indica la causa; il dettaglio completo è nel file <code>daemon.log</code> nella cartella del programma. Su alcuni PC appena installati la funzione di Windows <em>Smart App Control</em> o l'antivirus possono bloccare i componenti IA: <code>START.bat</code> lo segnala all'avvio. Evita anche percorsi molto lunghi (meglio <code>C:\GermanoAI</code>).</p>
+                    <p><strong>R:</strong> Il messaggio in alto nella Dashboard indica la causa; il dettaglio completo è nel file <code>daemon.log</code> nella cartella del programma. Su alcuni PC appena installati la funzione di Windows <em>Smart App Control</em> o l'antivirus possono bloccare i componenti IA: Germano lo segnala tempestivamente all'avvio. Evita anche percorsi molto lunghi (meglio <code>C:\GermanoAI</code>).</p>
 
                     <h3 class="sub-title">D: Cosa succede se il programma indica che la porta 8181 è occupata?</h3>
                     <p><strong>R:</strong> Se Germano è già aperto, un nuovo avvio di <code>Germano</code> si apre semplicemente la Dashboard esistente. Se la porta è usata da un altro programma, chiudilo oppure imposta un'altra porta in <code>config.json</code> (es. <code>"port": 8010</code>) e aggiorna di conseguenza l'indirizzo del Proxy negli editor.</p>
@@ -2015,7 +2015,7 @@ claude</code></pre>
                     <p><strong>R: Sì.</strong> Word, Excel, PowerPoint e OpenDocument vengono modificati direttamente nel loro XML: formattazione, immagini, tabelle, formule e macro restano intatte e cambia solo il testo personale (l'etichetta prende lo stile della prima parte del dato sostituito). Nei PDF le etichette vengono inserite al posto del testo rimosso, con un corpo ridotto se lo spazio è stretto.</p>
 
                     <h3 class="sub-title">D: Come trasferisco documenti e dati protetti in una nuova cartella o su un altro PC?</h3>
-                    <p><strong>R:</strong> Copia dalla cartella precedente il file <code>extracted/deanonymize_vault.json</code> (indispensabile per ripristinare i dati reali nei documenti protetti) e, facoltativamente, <code>config.json</code> con le tue preferenze. All'avvio di <code>START.bat</code>, Germano caricherà automaticamente il Vault.</p>
+                    <p><strong>R:</strong> Copia dalla cartella precedente il file <code>extracted/deanonymize_vault.json</code> (indispensabile per ripristinare i dati reali nei documenti protetti) e, facoltativamente, <code>config.json</code> con le tue preferenze. All'avvio di Germano, l'applicazione caricherà automaticamente il Vault.</p>
 </div>
 
                 <div class="lang-en">
@@ -2026,7 +2026,7 @@ claude</code></pre>
                     <p><strong>A:</strong> 16 GB of RAM recommended (8 GB minimum). With less than 12 GB Germano automatically loads the main model in its light version (BF16): it works, but text analysis is slower. See chapter 9.</p>
 
                     <h3 class="sub-title">Q: The engine does not start or a red error message appears</h3>
-                    <p><strong>A:</strong> The message at the top of the Dashboard shows the cause; full details are in <code>daemon.log</code> in the program folder. On some freshly installed PCs, Windows <em>Smart App Control</em> or the antivirus may block the AI components: <code>START.bat</code> reports it at startup. Also avoid very long paths (prefer <code>C:\GermanoAI</code>).</p>
+                    <p><strong>A:</strong> The message at the top of the Dashboard shows the cause; full details are in <code>daemon.log</code> in the program folder. On some freshly installed PCs, Windows <em>Smart App Control</em> or the antivirus may block the AI components: Germano promptly reports it at startup. Also avoid very long paths (prefer <code>C:\GermanoAI</code>).</p>
 
                     <h3 class="sub-title">Q: What if port 8181 is reported in use?</h3>
                     <p><strong>A:</strong> If Germano is already open, launching <code>Germano</code> again simply opens the existing Dashboard. If another program uses the port, close it or set a different port in <code>config.json</code> (e.g. <code>"port": 8010</code>) and update the Proxy address in your editors.</p>
@@ -2038,7 +2038,7 @@ claude</code></pre>
                     <p><strong>A:</strong> Legacy binary Office formats can only be converted with Microsoft Office or LibreOffice installed. On a PC without Office, save the document as <code>.docx</code>/<code>.pptx</code>, or install LibreOffice: Germano uses it automatically. The exact reason of each failure is shown in the <em>Non riusciti</em> tab; once the problem is solved, use <em>Rimetti in coda</em> (Queue again).</p>
 
                     <h3 class="sub-title">Q: How do automatic updates work?</h3>
-                    <p><strong>A:</strong> About 20 seconds after startup and then every 6 hours, <strong>only when Windows reports that the PC is connected to the Internet</strong>, Germano opens <code>https://download.germano.ai</code>, the official download address that points to the public package folder, and looks for the most recent <code>GermanoAI_Release_v&lt;version&gt;.zip</code>. If it is newer than the installed version it downloads it into the <code>update/</code> folder, checks that it is complete and intact (SHA-256 fingerprint when the folder also holds the <code>.sha256</code> file, a check of every file in the ZIP, version matching the file name) and prepares it; installation happens at the next <code>START.bat</code> start or right away with <em>Installa ora e riavvia</em> (Install now and restart) in the notice at the top of the Dashboard. Working folders, the Vault and <code>config.json</code> are left untouched; if the installation fails, the previous version is put back. On a disconnected PC no connection attempt is made.</p>
+                    <p><strong>A:</strong> About 20 seconds after startup and then periodically, <strong>only when the system reports that the PC is connected to the Internet</strong>, Germano contacts the official server <code>https://download.germano.ai</code> directly to check for a newer installer version. If available, it downloads the package directly from the official server and prepares it for installation; updating occurs seamlessly (or immediately via <em>Installa ora e riavvia</em> / Install now and restart in the Dashboard). Working folders, Vault, and <code>config.json</code> in <code>Documents/Germano AI</code> remain completely untouched. On a disconnected or offline PC no connection attempt is made.</p>
                     <p>The options are in Advanced Mode, <em>Sistema e registro → Aggiornamenti</em>: check for new versions when the computer is online (<code>"check_updates"</code> in <code>config.json</code>) and download updates automatically (<code>"auto_update"</code>; when off, Germano only reports the new version). <em>Controlla ora</em> (Check now) runs a check immediately.</p>
 
                     <h3 class="sub-title">Q: How do I prevent operators from disabling filters (PA profile)?</h3>
@@ -2048,7 +2048,7 @@ claude</code></pre>
                     <p><strong>A: Yes.</strong> Word, Excel, PowerPoint and OpenDocument files are edited directly in their XML: formatting, images, tables, formulas and macros stay intact and only personal text changes (the tag takes the style of the first part of the replaced data). In PDFs the tags are inserted where the text was removed, with a smaller font size when space is tight.</p>
 
                     <h3 class="sub-title">Q: How do I transfer protected documents and data to a new folder or another PC?</h3>
-                    <p><strong>A:</strong> Copy <code>extracted/deanonymize_vault.json</code> from the previous directory (required to restore true data in protected files) and optionally <code>config.json</code> with your settings. On launch via <code>START.bat</code>, Germano automatically loads the Vault.</p>
+                    <p><strong>A:</strong> Copy <code>extracted/deanonymize_vault.json</code> from the previous directory (required to restore true data in protected files) and optionally <code>config.json</code> with your settings. On launch, Germano automatically loads the Vault.</p>
 </div>
             </section>
 
