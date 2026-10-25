@@ -132,11 +132,11 @@
         <!-- ============================================================== ELABORAZIONE -->
         <section class="view view-work" data-view="work">
 
-            <div class="panel">
+            <div class="panel fm-panel" id="fileManager">
                 <div class="panel-header panel-header-tight">
                     <div>
                         <h2 class="panel-title" data-en="Work folders">Cartelle di lavoro</h2>
-                        <p class="panel-desc" data-en="Click a folder to open it in File Explorer. Counters update in real time.">Clicca una cartella per aprirla in Esplora file. I contatori si aggiornano in tempo reale.</p>
+                        <p class="panel-desc" data-en="Drag your documents into the <strong>input</strong> folder: Germano anonymizes them and saves them in <strong>output</strong> with the same subfolder structure, moves the originals to <strong>processed</strong> and leaves the documents it cannot process in <strong>failed</strong>, with the reason. Click a folder to open it.">Trascina i documenti nella cartella <strong>input</strong>: Germano li anonimizza e li salva in <strong>output</strong> con la stessa struttura di sottocartelle, sposta gli originali in <strong>processed</strong> e lascia in <strong>failed</strong> quelli che non riesce a elaborare, con il motivo. Clicca una cartella per aprirla.</p>
                     </div>
                     <div class="live-stats" id="liveStats" role="group" aria-label="Statistiche in tempo reale" data-en-aria-label="Real-time statistics">
                         <span class="ls" title="Documenti elaborati nel lotto in corso" data-en-title="Documents processed in the current batch"><span class="ls-ico">⚙️</span><b id="lsDone">0</b><span class="ls-sep">/</span><span id="lsTotal">0</span><small data-en="files">file</small></span>
@@ -146,93 +146,89 @@
                         <span class="ls" title="Uso della memoria" data-en-title="Memory usage"><span class="ls-ico">💾</span><b id="lsRam">0</b><small>% RAM</small></span>
                     </div>
                 </div>
-                <div class="progress live-progress" id="liveProgress" hidden><div class="progress-bar" id="liveProgressBar"></div></div>
-                <div class="folder-cards" id="folderCards">
-                    <button type="button" class="folder-card" data-open-folder="input" title="Apri la cartella input in Esplora file" data-en-title="Open the input folder in File Explorer">
-                        <span class="fc-ico">📥</span><span class="fc-name" data-en="Pending">In attesa</span><span class="fc-count" id="fcInput">0</span><span class="fc-sub" data-en="input">input</span>
-                    </button>
-                    <button type="button" class="folder-card fc-ok" data-open-folder="output" title="Apri la cartella output in Esplora file" data-en-title="Open the output folder in File Explorer">
-                        <span class="fc-ico">✅</span><span class="fc-name" data-en="Ready">Pronti</span><span class="fc-count" id="fcOutput">0</span><span class="fc-sub" data-en="output">output</span>
-                    </button>
-                    <button type="button" class="folder-card fc-fail" data-open-folder="failed" title="Apri la cartella failed in Esplora file" data-en-title="Open the failed folder in File Explorer">
-                        <span class="fc-ico">⚠️</span><span class="fc-name" data-en="Errors">Errori</span><span class="fc-count" id="fcFailed">0</span><span class="fc-sub">failed</span>
-                    </button>
-                    <button type="button" class="folder-card" data-open-folder="processed" title="Apri la cartella processed in Esplora file" data-en-title="Open the processed folder in File Explorer">
-                        <span class="fc-ico">🗂️</span><span class="fc-name" data-en="Originals">Originali</span><span class="fc-count" id="fcProcessed">0</span><span class="fc-sub" data-en="processed">processed</span>
-                    </button>
-                    <button type="button" class="folder-card" data-open-folder="extracted" title="Apri la cartella extracted (report e archivio) in Esplora file" data-en-title="Open the extracted folder (reports and archive) in File Explorer">
-                        <span class="fc-ico">🔐</span><span class="fc-name" data-en="Vault/extracted">Vault/estratti</span><span class="fc-count" id="fcExtracted">0</span><span class="fc-sub">extracted</span>
-                    </button>
-                </div>
-            </div>
 
-            <div class="panel">
-                <div class="panel-header">
-                    <div>
-                        <h2 class="panel-title" data-en="Document processing">Elaborazione dei documenti</h2>
-                        <p class="panel-desc" data-en="Add documents or whole folders: Germano anonymizes them and saves the results in the <strong>output</strong> folder with the same subfolder structure. Documents that cannot be processed stay among the <strong>Failed</strong> ones, with the reason.">Aggiungi documenti o intere cartelle: Germano li anonimizza e salva i risultati nella cartella <strong>output</strong> con la stessa struttura di sottocartelle. I documenti che non è possibile elaborare restano tra i <strong>Non riusciti</strong>, con il motivo.</p>
+                <div class="job fm-status" id="currentJob" role="status" aria-live="polite">
+                    <div class="job-head">
+                        <span class="spinner" id="jobSpinner" hidden></span>
+                        <span class="job-title" id="jobTitle">Motore in pausa</span>
+                        <span class="job-file" id="jobFile"></span>
+                        <button type="button" class="btn btn-primary btn-sm" id="btnStartFromCta" hidden data-en="Start processing">Avvia elaborazione</button>
                     </div>
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-secondary" data-open-folder="input">
-                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span data-en="Open input folder">Apri cartella input</span>
-                        </button>
-                        <button type="button" class="btn btn-secondary" data-open-folder="output">
-                            <svg class="icon" aria-hidden="true"><use href="#i-folder-out"/></svg><span data-en="Open output folder">Apri cartella output</span>
-                        </button>
-                    </div>
+                    <div class="job-detail" id="jobDetail"></div>
+                    <div class="progress" id="batchProgress" hidden><div class="progress-bar" id="batchProgressBar"></div></div>
                 </div>
 
-                <div class="batch-grid">
-                    <div class="dropzone" id="protectDropzone">
+                <div class="fm-grid" id="fmGrid">
+                    <section class="fm-folder" data-fm="input">
+                        <div class="fm-path" data-open-folder="input">
+                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span class="fm-path-text" id="fmPath-input">…</span>
+                        </div>
+                        <div class="fm-box fm-input" id="fmBox-input" data-fm-box="input" data-open-folder="input" role="button" tabindex="0" aria-label="Cartella input: clicca per aprirla, trascina qui i file da anonimizzare" data-en-aria-label="Input folder: click to open it, drag here the files to anonymize">
+                            <div class="fm-head">
+                                <span class="fm-ico" aria-hidden="true">📥</span>
+                                <span class="fm-name">input</span>
+                                <span class="fm-label" data-en="to process">da elaborare</span>
+                                <span class="fm-count" id="fmCount-input">0</span>
+                            </div>
+                            <ul class="fm-list" id="fmList-input"></ul>
+                            <div class="fm-drop">
+                                <svg class="icon icon-lg" aria-hidden="true"><use href="#i-upload"/></svg>
+                                <span class="fm-drop-text" data-en="Drag files here into the input folder">Trascina i file qui nella cartella di input</span>
+                                <span class="fm-drop-actions">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btnPickFiles" data-en="Select files">Seleziona file</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btnPickFolder" data-en="Select folder">Seleziona cartella</button>
+                                </span>
+                            </div>
+                            <div class="fm-overlay" aria-hidden="true">
+                                <svg class="icon icon-xl"><use href="#i-upload"/></svg>
+                                <span data-en="Release to add the files to the input folder">Rilascia per aggiungere i file alla cartella input</span>
+                            </div>
+                        </div>
                         <input type="file" id="protectFileInput" multiple hidden>
                         <input type="file" id="protectFolderInput" webkitdirectory multiple hidden>
-                        <svg class="icon icon-xl" aria-hidden="true"><use href="#i-upload"/></svg>
-                        <div class="dropzone-title" data-en="Drag files or folders here">Trascina qui file o cartelle</div>
-                        <div class="dropzone-buttons">
-                            <button type="button" class="btn btn-primary" id="btnPickFiles" data-en="Select files">Seleziona file</button>
-                            <button type="button" class="btn btn-secondary" id="btnPickFolder" data-en="Select folder">Seleziona cartella</button>
+                    </section>
+                    <section class="fm-folder" data-fm="output">
+                        <div class="fm-path" data-open-folder="output">
+                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span class="fm-path-text" id="fmPath-output">…</span>
                         </div>
-                        <p class="dropzone-hint" data-en="Or copy the documents into the <strong>input</strong> folder with File Explorer. Files returned by an AI service with tags such as <code>[PERSONA_1]</code> are recognized and restored with the original data.">In alternativa copia i documenti nella cartella <strong>input</strong> con Esplora file. I file restituiti da un servizio di AI con etichette come <code>[PERSONA_1]</code> vengono riconosciuti e ripristinati con i dati originali.</p>
-                    </div>
-
-                    <div class="batch-status">
-                        <div class="kpi-grid">
-                            <button type="button" class="kpi" id="kpiPending" data-show-tab="input" title="Mostra i documenti in attesa" data-en-title="Show pending documents">
-                                <span class="kpi-label" data-en="Pending">In attesa</span>
-                                <span class="kpi-value" id="countInput">0</span>
-                                <span class="kpi-sub" data-en="input folder">cartella input</span>
-                            </button>
-                            <button type="button" class="kpi kpi-ok" id="kpiOutput" data-show-tab="output" title="Mostra i documenti pronti" data-en-title="Show ready documents">
-                                <span class="kpi-label" data-en="Ready">Pronti</span>
-                                <span class="kpi-value" id="countOutput">0</span>
-                                <span class="kpi-sub" data-en="output folder">cartella output</span>
-                            </button>
-                            <button type="button" class="kpi kpi-failed" id="kpiFailed" data-show-tab="failed" title="Mostra i documenti non riusciti e il motivo" data-en-title="Show failed documents and the reason">
-                                <span class="kpi-label" data-en="Failed">Non riusciti</span>
-                                <span class="kpi-value" id="countFailed">0</span>
-                                <span class="kpi-sub" data-en="with the reason">con il motivo</span>
-                            </button>
-                        </div>
-
-                        <div class="job" id="currentJob">
-                            <div class="job-head">
-                                <span class="spinner" id="jobSpinner" hidden></span>
-                                <span class="job-title" id="jobTitle" data-en="Engine paused">Motore in pausa</span>
+                        <div class="fm-box fm-ok" id="fmBox-output" data-fm-box="output" data-open-folder="output" role="button" tabindex="0" aria-label="Cartella output: clicca per aprirla" data-en-aria-label="Output folder: click to open it">
+                            <div class="fm-head">
+                                <span class="fm-ico" aria-hidden="true">📤</span>
+                                <span class="fm-name">output</span>
+                                <span class="fm-label" data-en="anonymized">anonimizzati</span>
+                                <span class="fm-count" id="fmCount-output">0</span>
                             </div>
-                            <div class="job-file" id="jobFile"></div>
-                            <div class="progress" id="batchProgress" hidden><div class="progress-bar" id="batchProgressBar"></div></div>
-                            <div class="job-detail" id="jobDetail">Avvia il motore per elaborare i documenti.</div>
+                            <ul class="fm-list" id="fmList-output"></ul>
                         </div>
-
-                        <div class="callout callout-warning" id="pendingCta" hidden>
-                            <svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg>
-                            <div class="callout-body">
-                                <strong id="pendingCtaText">Documenti in attesa</strong>
-                                <span data-en="The engine is paused: start it to process them.">Il motore è in pausa: avvialo per elaborarli.</span>
+                    </section>
+                    <section class="fm-folder" data-fm="processed">
+                        <div class="fm-path" data-open-folder="processed">
+                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span class="fm-path-text" id="fmPath-processed">…</span>
+                        </div>
+                        <div class="fm-box fm-orig" id="fmBox-processed" data-fm-box="processed" data-open-folder="processed" role="button" tabindex="0" aria-label="Cartella processed: clicca per aprirla" data-en-aria-label="Processed folder: click to open it">
+                            <div class="fm-head">
+                                <span class="fm-ico" aria-hidden="true">🗂️</span>
+                                <span class="fm-name">processed</span>
+                                <span class="fm-label" data-en="originals">originali</span>
+                                <span class="fm-count" id="fmCount-processed">0</span>
                             </div>
-                            <button type="button" class="btn btn-primary btn-sm" id="btnStartFromCta" data-en="Start processing">Avvia elaborazione</button>
+                            <ul class="fm-list" id="fmList-processed"></ul>
                         </div>
-                    </div>
+                    </section>
+                    <section class="fm-folder" data-fm="failed">
+                        <div class="fm-path" data-open-folder="failed">
+                            <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span class="fm-path-text" id="fmPath-failed">…</span>
+                        </div>
+                        <div class="fm-box fm-fail" id="fmBox-failed" data-fm-box="failed" data-open-folder="failed" role="button" tabindex="0" aria-label="Cartella failed: clicca per aprirla" data-en-aria-label="Failed folder: click to open it">
+                            <div class="fm-head">
+                                <span class="fm-ico" aria-hidden="true">⚠️</span>
+                                <span class="fm-name">failed</span>
+                                <span class="fm-label" data-en="not processed">non riusciti</span>
+                                <span class="fm-count" id="fmCount-failed">0</span>
+                            </div>
+                            <ul class="fm-list" id="fmList-failed"></ul>
+                        </div>
+                    </section>
                 </div>
 
                 <div class="restore-row">
@@ -243,6 +239,7 @@
                     <div>
                         <div class="restore-title"><span data-en="Automatic restoration of the original data">Ripristino automatico dei dati originali</span> <span class="badge badge-info" id="deanonStateBadge" data-en="Active">Attivo</span></div>
                         <p class="restore-desc"><span data-en="Tags are numbered (e.g. <code>[PERSONA_1]</code>) and the mappings stay in the local archive: when a text or a file returned by an AI service contains them, Germano puts the original data back in place. If turned off, anonymization is irreversible.">Le etichette sono numerate (es. <code>[PERSONA_1]</code>) e le corrispondenze restano nell'archivio locale: quando un testo o un file restituito da un servizio di AI le contiene, Germano rimette al loro posto i dati originali. Se disattivato, l'anonimizzazione è irreversibile.</span> <span class="muted"><span data-en="Entries in the archive:">Voci in archivio:</span> <strong id="vaultCountBadge">0</strong></span></p>
+                        <button type="button" class="fm-vault" data-open-folder="extracted"><span aria-hidden="true">🔐</span> <span data-en="Vault and reports:">Vault e report:</span> <code id="fmPath-extracted">extracted</code></button>
                     </div>
                 </div>
             </div>

@@ -6,11 +6,12 @@ completa installata sul PC più potente dell'ufficio, in modalità Server).
 ## Installazione
 Scarica **`germano-client-0.60.exe`** da https://download.germano.ai/ e fai doppio clic: contiene il proprio Python e
 non scarica nulla. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client`, **senza diritti di
-amministratore**, con i collegamenti sul Desktop e nel menu Start; le impostazioni del client (server e token) sono in
-`%LOCALAPPDATA%\Germano AI Client`. Disinstallazione: Impostazioni › App › App installate › Germano AI Client.
+amministratore**, con i collegamenti **Germano AI Client** sul Desktop e nel menu Start; alla fine il client si apre da
+solo. Le impostazioni del client (server e token) sono in `%LOCALAPPDATA%\Germano AI Client`. Disinstallazione:
+Impostazioni › App › App installate › Germano AI Client.
 
 ## Come si usa (plug & play)
-1. Apri **Germano AI** dal Desktop o dal menu Start: si apre il **pannello del client** in una finestra dedicata
+1. Apri **Germano AI Client** dal Desktop o dal menu Start: si apre il **pannello del client** in una finestra dedicata
    (niente console, niente browser con l'indirizzo).
 2. **Server Germano**: lascia vuoto l'indirizzo e premi «Cerca in rete», oppure scrivi l'indirizzo del server (es.
    `192.168.1.10`) e il **token** che il server mostra nelle sue Impostazioni › Accesso dalla rete; poi «Salva».

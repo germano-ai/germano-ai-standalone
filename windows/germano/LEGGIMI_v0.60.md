@@ -2,11 +2,14 @@
 
 ## Installazione
 Scarica **`germano-0.60.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
-necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, i 6 modelli IA). Si installa per
-l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI`, **senza diritti di amministratore e senza scaricare nulla**,
-e crea i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni › App e le cartelle di lavoro in
-`Documenti\Germano AI`. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC» scegli
-**Ulteriori informazioni › Esegui comunque**.
+necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, i 6 modelli IA) e non scarica
+nulla. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a
+consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows solo per il Python di
+Germano e solo per le reti private e di dominio. Si installa per l'utente corrente in
+`%LOCALAPPDATA%\Programs\Germano AI` e crea i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni › App e
+le cartelle di lavoro in `Documenti\Germano AI`; alla fine la finestra dell'installer si chiude e **Germano si apre da
+solo**, senza pagine di istruzioni. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC»
+scegli **Ulteriori informazioni › Esegui comunque**.
 
 ## Come si usa (plug & play)
 Apri **Germano AI** dal Desktop o dal menu Start: è l'**unico** programma (`Germano.exe`). Si apre una **finestra
@@ -20,6 +23,11 @@ applicativa dedicata** (niente finestra nera del terminale, niente browser con b
 La modalità si sceglie e si cambia in qualsiasi momento dalle **Impostazioni** della finestra. Per chiudere **tutto**
 basta la **X rossa**: si fermano anche il server Flask e il motore IA, senza lasciare processi in memoria.
 
+Nella sezione **Cartelle di lavoro** quattro riquadri (`input`, `output`, `processed`, `failed`) mostrano, come un file
+manager, i file che entrano, vengono elaborati e si spostano, in tempo reale; sopra ogni riquadro c'è il percorso
+completo della cartella e un clic la apre in Esplora file. Per anonimizzare dei documenti trascinali sul riquadro
+**input** («Trascina i file qui nella cartella di input»).
+
 ## Dati e privacy
 - Cartelle di lavoro in `Documenti\Germano AI`: `input`, `output`, `processed`, `failed`, `extracted` (se Documenti è
   sincronizzata con OneDrive, in `%USERPROFILE%\Germano AI`).
@@ -31,11 +39,14 @@ basta la **X rossa**: si fermano anche il server Flask e il motore IA, senza las
   Internet. Tutto il resto avviene al 100% in locale.
 
 ## Disinstallazione
-Impostazioni › App › App installate › Germano AI, a scelta conservando le cartelle di lavoro e il Vault.
+Impostazioni › App › App installate › Germano AI, a scelta conservando le cartelle di lavoro e il Vault. Chiede i
+permessi di amministratore per togliere la regola del firewall; rimuove programma, collegamenti, voce in Impostazioni ›
+App e file tecnici.
 
 ## Client leggero per i colleghi
 Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.60.exe`** (~22 MB, senza
-modelli): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del client.
+modelli, nessun permesso di amministratore): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del
+client (collegamento **Germano AI Client**).
 
 ## Per gli sviluppatori
 Questa cartella contiene solo i sorgenti (pubblicabili su GitHub). Il runtime Windows con le DLL di Visual C++ e

@@ -986,6 +986,21 @@ def api_update_ack():
     return jsonify({"status": "success"})
 
 
+def _open_in_os(path, reveal=False):
+    """Apre una cartella o un file con il file manager / il programma predefinito del sistema (Esplora file su
+    Windows, Finder su macOS, il file manager del desktop su Linux); reveal=True mostra il file nella sua cartella."""
+    if os.name == "nt":
+        if reveal:
+            subprocess.Popen(f'explorer.exe /select,"{path}"')
+        else:
+            os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", path] if reveal else ["open", path], close_fds=True)
+    else:
+        subprocess.Popen(["xdg-open", os.path.dirname(path) if reveal else path], close_fds=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
 @app.route("/api/open_folder", methods=["POST"])
 def api_open_folder():
     data = request.get_json(silent=True) or {}
@@ -995,7 +1010,7 @@ def api_open_folder():
     path = common.WORK_FOLDERS[folder]
     os.makedirs(path, exist_ok=True)
     try:
-        os.startfile(path)
+        _open_in_os(path)
         return jsonify({"status": "success", "path": path})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -1147,13 +1162,13 @@ def api_file_action():
     action = data.get("action")
     try:
         if action == "reveal":
-            subprocess.Popen(f'explorer.exe /select,"{path}"')
+            _open_in_os(path, reveal=True)
         elif action == "open":
             if os.path.splitext(path)[1].lower() not in OPENABLE_EXTS:
                 return jsonify({"status": "error", "message": _L(
                     "Per sicurezza questo tipo di file non viene aperto direttamente: usa «Mostra nella cartella».",
                     "For security this type of file is not opened directly: use «Show in folder».")}), 400
-            os.startfile(path)
+            _open_in_os(path)
         else:
             return jsonify({"status": "error", "message": _L("Azione non valida.", "Invalid action.")}), 400
     except Exception as e:

@@ -132,6 +132,7 @@ const UI_STRINGS = {
     'Arresto del motore...': 'Stopping engine...',
     'Avvia motore': 'Start engine',
     'Arresta motore': 'Stop engine',
+    'Annulla avvio': 'Cancel start',
     'Germano non risponde': 'Germano is not responding',
     'Aggiornamento in corso...': 'Updating...',
     'In attesa': 'Pending',
@@ -180,19 +181,23 @@ function showToast(message, type = 'info', ms = 4200) {
     }, ms);
 }
 
+function uiLocale() {
+    return typeof currentLang !== 'undefined' && currentLang === 'en' ? 'en-GB' : 'it-IT';
+}
+
 function formatBytes(bytes) {
     if (!bytes) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-    return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(1)).toLocaleString('it-IT')} ${units[i]}`;
+    return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(1)).toLocaleString(uiLocale())} ${units[i]}`;
 }
 
 function formatDate(epoch) {
     if (!epoch) return '';
     const d = new Date(epoch * 1000);
-    const time = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-    if (d.toDateString() === new Date().toDateString()) return `oggi ${time}`;
-    return `${d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${time}`;
+    const time = d.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === new Date().toDateString()) return `${updText('oggi', 'today')} ${time}`;
+    return `${d.toLocaleDateString(uiLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' })} ${time}`;
 }
 
 function splitPath(name) {
@@ -790,32 +795,22 @@ function renderEngine(data) {
 }
 
 function renderCounts(stats) {
-    setText('countInput', stats.pending);
-    setText('countOutput', stats.outputs);
-    setText('countFailed', stats.failed);
     setText('tabCountOutput', stats.outputs);
     setText('tabCountInput', stats.pending);
     setText('tabCountFailed', stats.failed);
     setText('tabCountProcessed', stats.processed);
     setText('vaultCountBadge', stats.vault_count || 0);
     setText('advVaultCount', stats.vault_count || 0);
-    $('kpiFailed').classList.toggle('has-items', stats.failed > 0);
     document.querySelector('.tab-failed')?.classList.toggle('has-items', stats.failed > 0);
-    $('kpiPending').classList.toggle('attention', stats.pending > 0 && !engineActive());
 
-    // Card cartelle (vista Elaborazione)
-    setText('fcInput', stats.pending);
-    setText('fcOutput', stats.outputs);
-    setText('fcFailed', stats.failed);
-    setText('fcProcessed', stats.processed);
-    setText('fcExtracted', stats.extracted ?? 0);
-    document.querySelector('.folder-card.fc-fail')?.classList.toggle('has-items', stats.failed > 0);
-
-    const cta = stats.pending > 0 && (currentStatus === 'stopped' || currentStatus === 'error');
-    $('pendingCta').hidden = !cta;
-    setText('pendingCtaText', stats.pending === 1
-        ? '1 documento in attesa nella cartella input'
-        : `${stats.pending} documenti in attesa nella cartella input`);
+    // Cartelle di lavoro: numero di documenti in ogni riquadro
+    const counts = { input: stats.pending, output: stats.outputs, processed: stats.processed, failed: stats.failed };
+    FM_FOLDERS.forEach(folder => {
+        const n = counts[folder] || 0;
+        setText(`fmCount-${folder}`, n);
+        $(`fmBox-${folder}`)?.classList.toggle('has-items', n > 0);
+    });
+    $('btnStartFromCta').hidden = !(stats.pending > 0 && (currentStatus === 'stopped' || currentStatus === 'error'));
 }
 
 function updateBatch(data, pending, running, working) {
@@ -840,8 +835,10 @@ function updateBatch(data, pending, running, working) {
         batch.active = false;
         if (batch.done + batch.failed > 0) {
             batch.summary = { done: batch.done, failed: batch.failed, at: Date.now() };
-            const msg = `Lotto completato: ${plural(batch.done, 'documento elaborato', 'documenti elaborati')}`
-                + (batch.failed ? `, ${plural(batch.failed, 'non riuscito', 'non riusciti')} (vedi «Non riusciti»).` : '.');
+            const msg = updText(`Lotto completato: ${plural(batch.done, 'documento elaborato', 'documenti elaborati')}`
+                + (batch.failed ? `, ${plural(batch.failed, 'non riuscito', 'non riusciti')} (cartella failed).` : '.'),
+                `Batch completed: ${plural(batch.done, 'document processed', 'documents processed')}`
+                + (batch.failed ? `, ${batch.failed} failed (failed folder).` : '.'));
             showToast(msg, batch.failed ? 'warn' : 'success', 7000);
             fetchFiles();
         }
@@ -857,36 +854,43 @@ function renderJob(data) {
 
     let title, file = '', detail, spin = false, cls = '';
     if (data.status === 'loading_models') {
-        title = 'Avvio del motore in corso';
-        detail = 'Caricamento dei modelli di analisi: la prima volta può richiedere qualche minuto.';
+        title = updText('Avvio del motore in corso', 'Starting the engine');
+        detail = updText('Caricamento dei modelli di analisi: la prima volta può richiedere qualche minuto.',
+            'Loading the analysis models: the first time it can take a few minutes.');
         spin = true;
     } else if (working) {
-        title = 'In lavorazione';
+        title = updText('In lavorazione:', 'Processing:');
         file = p.current;
-        detail = p.detail ? `Fase: ${p.detail}` : 'Elaborazione in corso';
+        detail = p.detail ? updText(`Fase: ${p.detail}`, `Stage: ${p.detail}`) : updText('Elaborazione in corso', 'Processing');
         spin = true;
     } else if (running && pending > 0) {
-        title = 'Documenti in arrivo';
-        detail = 'Attendo che la copia dei file nella cartella input sia completata...';
+        title = updText('Documenti in arrivo', 'Documents arriving');
+        detail = updText('Attendo che la copia dei file nella cartella input sia completata...',
+            'Waiting for the files to finish copying into the input folder...');
         spin = true;
     } else if (batch.summary && Date.now() - batch.summary.at < 15 * 60 * 1000) {
         const s = batch.summary;
-        title = 'Lotto completato';
-        detail = `${plural(s.done, 'documento elaborato', 'documenti elaborati')}`
-            + (s.failed ? `, ${plural(s.failed, 'non riuscito', 'non riusciti')}` : '')
-            + ` alle ${new Date(s.at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}.`;
+        const at = new Date(s.at).toLocaleTimeString(currentLang === 'en' ? 'en-GB' : 'it-IT', { hour: '2-digit', minute: '2-digit' });
+        title = updText('Lotto completato', 'Batch completed');
+        detail = updText(plural(s.done, 'documento elaborato', 'documenti elaborati')
+            + (s.failed ? `, ${plural(s.failed, 'non riuscito', 'non riusciti')}` : '') + ` alle ${at}.`,
+            plural(s.done, 'document processed', 'documents processed')
+            + (s.failed ? `, ${s.failed} failed` : '') + ` at ${at}.`);
         cls = s.failed ? 'done-with-errors' : 'done';
     } else if (running) {
-        title = 'Motore attivo';
-        detail = 'In attesa di documenti: aggiungili qui a sinistra oppure copiali nella cartella input.';
+        title = updText('Motore attivo', 'Engine running');
+        detail = updText('In attesa di documenti: trascinali nella cartella input qui sotto oppure copiali con il file manager.',
+            'Waiting for documents: drag them into the input folder below or copy them with the file manager.');
     } else if (data.status === 'error') {
-        title = 'Motore fermo per errore';
-        detail = 'Il motivo è indicato in alto; il dettaglio è nel registro attività.';
+        title = updText('Motore fermo per errore', 'Engine stopped by an error');
+        detail = updText('Il motivo è indicato in alto; il dettaglio è nel registro attività.',
+            'The reason is shown at the top; the details are in the activity log.');
     } else {
-        title = 'Motore in pausa';
+        title = updText('Motore in pausa', 'Engine paused');
         detail = pending > 0
-            ? 'I documenti in attesa verranno elaborati all\'avvio del motore.'
-            : 'Aggiungi documenti: il motore si avvia automaticamente.';
+            ? updText(`${plural(pending, 'documento in attesa', 'documenti in attesa')} nella cartella input: verranno elaborati all'avvio del motore.`,
+                `${plural(pending, 'document', 'documents')} waiting in the input folder: they will be processed when the engine starts.`)
+            : updText('Aggiungi documenti: il motore si avvia automaticamente.', 'Add documents: the engine starts automatically.');
     }
 
     const progress = $('batchProgress');
@@ -895,7 +899,8 @@ function renderJob(data) {
         const total = processed + pending;
         progress.hidden = false;
         $('batchProgressBar').style.width = `${total ? Math.round((100 * processed) / total) : 0}%`;
-        detail += ` · Lotto: ${processed} di ${total}` + (batch.failed ? ` (${batch.failed} non riusciti)` : '');
+        detail += updText(` · Lotto: ${processed} di ${total}` + (batch.failed ? ` (${batch.failed} non riusciti)` : ''),
+            ` · Batch: ${processed} of ${total}` + (batch.failed ? ` (${batch.failed} failed)` : ''));
     } else {
         progress.hidden = true;
     }
@@ -933,11 +938,6 @@ function renderLiveStats(data) {
     if (data.system) {
         setText('lsCpu', data.system.cpu_percent);
         setText('lsRam', data.system.ram_percent);
-    }
-    const lp = $('liveProgress');
-    if (lp) {
-        lp.hidden = !batch.active;
-        if (batch.active) $('liveProgressBar').style.width = `${total ? Math.round((100 * processed) / total) : 0}%`;
     }
 }
 
@@ -979,6 +979,8 @@ async function pollStatus() {
         }
     }
     renderJob(data);
+    renderFileManager();
+    if (!fmPaths) loadFmPaths();
     renderSystem(data);
     renderLiveStats(data);
     renderModeChip(data);
@@ -992,7 +994,137 @@ async function fetchFiles() {
         if (!ok) return;
         cachedFiles = data;
         renderFiles();
+        renderFileManager();
     } catch (e) { /* server non raggiungibile: gestito da pollStatus */ }
+}
+
+// ------------------------------------------------------------------ CARTELLE DI LAVORO (anteprima del file manager)
+// Quattro riquadri come in Esplora file: percorso completo sopra, i documenti dentro (aggiornati mentre il motore li
+// prende da input e li sposta in output, processed o failed), trascinamento sulla cartella input, clic = apri cartella.
+const FM_FOLDERS = ['input', 'output', 'processed', 'failed'];
+const FM_MAX_ROWS = 200;
+const FM_EMPTY = {
+    input: ['Nessun documento in attesa.', 'No documents waiting.'],
+    output: ['Nessun documento anonimizzato.', 'No anonymized documents yet.'],
+    processed: ['Nessun originale archiviato.', 'No originals archived yet.'],
+    failed: ['Nessun documento non riuscito.', 'No failed documents.']
+};
+let fmPaths = null;
+let fmSeen = null;
+let fmSignature = '';
+
+async function loadFmPaths() {
+    try {
+        const { ok, data } = await fetchJson('/api/folders', { cache: 'no-store' });
+        if (!ok || !data) return;
+        fmPaths = data;
+        [...FM_FOLDERS, 'extracted'].forEach(folder => {
+            const el = $(`fmPath-${folder}`);
+            if (!el || !data[folder]) return;
+            setPathText(el, data[folder]);
+            el.closest('[data-open-folder]')?.setAttribute('title', data[folder]);
+        });
+    } catch (e) { /* riprova al prossimo aggiornamento */ }
+}
+
+// Percorso che va a capo solo dopo una barra: i nomi delle cartelle restano interi (anche «Germano AI»), il testo
+// copiato resta il percorso vero. Un nome lunghissimo può comunque andare a capo dove serve.
+function setPathText(el, path) {
+    el.textContent = '';
+    (String(path).match(/[^\\/]*[\\/]?/g) || []).filter(Boolean).forEach((part, i) => {
+        if (i) el.appendChild(document.createElement('wbr'));
+        const seg = document.createElement('span');
+        if (part.length <= 32) seg.className = 'fm-seg';
+        seg.textContent = part;
+        el.appendChild(seg);
+    });
+}
+
+function fileIcon(name) {
+    const ext = (String(name).split('.').pop() || '').toLowerCase();
+    if (ext === 'pdf') return '📕';
+    if (['doc', 'docx', 'docm', 'dotx', 'odt', 'rtf', 'txt', 'md'].includes(ext)) return '📝';
+    if (['xls', 'xlsx', 'xlsm', 'xltx', 'ods', 'csv', 'tsv'].includes(ext)) return '📊';
+    if (['ppt', 'pptx', 'pptm', 'potx', 'ppsx', 'odp'].includes(ext)) return '📽️';
+    if (['png', 'jpg', 'jpeg', 'jfif', 'bmp', 'tif', 'tiff', 'webp', 'gif'].includes(ext)) return '🖼️';
+    if (['eml', 'msg'].includes(ext)) return '✉️';
+    if (['zip', 'p7m'].includes(ext)) return '🗜️';
+    return '📄';
+}
+
+function fmRow(folder, it, current, isNew) {
+    const name = String(it.name || '');
+    const [dir, base] = splitPath(name);
+    const busy = folder === 'input' && name === current;
+    const info = `${name} · ${formatBytes(it.size)} · ${formatDate(it.mtime)}` + (it.reason ? `\n${it.reason}` : '');
+    let meta;
+    if (busy) {
+        const phase = (lastStatus && lastStatus.progress && lastStatus.progress.detail) || '';
+        meta = `<span class="badge badge-warn"><span class="spinner"></span>${escapeHtml(updText('in lavorazione', 'processing'))}${phase ? ' · ' + escapeHtml(phase) : ''}</span>`;
+    } else if (folder === 'output' && (it.mode === 'restore' || base.startsWith('ripristinato_'))) {
+        meta = `<span class="badge badge-info">${escapeHtml(updText('ripristinato', 'restored'))}</span>`;
+    } else if (folder === 'output' && typeof it.entities === 'number') {
+        meta = `<span class="fm-file-meta">${escapeHtml(updText(plural(it.entities, 'dato oscurato', 'dati oscurati'), plural(it.entities, 'item masked', 'items masked')))}</span>`;
+    } else {
+        meta = `<span class="fm-file-meta">${escapeHtml(folder === 'processed' ? formatDate(it.mtime) : formatBytes(it.size))}</span>`;
+    }
+    const reason = folder === 'failed'
+        ? `<span class="fm-file-reason">${escapeHtml(it.reason || updText('Motivo non disponibile: vedi il registro attività.', 'Reason not available: see the activity log.'))}</span>`
+        : '';
+    const retry = folder === 'failed'
+        ? `<button type="button" class="btn-icon fm-retry" data-fm-retry="${escapeHtml(name)}" title="${escapeHtml(updText('Rimetti in coda', 'Queue again'))}" aria-label="${escapeHtml(updText('Rimetti in coda', 'Queue again'))}">${iconSvg('i-retry')}</button>`
+        : '';
+    return `<li class="fm-file${busy ? ' fm-busy' : ''}${isNew ? ' fm-new' : ''}" title="${escapeHtml(info)}">
+        <span class="fm-file-ico" aria-hidden="true">${fileIcon(base)}</span>
+        <span class="fm-file-main"><span class="fm-file-name">${escapeHtml(base)}</span>${dir ? `<span class="fm-file-dir">${escapeHtml(dir)}/</span>` : ''}${reason}</span>
+        ${meta}${retry}
+    </li>`;
+}
+
+function renderFileManager(force = false) {
+    if (!$('fmGrid')) return;
+    const current = lastStatus && lastStatus.status === 'running' ? ((lastStatus.progress || {}).current || '') : '';
+    const phase = current ? ((lastStatus.progress || {}).detail || '') : '';
+    const totals = cachedFiles.totals || {};
+    const sig = [currentLang, current, phase].concat(FM_FOLDERS.map(folder =>
+        `${totals[folder] ?? ''}:` + (cachedFiles[folder] || []).slice(0, FM_MAX_ROWS)
+            .map(it => `${it.name}@${it.mtime}@${it.entities ?? ''}@${it.reason ?? ''}`).join('|'))).join('#');
+    if (!force && sig === fmSignature) return;
+    fmSignature = sig;
+    const first = fmSeen === null;
+    const seen = {};
+    FM_FOLDERS.forEach(folder => {
+        let items = (cachedFiles[folder] || []).slice();
+        if (folder === 'input' && current) {      // il documento in lavorazione sta in cima
+            items.sort((a, b) => (b.name === current) - (a.name === current));
+        }
+        const total = totals[folder] ?? items.length;
+        const shown = items.slice(0, FM_MAX_ROWS);
+        const before = (fmSeen && fmSeen[folder]) || new Set();
+        seen[folder] = new Set(items.map(it => it.name));
+        let html = shown.map(it => fmRow(folder, it, current, !first && !before.has(it.name))).join('');
+        if (!shown.length) {
+            html = `<li class="fm-empty">${escapeHtml(updText(...FM_EMPTY[folder]))}</li>`;
+        } else if (total > shown.length) {
+            html += `<li class="fm-more">${escapeHtml(updText(`... e altri ${total - shown.length} documenti`, `... and ${total - shown.length} more documents`))}</li>`;
+        }
+        const list = $(`fmList-${folder}`);
+        if (list) list.innerHTML = html;
+    });
+    fmSeen = seen;
+}
+
+async function retryFailedDocument(name) {
+    const { ok, data } = await postJson('/api/retry_failed', { names: [name] });
+    if (ok && (data.moved || []).length) {
+        showToast(engineActive()
+            ? updText('Documento rimesso in coda.', 'Document queued again.')
+            : updText('Documento rimesso in coda: avvia il motore per elaborarlo.', 'Document queued again: start the engine to process it.'), 'success');
+    } else {
+        showToast((data.errors || [])[0] || data.message || updText('Impossibile rimettere in coda il documento.', 'The document could not be queued again.'), 'error');
+    }
+    await fetchFiles();
+    pollStatus();
 }
 
 function setFileTab(folder) {
@@ -1075,7 +1207,6 @@ function renderFiles() {
     $('btnRetryAll').hidden = !(folder === 'failed' && all.length > 0);
     setText('btnOpenCurrentFolderLabel', `Apri cartella ${folder}`);
     $('btnExportCsv').disabled = all.length === 0;
-    document.querySelectorAll('.kpi[data-show-tab]').forEach(k => k.classList.toggle('selected', k.dataset.showTab === folder));
 }
 
 async function fileAction(action, name) {
@@ -1182,26 +1313,30 @@ async function uploadFiles(list) {
         formData.append('files', file, file.name);
         formData.append('paths', path || file.name);
     });
-    showToast(list.length === 1 ? 'Caricamento del documento...' : `Caricamento di ${list.length} documenti...`, 'info');
+    showToast(list.length === 1
+        ? updText('Copia del documento nella cartella input...', 'Copying the document into the input folder...')
+        : updText(`Copia di ${list.length} documenti nella cartella input...`, `Copying ${list.length} documents into the input folder...`), 'info');
     try {
         const { ok, data } = await fetchJson('/api/upload_files', { method: 'POST', body: formData });
         if (!ok || data.status !== 'success') {
-            showToast(data.message || 'Errore durante il caricamento.', 'error');
+            showToast(data.message || updText('Errore durante il caricamento.', 'Upload error.'), 'error');
             return;
         }
         if (data.auto_restored_count > 0) {
-            showToast(`${plural(data.auto_restored_count, 'file restituito', 'file restituiti')} dall'AI: dati originali ripristinati (vedi «Pronti»).`, 'success', 6000);
+            showToast(updText(`${plural(data.auto_restored_count, 'file restituito', 'file restituiti')} dall'AI: dati originali ripristinati (cartella output).`,
+                `${plural(data.auto_restored_count, 'file returned', 'files returned')} by the AI: original data restored (output folder).`), 'success', 6000);
             setFileTab('output');
         }
         if (data.saved_count > 0) {
-            showToast(`${plural(data.saved_count, 'documento aggiunto', 'documenti aggiunti')} alla coda.`, 'success');
+            showToast(updText(`${plural(data.saved_count, 'documento aggiunto', 'documenti aggiunti')} alla cartella input.`,
+                `${plural(data.saved_count, 'document added', 'documents added')} to the input folder.`), 'success');
             await ensureEngineRunning();
         }
-        (data.errors || []).forEach(err => showToast(`Errore: ${err}`, 'error', 7000));
+        (data.errors || []).forEach(err => showToast(updText(`Errore: ${err}`, `Error: ${err}`), 'error', 7000));
         fetchFiles();
         pollStatus();
     } catch (e) {
-        showToast('Errore di connessione durante il caricamento.', 'error');
+        showToast(updText('Errore di connessione durante il caricamento.', 'Connection error during the upload.'), 'error');
     }
 }
 
@@ -1390,26 +1525,21 @@ const TIPS = [
     ['#btnUpdateInstall', 'Installa ora', 'Chiude Germano, installa l\'aggiornamento e lo riapre. Cartelle, archivio e impostazioni non vengono toccati.'],
     ['#btnUpdateAck', 'Chiudi avviso', 'Nasconde questo messaggio.'],
     // --- cartelle e statistiche
-    ['.folder-card[data-open-folder="input"]', '📥 In attesa — cartella input', 'Documenti da elaborare. Clicca per aprire la cartella in Esplora file: puoi copiarci dentro file e intere cartelle.'],
-    ['.folder-card[data-open-folder="output"]', '✅ Pronti — cartella output', 'Documenti anonimizzati, con la stessa struttura di sottocartelle degli originali. Clicca per aprirla in Esplora file.'],
-    ['.folder-card[data-open-folder="failed"]', '⚠️ Errori — cartella failed', 'Documenti che non è stato possibile elaborare; il motivo è nella tabella «Non riusciti». Clicca per aprire la cartella.'],
-    ['.folder-card[data-open-folder="processed"]', '🗂️ Originali — cartella processed', 'Gli originali vengono spostati qui dopo l\'elaborazione. Clicca per aprire la cartella.'],
-    ['.folder-card[data-open-folder="extracted"]', '🔐 Vault ed estratti — cartella extracted', 'Archivio delle corrispondenze etichetta ↔ dato reale, report di audit e registri. Contiene dati in chiaro: conservala su un disco protetto (es. BitLocker).'],
+    ['.fm-box[data-fm-box="input"]', '📥 input — documenti da elaborare', 'Trascina qui file o intere cartelle (oppure copiali con il file manager): il motore li anonimizza uno alla volta. Clicca il riquadro per aprire la cartella.'],
+    ['.fm-box[data-fm-box="output"]', '📤 output — documenti anonimizzati', 'I risultati, con la stessa struttura di sottocartelle degli originali. Clicca il riquadro per aprire la cartella.'],
+    ['.fm-box[data-fm-box="processed"]', '🗂️ processed — originali', 'Gli originali, spostati qui dopo l\'elaborazione: contengono dati personali in chiaro. Clicca il riquadro per aprire la cartella.'],
+    ['.fm-box[data-fm-box="failed"]', '⚠️ failed — non riusciti', 'Documenti che non è stato possibile elaborare, con il motivo; il pulsante ↻ li rimette in coda. Clicca il riquadro per aprire la cartella.'],
+    ['.fm-path', 'Percorso della cartella', (el, n) => `${n || ''}${n ? '\n' : ''}Percorso completo della cartella sul disco. Clicca per aprirla.`],
+    ['.fm-vault', '🔐 Vault e report — cartella extracted', 'Archivio delle corrispondenze etichetta ↔ dato reale, report di audit e registri. Contiene dati in chiaro: conservala su un disco protetto (es. BitLocker). Clicca per aprire la cartella.'],
     ['.ls:has(#lsDone)', 'Documenti del lotto', 'Documenti già elaborati sul totale del lotto in corso.'],
     ['.ls:has(#lsPii)', 'Dati personali oscurati', 'Totale dei dati personali sostituiti con etichette nei documenti pronti.'],
     ['.ls:has(#lsThroughput)', 'Velocità', 'Documenti elaborati al minuto nel lotto in corso.'],
     ['.ls:has(#lsCpu)', 'Processore', 'Uso attuale del processore di questo computer.'],
     ['.ls:has(#lsRam)', 'Memoria', 'Uso attuale della memoria RAM di questo computer.'],
-    ['#liveProgress', 'Avanzamento del lotto', 'Quota di documenti già elaborati nel lotto in corso.'],
-    ['#protectDropzone', 'Aggiungi documenti', 'Trascina qui file o intere cartelle: vengono copiati nella cartella input ed elaborati dal motore.'],
-    ['#btnPickFiles', 'Seleziona file', 'Scegli uno o più documenti da anonimizzare.'],
+    ['#btnPickFiles', 'Seleziona file', 'Scegli uno o più documenti da copiare nella cartella input.'],
     ['#btnPickFolder', 'Seleziona cartella', 'Aggiungi un\'intera cartella: la struttura delle sottocartelle viene mantenuta in output.'],
-    ['.btn[data-open-folder="input"]', 'Apri cartella input', 'Apre in Esplora file la cartella dei documenti da elaborare.'],
-    ['.btn[data-open-folder="output"]', 'Apri cartella output', 'Apre in Esplora file la cartella dei documenti anonimizzati.'],
-    ['#kpiPending', 'In attesa', 'Mostra nella tabella i documenti ancora da elaborare.'],
-    ['#kpiOutput', 'Pronti', 'Mostra nella tabella i documenti già anonimizzati.'],
-    ['#kpiFailed', 'Non riusciti', 'Mostra nella tabella i documenti non elaborati, con il motivo.'],
-    ['#currentJob', 'Lavorazione in corso', 'Documento in elaborazione, fase attuale e avanzamento del lotto.'],
+    ['.fm-retry', 'Rimetti in coda', 'Sposta il documento di nuovo nella cartella input per elaborarlo un\'altra volta.'],
+    ['#currentJob', 'Lavorazione in corso', 'Stato del motore, documento in elaborazione, fase attuale e avanzamento del lotto.'],
     ['#btnStartFromCta', 'Avvia elaborazione', 'Avvia il motore per elaborare i documenti in attesa.'],
     ['.restore-row .switch', 'Ripristino automatico dei dati', 'Le etichette sono numerate e le corrispondenze restano nell\'archivio locale: quando un testo o un file restituito dall\'AI le contiene, i dati originali tornano al loro posto. Disattivato: anonimizzazione irreversibile.'],
     // --- documenti
@@ -1531,26 +1661,21 @@ const TIPS_EN = {
     '#btnUpdateInstall': ['Install now', 'Closes Germano, installs the update and reopens. Folders, vault and settings remain intact.'],
     '#btnUpdateAck': ['Dismiss alert', 'Hides this notification.'],
     // --- folders & stats
-    '.folder-card[data-open-folder="input"]': ['📥 Pending — input folder', 'Documents to process. Click to open in File Explorer: you can copy files and entire folders here.'],
-    '.folder-card[data-open-folder="output"]': ['✅ Ready — output folder', 'Anonymized documents, preserving the exact folder structure. Click to open in File Explorer.'],
-    '.folder-card[data-open-folder="failed"]': ['⚠️ Errors — failed folder', 'Documents that could not be processed; see reason in Failed table. Click to open.'],
-    '.folder-card[data-open-folder="processed"]': ['🗂️ Originals — processed folder', 'Original documents moved here after successful processing. Click to open.'],
-    '.folder-card[data-open-folder="extracted"]': ['🔐 Vault & extracted', 'Mapping archive between tags ↔ real data, audit reports and logs. Contains data in the clear: keep on an encrypted disk (BitLocker).'],
+    '.fm-box[data-fm-box="input"]': ['📥 input — documents to process', 'Drag files or whole folders here (or copy them with the file manager): the engine anonymizes them one at a time. Click the box to open the folder.'],
+    '.fm-box[data-fm-box="output"]': ['📤 output — anonymized documents', 'The results, with the same subfolder structure as the originals. Click the box to open the folder.'],
+    '.fm-box[data-fm-box="processed"]': ['🗂️ processed — originals', 'The originals, moved here after processing: they contain personal data in clear text. Click the box to open the folder.'],
+    '.fm-box[data-fm-box="failed"]': ['⚠️ failed — not processed', 'Documents that could not be processed, with the reason; the ↻ button queues them again. Click the box to open the folder.'],
+    '.fm-path': ['Folder path', (el, n) => `${n || ''}${n ? '\n' : ''}Full path of the folder on disk. Click to open it.`],
+    '.fm-vault': ['🔐 Vault & reports — extracted folder', 'Mapping archive between tags ↔ real data, audit reports and logs. Contains data in the clear: keep it on a protected disk (e.g. BitLocker). Click to open the folder.'],
     '.ls:has(#lsDone)': ['Batch documents', 'Documents processed out of total in current batch.'],
     '.ls:has(#lsPii)': ['Masked personal data', 'Total personal data entries replaced with tags in ready documents.'],
     '.ls:has(#lsThroughput)': ['Throughput', 'Documents processed per minute in current batch.'],
     '.ls:has(#lsCpu)': ['CPU Usage', 'Current processor usage of this computer.'],
     '.ls:has(#lsRam)': ['RAM Usage', 'Current memory usage of this computer.'],
-    '#liveProgress': ['Batch progress', 'Share of documents already processed in current batch.'],
-    '#protectDropzone': ['Add documents', 'Drag & drop files or folders here: copied to input folder and processed automatically.'],
-    '#btnPickFiles': ['Select files', 'Choose one or more documents to anonymize.'],
+    '#btnPickFiles': ['Select files', 'Choose one or more documents to copy into the input folder.'],
     '#btnPickFolder': ['Select folder', 'Add an entire folder: subdirectory hierarchy is preserved in output.'],
-    '.btn[data-open-folder="input"]': ['Open input folder', 'Opens the pending documents folder in File Explorer.'],
-    '.btn[data-open-folder="output"]': ['Open output folder', 'Opens the ready anonymized documents folder in File Explorer.'],
-    '#kpiPending': ['Pending', 'Show documents waiting to be processed.'],
-    '#kpiOutput': ['Ready', 'Show documents already anonymized.'],
-    '#kpiFailed': ['Failed', 'Show documents that failed processing, along with failure reasons.'],
-    '#currentJob': ['Active job', 'Current document being processed, pipeline stage and batch progress.'],
+    '.fm-retry': ['Queue again', 'Moves the document back to the input folder to process it again.'],
+    '#currentJob': ['Active job', 'Engine status, document being processed, current stage and batch progress.'],
     '#btnStartFromCta': ['Start processing', 'Starts the engine to process pending documents.'],
     '.restore-row .switch': ['Automatic de-anonymization', 'Tags are numbered and mappings saved locally: when an AI response contains them, real data is restored. If disabled: irreversible anonymization.'],
     // --- documents table
@@ -2122,7 +2247,9 @@ function setLanguage(lang) {
     // Aggiorna elementi dinamici
     if (typeof lastStatus !== 'undefined' && lastStatus) {
         try { renderStatus(lastStatus); } catch (e) {}
+        try { renderJob(lastStatus); } catch (e) {}
     }
+    try { renderFileManager(true); } catch (e) {}
 }
 
 function initLanguage() {
@@ -2300,6 +2427,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const folderBtn = e.target.closest('[data-open-folder]');
         if (folderBtn) {
+            // i pulsanti dentro un riquadro delle cartelle (Seleziona file, Rimetti in coda...) fanno altro
+            const inner = e.target.closest('button, a, input, label');
+            if (inner && inner !== folderBtn && folderBtn.contains(inner)) return;
             openLocalFolder(folderBtn.dataset.openFolder);
             return;
         }
@@ -2316,8 +2446,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         persistSettings(true);
     });
 
-    // Aggiunta di documenti: trascinamento, scelta di file o di una cartella
-    const drop = $('protectDropzone');
+    // Cartelle di lavoro: trascinamento dei file sulla cartella input, scelta di file o di una cartella
+    const drop = $('fmBox-input');
     const fileInput = $('protectFileInput');
     const folderInput = $('protectFolderInput');
     $('btnPickFiles').addEventListener('click', () => fileInput.click());
@@ -2327,29 +2457,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         uploadFiles(list);
         input.value = '';
     }));
+    const hasFiles = (e) => Array.from((e.dataTransfer && e.dataTransfer.types) || []).includes('Files');
     ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, (e) => {
+        if (!hasFiles(e)) return;
         e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
         drop.classList.add('dragover');
     }));
-    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, (e) => {
-        e.preventDefault();
-        if (ev === 'drop' || !drop.contains(e.relatedTarget)) drop.classList.remove('dragover');
-    }));
+    drop.addEventListener('dragleave', (e) => {
+        if (!drop.contains(e.relatedTarget)) drop.classList.remove('dragover');
+    });
     drop.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        drop.classList.remove('dragover');
         if (!e.dataTransfer) return;
         const list = await filesFromDrop(e.dataTransfer);
         if (list.length) uploadFiles(list);
     });
+    // le altre cartelle (output, processed, failed) si riempiono solo con il lavoro del motore
+    document.querySelectorAll('.fm-box:not(.fm-input)').forEach(box => box.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+    }));
     // un file lasciato fuori dal riquadro non deve essere aperto dal browser
     window.addEventListener('dragover', e => e.preventDefault());
     window.addEventListener('drop', e => e.preventDefault());
+    // riquadri delle cartelle: Invio o barra spaziatrice aprono la cartella come il clic
+    document.querySelectorAll('.fm-box').forEach(box => box.addEventListener('keydown', (e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && e.target === box) {
+            e.preventDefault();
+            openLocalFolder(box.dataset.openFolder);
+        }
+    }));
+    $('fmList-failed').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-fm-retry]');
+        if (btn) retryFailedDocument(btn.dataset.fmRetry);
+    });
+    loadFmPaths();
 
     // Documenti
     document.querySelectorAll('.tab[data-folder]').forEach(t => t.addEventListener('click', () => setFileTab(t.dataset.folder)));
-    document.querySelectorAll('.kpi[data-show-tab]').forEach(k => k.addEventListener('click', () => {
-        setFileTab(k.dataset.showTab);
-        document.querySelector('.tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }));
     $('fileFilter').addEventListener('input', renderFiles);
     $('fileTableBody').addEventListener('click', (e) => {
         const btn = e.target.closest('[data-action]');

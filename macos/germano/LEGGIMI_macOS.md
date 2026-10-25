@@ -6,13 +6,15 @@ Scarica **`germano-0.60.pkg`** da https://download.germano.ai/ (Mac con **Apple 
 doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, i 6 modelli IA) e non scarica nulla.
 Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza
 password di amministratore** (con «Installa per tutti gli utenti» va in `/Applications` e macOS chiede la password).
-Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema › Privacy e
+Alla fine dell'installazione Germano si apre da solo. Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema › Privacy e
 sicurezza** e scegli **Apri comunque**.
 
 ## Come si usa
 Apri **Germano** da Launchpad o dalla cartella Applicazioni: si apre una **finestra dedicata** (WebKit di sistema,
 niente terminale né browser) con la **Dashboard unificata** (Standalone, Server LAN, Client). La **X rossa** (o ⌘Q)
-chiude tutto: finestra, server e motore IA.
+chiude tutto: finestra, server e motore IA. Nella sezione **Cartelle di lavoro** quattro riquadri (`input`, `output`,
+`processed`, `failed`) mostrano in tempo reale i file di ogni cartella, con il percorso completo sopra: trascina i
+documenti sul riquadro **input**; un clic su un riquadro apre la cartella nel Finder.
 
 ## Dati e privacy
 - Cartelle di lavoro in `~/Documents/Germano AI` (in `~/Germano AI` se Documenti è sincronizzata con iCloud): `input`,

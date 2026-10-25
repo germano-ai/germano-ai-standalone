@@ -16,7 +16,12 @@ l'azione «Cartelle di lavoro») e il comando `germano-ai`.
 ## Come si usa
 Apri **Germano AI** dal menu delle applicazioni: si apre una **finestra dedicata** (niente terminale né browser) con la
 **Dashboard unificata** (Standalone, Server LAN, Client). La **X rossa** chiude tutto: finestra, server e motore IA
-(nessun processo orfano).
+(nessun processo orfano). Nella sezione **Cartelle di lavoro** quattro riquadri (`input`, `output`, `processed`,
+`failed`) mostrano in tempo reale i file di ogni cartella, con il percorso completo sopra: trascina i documenti sul
+riquadro **input**; un clic su un riquadro apre la cartella nel file manager.
+
+Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
+fuori dalla sessione grafica dell'utente.
 
 ## Dati e privacy
 - Cartelle di lavoro in `Documenti/Germano AI` (la cartella Documenti nella lingua del sistema): `input`, `output`,

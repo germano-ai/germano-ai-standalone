@@ -47,7 +47,7 @@ The official Client installers are single files on **[download.germano.ai](https
 ### 🪟 Windows (10 / 11 64-bit)
 1. **Download:** download `germano-client-0.60.exe` (about 22 MB).
 2. **Installation:** double-click the installer. It installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI Client` **without administrator privileges (no UAC prompt)**, with Desktop and Start menu shortcuts and the entry in Settings > Apps. The client settings are in `%LOCALAPPDATA%\Germano AI Client`.
-3. **Launch:** **Germano AI** shortcut on the Desktop or in the Start menu (dedicated window, no terminal).
+3. **Launch:** at the end of the installation the client opens by itself; afterwards use the **Germano AI Client** shortcut on the Desktop or in the Start menu (dedicated window, no terminal; its name differs from the suite's, so both editions can live on the same computer).
 4. **Uninstall:** Settings > Apps > Installed apps > Germano AI Client.
 
 ### 🍎 macOS (Apple Silicon and Intel, macOS 11 or later)

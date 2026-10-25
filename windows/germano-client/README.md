@@ -47,7 +47,7 @@ Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](
 ### 🪟 Windows (10 / 11 a 64 bit)
 1. **Download:** scarica `germano-client-0.60.exe` (circa 22 MB).
 2. **Installazione:** doppio clic sull'installer. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client` **senza diritti di amministratore (nessuna richiesta UAC)**, con i collegamenti sul Desktop e nel menu Start e la voce in Impostazioni > App. Le impostazioni del client sono in `%LOCALAPPDATA%\Germano AI Client`.
-3. **Avvio:** collegamento **Germano AI** sul Desktop o nel menu Start (finestra dedicata, senza terminale).
+3. **Avvio:** al termine dell'installazione il client si apre da solo; poi dal collegamento **Germano AI Client** sul Desktop o nel menu Start (finestra dedicata, senza terminale; nome diverso da quello della suite, così le due edizioni possono stare sullo stesso computer).
 4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI Client.
 
 ### 🍎 macOS (Apple Silicon e Intel, macOS 11 o successivo)

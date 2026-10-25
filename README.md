@@ -16,8 +16,8 @@ Germano AI è una potente suite open-source progettata per **l'anonimizzazione i
 
 Germano AI lavora in modo completamente autonomo "ascoltando" le sue cartelle. Il funzionamento base è semplicissimo:
 1. Apri **Germano AI** dal collegamento sul Desktop o dal menu Start (Windows), da Launchpad o dalla cartella Applicazioni (macOS) oppure dal menu delle applicazioni (Linux): si apre direttamente in una finestra dedicata (senza finestre nere di terminale né browser esterni; la **X rossa** in alto a destra chiude completamente l'intero programma e tutti i processi di calcolo in background). Alla prima apertura scegli la modalità operativa (nel dubbio lascia **Standalone**: tutto resta sul tuo computer).
-2. Aggiungi i documenti (anche intere cartelle con sottocartelle): trascinali nel riquadro **«Trascina qui file o cartelle»**, usa **Seleziona file** / **Seleziona cartella**, oppure copiali nella cartella **`input`** (il pulsante **Apri cartella input** la apre in Esplora file).
-3. Clicca **Avvia motore** in alto a destra (se aggiungi i file dalla Dashboard il motore parte da solo). Germano prende i file da `input`, li anonimizza e salva i documenti puliti nella cartella **`output`**, preservando la struttura delle cartelle e sottocartelle; i contatori **In attesa / Pronti / Non riusciti** mostrano l'andamento del lotto.
+2. Aggiungi i documenti (anche intere cartelle con sottocartelle): nella sezione **Cartelle di lavoro** della Dashboard trascinali sul riquadro **input** («Trascina i file qui nella cartella di input»), usa **Seleziona file** / **Seleziona cartella**, oppure copiali nella cartella **`input`**. I quattro riquadri **input**, **output**, **processed** e **failed** sono un'anteprima delle cartelle vere, come in un file manager: sopra ognuno c'è il percorso completo e un clic sul riquadro (o sul percorso) apre la cartella in Esplora file (Finder su macOS, il file manager su Linux).
+3. Clicca **Avvia motore** in alto a destra (se aggiungi i file dalla Dashboard il motore parte da solo). Germano prende i file da `input`, li anonimizza e salva i documenti puliti nella cartella **`output`**, preservando la struttura delle cartelle e sottocartelle; nei riquadri vedi in tempo reale i file che arrivano, quello in elaborazione e quelli che si spostano in `output`, `processed` o `failed`.
 4. Ritira i risultati con **Apri cartella output** o dalla tabella **Documenti**. Gli originali vengono archiviati in **`processed`**; i file danneggiati o non supportati finiscono in **`failed`** e compaiono nella scheda **Non riusciti** con il motivo e il pulsante **Rimetti in coda**. I report JSON di audit vengono salvati in **`extracted`**.
 
 💡 **Tip Produttività:** Puoi aggiungere nuovi file o intere cartelle *mentre il software sta già lavorando*: vengono messi in coda ed elaborati senza riavviare nulla. **Esporta elenco** salva in CSV (per Excel) l'elenco dei documenti pronti o non riusciti. Dalla Dashboard puoi anche anonimizzare "al volo" un testo incollandolo nel riquadro **«Testo da inviare a un servizio di AI»**.
@@ -38,15 +38,15 @@ Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.ge
 
 ### 🪟 Windows (10 / 11 a 64 bit)
 1. **Download:** scarica `germano-0.60.exe`.
-2. **Installazione:** doppio clic sull'installer. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI` **senza diritti di amministratore (nessuna richiesta UAC)**, crea i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni > App e le cartelle di lavoro in `Documenti\Germano AI`. Le librerie Microsoft Visual C++ sono già incluse: non serve installare altro.
+2. **Installazione:** doppio clic sull'installer. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows valida solo per il Python di Germano e solo per le reti private e di dominio (modalità Server LAN). Il programma si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI`, con i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni > App e le cartelle di lavoro in `Documenti\Germano AI`; al termine la finestra dell'installer si chiude e **Germano AI si apre da solo**, con i permessi normali dell'utente. Le librerie Microsoft Visual C++ sono già incluse: non serve installare altro.
 3. **Avvio:** collegamento **Germano AI** sul Desktop o nel menu Start (finestra dedicata, senza finestre nere di terminale).
-4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI; puoi scegliere se conservare le cartelle di lavoro e il Vault.
+4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI (chiede i permessi di amministratore per togliere la regola del firewall); puoi scegliere se conservare le cartelle di lavoro e il Vault.
 
 L'installer della suite pesa circa 3 GB: al primo doppio clic Microsoft Defender lo analizza e la finestra può comparire dopo qualche secondo. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC» scegli **Ulteriori informazioni > Esegui comunque**.
 
 ### 🍎 macOS
 1. **Download:** scarica `germano-0.60.pkg`. La suite completa richiede un Mac con **Apple Silicon** (M1 o successivo) e **macOS 14 Sonoma** o successivo, perché PyTorch non è più pubblicato per i Mac Intel; sui Mac Intel si usa il client leggero `germano-client-0.60.pkg`.
-2. **Installazione:** doppio clic sul pacchetto. Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza password di amministratore**. Con «Installa per tutti gli utenti» va in `/Applications` e macOS chiede la password.
+2. **Installazione:** doppio clic sul pacchetto. Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza password di amministratore**. Con «Installa per tutti gli utenti» va in `/Applications` e macOS chiede la password. Al termine Germano si apre da solo.
 3. **Avvio:** apri **Germano** (`Germano.app`) da Launchpad o dalla cartella Applicazioni. Al primo avvio crea le cartelle di lavoro in `~/Documents/Germano AI` (in `~/Germano AI` se Documenti è sincronizzata con iCloud).
 4. **Disinstallazione:** trascina `Germano.app` nel Cestino; le cartelle di lavoro restano dove sono.
 
@@ -95,7 +95,7 @@ Germano AI implementa un'architettura ibrida e modulare, configurabile al primo 
 
 ## 🌟 Funzionalità Principali
 
-*   **100% Offline & pronto su un sistema appena installato:** ogni installer include il proprio Python 3.11 con tutte le librerie (su Windows anche le librerie Microsoft Visual C++ x64, accanto all'interprete: nessun ridistribuibile da installare, nessun privilegio di amministratore), l'interfaccia Web priva di CDN esterni e **6 modelli IA locali pre-installati**.
+*   **100% Offline & pronto su un sistema appena installato:** ogni installer include il proprio Python 3.11 con tutte le librerie (su Windows anche le librerie Microsoft Visual C++ x64, accanto all'interprete: nessun ridistribuibile da installare), l'interfaccia Web priva di CDN esterni e **6 modelli IA locali pre-installati**.
 *   **Selettore Modalità Semplice / Avanzata:**
     *   **Modalità Semplice:** nessun termine tecnico; si aggiungono i documenti, il motore parte da solo e i risultati si ritirano con un clic.
     *   **Modalità Avanzata:** quattro schede. **Elaborazione** (anche gli originali archiviati), **Agenti AI e API** (indirizzi del Proxy, configurazione per ogni strumento, servizi di destinazione, esempi REST), **Filtri e modelli** (profilo, sensibilità, **18 categorie e 7 motori di analisi**: Nomi, Professioni/Titoli, Indirizzi, Catasto, Codici Fiscali/P.IVA, Email/PEC, Telefoni, IBAN/Conti, Importi/Finanza, Date, Aziende/Enti, Targhe/Documenti, Dati Sanitari (Art. 9 GDPR), Farmaci/Terapie, Dati Giudiziari (Art. 10 GDPR), Stato Civile, Password/Segreti e URL/IP), **Sistema e registro** (calcolo e precisione, cartelle di lavoro, aggiornamenti, Vault, registro in tempo reale).
@@ -116,7 +116,7 @@ Germano AI implementa un'architettura ibrida e modulare, configurabile al primo 
     *   🌐 **Web, Dati, Email & Archivi (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Elaborazione DOM/MIME nativa, allegati email, ispezione ricorsiva di archivi `.zip` e file firmati `.p7m` (es. `fattura.xml.p7m`).
 *   **Affidabilità e Concorrenza:** Vault protetto da accessi concorrenti, elaborazione file solo a copia completata per evitare letture parziali, chiusura pulita del motore al termine della sessione.
 
-**Requisiti:** Windows 10/11 a 64 bit, macOS 14 o successivo su Apple Silicon, oppure Linux Ubuntu/Debian a 64 bit; 8 GB di RAM (16 GB consigliati) e circa 6 GB di spazio libero (più lo spazio dei documenti). Su Windows e su macOS («Installa solo per me») l'installazione non richiede privilegi di amministratore; su Linux, come ogni pacchetto .deb, la password di amministratore.
+**Requisiti:** Windows 10/11 a 64 bit, macOS 14 o successivo su Apple Silicon, oppure Linux Ubuntu/Debian a 64 bit; 8 GB di RAM (16 GB consigliati) e circa 6 GB di spazio libero (più lo spazio dei documenti). Su Windows l'installer della suite chiede i permessi di amministratore appena si apre (regola del firewall per l'accesso dalla rete locale; il client non li chiede); su macOS («Installa solo per me») non servono; su Linux, come per ogni pacchetto .deb, serve la password di amministratore.
 
 ## 🔌 Integrazione REST API
 

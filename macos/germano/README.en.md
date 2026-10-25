@@ -16,8 +16,8 @@ Germano AI is a powerful open-source suite designed for **intelligent and massiv
 
 Germano AI works completely autonomously by "listening" to its folders. The basic operation is extremely simple (the Dashboard labels are in Italian; their meaning is given in brackets):
 1. Open **Germano AI** from the Desktop shortcut or the Start menu (Windows), from Launchpad or the Applications folder (macOS), or from the applications menu (Linux): it opens directly in a dedicated window (no black terminal windows, no external browser with navigation bars or tabs; the **red X** in the top right cleanly closes the entire application and all inference processes in the background). On first launch choose the operating mode (if in doubt keep **Standalone**: everything stays on your computer).
-2. Add the documents (whole folders with subfolders too): drag them into the **«Trascina qui file o cartelle»** (Drop files or folders here) box, use **Seleziona file** / **Seleziona cartella** (Select files / Select folder), or copy them into the **`input`** folder (the **Apri cartella input** button opens it in File Explorer).
-3. Click **Avvia motore** (Start engine) in the top right corner (when you add files from the Dashboard the engine starts on its own). Germano takes the files from `input`, redacts them and saves the clean documents in the **`output`** folder, preserving the folder and subfolder structure; the **In attesa / Pronti / Non riusciti** (pending / ready / failed) counters show the batch progress.
+2. Add the documents (whole folders with subfolders too): in the **Work folders** section of the Dashboard drag them onto the **input** box ("Drag files here into the input folder"), use **Select files** / **Select folder**, or copy them into the **`input`** folder. The four boxes **input**, **output**, **processed** and **failed** are a live preview of the real folders, like a file manager: the full path is shown above each one and a click on the box (or on its path) opens the folder in File Explorer (Finder on macOS, the file manager on Linux).
+3. Click **Avvia motore** (Start engine) in the top right corner (when you add files from the Dashboard the engine starts on its own). Germano takes the files from `input`, redacts them and saves the clean documents in the **`output`** folder, preserving the folder and subfolder structure; the boxes show in real time the files that arrive, the one being processed and the ones that move to `output`, `processed` or `failed`.
 4. Collect the results with **Apri cartella output** (Open output folder) or from the **Documenti** table. Originals are archived in **`processed`**; damaged or unsupported files go to **`failed`** and appear in the **Non riusciti** tab with the reason and a **Rimetti in coda** (Queue again) button. JSON audit logs are saved in **`extracted`**.
 
 💡 **Productivity Tip:** You can add new files or entire folders *while the software is already working*: they are queued and processed without restarting anything. **Esporta elenco** (Export list) saves the list of ready or failed documents as CSV (for Excel). From the Dashboard you can also anonymize a text "on the fly" by pasting it into the **«Testo da inviare a un servizio di AI»** (Text to send to an AI service) box.
@@ -38,15 +38,15 @@ All official installers are single ready-to-use files on **[download.germano.ai]
 
 ### 🪟 Windows (10 / 11 64-bit)
 1. **Download:** download `germano-0.60.exe`.
-2. **Installation:** double-click the installer. It installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI` **without administrator privileges (no UAC prompt)**, creates the Desktop and Start menu shortcuts, the entry in Settings > Apps and the working folders in `Documents\Germano AI`. The Microsoft Visual C++ libraries are already included: nothing else to install.
+2. **Installation:** double-click the installer. **As soon as it opens it asks for administrator permission** (Windows UAC prompt: choose **Yes**): it is needed to allow access from the local network, always enabled, with a Windows Firewall rule that only applies to Germano's Python and only to private and domain networks (Server LAN mode). The program installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI`, with the Desktop and Start menu shortcuts, the entry in Settings > Apps and the working folders in `Documents\Germano AI`; at the end the installer window closes and **Germano AI opens by itself**, with the user's normal permissions. The Microsoft Visual C++ libraries are already included: nothing else to install.
 3. **Launch:** **Germano AI** shortcut on the Desktop or in the Start menu (dedicated window, no black terminal windows).
-4. **Uninstall:** Settings > Apps > Installed apps > Germano AI; you can choose whether to keep the working folders and the Vault.
+4. **Uninstall:** Settings > Apps > Installed apps > Germano AI (it asks for administrator permission to remove the firewall rule); you can choose whether to keep the working folders and the Vault.
 
 The full suite installer is about 3 GB: on the first double-click Microsoft Defender scans it, so the window may take a few seconds to appear. The installer is not digitally signed yet: if "Windows protected your PC" appears, choose **More info > Run anyway**.
 
 ### 🍎 macOS
 1. **Download:** download `germano-0.60.pkg`. The full suite requires a Mac with **Apple Silicon** (M1 or later) and **macOS 14 Sonoma** or later, because PyTorch is no longer published for Intel Macs; on Intel Macs use the lightweight client `germano-client-0.60.pkg`.
-2. **Installation:** double-click the package. When choosing the destination select **Install for me only**: `Germano.app` goes into `~/Applications` **with no administrator password**. With "Install for all users of this computer" it goes into `/Applications` and macOS asks for the password.
+2. **Installation:** double-click the package. When choosing the destination select **Install for me only**: `Germano.app` goes into `~/Applications` **with no administrator password**. With "Install for all users of this computer" it goes into `/Applications` and macOS asks for the password. At the end Germano opens by itself.
 3. **Launch:** open **Germano** (`Germano.app`) from Launchpad or the Applications folder. On first launch it creates the working folders in `~/Documents/Germano AI` (in `~/Germano AI` if Documents is synced with iCloud).
 4. **Uninstall:** drag `Germano.app` to the Trash; the working folders stay where they are.
 
@@ -95,7 +95,7 @@ Germano AI implements a modular hybrid architecture, selectable on initial launc
 
 ## 🌟 Main Features
 
-*   **100% Offline & ready on a freshly installed system:** every installer bundles its own Python 3.11 with all libraries (on Windows also the 64-bit Microsoft Visual C++ libraries, next to the interpreter: no redistributable to install, no administrator privileges), an offline Web UI free of external CDNs, and **6 pre-installed local AI models**.
+*   **100% Offline & ready on a freshly installed system:** every installer bundles its own Python 3.11 with all libraries (on Windows also the 64-bit Microsoft Visual C++ libraries, next to the interpreter: no redistributable to install), an offline Web UI free of external CDNs, and **6 pre-installed local AI models**.
 *   **Simple / Advanced Mode selector:**
     *   **Simple Mode:** zero technical jargon; add documents, the engine processes automatically, and results are retrieved with one click.
     *   **Advanced Mode:** four comprehensive tabs. **Processing** (including archived original files), **AI Agents and API** (Proxy URLs, per-tool setup, target services, REST examples), **Filters and models** (compliance profiles, sensitivity, **18 categories and 7 analysis engines**: Names, Professions/Titles, Addresses, Cadastral, Tax Codes/VAT, Email/PEC, Phone Numbers, IBAN/Bank accounts, Amounts/Finance, Dates, Companies/Entities, License Plates/IDs, Health Data (GDPR Art. 9), Medications/Therapies, Judicial Data (GDPR Art. 10), Marital Status, Passwords/Secrets, and URLs/IPs), **System and logs** (compute precision, working directories, update checks, Vault, live log console).
@@ -116,7 +116,7 @@ Germano AI implements a modular hybrid architecture, selectable on initial launc
     *   🌐 **Web, Data, Email & Archives (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Native DOM/MIME handling, email attachment recursion, archive traversal for `.zip`, and PKCS#7 signed file parsing (`.p7m`).
 *   **Reliability & Concurrency:** Thread-safe Vault operations, atomic file processing only after copy completion, and clean graceful shutdown.
 
-**Requirements:** Windows 10/11 64-bit, macOS 14 or later on Apple Silicon, or 64-bit Ubuntu/Debian Linux; 8 GB RAM (16 GB recommended) and about 6 GB of free disk space (plus the space for your documents). On Windows and on macOS ("Install for me only") installation requires no administrator privileges; on Linux, as for any .deb package, the administrator password.
+**Requirements:** Windows 10/11 64-bit, macOS 14 or later on Apple Silicon, or 64-bit Ubuntu/Debian Linux; 8 GB RAM (16 GB recommended) and about 6 GB of free disk space (plus the space for your documents). On Windows the suite installer asks for administrator permission as soon as it opens (firewall rule for local network access; the client does not ask for it); on macOS ("Install for me only") it is not needed; on Linux, as for any .deb package, the administrator password is required.
 
 ## 🔌 REST API Integration
 

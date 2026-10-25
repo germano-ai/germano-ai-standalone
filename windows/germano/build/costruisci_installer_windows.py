@@ -8,7 +8,8 @@ senza binari.
 
 Struttura dell'eseguibile:  [avviatore .NET] [kit ZIP] [archivio ZIP del programma] [coda di 48 byte]
 - avviatore: sfx_stub.cs compilato con il csc.exe di .NET Framework 4 (presente in ogni Windows 10/11), con l'icona
-  ufficiale e le informazioni di versione; nessuna console;
+  ufficiale e le informazioni di versione; nessuna console. Quello della suite chiede subito i permessi di
+  amministratore (UAC) e alla fine apre Germano con i permessi normali; quello del client non chiede permessi;
 - kit: interprete Python minimo (dal runtime leggero del client: interprete, libreria standard, psutil) +
   germano_install.py + favicon.ico + setup.json (edizione e versione);
 - archivio: il programma installato (deflate; i file che non si comprimono vengono solo archiviati) e
@@ -44,11 +45,12 @@ CSC = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "Microsoft.NET",
 SFX_MAGIC = b"GERMANO.SFX.0001"
 SFX_TRAILER = struct.Struct("<16sQQQQ")
 META_PREFIX = "__germano_setup__/"
+# elevate: l'avviatore chiede subito i permessi di amministratore (suite: regola del firewall per la rete locale)
 EDITIONS = {
     "suite": {"folder": "germano", "runtime": "runtime-germano", "models": True, "product": "Germano AI",
-              "file": "germano-{v}.exe"},
+              "file": "germano-{v}.exe", "elevate": True},
     "client": {"folder": "germano-client", "runtime": "runtime-germano-client", "models": False,
-               "product": "Germano AI Client", "file": "germano-client-{v}.exe"},
+               "product": "Germano AI Client", "file": "germano-client-{v}.exe", "elevate": False},
 }
 # Mai nell'archivio: strumenti di costruzione, dati e file tecnici di un uso portatile, vecchi avviatori.
 EXCLUDE_TOP = {"build", "__pycache__", "state", "cache", "update", "input", "output", "processed", "failed",
@@ -65,7 +67,10 @@ def compile_stub(edition, version, icon, out):
     v4 = ".".join(str(n) for n in build_exe.version_numbers(version))
     title = f"Installazione di {edition['product']} {version}"
     code = (code.replace("@TITLE@", title).replace("@PRODUCT@", edition["product"])
-            .replace("@VERSION4@", v4).replace("@VERSION@", version))
+            .replace("@VERSION4@", v4).replace("@VERSION@", version)
+            .replace("@ELEVATE@", "true" if edition["elevate"] else "false"))
+    for placeholder in ("@TITLE@", "@PRODUCT@", "@VERSION4@", "@VERSION@", "@ELEVATE@"):
+        assert placeholder not in code, f"segnaposto non sostituito: {placeholder}"
     src = out + ".cs"
     with open(src, "w", encoding="utf-8") as f:
         f.write(code)

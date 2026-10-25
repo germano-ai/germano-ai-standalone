@@ -14,7 +14,8 @@ si costruisce anche su Windows. Struttura identica a quella prodotta da pkgbuild
 Germano.app contiene tutto: Contents/MacOS/Germano (lanciatore), Contents/Resources/germano.icns e
 Contents/Resources/app (programma, runtime/ con Python 3.11 e le librerie, models/ per la suite). Il client si
 installa in «Germano AI Client/Germano.app» per non sovrascrivere la suite. Il postinstall compila la cache dei moduli
-Python. Il pacchetto non e' firmato da Apple (serve un Developer ID): al primo avvio macOS chiede conferma
+Python e apre Germano per l'utente della sessione grafica (non nelle installazioni da riga di comando o da MDM).
+Il pacchetto non e' firmato da Apple (serve un Developer ID): al primo avvio macOS chiede conferma
 (Impostazioni di Sistema > Privacy e sicurezza > Apri comunque).
 
 Uso: python costruisci_pkg.py [germano|germano-client|tutti]
@@ -606,7 +607,7 @@ def build(edition):
     bom = make_bom(nodes)
     rel_app = ed["bundle"]
     postinstall = f"""#!/bin/bash
-# {ed['title']} {version}: compila la cache dei moduli Python (avvio piu' rapido). Mai bloccante.
+# {ed['title']} {version}: compila la cache dei moduli Python (avvio piu' rapido) e apre Germano. Mai bloccante.
 # Con "Installa solo per me" lo script gira come utente corrente, con "per tutti gli utenti" come root.
 APP=""
 for BASE in "$2" "$3/Applications" "$HOME/Applications" /Applications; do
@@ -620,6 +621,16 @@ for PY in "$APP/Contents/Resources/app/runtime/bin/python3" "$APP/Contents/Resou
   fi
 done
 touch "$APP" 2>/dev/null || true
+# Alla fine Germano si apre da solo (come su Windows), per l'utente della sessione grafica: mai come root, mai senza
+# una sessione e mai nelle installazioni da riga di comando o da MDM (COMMAND_LINE_INSTALL=1).
+CONSOLE_UID=$(/usr/bin/stat -f %u /dev/console 2>/dev/null || echo 0)
+if [ "${{COMMAND_LINE_INSTALL:-0}}" != 1 ] && [ -n "$CONSOLE_UID" ] && [ "$CONSOLE_UID" != 0 ]; then
+  if [ "$(/usr/bin/id -u)" = 0 ]; then
+    /bin/launchctl asuser "$CONSOLE_UID" /usr/bin/sudo -u "#$CONSOLE_UID" /usr/bin/open "$APP" >/dev/null 2>&1 || true
+  elif [ "$(/usr/bin/id -u)" = "$CONSOLE_UID" ]; then
+    /usr/bin/open "$APP" >/dev/null 2>&1 || true
+  fi
+fi
 exit 0
 """.encode()
     scripts = os.path.join(work, "Scripts")
@@ -699,6 +710,7 @@ exit 0
     assert cpio[f"{app}/Contents/MacOS/Germano"][0] & 0o777 == 0o755
     sc = gzip.decompress(x["germano.pkg/Scripts"])
     assert b"./postinstall" in sc and b"exit 0" in sc
+    assert b'"${COMMAND_LINE_INSTALL:-0}" != 1' in sc and b"/usr/bin/open \"$APP\"" in sc
     for p in os.listdir(work):
         os.remove(os.path.join(work, p))
     os.rmdir(work)

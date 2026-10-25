@@ -1,30 +1,41 @@
-"""Installer di Germano AI 0.60 per Windows: per utente, SENZA diritti di amministratore, senza console.
+"""Installer di Germano AI 0.60 per Windows, senza console.
 
 Si distribuisce come UN SOLO FILE, germano-<versione>.exe (germano-client-<versione>.exe per il client): un piccolo
 avviatore che estrae in una cartella temporanea l'interprete Python minimo e questo script, che a sua volta legge
 i file del programma dall'archivio contenuto nello stesso .exe e li installa. Nel programma installato questo script
-resta come disinstallatore (Germano.exe --uninstall).
+resta come disinstallatore (Germano.exe --uninstall, anche da Impostazioni > App).
 
-Perché non «Program Files»: è una cartella protetta (UAC) in cui un programma avviato normalmente non può scrivere,
-mentre Germano scrive di continuo (documenti elaborati, Vault, impostazioni, registri). Quindi:
-- programma:  %LOCALAPPDATA%\\Programs\\Germano AI   (la cartella standard di Windows per le app di un utente)
+Permessi: la suite consente SEMPRE l'accesso dalla rete locale (modalità Server LAN), con una regola del firewall di
+Windows solo per il Python di questa installazione e solo per le reti private e di dominio. Per questo l'avviatore
+chiede i permessi di amministratore SUBITO, appena si apre (richiesta UAC di Windows), e tutta l'installazione avviene
+con quei permessi; la disinstallazione li chiede all'avvio per togliere la regola. Il client non ne ha bisogno.
+Gli aggiornamenti automatici non li chiedono: la regola esiste già dall'installazione.
+Germano invece gira sempre con i permessi normali dell'utente: alla fine dell'installazione lo apre l'avviatore
+(la copia non elevata, che ha chiesto i permessi), senza pagine di istruzioni.
+Se i permessi sono stati concessi con le credenziali di un altro account (utente standard), l'avviatore passa le
+cartelle e il SID dell'utente che ha avviato l'installazione (--user-context), perché il programma sia suo.
+
+Cartelle (per utente):
+- programma:  %LOCALAPPDATA%\\Programs\\Germano AI   (la cartella standard di Windows per le app di un utente:
+              Germano e i suoi aggiornamenti automatici la aggiornano senza permessi di amministratore)
 - dati:       Documenti\\Germano AI\\  input, output, processed, failed, extracted (Vault), config.json, daemon.log
               (se Documenti è sincronizzata con OneDrive si usa C:\\Users\\<utente>\\Germano AI: i documenti
               originali e il Vault, che contiene i dati in chiaro, non devono finire nel cloud)
 - tecnici:    %LOCALAPPDATA%\\Germano AI   (profilo della finestra dell'app, registri, aggiornamenti scaricati)
 Crea i collegamenti (Desktop e menu Start) con l'icona ufficiale e registra il programma in Impostazioni > App, da
-dove si disinstalla. Niente HKLM, niente Program Files, nessun servizio. L'unico passo che chiede l'autorizzazione
-di amministratore è facoltativo: la regola del firewall per la modalità Server LAN.
+dove si disinstalla. Nessun servizio.
 
-Interfaccia: le finestre native di Windows (TaskDialog), una sola finestra che passa da conferma ad avanzamento e
-conclusione, in italiano o in inglese secondo la lingua di Windows. Ogni pagina mostrata è annotata nel registro
-%TEMP%\\germano_install.log.
+Interfaccia: le finestre native di Windows (TaskDialog), una sola finestra che passa da conferma ad avanzamento; a
+installazione completata si chiude e Germano si apre. In italiano o in inglese secondo la lingua di Windows. Ogni
+pagina mostrata è annotata nel registro %TEMP%\\germano_install.log.
 
 Uso:  germano-0.60.exe [opzioni]           (installer in un solo file)
       Germano.exe --uninstall [opzioni]    (disinstallazione del programma installato)
 Opzioni: --silent (nessuna finestra)  --update (aggiornamento avviato da Germano: niente conferma, Germano si chiude
-         e si riapre da solo)  --result FILE (esito in JSON)  --data-dir CARTELLA  --no-desktop  --firewall
-         --remove-data  --lang it|en
+         e si riapre da solo)  --result FILE (esito in JSON)  --data-dir CARTELLA  --no-desktop  --remove-data
+         --lang it|en; passate dall'avviatore: --launch-file=FILE (dove scrivere il programma da aprire alla fine)
+         --user-context=FILE (cartelle e SID dell'utente)  --elevated (copia con i permessi di amministratore)
+Collaudo senza richiesta UAC: variabile GERMANO_SETUP_NO_ELEVATION=1 (la regola del firewall non viene creata).
 Codici di uscita: 0 riuscito, 1 errore, 2 annullato, 3 Germano è aperto (solo con --silent).
 """
 import ctypes
@@ -64,9 +75,15 @@ REG_KEY = UNINSTALL_ROOT + "\\" + ("GermanoAI" if SUITE else "GermanoAIClient")
 SUITE_REG_KEY = UNINSTALL_ROOT + "\\GermanoAI"
 APP_FOLDER = PRODUCT            # %LOCALAPPDATA%\Programs\<APP_FOLDER> (programma) e %LOCALAPPDATA%\<APP_FOLDER> (tecnici)
 DATA_FOLDER = "Germano AI"      # Documenti\<DATA_FOLDER> (cartelle di lavoro della suite)
-SHORTCUT = "Germano AI.lnk"
-START_FOLDER = "Germano AI"
+# Suite «Germano AI», client «Germano AI Client»: le due edizioni possono stare sullo stesso computer e nessuna
+# deve sovrascrivere (o, disinstallandosi, eliminare) i collegamenti dell'altra.
+SHORTCUT = PRODUCT + ".lnk"
+START_FOLDER = PRODUCT
+OLD_SHORTCUT, OLD_START_FOLDER = "Germano AI.lnk", "Germano AI"   # nomi usati dal client nelle build di prova
 FIREWALL_RULE = "Germano AI (Server LAN)"
+# Regole create da versioni precedenti (0.51/0.52): aperte a qualsiasi programma o su tutte le reti, si tolgono.
+LEGACY_FIREWALL_RULES = ("Germano AI HTTP (8181)", "Germano AI Discovery (UDP 8182)", "Germano AI Python Runtime")
+TEST_NO_ELEVATION = os.environ.get("GERMANO_SETUP_NO_ELEVATION") == "1"   # solo collaudi: nessuna richiesta UAC
 WORK_FOLDERS = ("input", "output", "processed", "failed", "extracted")
 # Non vengono copiati nel programma installato: impostazioni (vanno nella cartella dati) e dati di un uso portatile.
 EXCLUDE_TOP = {"__pycache__", "state", "cache", "update", "config.json", "desktop.log", "server_stdout.log",
@@ -90,6 +107,10 @@ def _arg_value(name):
         if a.startswith(name + "="):
             return a.split("=", 1)[1]
     return None
+
+
+LAUNCH_FILE = _arg_value("--launch-file")      # l'avviatore apre il programma scritto qui (con i permessi normali)
+USER_CTX = _read_json(_arg_value("--user-context")) if _arg_value("--user-context") else {}
 
 
 def _language():
@@ -214,7 +235,12 @@ _folders = {}
 
 
 def known_folder(name):
-    """Cartelle reali dell'utente (anche se rinominate, spostate su un altro disco o in un'altra lingua)."""
+    """Cartelle reali dell'utente (anche se rinominate, spostate su un altro disco o in un'altra lingua). Con
+    --user-context sono quelle dell'utente che ha avviato l'installazione, anche se i permessi di amministratore
+    sono stati concessi con un altro account."""
+    given = (USER_CTX.get("folders") or {}).get(name)
+    if given:
+        return os.path.normpath(given)
     if name not in _folders:
         p = ctypes.c_wchar_p()
         hr = shell32.SHGetKnownFolderPath(ctypes.byref(guid(FOLDERID[name])), 0x8000, None, ctypes.byref(p))
@@ -227,11 +253,18 @@ def known_folder(name):
     return _folders[name]
 
 
+def user_env(name):
+    """Variabile d'ambiente dell'utente che ha avviato l'installazione (passata dall'avviatore con --user-context)."""
+    if USER_CTX:
+        return (USER_CTX.get("env") or {}).get(name)
+    return os.environ.get(name)
+
+
 def in_cloud_sync(path):
     """True se il percorso è dentro una cartella sincronizzata con OneDrive."""
     p = os.path.normcase(os.path.abspath(path))
     for var in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer"):
-        root = os.environ.get(var)
+        root = user_env(var)
         if root:
             r = os.path.normcase(os.path.abspath(root))
             if p == r or p.startswith(r + os.sep):
@@ -304,6 +337,42 @@ def shortcut_target(lnk):
     finally:
         _release(pf)
         _release(link)
+
+
+def start_folders():
+    return [os.path.join(known_folder("Programs"), f) for f in dict.fromkeys((START_FOLDER, OLD_START_FOLDER))]
+
+
+def own_links(targets):
+    """Collegamenti sul Desktop e nel menu Start che puntano a QUESTA installazione (anche con i nomi delle build di
+    prova); mai quelli dell'altra edizione."""
+    targets = {os.path.normcase(t) for t in targets if t}
+    paths = [os.path.join(known_folder("Desktop"), n) for n in dict.fromkeys((SHORTCUT, OLD_SHORTCUT))]
+    for start in start_folders():
+        if os.path.isdir(start):
+            paths += [os.path.join(start, n) for n in os.listdir(start) if n.lower().endswith(".lnk")]
+    out = []
+    for lnk in paths:
+        try:
+            if os.path.isfile(lnk) and os.path.normcase(shortcut_target(lnk)) in targets:
+                out.append(lnk)
+        except OSError as e:
+            log(f"collegamento {lnk}: {e}")
+    return out
+
+
+def remove_links(links):
+    for lnk in links:
+        try:
+            os.remove(lnk)
+            log(f"rimosso il collegamento {lnk}")
+        except OSError as e:
+            log(f"collegamento {lnk}: {e}")
+    for start in start_folders():
+        try:
+            os.rmdir(start)       # solo se vuota (l'altra edizione può avere qui i suoi collegamenti)
+        except OSError:
+            pass
 
 
 # -------------------------------------------------------------------------------------------- file e cartelle
@@ -536,9 +605,50 @@ class FolderSource:
 
 
 # ------------------------------------------------------------------------------------------- utilità varie
+def is_admin():
+    """True se questo processo ha i permessi di amministratore (copia elevata dopo la richiesta UAC)."""
+    try:
+        return bool(shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def current_user_sid():
+    """SID dell'account con cui gira questo processo (S-1-5-21-...)."""
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(wintypes.HANDLE(-1), 0x0008, ctypes.byref(token)):   # TOKEN_QUERY
+        return None
+    try:
+        size = wintypes.DWORD()
+        advapi32.GetTokenInformation(token, 1, None, 0, ctypes.byref(size))           # TokenUser
+        buf = ctypes.create_string_buffer(size.value)
+        if not advapi32.GetTokenInformation(token, 1, buf, size, ctypes.byref(size)):
+            return None
+        sid = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
+        text = wintypes.LPWSTR()
+        if not advapi32.ConvertSidToStringSidW(ctypes.c_void_p(sid), ctypes.byref(text)):
+            return None
+        try:
+            return text.value
+        finally:
+            kernel32.LocalFree(text)
+    finally:
+        kernel32.CloseHandle(token)
+
+
+def user_reg(key):
+    """(radice, chiave) del registro dell'utente per cui si installa: HKCU, oppure HKEY_USERS\\<SID> quando i
+    permessi di amministratore sono stati concessi con un altro account."""
+    sid = USER_CTX.get("sid")
+    if sid and sid != current_user_sid():
+        return winreg.HKEY_USERS, sid + "\\" + key
+    return winreg.HKEY_CURRENT_USER, key
+
+
 def read_registry(key):
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as k:
+        with winreg.OpenKey(*user_reg(key)) as k:
             out = {}
             for name in ("InstallLocation", "DisplayVersion"):
                 try:
@@ -711,45 +821,79 @@ def close_germano(app, tech):
     return not own and not windows
 
 
-# ------------------------------------------------------------------------------- firewall (facoltativo, UAC)
-def run_elevated(parameters, hwnd=None, timeout=120):
-    """cmd.exe di sistema con l'autorizzazione di amministratore (Windows mostra la richiesta UAC). Restituisce il
-    codice di uscita, oppure None se l'autorizzazione è stata negata."""
+# --------------------------------------------------------------------------- firewall e permessi (UAC all'avvio)
+def netsh(arguments):
+    """netsh di sistema in una console nascosta: (codice di uscita, testo)."""
+    exe = os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "System32", "netsh.exe")
+    r = subprocess.run(f'"{exe}" {arguments}', capture_output=True, creationflags=0x08000000)
+    raw = (r.stdout or b"") + (r.stderr or b"")
+    try:          # Windows 11 scrive in UTF-8 su una pipe; altrimenti la codifica OEM della console (cp850)
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("oem", errors="replace")
+    return r.returncode, text.strip()
+
+
+def set_firewall(app, add):
+    """Accesso dalla rete locale per la modalità Server LAN: regola per programma (solo il Python di QUESTA
+    installazione, che esegue server e motore; solo reti private e di dominio), valida anche se le porte 8181/TCP e
+    8182/UDP vengono cambiate. Servono i permessi di amministratore, chiesti all'avvio dell'installer."""
+    if not is_admin():
+        log("firewall: nessun permesso di amministratore" + (" (collaudo)" if TEST_NO_ELEVATION else "") +
+            ": regola non modificata")
+        return False
+    code, out = netsh(f'advfirewall firewall delete rule name="{FIREWALL_RULE}"')
+    log(f"firewall, rimozione della regola precedente: codice {code}")
+    if not add:
+        return code == 0 or "nessuna regola" in out.lower() or "no rules" in out.lower()
+    for old in LEGACY_FIREWALL_RULES:
+        code, _out = netsh(f'advfirewall firewall delete rule name="{old}"')
+        if code == 0:
+            log(f"firewall: tolta la regola di una versione precedente «{old}»")
+    program = os.path.join(app, "runtime", "python.exe")
+    code, out = netsh(f'advfirewall firewall add rule name="{FIREWALL_RULE}" dir=in action=allow program="{program}" '
+                      f'enable=yes profile=private,domain')
+    log(f"firewall, regola «{FIREWALL_RULE}» per {program}: codice {code} {out}")
+    return code == 0
+
+
+def write_user_context():
+    """Cartelle, variabili e SID dell'utente corrente in un file temporaneo per la copia elevata (--user-context)."""
+    ctx = {"sid": current_user_sid(), "folders": {n: known_folder(n) for n in FOLDERID},
+           "env": {v: os.environ[v] for v in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer") if os.environ.get(v)}}
+    path = os.path.join(tempfile.gettempdir(), f"germano_utente_{os.getpid()}_{int(time.time())}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(ctx, f, ensure_ascii=False)
+    return path
+
+
+def relaunch_uninstall_elevated(args):
+    """La disinstallazione toglie la regola del firewall: chiede SUBITO i permessi di amministratore riavviando
+    Germano.exe (nome e icona di Germano nella richiesta UAC) con gli stessi argomenti. Restituisce il codice di
+    uscita di questa copia (la disinstallazione prosegue nella copia elevata)."""
+    exe = os.path.join(HERE, "Germano.exe")
+    params = ["--uninstall", "--elevated", f"--user-context={write_user_context()}", f"--lang={LANG}"]
+    params += [a for a in args if a.startswith("--") and a not in params and a != "--uninstall"
+               and not a.startswith(("--user-context", "--lang"))]
     sei = SHELLEXECUTEINFOW()
     sei.cbSize = ctypes.sizeof(SHELLEXECUTEINFOW)
-    sei.fMask = 0x40 | 0x100 | 0x400        # NOCLOSEPROCESS | NOASYNC | FLAG_NO_UI
-    sei.hwnd = hwnd
+    sei.fMask = 0x00000100                  # SEE_MASK_NOASYNC
     sei.lpVerb = "runas"
-    sei.lpFile = cmd_exe()
-    sei.lpParameters = parameters
-    sei.nShow = 0                           # SW_HIDE
-    if not shell32.ShellExecuteExW(ctypes.byref(sei)):
-        log(f"autorizzazione di amministratore non concessa (errore {ctypes.get_last_error()})")
-        return None
-    try:
-        kernel32.WaitForSingleObject(sei.hProcess, timeout * 1000)
-        code = wintypes.DWORD()
-        kernel32.GetExitCodeProcess(sei.hProcess, ctypes.byref(code))
-        return code.value
-    finally:
-        kernel32.CloseHandle(sei.hProcess)
-
-
-def firewall_command(app, add):
-    """Regola per programma (solo il runtime di QUESTA installazione, solo reti private e di dominio): copre la porta
-    del server (8181/TCP) e la ricerca automatica dei client (8182/UDP) anche se vengono cambiate."""
-    delete = f'netsh advfirewall firewall delete rule name="{FIREWALL_RULE}" >nul 2>&1'
-    if not add:
-        return f"/d /c {delete}"
-    program = os.path.join(app, "runtime", "python.exe")
-    return (f'/d /c {delete} & netsh advfirewall firewall add rule name="{FIREWALL_RULE}" dir=in action=allow '
-            f'program="{program}" enable=yes profile=private,domain >nul')
-
-
-def set_firewall(app, add, hwnd=None):
-    code = run_elevated(firewall_command(app, add), hwnd)
-    log(f"firewall, {'aggiunta' if add else 'rimozione'} della regola: codice {code}")
-    return code == 0 if add else code is not None
+    sei.lpFile = exe
+    sei.lpParameters = " ".join(f'"{p}"' if " " in p else p for p in params)
+    sei.lpDirectory = HERE
+    sei.nShow = 1
+    if shell32.ShellExecuteExW(ctypes.byref(sei)):
+        log("disinstallazione: riavviata con i permessi di amministratore")
+        return 0
+    err = ctypes.get_last_error()
+    log(f"disinstallazione: permessi di amministratore non concessi (errore {err})")
+    message(T("Servono i permessi di amministratore", "Administrator permission is required"),
+            T(f"Per disinstallare {PRODUCT} bisogna togliere la regola del firewall di Windows che consente l'accesso "
+              "dalla rete locale. Avvia di nuovo la disinstallazione e scegli «Sì».",
+              f"To uninstall {PRODUCT} the Windows Firewall rule that allows access from the local network must be "
+              "removed. Start the uninstall again and choose “Yes”."), "warn")
+    return 2
 
 
 # --------------------------------------------------------------------------------------------- installazione
@@ -914,9 +1058,9 @@ class InstallJob:
         self.prepare_data()
         self.create_shortcuts()
         self.register()
-        if self.firewall:
-            self.phase = "firewall"
-            self.firewall_ok = set_firewall(p["app"], True, self.hwnd)
+        if self.firewall and (is_admin() or not p["firewall_before"]):
+            self.phase = "firewall"           # accesso dalla rete locale consentito (regola del firewall)
+            self.firewall_ok = set_firewall(p["app"], True)
             if self.firewall_ok:
                 self.write_record(True)
         log("installazione completata")
@@ -958,6 +1102,8 @@ class InstallJob:
                 T("Germano AI Client: collega questo PC al Server Germano AI della rete locale",
                   "Germano AI Client: connects this PC to the Germano AI Server on the local network"))
         start = os.path.join(known_folder("Programs"), START_FOLDER)
+        if not SUITE:     # build di prova: il client usava i nomi della suite
+            remove_links([lnk for lnk in own_links([exe]) if os.path.basename(lnk) == OLD_SHORTCUT])
         if not p.get("no_desktop"):
             create_shortcut(os.path.join(known_folder("Desktop"), SHORTCUT), exe, p["app"], icon, desc)
         create_shortcut(os.path.join(start, SHORTCUT), exe, p["app"], icon, desc)
@@ -978,18 +1124,34 @@ class InstallJob:
                   ("InstallDate", time.strftime("%Y%m%d")),
                   ("Comments", T("Anonimizzazione dei documenti, 100% offline", "Document anonymization, 100% offline")
                    if SUITE else T("Client della rete locale di Germano AI", "Germano AI local network client")))
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, REG_KEY) as k:
+        root, key = user_reg(REG_KEY)
+        with winreg.CreateKey(root, key) as k:
             for name, value in values:
                 winreg.SetValueEx(k, name, 0, winreg.REG_SZ, value)
             for name, value in (("NoModify", 1), ("NoRepair", 1), ("EstimatedSize", min(p["total"] // 1024, 0x7FFFFFFF))):
                 winreg.SetValueEx(k, name, 0, winreg.REG_DWORD, value)
-        log(f"registrato in Impostazioni > App: HKCU\\{REG_KEY}")
+        log(f"registrato in Impostazioni > App: {'HKCU' if root == winreg.HKEY_CURRENT_USER else 'HKU'}\\{key}")
 
 
 def launch(app):
     exe = os.path.join(app, "Germano.exe")
     log(f"avvio di {exe}")
     subprocess.Popen([exe], cwd=app, close_fds=True)
+
+
+def open_germano(app):
+    """Apre Germano a fine installazione. Con l'avviatore (--launch-file) lo apre l'avviatore stesso, con i permessi
+    normali dell'utente anche quando questa copia ha quelli di amministratore."""
+    exe = os.path.join(app, "Germano.exe")
+    if LAUNCH_FILE:
+        try:
+            with open(LAUNCH_FILE, "w", encoding="utf-8") as f:
+                f.write(exe)
+            log(f"programma da aprire alla fine (dall'avviatore): {exe}")
+            return
+        except OSError as e:
+            log(f"file di avvio non scritto ({e}): avvio diretto")
+    launch(app)
 
 
 # ------------------------------------------------------------------------------------------ disinstallazione
@@ -1038,31 +1200,15 @@ class UninstallJob:
                 raise SetupError(T("Non è stato possibile chiudere Germano AI. Chiudilo e riprova.",
                                    "Germano AI could not be closed. Close it and try again."))
         self.phase = "remove"
-        exe = os.path.normcase(os.path.join(self.app, "Germano.exe"))
-        data = os.path.normcase(self.data) if self.data else None
-        start = os.path.join(known_folder("Programs"), START_FOLDER)
-        links = [os.path.join(known_folder("Desktop"), SHORTCUT)]
-        if os.path.isdir(start):
-            links += [os.path.join(start, n) for n in os.listdir(start) if n.lower().endswith(".lnk")]
-        for lnk in links:     # solo i collegamenti che puntano a QUESTA installazione
-            try:
-                if os.path.isfile(lnk) and os.path.normcase(shortcut_target(lnk)) in (exe, data):
-                    os.remove(lnk)
-                    log(f"rimosso il collegamento {lnk}")
-            except OSError as e:
-                log(f"collegamento {lnk}: {e}")
+        remove_links(own_links([os.path.join(self.app, "Germano.exe"), self.data]))
         try:
-            os.rmdir(start)
-        except OSError:
-            pass
-        try:
-            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, REG_KEY)
-            log(f"rimossa la voce HKCU\\{REG_KEY}")
+            winreg.DeleteKey(*user_reg(REG_KEY))
+            log(f"rimossa la voce di Impostazioni > App {REG_KEY}")
         except OSError:
             pass
         if self.info.get("firewall"):
             self.phase = "firewall"
-            self.firewall_removed = set_firewall(self.app, False, self.hwnd)
+            self.firewall_removed = set_firewall(self.app, False)
             self.phase = "remove"
         if os.path.normcase(self.tech) != os.path.normcase(self.app) and not remove_tree(self.tech):
             schedule_removal(self.tech)
@@ -1272,10 +1418,14 @@ class Wizard:
         self._alive.append(cfg)
         return cfg
 
+    @staticmethod
+    def _log_page(page):
+        log(f"PAGINA: {page.instruction}" + (f" [casella: {page.verification}]" if page.verification else ""))
+
     def run(self, page):
         cfg = self._config(page)
         self.page = page
-        log(f"PAGINA: {page.instruction}")
+        self._log_page(page)
         button, radio, verified = ctypes.c_int(), ctypes.c_int(), wintypes.BOOL()
         _task_dialog_indirect(ctypes.byref(cfg), ctypes.byref(button), ctypes.byref(radio), ctypes.byref(verified))
         return button.value
@@ -1283,7 +1433,7 @@ class Wizard:
     def navigate(self, page):
         cfg = self._config(page)
         self.page = page
-        log(f"PAGINA: {page.instruction}")
+        self._log_page(page)
         user32.SendMessageW(self.hwnd, TDM_NAVIGATE_PAGE, 0, ctypes.addressof(cfg))
 
     def set_text(self, element, text):
@@ -1349,9 +1499,9 @@ def install_ui(plan, opts):
                  T(f"Installazione di {PRODUCT}", f"{PRODUCT} Setup"))
     jobs = []
 
-    def new_job(firewall):
+    def new_job():
         job = InstallJob(plan)
-        job.firewall = firewall
+        job.firewall = SUITE          # accesso dalla rete locale sempre consentito (nessuna casella da spuntare)
         jobs.append(job)
         return job
 
@@ -1379,10 +1529,15 @@ def install_ui(plan, opts):
                              "documenti originali e il Vault, le cartelle di lavoro vanno nella cartella del tuo "
                              "profilo.", "\n\nYour Documents folder is synced with OneDrive: to keep the original "
                              "documents and the Vault out of the cloud, the work folders go in your profile folder.")
-        verification = None if p["firewall_before"] else T(
-            "Consenti le connessioni dalla rete locale (per usare questo PC come Server LAN: Windows chiederà "
-            "l'autorizzazione)", "Allow connections from the local network (to use this PC as a LAN Server: "
-            "Windows will ask for permission)")
+        if is_admin():
+            footer = T("Accesso dalla rete locale consentito: con i permessi di amministratore appena concessi viene "
+                       "creata la regola del firewall di Windows per Germano (solo reti private e di dominio).",
+                       "Local network access allowed: with the administrator permission just granted, the Windows "
+                       "Firewall rule for Germano is created (private and domain networks only).")
+        else:
+            footer = T("Permessi di amministratore non disponibili: la regola del firewall per l'accesso dalla rete "
+                       "locale non verrà creata.", "Administrator permission not available: the firewall rule for "
+                       "local network access will not be created.")
     else:
         title = (T(f"Aggiornare Germano AI Client alla versione {p['version']}?",
                    f"Update Germano AI Client to version {p['version']}?") if update and not same else
@@ -1398,7 +1553,7 @@ def install_ui(plan, opts):
                          "anche le funzioni del client: il client non è necessario.",
                          "\n\nThe full version of Germano AI is already installed on this computer and also includes "
                          "the client features: the client is not needed.")
-        verification = None
+        footer = T("Non servono diritti di amministratore.", "No administrator rights required.")
     details = T(f"Programma: {p['app']}\nFile tecnici: {p['tech']}\nCollegamenti: Desktop e menu Start\n"
                 f"Spazio richiesto: {fmt_size(p['total'])}\nDisinstallazione: Impostazioni > App > App installate",
                 f"Program: {p['app']}\nTechnical files: {p['tech']}\nShortcuts: Desktop and Start menu\n"
@@ -1408,13 +1563,11 @@ def install_ui(plan, opts):
     def on_confirm(w, button):
         if button != BTN_INSTALL:
             return True
-        go(w, new_job(bool(verification) and w.checked))
+        go(w, new_job())
         return False
 
     confirm = Page(title, content, buttons=[(BTN_INSTALL, label)], common=TDCBF_CANCEL_BUTTON, default=BTN_INSTALL,
-                   verification=verification, details=details,
-                   footer=T("Non servono diritti di amministratore.", "No administrator rights required."),
-                   on_button=on_confirm)
+                   details=details, footer=footer, on_button=on_confirm)
 
     # --- programma aperto
     def in_use_page(job):
@@ -1438,6 +1591,8 @@ def install_ui(plan, opts):
             job.start()
 
         def on_button(w, button):
+            if job.phase == "done":
+                return True               # chiusura automatica a installazione completata
             if button == IDCANCEL and job.phase in ("start", "closing", "copy") and not job.cancel:
                 job.cancel = True
                 w.enable(IDCANCEL, False)
@@ -1462,13 +1617,17 @@ def install_ui(plan, opts):
                     text = T("Creazione delle cartelle di lavoro e dei collegamenti...",
                              "Creating the work folders and shortcuts...") + "\n "
                 else:
-                    text = T("Firewall di Windows: conferma la richiesta di Windows per consentire\nle connessioni "
-                             "dalla rete locale.", "Windows Firewall: confirm the Windows prompt to allow\nconnections "
-                             "from the local network.")
+                    text = T("Accesso dalla rete locale: regola del firewall di Windows...",
+                             "Local network access: Windows Firewall rule...") + "\n "
                 w.set_text(TDE_CONTENT, text)
-            elif job.phase == "done":
+            elif job.phase == "done" and job.shown != "done":
+                job.shown = "done"            # niente pagina finale: la finestra si chiude e si apre Germano
                 write_result(opts.get("result"), "ok", p)
-                w.navigate(finish_page(job))
+                w.result = 0
+                w.launch = True
+                w.set_text(TDE_CONTENT, T("Apertura di Germano AI...", "Opening Germano AI...") + "\n ")
+                w.enable(IDCANCEL, True)      # il clic simulato vale solo su un pulsante attivo
+                w.click(IDCANCEL)
             elif job.phase == "cancelled":
                 write_result(opts.get("result"), "cancelled", p, T("annullato dall'utente", "cancelled by the user"))
                 w.navigate(Page(T("Installazione annullata", "Setup cancelled"),
@@ -1488,57 +1647,6 @@ def install_ui(plan, opts):
         return Page(title, T("Preparazione...", "Preparing...") + "\n ", progress="bar", common=TDCBF_CANCEL_BUTTON,
                     on_button=on_button, on_timer=on_timer, on_show=on_show)
 
-    # --- conclusione
-    def finish_page(job):
-        if update_mode:      # aggiornamento avviato da Germano: si riapre da solo, la finestra si chiude da sola
-            started = {}
-
-            def on_show(w):
-                started["t"] = time.time()
-
-            def on_timer(w):
-                if time.time() - started.get("t", time.time()) > 2.5:
-                    w.click(BTN_FINISH)
-
-            def on_auto(w, button):
-                w.result = 0
-                w.launch = True
-                return True
-            return Page(T(f"Germano AI è stato aggiornato alla versione {p['version']}",
-                          f"Germano AI has been updated to version {p['version']}"),
-                        T("Germano AI si sta riaprendo...", "Germano AI is restarting..."),
-                        buttons=[(BTN_FINISH, T("Fine", "Finish"))], default=BTN_FINISH,
-                        on_button=on_auto, on_timer=on_timer, on_show=on_show)
-        if SUITE:
-            data_in, data_out = os.path.join(p["data"], "input"), os.path.join(p["data"], "output")
-            content = T(f"Lo trovi sul Desktop e nel menu Start con il nome «Germano AI».\n\nMetti i documenti da "
-                        f"anonimizzare nella cartella {_link(data_in, 'input')}: quelli anonimizzati compaiono in "
-                        f"{_link(data_out, 'output')}.\nCartelle di lavoro: {_link(p['data'])}",
-                        f"You will find it on the Desktop and in the Start menu as “Germano AI”.\n\nPut the documents "
-                        f"to anonymize in the {_link(data_in, 'input')} folder: the anonymized ones appear in "
-                        f"{_link(data_out, 'output')}.\nWork folders: {_link(p['data'])}")
-        else:
-            content = T("Lo trovi sul Desktop e nel menu Start con il nome «Germano AI». All'avvio puoi cercare il "
-                        "Server Germano AI della rete locale o inserirne l'indirizzo.",
-                        "You will find it on the Desktop and in the Start menu as “Germano AI”. When it starts you "
-                        "can search for the Germano AI Server on the local network or enter its address.")
-        if job.firewall_ok is True:
-            content += T(f"\n\nConnessioni dalla rete locale consentite (regola «{FIREWALL_RULE}» del firewall).",
-                         f"\n\nLocal network connections allowed (firewall rule “{FIREWALL_RULE}”).")
-        elif job.firewall_ok is False:
-            content += T("\n\nLa regola del firewall non è stata creata: Windows la chiederà la prima volta che userai "
-                         "la modalità Server LAN.", "\n\nThe firewall rule was not created: Windows will ask the first "
-                         "time you use the LAN Server mode.")
-
-        def on_button(w, button):
-            w.result = 0
-            w.launch = button == BTN_FINISH and w.checked
-            return True
-        return Page(T(f"{PRODUCT} {p['version']} è pronto", f"{PRODUCT} {p['version']} is ready"), content,
-                    buttons=[(BTN_FINISH, T("Fine", "Finish"))], default=BTN_FINISH,
-                    verification=T("Avvia Germano AI adesso", "Start Germano AI now"), checked=True,
-                    on_button=on_button)
-
     def error_page(job):
         content = job.error + "\n\n"
         content += (T(f"Germano AI è stato copiato in {p['app']}, ma la configurazione non è stata completata.",
@@ -1551,7 +1659,7 @@ def install_ui(plan, opts):
             if button != BTN_RETRY:
                 w.result = 1
                 return True
-            job2 = new_job(job.firewall)
+            job2 = new_job()
             job2.close_first = update_mode
             go(w, job2)
             return False
@@ -1560,7 +1668,7 @@ def install_ui(plan, opts):
                     on_button=on_button)
 
     if update_mode:          # già confermato in Germano: si parte subito, chiudendo Germano se è ancora aperto
-        job = new_job(False)
+        job = new_job()
         job.close_first = True
         wiz.run(progress_page(job))
     else:
@@ -1568,9 +1676,9 @@ def install_ui(plan, opts):
     if jobs and jobs[-1].phase == "cancelled":
         wiz.result = 2
     if wiz.result == 0 and wiz.launch:
-        launch(p["app"])
+        open_germano(p["app"])
     elif update_mode and os.path.isfile(os.path.join(p["app"], "Germano.exe")):
-        launch(p["app"])     # aggiornamento annullato o non riuscito: si riapre la versione installata
+        open_germano(p["app"])     # aggiornamento annullato o non riuscito: si riapre la versione installata
     return wiz.result
 
 
@@ -1580,13 +1688,13 @@ def install_silent(plan, opts):
         write_result(opts.get("result"), "error", plan, "Germano AI è aperto")
         return 3
     job = InstallJob(plan)
-    job.firewall = SUITE and bool(opts.get("firewall"))
+    job.firewall = SUITE
     job.close_first = bool(opts.get("update"))
     job.run()
     status = {"done": "ok", "cancelled": "cancelled"}.get(job.phase, "error")
     write_result(opts.get("result"), status, plan, job.error or None)
     if status == "ok" and opts.get("update"):
-        launch(plan["app"])
+        open_germano(plan["app"])
     return {"ok": 0, "cancelled": 2}.get(status, 1)
 
 
@@ -1682,8 +1790,8 @@ def uninstall_ui(job):
 
         def on_timer(w):
             texts = {"closing": T("Chiusura di Germano AI...", "Closing Germano AI..."),
-                     "firewall": T("Rimozione della regola del firewall: conferma la richiesta di Windows.",
-                                   "Removing the firewall rule: confirm the Windows prompt."),
+                     "firewall": T("Rimozione della regola del firewall di Windows...",
+                                   "Removing the Windows Firewall rule..."),
                      "data": T("Eliminazione delle cartelle di lavoro...", "Deleting the work folders...")}
             if job.phase in texts and job.shown != job.phase:
                 job.shown = job.phase
@@ -1710,10 +1818,10 @@ def uninstall_ui(job):
                          f"Some files could not be deleted:\n{_link(job.data)}") if job.data_left else
                        T("Le cartelle di lavoro sono state eliminate.", "The work folders have been deleted."))
         if job.firewall_removed is False:
-            content += T(f"\n\nLa regola del firewall «{FIREWALL_RULE}» non è stata rimossa (autorizzazione negata): "
-                         "non ha effetto, perché il programma non esiste più.",
-                         f"\n\nThe firewall rule “{FIREWALL_RULE}” was not removed (permission denied): it has no "
-                         "effect, because the program no longer exists.")
+            content += T(f"\n\nLa regola del firewall «{FIREWALL_RULE}» non è stata rimossa (permessi di "
+                         "amministratore non disponibili): non ha effetto, perché il programma non esiste più.",
+                         f"\n\nThe firewall rule “{FIREWALL_RULE}” was not removed (administrator permission not "
+                         "available): it has no effect, because the program no longer exists.")
 
         def on_button(w, button):
             w.result = 0
@@ -1771,16 +1879,24 @@ def main():
     args = sys.argv[1:]
     action = args[0] if args and args[0] in ("install", "uninstall") else "install"
     SILENT = "--silent" in args
-    opts = {"no_desktop": "--no-desktop" in args, "firewall": "--firewall" in args,
-            "remove_data": "--remove-data" in args, "update": "--update" in args,
+    opts = {"no_desktop": "--no-desktop" in args, "remove_data": "--remove-data" in args, "update": "--update" in args,
             "data_dir": _arg_value("--data-dir"), "payload": _arg_value("--payload"), "result": _arg_value("--result")}
-    log(f"===== {action} {' '.join(args[1:])} (lingua {LANG}, script {HERE})")
+    log(f"===== {action} {' '.join(args[1:])} (lingua {LANG}, script {HERE}, amministratore: {is_admin()})")
     try:
         ole32.CoInitializeEx(None, 0x2 | 0x4)
     except OSError:
         pass
     if not SILENT:
         _ui_setup()
+    if action == "uninstall":
+        if _arg_value("--user-context"):            # file temporaneo scritto dalla copia non elevata
+            try:
+                os.remove(_arg_value("--user-context"))
+            except OSError:
+                pass
+        elif (read_install_info(HERE).get("firewall") and not is_admin() and not TEST_NO_ELEVATION
+              and "--elevated" not in args):
+            return relaunch_uninstall_elevated(args)   # permessi di amministratore chiesti SUBITO, all'avvio
     kernel32.CreateMutexW(None, False, "Local\\GermanoAI.Setup")
     if ctypes.get_last_error() == 183:   # ERROR_ALREADY_EXISTS
         message(T("L'installazione di Germano AI è già in corso", "Germano AI Setup is already running"),

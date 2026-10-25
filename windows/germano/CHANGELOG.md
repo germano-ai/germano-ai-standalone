@@ -13,14 +13,22 @@ terminale, niente browser con barra degli indirizzi o schede, e la **X rossa chi
 cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Proxy API).
 
 ### Aggiunto - Installer in un solo file
-- **Windows**: `germano-0.60.exe` (suite, ~2,8 GB) e `germano-client-0.60.exe` (~22 MB). Installazione guidata per
-  l'utente corrente in `%LOCALAPPDATA%\Programs\…`, **senza diritti di amministratore**, con collegamenti sul Desktop e
-  nel menu Start, voce in Impostazioni › App, cartelle di lavoro in `Documenti\Germano AI` e disinstallazione (a scelta
-  conservando cartelle di lavoro e Vault). Il runtime include le DLL di Microsoft Visual C++: nessun ridistribuibile
-  da installare.
+- **Windows**: `germano-0.60.exe` (suite, ~2,8 GB) e `germano-client-0.60.exe` (~22 MB). L'installer della suite
+  **chiede subito i permessi di amministratore** (richiesta UAC appena si apre, con nome e icona di Germano) e consente
+  **sempre** l'accesso dalla rete locale: nessuna casella da spuntare, una sola regola del firewall di Windows per il
+  Python di Germano, solo reti private e di dominio (le regole aperte delle versioni 0.51/0.52 vengono tolte). Il
+  programma si installa comunque per l'utente corrente in `%LOCALAPPDATA%\Programs\…` (gli aggiornamenti automatici non
+  chiedono permessi), con collegamenti sul Desktop e nel menu Start, voce in Impostazioni › App e cartelle di lavoro in
+  `Documenti\Germano AI`; alla fine la finestra si chiude e **Germano si apre da solo**, con i permessi normali
+  dell'utente, senza pagine di istruzioni. Il **disinstallatore** (Impostazioni › App) chiede i permessi all'avvio per
+  togliere la regola del firewall e rimuove programma, collegamenti, voce in Impostazioni › App e file tecnici (a scelta
+  anche cartelle di lavoro e Vault). Il client non chiede permessi e ha collegamenti propri («Germano AI Client»), così
+  le due edizioni possono stare sullo stesso computer. Il runtime include le DLL di Microsoft Visual C++: nessun
+  ridistribuibile da installare.
 - **macOS**: `germano-0.60.pkg` (Apple Silicon, macOS 14 o successivo) e `germano-client-0.60.pkg` (Apple Silicon e
   Intel, macOS 11 o successivo): pacchetti dell'Installer di macOS con `Germano.app` autosufficiente; con «Installa
-  solo per me» nessuna password di amministratore.
+  solo per me» nessuna password di amministratore; alla fine Germano si apre da solo (non nelle installazioni da riga di
+  comando).
 - **Linux**: `germano-0.60.deb` e `germano-client-0.60.deb` per Ubuntu 26.04 LTS e le distribuzioni Debian/Ubuntu a 64
   bit: programma in `/opt`, voce di menu e comando `germano-ai` / `germano-ai-client`, nessuna dipendenza da altri
   pacchetti.
@@ -36,6 +44,15 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
   (incluso nel pacchetto) su Linux; profilo isolato, senza schede né barra degli indirizzi.
 - **Chiusura totale con la X rossa**: il gestore ferma in modo pulito **solo** i processi di Germano (server Flask +
   demone IA), senza processi orfani e senza toccare altri processi del sistema.
+
+### Modificato - Dashboard: anteprima delle cartelle di lavoro
+- Al posto della sezione «Elaborazione dei documenti» (area di trascinamento e contatori In attesa / Pronti / Non
+  riusciti) c'è un'**anteprima in stile file manager**: quattro riquadri `input`, `output`, `processed` e `failed` con
+  il **percorso completo** della cartella sopra ognuno e i file che contengono, aggiornati in tempo reale (i file appena
+  arrivati evidenziati, quello in elaborazione in cima a `input`, il motivo dei non riusciti con «Rimetti in coda»).
+- I documenti si trascinano direttamente sul riquadro **input** («Trascina i file qui nella cartella di input»); un clic
+  su un riquadro o sul suo percorso apre la cartella in Esplora file (Finder su macOS, il file manager su Linux). Testi
+  in italiano e in inglese.
 
 ### Modificato - Aggiornamenti
 - Unica fonte: **https://download.germano.ai/** (`version.json`, in mancanza l'elenco dei file). Niente più Google Drive

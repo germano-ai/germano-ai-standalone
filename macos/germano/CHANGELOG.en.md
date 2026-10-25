@@ -14,14 +14,20 @@ browser with an address bar or tabs, and the **red X closes everything**. The in
 Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
 
 ### Added - Single-file installers
-- **Windows**: `germano-0.60.exe` (suite, ~2.8 GB) and `germano-client-0.60.exe` (~22 MB). Guided installation for the
-  current user into `%LOCALAPPDATA%\Programs\…`, **without administrator privileges**, with Desktop and Start menu
-  shortcuts, an entry in Settings › Apps, working folders in `Documents\Germano AI` and uninstallation (optionally
-  keeping the working folders and the Vault). The runtime includes the Microsoft Visual C++ DLLs: no redistributable to
-  install.
+- **Windows**: `germano-0.60.exe` (suite, ~2.8 GB) and `germano-client-0.60.exe` (~22 MB). The suite installer **asks
+  for administrator permission right away** (UAC prompt as soon as it opens, with Germano's name and icon) and **always**
+  allows access from the local network: no checkbox to tick, a single Windows Firewall rule for Germano's Python, private
+  and domain networks only (the open rules of versions 0.51/0.52 are removed). The program is still installed for the
+  current user into `%LOCALAPPDATA%\Programs\…` (automatic updates ask for no permission), with Desktop and Start menu
+  shortcuts, an entry in Settings › Apps and working folders in `Documents\Germano AI`; at the end the window closes and
+  **Germano opens by itself**, with the user's normal permissions, with no instruction pages. The **uninstaller**
+  (Settings › Apps) asks for permission at start to remove the firewall rule and removes the program, shortcuts, the
+  Settings › Apps entry and the technical files (optionally the working folders and the Vault too). The client asks for
+  no permission and has its own shortcuts ("Germano AI Client"), so both editions can live on the same computer. The
+  runtime includes the Microsoft Visual C++ DLLs: no redistributable to install.
 - **macOS**: `germano-0.60.pkg` (Apple Silicon, macOS 14 or later) and `germano-client-0.60.pkg` (Apple Silicon and
   Intel, macOS 11 or later): macOS Installer packages with a self-contained `Germano.app`; with "Install for me only"
-  no administrator password.
+  no administrator password; at the end Germano opens by itself (not for command-line installs).
 - **Linux**: `germano-0.60.deb` and `germano-client-0.60.deb` for Ubuntu 26.04 LTS and 64-bit Debian/Ubuntu
   distributions: program in `/opt`, menu entry and `germano-ai` / `germano-ai-client` command, no dependency on other
   packages.
@@ -37,6 +43,15 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
   on Linux; isolated profile, no tabs and no address bar.
 - **Full shutdown with the red X**: the manager cleanly stops **only** Germano's processes (Flask server + AI daemon),
   with no orphan processes and without touching other system processes.
+
+### Changed - Dashboard: work folders preview
+- The "Elaborazione dei documenti" (document processing) section (drop area and pending / ready / failed counters) is
+  replaced by a **file-manager-style preview**: four boxes `input`, `output`, `processed` and `failed` with the folder's
+  **full path** above each one and the files they contain, updated in real time (newly arrived files highlighted, the
+  file being processed at the top of `input`, the reason for failed files with "Queue again").
+- Documents are dragged straight onto the **input** box ("Drag files here into the input folder"); a click on a box or
+  on its path opens the folder in File Explorer (Finder on macOS, the file manager on Linux). Texts in Italian and
+  English.
 
 ### Changed - Updates
 - Only source: **https://download.germano.ai/** (`version.json`, or else the file listing). No more Google Drive and no

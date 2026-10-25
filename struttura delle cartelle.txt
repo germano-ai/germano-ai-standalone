@@ -1,0 +1,129 @@
+================================================================================
+GERMANO AI — STRUTTURA DELLE CARTELLE PER OGNI RELEASE (v0.60+)
+================================================================================
+
+Questa è la struttura ufficiale e tassativa da adottare per la release 0.60
+e per tutte le release future di Germano AI.
+
+--------------------------------------------------------------------------------
+ALBERATURA DELLE CARTELLE
+--------------------------------------------------------------------------------
+
+germano.ai-0.60/
+├── sorgenti/
+│   ├── macos/
+│   │   ├── germano/
+│   │   └── germano-client/
+│   ├── linux/
+│   │   ├── germano/
+│   │   └── germano-client/
+│   └── windows/
+│       ├── germano/
+│       └── germano-client/
+├── modelli/
+├── dipendenze/
+│   ├── macos/
+│   ├── linux/
+│   └── windows/
+└── releases/
+    ├── macos/
+    │   ├── germano-0.60.pkg
+    │   └── germano-client-0.60.pkg
+    ├── linux/
+    │   ├── germano-0.60.deb
+    │   └── germano-client-0.60.deb
+    └── windows/
+        ├── germano-0.60.exe
+        └── germano-client-0.60.exe
+
+
+--------------------------------------------------------------------------------
+DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
+--------------------------------------------------------------------------------
+
+1. sorgenti/
+   - Scopo: Contiene SOLO ed ESCLUSIVAMENTE ciò che è codice sorgente e asset
+     pubblicabili pubblicamente su GitHub.
+   - Contenuto:
+     * Script Python (.py), file di configurazione puliti (.json), launcher
+     * Template HTML della Dashboard e del pannello client
+     * Fogli di stile CSS, asset grafici (loghi SVG, favicon ICO)
+     * Documentazione tecnica, file README.md, CHANGELOG.md e guide offline
+   - Regola vincolante: NESSUN modello di intelligenza artificiale pesante, nessun
+     file binario proprietario di terze parti, nessun installer o eseguibile compilato.
+   - Suddivisione:
+     * sorgenti/windows/germano/        -> Suite completa per Windows
+     * sorgenti/windows/germano-client/ -> Client leggero per Windows
+     * sorgenti/linux/germano/          -> Suite completa per Linux
+     * sorgenti/linux/germano-client/   -> Client leggero per Linux
+     * sorgenti/macos/germano/          -> Suite completa per macOS
+     * sorgenti/macos/germano-client/   -> Client leggero per macOS
+
+2. modelli/
+   - Scopo: Archivio centralizzato dei modelli di Intelligenza Artificiale locali
+     utilizzati dalla suite completa per l'elaborazione offline dei documenti.
+   - Contenuto:
+     * openai/privacy-filter (pesi neurali per l'intercettazione dei dati personali)
+     * Modelli NER (Named Entity Recognition per identificazione entità)
+     * Pesi neurali per OCR (EasyOCR, librerie di riconoscimento caratteri)
+     * Modello YuNet Face DNN (biometria facciale, rilevamento volti e targhe)
+     * Pattern di validazione crittografica e regex (Codici Fiscali, IBAN, ecc.)
+   - Nota: I modelli sono condivisi per la generazione dei pacchetti standalone.
+
+3. dipendenze/
+   - Scopo: Raccoglie tutti i componenti di supporto necessari per consentire il
+     funzionamento al 100% offline senza scaricare pacchetti da Internet.
+   - Suddivisione per sistema operativo:
+     * dipendenze/windows/:
+       - vc_redist.x64.exe (Microsoft Visual C++ Redistributable 64-bit)
+       - Runtime Python portabile incorporato
+       - Librerie C++ / DLL native per l'elaborazione PDF/immagini
+     * dipendenze/linux/:
+       - Runtime Python 3.11+ e librerie native precompilate per Linux
+       - Pacchetti di supporto OCR e librerie grafiche di sistema
+     * dipendenze/macos/:
+       - Runtime Python 3.11+ e binari universali (Apple Silicon / Intel)
+       - Librerie native per la gestione documentale su macOS
+
+4. releases/
+   - Scopo: Cartella di distribuzione contenente esclusivamente i singoli installer
+     monolitici e autosufficienti pronti all'uso per l'utente finale.
+   - Regola fondamentale: Zero dipendenze da Internet all'installazione. L'applicazione
+     deve funzionare al primo colpo anche su sistemi operativi appena installati ("vanilla"):
+     * Windows (Windows 11 Vanilla):
+       - releases/windows/germano-0.60.exe
+         Installer unico autoestraente della suite completa. Si installa nello
+         spazio utente (%LOCALAPPDATA%\Programs\Germano AI) senza privilegi di
+         amministratore (Zero UAC), crea il collegamento Desktop e imposta le
+         cartelle di lavoro protette in Documenti\Germano AI.
+       - releases/windows/germano-client-0.60.exe
+         Installer unico del client leggero (~22-26 MB, senza modelli pesanti).
+     * Linux (Ubuntu 26 / Debian Vanilla):
+       - releases/linux/germano-0.60.deb
+         Pacchetto nativo Debian/Ubuntu autosufficiente. Si installa pulito,
+         configura la voce di menu desktop Germano.desktop e la cartella in
+         ~/Documents/Germano AI.
+       - releases/linux/germano-client-0.60.deb
+         Pacchetto nativo Debian/Ubuntu per il client leggero.
+     * macOS (macOS Sonoma/Sequoia Vanilla - Apple Silicon & Intel):
+       - releases/macos/germano-0.60.pkg
+         Pacchetto guidato nativo macOS (.pkg). Installa Germano.app in
+         ~/Applications o /Applications e predispone ~/Documents/Germano AI
+         senza richiedere permessi root o sudo.
+       - releases/macos/germano-client-0.60.pkg
+         Pacchetto nativo macOS per il client leggero.
+
+--------------------------------------------------------------------------------
+NOTE ARCHITETTURALI GENERALI
+--------------------------------------------------------------------------------
+- Cartelle utente di lavoro: input, output, processed, failed, vault ed extracted
+  risiedono sempre nella directory personale dell'utente (Documenti / Documents),
+  garantendo compatibilità totale con i permessi UAC di sistema ed evitando
+  sincronizzazioni cloud accidentali di dati in chiaro.
+- Aggiornamenti: Puntano direttamente all'endpoint ufficiale sicuro
+  https://download.germano.ai/ senza dipendenze da Google Drive e senza verifiche
+  crittografiche manuali.
+- Interfaccia: Finestra applicativa dedicata a schermo intero o finestra singola,
+  senza finestre nere di terminale e senza browser generici; la X rossa chiude
+  interamente il software e arresta tutti i processi in background.
+================================================================================

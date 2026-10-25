@@ -8,7 +8,8 @@ Pacchetto leggero (**senza modelli IA**) per i Mac che si collegano a un **Germa
 Scarica **`germano-client-0.60.pkg`** da https://download.germano.ai/ (Apple Silicon e Intel, macOS 11 o successivo) e
 fai doppio clic: contiene il proprio Python e non scarica nulla. Alla scelta della destinazione seleziona **Installa
 solo per me**: l'app va in `~/Applications/Germano AI Client/Germano.app` **senza password di amministratore** (con
-«Installa per tutti gli utenti» in `/Applications/Germano AI Client`, con la password). Le impostazioni (server e
+«Installa per tutti gli utenti» in `/Applications/Germano AI Client`, con la password); alla fine il client si apre da
+solo. Le impostazioni (server e
 token) sono in `~/Library/Application Support/Germano AI Client`. Se macOS blocca il pacchetto, non ancora firmato da
 Apple: **Impostazioni di Sistema › Privacy e sicurezza › Apri comunque**.
 
