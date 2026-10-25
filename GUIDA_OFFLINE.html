@@ -517,6 +517,7 @@
                 <li><a href="#proxy-agenti" class="sidebar-link lang-it">11. Proxy Trasparente per Agenti IA</a><a href="#proxy-agenti" class="sidebar-link lang-en">11. Transparent AI Agent Proxy</a></li>
                 <li><a href="#setup-editor" class="sidebar-link lang-it">12. Setup Antigravity, Cursor, Codex</a><a href="#setup-editor" class="sidebar-link lang-en">12. Setup Antigravity, Cursor, Codex</a></li>
                 <li><a href="#faq" class="sidebar-link lang-it">13. Domande Frequenti & Risoluzione</a><a href="#faq" class="sidebar-link lang-en">13. FAQ & Troubleshooting</a></li>
+                <li><a href="#developer-guide" class="sidebar-link lang-it">14. Guida per Sviluppatori</a><a href="#developer-guide" class="sidebar-link lang-en">14. Developer Guide</a></li>
             </ul>
         </aside>
 
@@ -538,7 +539,7 @@
                     <p>Alla prima apertura della Dashboard una finestra di benvenuto chiede come usare Germano su questo computer. <strong>Questa modalità è sempre modificabile in qualsiasi momento nelle Impostazioni</strong> (pulsante <em>Impostazioni</em> in alto, oppure <em>Sistema e registro › Rete e modalità operativa</em>) e si applica subito, senza riavviare.</p>
                     <ul>
                         <li><strong>🖥️ Standalone</strong> (predefinita): tutto gira al 100% su questo computer, in modo isolato. Germano non cerca server in rete e non risponde ai computer della rete: la Dashboard e il Proxy ascoltano solo su <code>127.0.0.1</code>.</li>
-                        <li><strong>📡 Server</strong>: Germano si mette in ascolto anche sulla rete locale, risponde al rilevamento automatico (UDP 8182) e offre agli altri computer il proprio motore di anonimizzazione e il Proxy, protetti da un <strong>token</strong>. Le Impostazioni mostrano gli indirizzi IP e il token da comunicare ai client; <em>Nuovo token</em> invalida subito quello precedente. Al primo avvio Windows può chiedere di consentire Python sulle reti private: rispondi <em>Consenti</em>. <code>START_SERVER.bat</code> avvia direttamente in questa modalità (solo per quell'avvio).</li>
+                        <li><strong>📡 Server</strong>: Germano si mette in ascolto anche sulla rete locale, risponde al rilevamento automatico (UDP 8182) e offre agli altri computer il proprio motore di anonimizzazione e il Proxy, protetti da un <strong>token</strong>. Le Impostazioni mostrano gli indirizzi IP e il token da comunicare ai client; <em>Nuovo token</em> invalida subito quello precedente. Al primo avvio Windows può chiedere di consentire Python sulle reti private: rispondi <em>Consenti</em>. Per un solo avvio la modalità si può imporre anche con la variabile d'ambiente <code>GERMANO_MODE=server</code> (utile negli script).</li>
                         <li><strong>🌐 Client</strong>: all'avvio del motore Germano cerca in rete un Germano Server (oppure usa l'indirizzo indicato) e gli affida il calcolo dei modelli: questo computer non li carica in memoria. Al server vanno solo i testi e le immagini da analizzare; <strong>Vault, etichette, file e ripristino restano su questo computer</strong>. Serve il token del server. Se il server non risponde nessun dato esce: Proxy e Studio bloccano la richiesta e i documenti restano nella cartella <code>input</code> finché il server torna disponibile (in alternativa si può scegliere di usare il motore locale).</li>
                         <li><strong>Server + Client</strong>: le due parti insieme. Un computer che delega il calcolo non condivide però il proprio motore con altri (niente catene).</li>
                     </ul>
@@ -551,7 +552,7 @@
                     <p>On the first Dashboard launch a welcome dialog asks how to use Germano on this computer. <strong>The mode can always be changed at any time in the Settings</strong> (the <em>Impostazioni</em> button at the top, or <em>Sistema e registro › Rete e modalità operativa</em>) and applies immediately, without restarting.</p>
                     <ul>
                         <li><strong>🖥️ Standalone</strong> (default): everything runs 100% on this computer, isolated. Germano does not search the network for servers and does not answer the computers on the network: the Dashboard and the proxy only listen on <code>127.0.0.1</code>.</li>
-                        <li><strong>📡 Server</strong>: Germano also listens on the local network, answers the auto-discovery (UDP 8182) and offers the other computers its anonymization engine and the proxy, protected by a <strong>token</strong>. The Settings show the IP addresses and the token to give to the clients; <em>Nuovo token</em> (new token) immediately invalidates the previous one. On first start Windows may ask to allow Python on private networks: answer <em>Allow</em>. <code>START_SERVER.bat</code> starts directly in this mode (for that run only).</li>
+                        <li><strong>📡 Server</strong>: Germano also listens on the local network, answers the auto-discovery (UDP 8182) and offers the other computers its anonymization engine and the proxy, protected by a <strong>token</strong>. The Settings show the IP addresses and the token to give to the clients; <em>Nuovo token</em> (new token) immediately invalidates the previous one. On first start Windows may ask to allow Python on private networks: answer <em>Allow</em>. For a single run the mode can also be forced with the environment variable <code>GERMANO_MODE=server</code> (useful in scripts).</li>
                         <li><strong>🌐 Client</strong>: when the engine starts, Germano looks for a Germano Server on the network (or uses the address entered) and hands it the model computation: this computer does not load the models in memory. Only the texts and images to analyze go to the server; <strong>Vault, tags, files and restoration stay on this computer</strong>. The server token is required. If the server does not answer no data leaves: the proxy and the Studio block the request and documents stay in the <code>input</code> folder until the server is back (alternatively you can choose to use the local engine).</li>
                         <li><strong>Server + Client</strong>: both parts together. A computer that delegates its computation does not share its own engine with others (no chains).</li>
                     </ul>
@@ -619,7 +620,7 @@
                 </div>
 
                 <div class="lang-it">
-                    <p><strong>Germano Client</strong> è un prodotto a parte, leggerissimo (circa 28 MB, <strong>senza modelli IA</strong>), per i PC che devono solo far passare le proprie AI a riga di comando attraverso un Germano Server della rete. Richiede Windows 10/11 e un Germano Server  in modalità Server sulla stessa rete. Download: l'asset <code>GermanoAI_Client_.zip</code> della Release GitHub .</p>
+                    <p><strong>Germano Client</strong> è un prodotto a parte, leggerissimo (circa 22 MB su Windows, <strong>senza modelli IA</strong>), per i PC che devono solo far passare le proprie AI a riga di comando attraverso un Germano Server della rete. Funziona su Windows 10/11, macOS e Linux e richiede un Germano Server in modalità Server sulla stessa rete. Download: l'installer in un solo file da <code>download.germano.ai</code> (<code>germano-client-0.60.exe</code> per Windows, <code>germano-client-0.60.pkg</code> per macOS, <code>germano-client-0.60.deb</code> per Linux).</p>
                     <p>Si avvia direttamente con <code>Germano</code> (menu: cerca il server, stato, AI e modelli del server, chiedi a un'AI del server, avvia una CLI protetta, proteggi testo/file, impostazioni). Comandi principali:</p>
                     <div class="code-block"><pre><code>client discover                         cerca i server sulla rete
 client status                           server, motore e token: tutto pronto?
@@ -635,7 +636,7 @@ client send "Scrivi a Mario Rossi" lettera.docx   protegge testo e file e mostra
                 </div>
 
                 <div class="lang-en">
-                    <p><strong>Germano Client</strong> is a separate, very light product (about 28 MB, <strong>with no AI models</strong>), for PCs that only need to route their command-line AIs through a Germano Server on the network. It requires Windows 10/11 and a Germano Server  in Server mode on the same network. Download: the <code>GermanoAI_Client_.zip</code> asset of the  GitHub Release.</p>
+                    <p><strong>Germano Client</strong> is a separate, very light product (about 22 MB on Windows, <strong>with no AI models</strong>), for PCs that only need to route their command-line AIs through a Germano Server on the network. It runs on Windows 10/11, macOS and Linux and requires a Germano Server in Server mode on the same network. Download: the single-file installer from <code>download.germano.ai</code> (<code>germano-client-0.60.exe</code> for Windows, <code>germano-client-0.60.pkg</code> for macOS, <code>germano-client-0.60.deb</code> for Linux).</p>
                     <p>Start it directly with <code>Germano</code> (menu: find the server, status, the server's AIs and models, ask an AI on the server, launch a protected CLI, protect text/files, settings). Main commands:</p>
                     <div class="code-block"><pre><code>client discover                         find servers on the local network
 client status                           server, engine and token: is everything ready?
@@ -667,7 +668,7 @@ client send "Write to Mario Rossi" letter.docx   protect text and files and show
                     <ul>
                         <li><strong>Nuova Dashboard per il lavoro in blocco:</strong> grafica più sobria; si aggiungono file o intere cartelle (anche con i pulsanti <em>Seleziona file</em> e <em>Seleziona cartella</em>), <em>Apri cartella input</em> e <em>Apri cartella output</em> aprono le cartelle in Esplora file e i contatori <em>In attesa</em>, <em>Pronti</em> e <em>Non riusciti</em> mostrano l'andamento del lotto. I documenti non elaborati sono elencati con il motivo e si rimettono in coda con un clic; l'elenco si esporta in CSV per Excel (capitolo 2).</li>
                         <li><strong>Endpoint per gli agenti AI:</strong> in Modalità Avanzata la scheda <em>Agenti AI e API</em> mostra gli indirizzi del Proxy (formato OpenAI e formato Anthropic) e, per ogni strumento (Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider, SDK OpenAI e Anthropic), dove impostarli, con le istruzioni da copiare; seguono gli esempi delle API REST locali (capitolo 12).</li>
-                        <li><strong>Aggiornamenti automatici:</strong> solo quando Windows segnala che il PC è connesso a Internet, Germano cerca una nuova versione nella cartella ufficiale di download (<code>download.germano.ai</code>), la scarica, ne verifica l'integrità e la installa al successivo avvio (o subito, con <em>Installa ora e riavvia</em>). Documenti, Vault e impostazioni non vengono toccati e, se l'installazione non va a buon fine, torna al suo posto la versione precedente. Si disattiva in <em>Sistema e registro → Aggiornamenti</em> (capitolo 13).</li>
+                        <li><strong>Aggiornamenti automatici:</strong> solo quando Windows segnala che il PC è connesso a Internet, Germano cerca una nuova versione sul server ufficiale (<code>download.germano.ai</code>), scarica il nuovo installer in un solo file e lo avvia al successivo avvio (o subito, con <em>Installa ora e riavvia</em>): l'installer chiude Germano, lo aggiorna e lo riapre. Documenti, Vault e impostazioni non vengono toccati e, se l'installazione non va a buon fine, resta la versione in uso. Si disattiva in <em>Sistema e registro → Aggiornamenti</em> (capitolo 13).</li>
                         <li><strong>Documenti Office intatti:</strong> Word, Excel, PowerPoint e OpenDocument vengono modificati direttamente nel loro XML. Grassetti, font, immagini, tabelle, formule e macro restano identici. Vengono anonimizzati anche note a piè di pagina, caselle di testo, commenti e relativi autori, revisioni, note del relatore, grafici, metadati e miniature di anteprima.</li>
                         <li><strong>PDF più sicuri:</strong> OCR anche sulle scansioni con timbro digitale (protocollo), oscuramento dei pixel sotto il testo delle scansioni "ricercabili", pagine ruotate gestite correttamente; anonimizzati campi modulo, commenti, segnalibri, metadati e allegati incorporati; le firme digitali PAdES (con nome e codice fiscale del firmatario) vengono rimosse.</li>
                         <li><strong>Proxy API corretto:</strong> Lo streaming per Claude Code e Codex (formati Anthropic e OpenAI Responses) è completamente supportato, anche con immagini e PDF allegati; gli argomenti dei tool restano JSON validi e un'analisi a batch con cache rende le conversazioni lunghe molto più veloci.</li>
@@ -677,8 +678,25 @@ client send "Write to Mario Rossi" letter.docx   protect text and files and show
                         <li><strong>Sicurezza:</strong> l'API locale rifiuta le richieste provenienti da siti web esterni e il motore interno è protetto da token. Nessun dato dei documenti viene inviato in rete: l'unico collegamento automatico è il controllo degli aggiornamenti, solo quando Windows segnala che il PC è connesso a Internet.</li>
                         <li><strong>Per gli amministratori:</strong> blocco delle impostazioni per il profilo PA (<code>"lock_settings": true</code>), scelta della precisione del modello (FP32/BF16), anonimizzazione dei nomi dei file, servizio Anthropic configurabile a parte.</li>
                     </ul>
+                </div>
 
-                    </section>
+                <div class="lang-en">
+                    <p>Germano AI is a complete document anonymization suite and privacy proxy with a modern, intuitive Dashboard, verified by rigorous automated tests.</p>
+                    <ul>
+                        <li><strong>New Dashboard for batch work:</strong> a cleaner look; you add files or whole folders (also with the <em>Seleziona file</em> and <em>Seleziona cartella</em> buttons), <em>Apri cartella input</em> and <em>Apri cartella output</em> open the folders in File Explorer, and the <em>In attesa</em>, <em>Pronti</em> and <em>Non riusciti</em> counters show the progress of the batch. Unprocessed documents are listed with the reason and re-queued with one click; the list can be exported to CSV for Excel (chapter 2).</li>
+                        <li><strong>Endpoints for AI agents:</strong> in Advanced Mode the <em>Agenti AI e API</em> tab shows the Proxy addresses (OpenAI format and Anthropic format) and, for each tool (Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider, OpenAI and Anthropic SDKs), where to set them, with instructions to copy; examples of the local REST APIs follow (chapter 12).</li>
+                        <li><strong>Automatic updates:</strong> only when Windows reports that the PC is connected to the Internet, Germano looks for a new version on the official server (<code>download.germano.ai</code>), downloads the new single-file installer and runs it at the next start (or right away, with <em>Installa ora e riavvia</em>): the installer closes Germano, updates it and reopens it. Documents, Vault and settings are not touched and, if the installation fails, the current version stays. It can be turned off in <em>Sistema e registro → Aggiornamenti</em> (chapter 13).</li>
+                        <li><strong>Office documents intact:</strong> Word, Excel, PowerPoint and OpenDocument files are edited directly in their XML. Bold, fonts, images, tables, formulas and macros stay identical. Footnotes, text boxes, comments and their authors, revisions, speaker notes, charts, metadata and preview thumbnails are anonymized too.</li>
+                        <li><strong>Safer PDFs:</strong> OCR also on scans with a digital stamp (registry protocol), pixels under the text of "searchable" scans are blacked out, rotated pages are handled correctly; form fields, comments, bookmarks, metadata and embedded attachments are anonymized; PAdES digital signatures (with the signer's name and tax code) are removed.</li>
+                        <li><strong>Fixed API Proxy:</strong> streaming for Claude Code and Codex (Anthropic and OpenAI Responses formats) is fully supported, also with attached images and PDFs; tool arguments remain valid JSON and batch analysis with caching makes long conversations much faster.</li>
+                        <li><strong>New formats:</strong> native RTF without Word, signed <code>.p7m</code> files (e.g. <code>fattura.xml.p7m</code>), JSON, TSV, Markdown, logs, source code, GIF and Office templates; <code>.doc</code>/<code>.xls</code> files that are actually renamed RTF, DOCX or HTML are recognized without Office.</li>
+                        <li><strong>More accurate recognition:</strong> the Italian model now analyzes long documents in full (it used to stop after a few lines); validated RegEx for European IBANs, tax codes (including omocodes or codes misread by OCR), payment cards, phone numbers, license plates and electronic ID cards; a name found in one place is redacted throughout the document.</li>
+                        <li><strong>Reliability:</strong> the engine shuts down by itself with the Germano window, files are processed only once fully copied, the Vault is protected from concurrent writes, long documents get up to 60 minutes (configurable) and the Dashboard shows the progress and the reason for every error.</li>
+                        <li><strong>Security:</strong> the local API rejects requests coming from external websites and the internal engine is protected by a token. No document data is sent over the network: the only automatic connection is the update check, only when Windows reports that the PC is connected to the Internet.</li>
+                        <li><strong>For administrators:</strong> settings lock for the PA profile (<code>"lock_settings": true</code>), choice of the model precision (FP32/BF16), file name anonymization, separately configurable Anthropic service.</li>
+                    </ul>
+                </div>
+            </section>
 
             
             
@@ -692,25 +710,25 @@ client send "Write to Mario Rossi" letter.docx   protect text and files and show
                 </div>
 
                 <div class="lang-it">
-                    <p><strong>Germano AI</strong> è una suite autonoma e portatile progettata per proteggere la privacy, eliminare i dati personali sensibili (GDPR Art. 9 e 10) e consentire l'utilizzo sicuro di strumenti di Intelligenza Artificiale Cloud (come ChatGPT, Claude o Google Gemini) e ambienti di sviluppo (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) su qualsiasi computer con <strong>Windows 11</strong>.</p>
+                    <p><strong>Germano AI</strong> è una suite autonoma progettata per proteggere la privacy, eliminare i dati personali sensibili (GDPR Art. 9 e 10) e consentire l'utilizzo sicuro di strumenti di Intelligenza Artificiale Cloud (come ChatGPT, Claude o Google Gemini) e ambienti di sviluppo (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) su qualsiasi computer con <strong>Windows 11</strong>.</p>
                     
                     <div class="callout callout-success">
                         <div class="callout-icon">🛡️</div>
                         <div class="callout-content">
                             <strong>100% Locale, Standalone e Air-Gapped:</strong>
-                            <p>Germano AI include un runtime Python 3.11 embedded, tutte le librerie native C++ di sistema e 6 modelli di Intelligenza Artificiale pre-installati. Funziona al primo colpo senza installare software, senza privilegi di amministratore e <strong>senza alcuna connessione a Internet per elaborare i documenti</strong>. Nessun dato personale lascia mai il tuo computer (con il Proxy API all'AI arrivano solo testi già anonimizzati); l'unico collegamento automatico è il controllo degli aggiornamenti, solo quando il PC è connesso e disattivabile (capitolo 13).</p>
+                            <p>Germano AI include un runtime Python 3.11 embedded, tutte le librerie native C++ di sistema e 6 modelli di Intelligenza Artificiale pre-installati. Si installa con un solo file (<code>germano-0.60.exe</code>), senza privilegi di amministratore, e funziona <strong>senza alcuna connessione a Internet per elaborare i documenti</strong>. Nessun dato personale lascia mai il tuo computer (con il Proxy API all'AI arrivano solo testi già anonimizzati); l'unico collegamento automatico è il controllo degli aggiornamenti, solo quando il PC è connesso e disattivabile (capitolo 13).</p>
                         </div>
                     </div>
                 </div>
 
                 <div class="lang-en">
-                    <p><strong>Germano AI</strong> is a standalone, portable suite engineered to safeguard privacy, redact sensitive personally identifiable information (GDPR Art. 9 & 10), and empower users to securely leverage Cloud AI models (ChatGPT, Claude, Google Gemini) and AI development harnesses (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) on vanilla <strong>Windows 11</strong> workstations.</p>
+                    <p><strong>Germano AI</strong> is a standalone suite engineered to safeguard privacy, redact sensitive personally identifiable information (GDPR Art. 9 & 10), and empower users to securely leverage Cloud AI models (ChatGPT, Claude, Google Gemini) and AI development harnesses (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) on vanilla <strong>Windows 11</strong> workstations.</p>
 
                     <div class="callout callout-success">
                         <div class="callout-icon">🛡️</div>
                         <div class="callout-content">
                             <strong>100% Local, Standalone and Air-Gapped:</strong>
-                            <p>Germano AI ships with an embedded Python 3.11 runtime, all native Visual C++ runtime libraries, and 6 pre-packaged local AI models. It works right out-of-the-box without admin privileges, with zero setup, and <strong>with no Internet connection needed to process documents</strong>. No personal data ever leaves your machine (with the API Proxy, the AI only receives already anonymized text); the only automatic connection is the update check, only when the PC is online, and it can be turned off (chapter 13).</p>
+                            <p>Germano AI ships with an embedded Python 3.11 runtime, all native Visual C++ runtime libraries, and 6 pre-packaged local AI models. It installs from a single file (<code>germano-0.60.exe</code>) without administrator privileges and works <strong>with no Internet connection needed to process documents</strong>. No personal data ever leaves your machine (with the API Proxy, the AI only receives already anonymized text); the only automatic connection is the update check, only when the PC is online, and it can be turned off (chapter 13).</p>
                         </div>
                     </div>
                 </div>
@@ -830,7 +848,7 @@ client send "Write to Mario Rossi" letter.docx   protect text and files and show
                 </div>
 
                 <div class="lang-it">
-                    <p>All'interno della cartella del programma troverai 5 cartelle di lavoro fondamentali. Germano lavora <strong>esclusivamente</strong> all'interno di queste cartelle e non tocca mai documenti al di fuori di esse (niente cartelle <code>Download</code> o <code>Desktop</code> non autorizzate):</p>
+                    <p>Nella cartella <strong>Documenti\Germano AI</strong>, creata dall'installer (se Documenti è sincronizzata con OneDrive: <code>C:\Users\&lt;utente&gt;\Germano AI</code>, così documenti e Vault non finiscono nel cloud), troverai 5 cartelle di lavoro fondamentali, che si aprono anche dal menu Start (<em>Cartelle di lavoro di Germano AI</em>). Germano lavora <strong>esclusivamente</strong> all'interno di queste cartelle e non tocca mai documenti al di fuori di esse (niente cartelle <code>Download</code> o <code>Desktop</code> non autorizzate):</p>
 
                     <div class="folder-tree">
                         📁 GermanoAI/<br>
@@ -882,7 +900,7 @@ client send "Write to Mario Rossi" letter.docx   protect text and files and show
                 </div>
 
                 <div class="lang-en">
-                    <p>Inside the program directory, you will find 5 core working directories. Germano operates <strong>strictly and exclusively</strong> within these folders and will never access or monitor folders outside its program directory (no unauthorized scanning of <code>Downloads</code> or <code>Desktop</code>):</p>
+                    <p>In the <strong>Documents\Germano AI</strong> folder created by the installer (if Documents is synced with OneDrive: <code>C:\Users\&lt;user&gt;\Germano AI</code>, so that documents and the Vault stay out of the cloud), you will find 5 core working directories, which also open from the Start menu (<em>Germano AI work folders</em>). Germano operates <strong>strictly and exclusively</strong> within these folders and will never access or monitor folders outside them (no unauthorized scanning of <code>Downloads</code> or <code>Desktop</code>):</p>
 
                     <div class="folder-tree">
                         📁 GermanoAI/<br>
@@ -1590,7 +1608,7 @@ client send "Write to Mario Rossi" letter.docx   protect text and files and show
                     <div class="callout callout-info">
                         <div class="callout-icon">🔐</div>
                         <div class="callout-content">
-                            <strong>Il Vault contiene i dati veri in chiaro:</strong> conserva la cartella del programma su un disco protetto (es. BitLocker) e con accesso riservato. Se disattivi l'interruttore <em>Ripristino automatico dei dati originali</em>, Germano usa etichette non numerate (es. <code>[PERSONA]</code>) e <strong>non</strong> salva più i dati nel Vault: l'anonimizzazione diventa irreversibile.
+                            <strong>Il Vault contiene i dati veri in chiaro:</strong> conserva la cartella <code>Documenti\Germano AI</code> su un disco protetto (es. BitLocker) e con accesso riservato. Se disattivi l'interruttore <em>Ripristino automatico dei dati originali</em>, Germano usa etichette non numerate (es. <code>[PERSONA]</code>) e <strong>non</strong> salva più i dati nel Vault: l'anonimizzazione diventa irreversibile.
                         </div>
                     </div>
                 </div>
@@ -1624,7 +1642,7 @@ client send "Write to Mario Rossi" letter.docx   protect text and files and show
                     <div class="callout callout-info">
                         <div class="callout-icon">🔐</div>
                         <div class="callout-content">
-                            <strong>The Vault stores real data in clear text:</strong> keep the program folder on a protected disk (e.g. BitLocker) with restricted access. If you turn off the <em>Ripristino automatico dei dati originali</em> switch, Germano uses non-numbered tags (e.g. <code>[PERSONA]</code>) and does <strong>not</strong> store data in the Vault anymore: anonymization becomes irreversible.
+                            <strong>The Vault stores real data in clear text:</strong> keep the <code>Documents\Germano AI</code> folder on a protected disk (e.g. BitLocker) with restricted access. If you turn off the <em>Ripristino automatico dei dati originali</em> switch, Germano uses non-numbered tags (e.g. <code>[PERSONA]</code>) and does <strong>not</strong> store data in the Vault anymore: anonymization becomes irreversible.
                         </div>
                     </div>
                 </div>
@@ -1993,7 +2011,7 @@ claude</code></pre>
                     <p><strong>R:</strong> Consigliati 16 GB di RAM (minimo 8 GB). Con meno di 12 GB Germano carica automaticamente il modello principale in versione leggera (BF16): funziona, ma l'analisi del testo è più lenta. Vedi il capitolo 9.</p>
 
                     <h3 class="sub-title">D: Il motore non parte o compare un messaggio rosso di errore</h3>
-                    <p><strong>R:</strong> Il messaggio in alto nella Dashboard indica la causa; il dettaglio completo è nel file <code>daemon.log</code> nella cartella del programma. Su alcuni PC appena installati la funzione di Windows <em>Smart App Control</em> o l'antivirus possono bloccare i componenti IA: Germano lo segnala tempestivamente all'avvio. Evita anche percorsi molto lunghi (meglio <code>C:\GermanoAI</code>).</p>
+                    <p><strong>R:</strong> Il messaggio in alto nella Dashboard indica la causa; il dettaglio completo è nel file <code>daemon.log</code> nella cartella <code>Documenti\Germano AI</code>. Su alcuni PC appena installati la funzione di Windows <em>Smart App Control</em> o l'antivirus possono bloccare i componenti IA: Germano lo segnala tempestivamente all'avvio.</p>
 
                     <h3 class="sub-title">D: Cosa succede se il programma indica che la porta 8181 è occupata?</h3>
                     <p><strong>R:</strong> Se Germano è già aperto, un nuovo avvio di <code>Germano</code> si apre semplicemente la Dashboard esistente. Se la porta è usata da un altro programma, chiudilo oppure imposta un'altra porta in <code>config.json</code> (es. <code>"port": 8010</code>) e aggiorna di conseguenza l'indirizzo del Proxy negli editor.</p>
@@ -2005,7 +2023,7 @@ claude</code></pre>
                     <p><strong>R:</strong> I vecchi formati binari di Office si possono convertire solo con Microsoft Office o LibreOffice installati. Su un PC senza Office salva il documento come <code>.docx</code>/<code>.pptx</code>, oppure installa LibreOffice: Germano lo usa automaticamente. Il motivo esatto di ogni errore è indicato nella scheda <em>Non riusciti</em>; risolto il problema, usa <em>Rimetti in coda</em>.</p>
 
                     <h3 class="sub-title">D: Come funzionano gli aggiornamenti automatici?</h3>
-                    <p><strong>R:</strong> Circa 20 secondi dopo l'avvio e poi periodicamente, <strong>solo se il sistema segnala che il PC è connesso a Internet</strong>, Germano contatta direttamente il server ufficiale <code>https://download.germano.ai</code> per verificare la presenza di una nuova versione dell'installer. Se presente, scarica il pacchetto direttamente dal server ufficiale e lo prepara per l'aggiornamento; l'installazione avviene in modo pulito (oppure subito con <em>Installa ora e riavvia</em> nella Dashboard). Cartelle di lavoro, Vault e <code>config.json</code> nella cartella <code>Documenti/Germano AI</code> non vengono toccati. Su un PC isolato o offline non avviene alcun tentativo di connessione.</p>
+                    <p><strong>R:</strong> Circa 20 secondi dopo l'avvio e poi periodicamente, <strong>solo se il sistema segnala che il PC è connesso a Internet</strong>, Germano contatta direttamente il server ufficiale <code>https://download.germano.ai</code> per verificare la presenza di una nuova versione dell'installer. Se presente, scarica dal server ufficiale il nuovo installer in un solo file (es. <code>germano-0.61.exe</code>) e lo avvia al successivo avvio di Germano, oppure subito con <em>Installa ora e riavvia</em> nella Dashboard: l'installer chiude Germano, lo aggiorna e lo riapre da solo. Se un aggiornamento non va a buon fine resta la versione in uso e non viene riprovato a ogni avvio: si riprova dalla Dashboard. Cartelle di lavoro, Vault e <code>config.json</code> nella cartella <code>Documenti/Germano AI</code> non vengono toccati. Su un PC isolato o offline non avviene alcun tentativo di connessione.</p>
                     <p>Le opzioni sono in Modalità Avanzata, <em>Sistema e registro → Aggiornamenti</em>: <em>Controlla le nuove versioni quando il computer è connesso a Internet</em> (<code>"check_updates"</code> in <code>config.json</code>) e <em>Scarica automaticamente gli aggiornamenti</em> (<code>"auto_update"</code>; se spenta, Germano si limita a segnalare la nuova versione). <em>Controlla ora</em> esegue subito un controllo.</p>
 
                     <h3 class="sub-title">D: Come impedisco agli operatori di disattivare i filtri (Profilo PA)?</h3>
@@ -2026,7 +2044,7 @@ claude</code></pre>
                     <p><strong>A:</strong> 16 GB of RAM recommended (8 GB minimum). With less than 12 GB Germano automatically loads the main model in its light version (BF16): it works, but text analysis is slower. See chapter 9.</p>
 
                     <h3 class="sub-title">Q: The engine does not start or a red error message appears</h3>
-                    <p><strong>A:</strong> The message at the top of the Dashboard shows the cause; full details are in <code>daemon.log</code> in the program folder. On some freshly installed PCs, Windows <em>Smart App Control</em> or the antivirus may block the AI components: Germano promptly reports it at startup. Also avoid very long paths (prefer <code>C:\GermanoAI</code>).</p>
+                    <p><strong>A:</strong> The message at the top of the Dashboard shows the cause; full details are in <code>daemon.log</code> in the <code>Documents\Germano AI</code> folder. On some freshly installed PCs, Windows <em>Smart App Control</em> or the antivirus may block the AI components: Germano promptly reports it at startup.</p>
 
                     <h3 class="sub-title">Q: What if port 8181 is reported in use?</h3>
                     <p><strong>A:</strong> If Germano is already open, launching <code>Germano</code> again simply opens the existing Dashboard. If another program uses the port, close it or set a different port in <code>config.json</code> (e.g. <code>"port": 8010</code>) and update the Proxy address in your editors.</p>
@@ -2038,7 +2056,7 @@ claude</code></pre>
                     <p><strong>A:</strong> Legacy binary Office formats can only be converted with Microsoft Office or LibreOffice installed. On a PC without Office, save the document as <code>.docx</code>/<code>.pptx</code>, or install LibreOffice: Germano uses it automatically. The exact reason of each failure is shown in the <em>Non riusciti</em> tab; once the problem is solved, use <em>Rimetti in coda</em> (Queue again).</p>
 
                     <h3 class="sub-title">Q: How do automatic updates work?</h3>
-                    <p><strong>A:</strong> About 20 seconds after startup and then periodically, <strong>only when the system reports that the PC is connected to the Internet</strong>, Germano contacts the official server <code>https://download.germano.ai</code> directly to check for a newer installer version. If available, it downloads the package directly from the official server and prepares it for installation; updating occurs seamlessly (or immediately via <em>Installa ora e riavvia</em> / Install now and restart in the Dashboard). Working folders, Vault, and <code>config.json</code> in <code>Documents/Germano AI</code> remain completely untouched. On a disconnected or offline PC no connection attempt is made.</p>
+                    <p><strong>A:</strong> About 20 seconds after startup and then periodically, <strong>only when the system reports that the PC is connected to the Internet</strong>, Germano contacts the official server <code>https://download.germano.ai</code> directly to check for a newer installer version. If available, it downloads the new single-file installer (e.g. <code>germano-0.61.exe</code>) from the official server and runs it at the next start of Germano, or immediately via <em>Installa ora e riavvia</em> (Install now and restart) in the Dashboard: the installer closes Germano, updates it and reopens it by itself. If an update fails, the version in use is kept and it is not retried at every start: you can retry from the Dashboard. Working folders, Vault, and <code>config.json</code> in <code>Documents/Germano AI</code> remain completely untouched. On a disconnected or offline PC no connection attempt is made.</p>
                     <p>The options are in Advanced Mode, <em>Sistema e registro → Aggiornamenti</em>: check for new versions when the computer is online (<code>"check_updates"</code> in <code>config.json</code>) and download updates automatically (<code>"auto_update"</code>; when off, Germano only reports the new version). <em>Controlla ora</em> (Check now) runs a check immediately.</p>
 
                     <h3 class="sub-title">Q: How do I prevent operators from disabling filters (PA profile)?</h3>
@@ -2050,6 +2068,78 @@ claude</code></pre>
                     <h3 class="sub-title">Q: How do I transfer protected documents and data to a new folder or another PC?</h3>
                     <p><strong>A:</strong> Copy <code>extracted/deanonymize_vault.json</code> from the previous directory (required to restore true data in protected files) and optionally <code>config.json</code> with your settings. On launch, Germano automatically loads the Vault.</p>
 </div>
+            </section>
+
+            <!-- 14. Guida per Sviluppatori & GitHub -->
+            <section class="doc-section" id="developer-guide">
+                <div class="section-header">
+                    <span class="section-tag lang-it">Open Source</span>
+                    <span class="section-tag lang-en">Open Source</span>
+                    <h2 class="section-title lang-it">14. Guida per Sviluppatori: dai sorgenti GitHub all'esecuzione locale</h2>
+                    <h2 class="section-title lang-en">14. Developer Guide: Running from GitHub Sources</h2>
+                </div>
+
+                <div class="lang-it">
+                    <p>Il repository ufficiale su GitHub contiene <strong>esclusivamente il codice sorgente pulito</strong> e gli asset grafici/web, nelle cartelle <code>windows/</code>, <code>linux/</code> e <code>macos/</code> (ognuna con <code>germano/</code> e <code>germano-client/</code>). Per rispettare i limiti dimensionali di Git, i modelli neurali e i runtime binari <strong>non sono inclusi nel repository</strong>. Gli installer ufficiali, invece, contengono già tutto: per usare Germano non serve nessuno dei passaggi seguenti.</p>
+
+                    <div class="callout callout-info">
+                        <div class="callout-icon">📦</div>
+                        <div class="callout-content">
+                            <strong>Cosa serve oltre ai sorgenti:</strong>
+                            <ul>
+                                <li><strong>Modelli IA (<code>models/</code>):</strong> i 6 modelli per l'anonimizzazione dei dati personali, OCR, NER e biometria facciale YuNet, scaricabili da <a href="https://download.germano.ai/modelli/" target="_blank" rel="noopener"><strong>download.germano.ai/modelli/</strong></a> (oppure estraibili da un installer ufficiale), da mettere nella cartella <code>models/</code> accanto a <code>server.py</code>.</li>
+                                <li><strong>Python 3.11 a 64 bit</strong> con le librerie di <code>requirements.txt</code> (su Linux torch per CPU dall'indice di PyTorch: <code>--extra-index-url https://download.pytorch.org/whl/cpu</code>). Su Windows PyTorch richiede il ridistribuibile <a href="https://aka.ms/vs/17/release/vc_redist.x64.exe" target="_blank" rel="noopener"><strong>Microsoft Visual C++ 64-bit (vc_redist.x64.exe)</strong></a>, le cui librerie sono già incluse negli installer.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3 class="sub-title">Avvio rapido per sviluppatori in 4 passaggi:</h3>
+                    <pre><code class="language-bash"># 1. Clona il repository GitHub
+git clone https://github.com/germano-ai/germano-ai-standalone.git
+cd germano-ai-standalone/windows/germano  # oppure linux/germano o macos/germano
+
+# 2. Crea l'ambiente virtuale e installa le librerie
+python -m venv venv
+# Windows: venv\Scripts\activate | Linux/macOS: source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Metti qui la cartella 'models/' (da download.germano.ai/modelli/)
+
+# 4. Avvia l'applicazione nella sua finestra (solo il server: python server.py)
+python germano_desktop.py</code></pre>
+                    <p>Gli installer (<code>.exe</code>, <code>.deb</code>, <code>.pkg</code>) si costruiscono con gli script di <code>windows/germano/build/</code> (<code>costruisci_installer_windows.py</code>, <code>costruisci_deb.py</code>, <code>costruisci_pkg.py</code>), che uniscono i sorgenti, i runtime e le librerie per ogni sistema operativo (<code>dipendenze/</code>) e i modelli (<code>modelli/</code>) della cartella di release.</p>
+                </div>
+
+                <div class="lang-en">
+                    <p>The official GitHub repository contains <strong>strictly clean source code</strong> and web/graphical assets, in the <code>windows/</code>, <code>linux/</code> and <code>macos/</code> folders (each with <code>germano/</code> and <code>germano-client/</code>). To comply with Git size limits, neural models and binary runtimes <strong>are not committed to GitHub</strong>. The official installers, instead, already contain everything: none of the following steps is needed to use Germano.</p>
+
+                    <div class="callout callout-info">
+                        <div class="callout-icon">📦</div>
+                        <div class="callout-content">
+                            <strong>What you need besides the sources:</strong>
+                            <ul>
+                                <li><strong>AI Models (<code>models/</code>):</strong> the 6 local models for PII redaction, OCR, NER and YuNet facial biometrics, available from <a href="https://download.germano.ai/modelli/" target="_blank" rel="noopener"><strong>download.germano.ai/modelli/</strong></a> (or extractable from an official installer), to be placed in the <code>models/</code> folder next to <code>server.py</code>.</li>
+                                <li><strong>64-bit Python 3.11</strong> with the libraries in <code>requirements.txt</code> (on Linux CPU torch from the PyTorch index: <code>--extra-index-url https://download.pytorch.org/whl/cpu</code>). On Windows PyTorch requires the <a href="https://aka.ms/vs/17/release/vc_redist.x64.exe" target="_blank" rel="noopener"><strong>Microsoft Visual C++ 64-bit redistributable (vc_redist.x64.exe)</strong></a>, whose libraries are already bundled in the installers.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3 class="sub-title">Quick developer setup in 4 steps:</h3>
+                    <pre><code class="language-bash"># 1. Clone the GitHub repository
+git clone https://github.com/germano-ai/germano-ai-standalone.git
+cd germano-ai-standalone/windows/germano  # or linux/germano or macos/germano
+
+# 2. Create the virtual environment and install the libraries
+python -m venv venv
+# Windows: venv\Scripts\activate | Linux/macOS: source venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Place the 'models/' folder here (from download.germano.ai/modelli/)
+
+# 4. Launch the application in its window (server only: python server.py)
+python germano_desktop.py</code></pre>
+                    <p>The installers (<code>.exe</code>, <code>.deb</code>, <code>.pkg</code>) are built with the scripts in <code>windows/germano/build/</code> (<code>costruisci_installer_windows.py</code>, <code>costruisci_deb.py</code>, <code>costruisci_pkg.py</code>), which combine the sources, the per-OS runtimes and libraries (<code>dipendenze/</code>) and the models (<code>modelli/</code>) of the release folder.</p>
+                </div>
             </section>
 
         </main>

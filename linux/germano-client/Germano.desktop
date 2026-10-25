@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Germano AI
+GenericName=Germano AI (client)
+Comment=Germano AI - pannello client in finestra dedicata, nessun terminale
+Exec=sh -c '"$(dirname "%k")/germano.sh"'
+Icon=germano
+Terminal=false
+Categories=Office;Utility;Security;
+StartupNotify=true

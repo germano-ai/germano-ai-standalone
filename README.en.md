@@ -15,7 +15,7 @@ Germano AI is a powerful open-source suite designed for **intelligent and massiv
 ## ⚡ Quickstart (How it works)
 
 Germano AI works completely autonomously by "listening" to its folders. The basic operation is extremely simple (the Dashboard labels are in Italian; their meaning is given in brackets):
-1. Double-click **`Germano.exe`** (or **`Germano.app`** on macOS, **`germano.sh`** on Linux) to launch the application: it opens directly in a dedicated window (no black terminal windows, no external browser with navigation bars or tabs; the **red X** in the top right cleanly closes the entire application and all inference processes in the background). On first launch choose the operating mode (if in doubt keep **Standalone**: everything stays on your computer).
+1. Open **Germano AI** from the Desktop shortcut or the Start menu (Windows), from Launchpad or the Applications folder (macOS), or from the applications menu (Linux): it opens directly in a dedicated window (no black terminal windows, no external browser with navigation bars or tabs; the **red X** in the top right cleanly closes the entire application and all inference processes in the background). On first launch choose the operating mode (if in doubt keep **Standalone**: everything stays on your computer).
 2. Add the documents (whole folders with subfolders too): drag them into the **«Trascina qui file o cartelle»** (Drop files or folders here) box, use **Seleziona file** / **Seleziona cartella** (Select files / Select folder), or copy them into the **`input`** folder (the **Apri cartella input** button opens it in File Explorer).
 3. Click **Avvia motore** (Start engine) in the top right corner (when you add files from the Dashboard the engine starts on its own). Germano takes the files from `input`, redacts them and saves the clean documents in the **`output`** folder, preserving the folder and subfolder structure; the **In attesa / Pronti / Non riusciti** (pending / ready / failed) counters show the batch progress.
 4. Collect the results with **Apri cartella output** (Open output folder) or from the **Documenti** table. Originals are archived in **`processed`**; damaged or unsupported files go to **`failed`** and appear in the **Non riusciti** tab with the reason and a **Rimetti in coda** (Queue again) button. JSON audit logs are saved in **`extracted`**.
@@ -28,22 +28,35 @@ Germano AI works completely autonomously by "listening" to its folders. The basi
 
 ## 📦 Multiplatform Installation
 
-All official installers are available as single standalone executables/scripts directly on **[download.germano.ai](https://download.germano.ai/)**:
+All official installers are single ready-to-use files on **[download.germano.ai](https://download.germano.ai/)** and contain everything needed: the program, its own Python with all libraries and (in the full suite) the 6 AI models. Installation downloads nothing from the Internet and works on a freshly installed system.
+
+| System | Full suite | Lightweight client |
+|---|---|---|
+| Windows 10/11 64-bit | `germano-0.60.exe` | `germano-client-0.60.exe` |
+| macOS | `germano-0.60.pkg` (Apple Silicon, macOS 14 or later) | `germano-client-0.60.pkg` (Apple Silicon and Intel, macOS 11 or later) |
+| Linux Ubuntu/Debian 64-bit | `germano-0.60.deb` | `germano-client-0.60.deb` |
 
 ### 🪟 Windows (10 / 11 64-bit)
-1. **Download:** Download `germano-0.60.exe`.
-2. **Installation:** Double-click the single executable. It installs into user-space `%LOCALAPPDATA%\Programs\Germano AI` **without requiring administrator privileges (zero UAC)** and configures the secure folder `Documents\Germano AI`.
-3. **Launch:** Double-click the **Germano** desktop icon to launch the app in its dedicated window (no terminal windows).
+1. **Download:** download `germano-0.60.exe`.
+2. **Installation:** double-click the installer. It installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI` **without administrator privileges (no UAC prompt)**, creates the Desktop and Start menu shortcuts, the entry in Settings > Apps and the working folders in `Documents\Germano AI`. The Microsoft Visual C++ libraries are already included: nothing else to install.
+3. **Launch:** **Germano AI** shortcut on the Desktop or in the Start menu (dedicated window, no black terminal windows).
+4. **Uninstall:** Settings > Apps > Installed apps > Germano AI; you can choose whether to keep the working folders and the Vault.
 
-### 🍎 macOS (Apple Silicon & Intel)
-1. **Download:** Download `germano-0.60.command`.
-2. **Installation:** Double-click to run the guided installer: it installs `Germano.app` into `~/Applications` and configures `~/Documents/Germano AI` without requiring root or sudo permissions.
-3. **Launch:** Open **Germano.app** from Launchpad or the Applications folder.
+The full suite installer is about 3 GB: on the first double-click Microsoft Defender scans it, so the window may take a few seconds to appear. The installer is not digitally signed yet: if "Windows protected your PC" appears, choose **More info > Run anyway**.
 
-### 🐧 Linux (Ubuntu, Debian, Fedora, Arch)
-1. **Download:** Download `germano-0.60.sh`.
-2. **Installation:** Run via double-click or in a terminal with `bash germano-0.60.sh`. It installs into `~/.local/share/germano`, integrates desktop and application menu launchers, and sets up `~/Documents/Germano AI`.
-3. **Launch:** Launch Germano directly from the Applications menu or Desktop.
+### 🍎 macOS
+1. **Download:** download `germano-0.60.pkg`. The full suite requires a Mac with **Apple Silicon** (M1 or later) and **macOS 14 Sonoma** or later, because PyTorch is no longer published for Intel Macs; on Intel Macs use the lightweight client `germano-client-0.60.pkg`.
+2. **Installation:** double-click the package. When choosing the destination select **Install for me only**: `Germano.app` goes into `~/Applications` **with no administrator password**. With "Install for all users of this computer" it goes into `/Applications` and macOS asks for the password.
+3. **Launch:** open **Germano** (`Germano.app`) from Launchpad or the Applications folder. On first launch it creates the working folders in `~/Documents/Germano AI` (in `~/Germano AI` if Documents is synced with iCloud).
+4. **Uninstall:** drag `Germano.app` to the Trash; the working folders stay where they are.
+
+The package is not signed by Apple yet: if macOS blocks it, go to **System Settings > Privacy & Security** and choose **Open Anyway**.
+
+### 🐧 Linux (Ubuntu / Debian 64-bit)
+1. **Download:** download `germano-0.60.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later (Ubuntu 22.04 or later, Debian 12 or later).
+2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-0.60.deb` in a terminal. As with any system package, the administrator password is required. The program goes into `/opt/germano`, with the **Germano AI** entry in the applications menu and the `germano-ai` command; no other packages are needed.
+3. **Launch:** from the applications menu. On first launch it creates the working folders in `Documents/Germano AI` (the Documents folder in the system language).
+4. **Uninstall:** `sudo apt remove germano-ai`; the working folders stay where they are.
 
 ---
 
@@ -67,7 +80,7 @@ Germano AI is designed to adapt to both highly regulated environments and privat
 Germano AI implements a modular hybrid architecture, selectable on initial launch and configurable at any time in Settings (taking effect immediately, zero restarts required):
 
 ### Three Native Operating Modes:
-*   **🖥️ Standalone (Default & 100% Offline):** everything runs locally on this computer in complete isolation. Zero open ports to the external network and zero client discovery. All 6 local AI models load into local memory, the encryption Vault remains on local disk, and zero packets leave the workstation.
+*   **🖥️ Standalone (Default & 100% Offline):** everything runs locally on this computer in complete isolation. Zero open ports to the external network and zero client discovery. All 6 local AI models load into local memory, the de-anonymization Vault remains on local disk, and zero packets leave the workstation.
 *   **📡 LAN Server (Shared Inference Engine):** Germano listens on the local network (default port **8181**) and responds to UDP broadcast auto-discovery (port **8182**). It exposes the local inference engine and the AI Proxy to authorized workstations across the office or studio, protected by Bearer Token authentication. Launches directly via `Germano.exe`.
 *   **🌐 Client (Lightweight Germano Client ~28 MB):** an agile, portable executable designed for laptops or workstations with limited resources. On launch, it automatically discovers the LAN Germano Server and offloads heavy model inference. **Original documents, anonymized files, and the de-anonymization vault strictly reside on the client workstation**: if the server is unreachable, zero data leaves the client and documents remain queued.
 *   **Server + Client together:** the host workstation shares inference across the LAN while concurrently processing its own local queue.
@@ -82,7 +95,7 @@ Germano AI implements a modular hybrid architecture, selectable on initial launc
 
 ## 🌟 Main Features
 
-*   **100% Offline & Vanilla Windows 11 Ready:** Bundles embedded Python 3.11, all 12 native 64-bit Microsoft Visual C++ Redistributable DLLs pre-integrated (zero admin privileges required), an offline Web UI free of external CDNs, and **6 pre-installed local AI models**.
+*   **100% Offline & ready on a freshly installed system:** every installer bundles its own Python 3.11 with all libraries (on Windows also the 64-bit Microsoft Visual C++ libraries, next to the interpreter: no redistributable to install, no administrator privileges), an offline Web UI free of external CDNs, and **6 pre-installed local AI models**.
 *   **Simple / Advanced Mode selector:**
     *   **Simple Mode:** zero technical jargon; add documents, the engine processes automatically, and results are retrieved with one click.
     *   **Advanced Mode:** four comprehensive tabs. **Processing** (including archived original files), **AI Agents and API** (Proxy URLs, per-tool setup, target services, REST examples), **Filters and models** (compliance profiles, sensitivity, **18 categories and 7 analysis engines**: Names, Professions/Titles, Addresses, Cadastral, Tax Codes/VAT, Email/PEC, Phone Numbers, IBAN/Bank accounts, Amounts/Finance, Dates, Companies/Entities, License Plates/IDs, Health Data (GDPR Art. 9), Medications/Therapies, Judicial Data (GDPR Art. 10), Marital Status, Passwords/Secrets, and URLs/IPs), **System and logs** (compute precision, working directories, update checks, Vault, live log console).
@@ -103,7 +116,7 @@ Germano AI implements a modular hybrid architecture, selectable on initial launc
     *   🌐 **Web, Data, Email & Archives (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Native DOM/MIME handling, email attachment recursion, archive traversal for `.zip`, and PKCS#7 signed file parsing (`.p7m`).
 *   **Reliability & Concurrency:** Thread-safe Vault operations, atomic file processing only after copy completion, and clean graceful shutdown.
 
-**Requirements:** Windows 10/11 64-bit, 8 GB RAM (16 GB recommended), about 6 GB of free disk space. Zero installation and zero administrator privileges required.
+**Requirements:** Windows 10/11 64-bit, macOS 14 or later on Apple Silicon, or 64-bit Ubuntu/Debian Linux; 8 GB RAM (16 GB recommended) and about 6 GB of free disk space (plus the space for your documents). On Windows and on macOS ("Install for me only") installation requires no administrator privileges; on Linux, as for any .deb package, the administrator password.
 
 ## 🔌 REST API Integration
 
@@ -142,7 +155,7 @@ The Artificial Intelligence will **never** come into contact with your original 
 
 In Advanced Mode, the Dashboard's **Agenti AI e API** (AI agents and API) tab shows the addresses to copy and, tool by tool, where to set them.
 
-1. Start Germano AI by double-clicking on `Germano.exe`.
+1. Start Germano AI (Desktop shortcut or Start menu on Windows, Launchpad on macOS, applications menu on Linux).
 2. Open your preferred AI editor and change the AI server base address:
    - **Cursor**: Go to `Settings` -> `Models` -> Scroll to `OpenAI API Key` and insert your real key. Then, just below it, toggle on **Override OpenAI Base URL** and insert the following address: `http://127.0.0.1:8181/v1`.
    - **Windsurf / Antigravity / Other IDEs**: In the AI Provider settings (under OpenAI or Custom Provider), find the **Base URL** (or API Base URL / Custom URL) field and insert: `http://127.0.0.1:8181/v1`.
@@ -160,9 +173,11 @@ If for any reason (e.g., AI daemon stopped, unreadable format, or corrupted imag
 
 Germano keeps itself up to date without giving up offline operation:
 
-1. **Only when the operating system reports that the PC is connected to the Internet** (about 20 seconds after startup and then every 6 hours), Germano checks `https://download.germano.ai/` (the official download endpoint) to see if a newer version of the installer is available for your platform. On a disconnected PC no connection attempt is made.
-2. If an update is available, the official installer is downloaded directly into the temporary update folder. No manual SHA verification is required: all packages distributed on `download.germano.ai` are verified and trusted at the source by the official server.
-3. The update installation updates the application while keeping all user data intact: files in working folders (`Documents\Germano AI`), the local encryption vault (`deanonymize_vault.json`), and preferences (`config.json`).
+1. **Only when Windows reports that the PC is connected to the Internet** (about 20 seconds after startup and then every 6 hours), Germano checks `https://download.germano.ai/version.json` (the only update source) to see if a newer version of the installer is available for your platform. On a disconnected PC no connection attempt is made.
+2. If an update is available, the official installer (`germano-<version>.exe`) is downloaded into the user's technical folder (`%LOCALAPPDATA%\Germano AI\update`). No SHA verification or manual steps are required: files on `download.germano.ai` are considered trustworthy; only the completeness of the download is checked.
+3. **Install now** (or the next start of Germano) runs the installer in update mode: it closes Germano, replaces the program while keeping all user data intact (the working folders in `Documents\Germano AI`, the Vault `extracted\deanonymize_vault.json` and the preferences `config.json`) and reopens it.
+
+On macOS and Linux the check is started from the Dashboard: if a newer version exists, Germano points to the new `germano-<version>.pkg` / `.deb` to download from `download.germano.ai` and open with a double click.
 
 The options are in Settings, **System and log → Updates** (or in `config.json`: `"check_updates": false` disables the check, `"auto_update": false` only reports the new version). No document or text data is sent during the check.
 
@@ -176,8 +191,53 @@ To guarantee maximum security, avoid administrator permission conflicts (UAC), a
 - `Documents\Germano AI\output`: Anonymized files, with original format and layout intact.
 - `Documents\Germano AI\processed`: Original files archived at the end of the job.
 - `Documents\Germano AI\failed`: Corrupted, blocked, or unreadable documents (listed in the *Non riusciti* tab with the reason).
-- `Documents\Germano AI\vault`: Local encrypted vault for authorized reversible de-anonymization.
-- `Documents\Germano AI\extracted`: JSON audit log files (for GDPR compliance).
+- `Documents\Germano AI\extracted`: JSON audit log files (for GDPR compliance) and the **Vault** (`deanonymize_vault.json`), the table that maps the tags (`[PERSON_1]`...) to the original data and allows restoring it. The Vault is a local file and **is not encrypted**: protect it like the original documents (it stays on this computer and is never sent to any service).
+
+
+---
+
+## 🛠️ Developer Guide: Running from GitHub Sources
+
+This GitHub repository contains **exclusively clean source code and assets**. To keep the repository lightweight (< 30 MB) and fast to clone, heavy neural models and binary runtimes are **not committed to Git**.
+
+### 📦 What to download before running from source:
+
+1. **AI Models (`models/`):**
+   - Germano requires the 6 local AI models (privacy-filter, NER, EasyOCR, YuNet facial biometrics, license plate and signature detection).
+   - 👉 **[Download the complete Models Bundle](https://download.germano.ai/modelli/)** and extract it into the `models/` directory of your chosen platform (e.g. `windows/germano/models/` or `linux/germano/models/`).
+   - *Alternatively:* you can extract the `models/` folder directly from any official installer package on [download.germano.ai](https://download.germano.ai).
+
+2. **System Dependencies & Runtimes:**
+   - **Windows:** Requires 64-bit Python 3.11+ and the **[Microsoft Visual C++ Redistributable 64-bit](https://aka.ms/vs/17/release/vc_redist.x64.exe)** (`vc_redist.x64.exe`).
+   - **Linux:** Requires Python 3.11+ (`sudo apt install python3 python3-pip python3-venv`).
+   - **macOS:** Requires Python 3.11+ (Apple Silicon or Intel).
+
+### 🚀 How to start development in 4 steps:
+
+```bash
+# 1. Clone the repository and navigate to your target platform
+git clone https://github.com/germano-ai/germano-ai-standalone.git
+cd germano-ai-standalone/windows/germano  # or linux/germano or macos/germano
+
+# 2. Create and activate a virtual environment (recommended)
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On Linux/macOS:
+source venv/bin/activate
+
+# 3. Install Python dependencies
+pip install -r requirements.txt
+
+# 4. Place the downloaded 'models/' folder into the current directory and start:
+python server.py
+```
+To run the lightweight client instead:
+```bash
+cd germano-ai-standalone/windows/germano-client
+pip install -r requirements.txt
+python client.py
+```
 
 ## 📜 License and Contribution
 This project is proudly distributed under the **GNU GPL v3** license. You can use it for free even for commercial purposes, as long as you keep any modifications Open Source. 

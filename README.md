@@ -15,7 +15,7 @@ Germano AI è una potente suite open-source progettata per **l'anonimizzazione i
 ## ⚡ Quickstart (Come funziona)
 
 Germano AI lavora in modo completamente autonomo "ascoltando" le sue cartelle. Il funzionamento base è semplicissimo:
-1. Fai doppio clic su **`Germano.exe`** (oppure **`Germano.app`** su macOS o **`germano.sh`** su Linux) per avviare l'applicazione: si apre direttamente in una finestra dedicata (senza finestre nere di terminale né browser esterni; la **X rossa** in alto a destra chiude completamente l'intero programma e tutti i processi di calcolo in background). Alla prima apertura scegli la modalità operativa (nel dubbio lascia **Standalone**: tutto resta sul tuo computer).
+1. Apri **Germano AI** dal collegamento sul Desktop o dal menu Start (Windows), da Launchpad o dalla cartella Applicazioni (macOS) oppure dal menu delle applicazioni (Linux): si apre direttamente in una finestra dedicata (senza finestre nere di terminale né browser esterni; la **X rossa** in alto a destra chiude completamente l'intero programma e tutti i processi di calcolo in background). Alla prima apertura scegli la modalità operativa (nel dubbio lascia **Standalone**: tutto resta sul tuo computer).
 2. Aggiungi i documenti (anche intere cartelle con sottocartelle): trascinali nel riquadro **«Trascina qui file o cartelle»**, usa **Seleziona file** / **Seleziona cartella**, oppure copiali nella cartella **`input`** (il pulsante **Apri cartella input** la apre in Esplora file).
 3. Clicca **Avvia motore** in alto a destra (se aggiungi i file dalla Dashboard il motore parte da solo). Germano prende i file da `input`, li anonimizza e salva i documenti puliti nella cartella **`output`**, preservando la struttura delle cartelle e sottocartelle; i contatori **In attesa / Pronti / Non riusciti** mostrano l'andamento del lotto.
 4. Ritira i risultati con **Apri cartella output** o dalla tabella **Documenti**. Gli originali vengono archiviati in **`processed`**; i file danneggiati o non supportati finiscono in **`failed`** e compaiono nella scheda **Non riusciti** con il motivo e il pulsante **Rimetti in coda**. I report JSON di audit vengono salvati in **`extracted`**.
@@ -28,22 +28,35 @@ Germano AI lavora in modo completamente autonomo "ascoltando" le sue cartelle. I
 
 ## 📦 Installazione Multipiattaforma
 
-Tutti gli installer ufficiali sono disponibili come singoli file pronti all'uso direttamente su **[download.germano.ai](https://download.germano.ai/)**:
+Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.germano.ai](https://download.germano.ai/)** e contengono tutto il necessario: il programma, il proprio Python con tutte le librerie e (nella suite) i 6 modelli IA. L'installazione non scarica nulla da Internet e funziona su un sistema appena installato.
 
-### 🪟 Windows (10 / 11 64-bit)
-1. **Download:** Scarica `germano-0.60.exe`.
-2. **Installazione:** Fai doppio clic sull'eseguibile unico. Si installa nello spazio utente `%LOCALAPPDATA%\Programs\Germano AI` **senza richiedere diritti di amministratore (zero UAC)** e configura la cartella protetta `Documenti\Germano AI`.
-3. **Avvio:** Fai doppio clic sull'icona **Germano** per aprire l'applicazione in finestra dedicata (senza finestre nere di terminale).
+| Sistema | Suite completa | Client leggero |
+|---|---|---|
+| Windows 10/11 a 64 bit | `germano-0.60.exe` | `germano-client-0.60.exe` |
+| macOS | `germano-0.60.pkg` (Apple Silicon, macOS 14 o successivo) | `germano-client-0.60.pkg` (Apple Silicon e Intel, macOS 11 o successivo) |
+| Linux Ubuntu/Debian a 64 bit | `germano-0.60.deb` | `germano-client-0.60.deb` |
 
-### 🍎 macOS (Apple Silicon & Intel)
-1. **Download:** Scarica `germano-0.60.command`.
-2. **Installazione:** Fai doppio clic per eseguire l'installer guidato: installa `Germano.app` in `~/Applications` e predispone `~/Documents/Germano AI` senza permessi root o sudo.
-3. **Avvio:** Apri **Germano.app** da Launchpad o dalla cartella Applicazioni.
+### 🪟 Windows (10 / 11 a 64 bit)
+1. **Download:** scarica `germano-0.60.exe`.
+2. **Installazione:** doppio clic sull'installer. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI` **senza diritti di amministratore (nessuna richiesta UAC)**, crea i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni > App e le cartelle di lavoro in `Documenti\Germano AI`. Le librerie Microsoft Visual C++ sono già incluse: non serve installare altro.
+3. **Avvio:** collegamento **Germano AI** sul Desktop o nel menu Start (finestra dedicata, senza finestre nere di terminale).
+4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI; puoi scegliere se conservare le cartelle di lavoro e il Vault.
 
-### 🐧 Linux (Ubuntu, Debian, Fedora, Arch)
-1. **Download:** Scarica `germano-0.60.sh`.
-2. **Installazione:** Esegui con doppio clic o da terminale con `bash germano-0.60.sh`. Si installa in `~/.local/share/germano`, integra il lanciatore sul Desktop e nel Menu Applicazioni, e crea `~/Documents/Germano AI`.
-3. **Avvio:** Avvia Germano direttamente dal menu Applicazioni o dalla Scrivania.
+L'installer della suite pesa circa 3 GB: al primo doppio clic Microsoft Defender lo analizza e la finestra può comparire dopo qualche secondo. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC» scegli **Ulteriori informazioni > Esegui comunque**.
+
+### 🍎 macOS
+1. **Download:** scarica `germano-0.60.pkg`. La suite completa richiede un Mac con **Apple Silicon** (M1 o successivo) e **macOS 14 Sonoma** o successivo, perché PyTorch non è più pubblicato per i Mac Intel; sui Mac Intel si usa il client leggero `germano-client-0.60.pkg`.
+2. **Installazione:** doppio clic sul pacchetto. Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza password di amministratore**. Con «Installa per tutti gli utenti» va in `/Applications` e macOS chiede la password.
+3. **Avvio:** apri **Germano** (`Germano.app`) da Launchpad o dalla cartella Applicazioni. Al primo avvio crea le cartelle di lavoro in `~/Documents/Germano AI` (in `~/Germano AI` se Documenti è sincronizzata con iCloud).
+4. **Disinstallazione:** trascina `Germano.app` nel Cestino; le cartelle di lavoro restano dove sono.
+
+Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema > Privacy e sicurezza** e scegli **Apri comunque**.
+
+### 🐧 Linux (Ubuntu / Debian a 64 bit)
+1. **Download:** scarica `germano-0.60.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva (Ubuntu 22.04 o successive, Debian 12 o successive).
+2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-0.60.deb`. Come per ogni pacchetto di sistema viene chiesta la password di amministratore. Il programma va in `/opt/germano`, con la voce **Germano AI** nel menu delle applicazioni e il comando `germano-ai`; non servono altri pacchetti.
+3. **Avvio:** dal menu delle applicazioni. Al primo avvio crea le cartelle di lavoro in `Documenti/Germano AI` (la cartella Documenti nella lingua del sistema).
+4. **Disinstallazione:** `sudo apt remove germano-ai`; le cartelle di lavoro restano dove sono.
 
 ---
 
@@ -82,7 +95,7 @@ Germano AI implementa un'architettura ibrida e modulare, configurabile al primo 
 
 ## 🌟 Funzionalità Principali
 
-*   **100% Offline & Windows 11 Vanilla Ready:** Include Python 3.11 embedded, tutte le 12 librerie native Microsoft Visual C++ Redistributable (x64) pre-integrate nel runtime (zero privilegi di amministratore richiesti), interfaccia Web priva di CDN esterni e **6 modelli IA locali pre-installati**.
+*   **100% Offline & pronto su un sistema appena installato:** ogni installer include il proprio Python 3.11 con tutte le librerie (su Windows anche le librerie Microsoft Visual C++ x64, accanto all'interprete: nessun ridistribuibile da installare, nessun privilegio di amministratore), l'interfaccia Web priva di CDN esterni e **6 modelli IA locali pre-installati**.
 *   **Selettore Modalità Semplice / Avanzata:**
     *   **Modalità Semplice:** nessun termine tecnico; si aggiungono i documenti, il motore parte da solo e i risultati si ritirano con un clic.
     *   **Modalità Avanzata:** quattro schede. **Elaborazione** (anche gli originali archiviati), **Agenti AI e API** (indirizzi del Proxy, configurazione per ogni strumento, servizi di destinazione, esempi REST), **Filtri e modelli** (profilo, sensibilità, **18 categorie e 7 motori di analisi**: Nomi, Professioni/Titoli, Indirizzi, Catasto, Codici Fiscali/P.IVA, Email/PEC, Telefoni, IBAN/Conti, Importi/Finanza, Date, Aziende/Enti, Targhe/Documenti, Dati Sanitari (Art. 9 GDPR), Farmaci/Terapie, Dati Giudiziari (Art. 10 GDPR), Stato Civile, Password/Segreti e URL/IP), **Sistema e registro** (calcolo e precisione, cartelle di lavoro, aggiornamenti, Vault, registro in tempo reale).
@@ -103,7 +116,7 @@ Germano AI implementa un'architettura ibrida e modulare, configurabile al primo 
     *   🌐 **Web, Dati, Email & Archivi (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Elaborazione DOM/MIME nativa, allegati email, ispezione ricorsiva di archivi `.zip` e file firmati `.p7m` (es. `fattura.xml.p7m`).
 *   **Affidabilità e Concorrenza:** Vault protetto da accessi concorrenti, elaborazione file solo a copia completata per evitare letture parziali, chiusura pulita del motore al termine della sessione.
 
-**Requisiti:** Windows 10/11 a 64 bit, 8 GB di RAM (16 GB consigliati), circa 6 GB di spazio libero. Nessuna installazione e nessun privilegio di amministratore.
+**Requisiti:** Windows 10/11 a 64 bit, macOS 14 o successivo su Apple Silicon, oppure Linux Ubuntu/Debian a 64 bit; 8 GB di RAM (16 GB consigliati) e circa 6 GB di spazio libero (più lo spazio dei documenti). Su Windows e su macOS («Installa solo per me») l'installazione non richiede privilegi di amministratore; su Linux, come ogni pacchetto .deb, la password di amministratore.
 
 ## 🔌 Integrazione REST API
 
@@ -142,7 +155,7 @@ L'Intelligenza Artificiale non entrerà **mai** in contatto con i tuoi dati orig
 
 In Modalità Avanzata, la scheda **Agenti AI e API** della Dashboard mostra gli indirizzi da copiare e, strumento per strumento, dove impostarli.
 
-1. Avvia Germano AI facendo doppio clic su `Germano.exe`.
+1. Avvia Germano AI (collegamento sul Desktop o menu Start su Windows, Launchpad su macOS, menu delle applicazioni su Linux).
 2. Apri il tuo editor AI preferito e modifica l'indirizzo base del server AI:
    - **Cursor**: Vai in `Impostazioni (Settings)` -> `Models` -> Scorri fino a `OpenAI API Key` e inserisci la tua chiave reale. Poi, appena sotto, attiva la levetta **Override OpenAI Base URL** e inserisci il seguente indirizzo: `http://127.0.0.1:8181/v1`.
    - **Windsurf / Antigravity / Altri IDE**: Nelle impostazioni del Provider AI (sotto la voce OpenAI o Provider Personalizzato), cerca il campo **Base URL** (o API Base URL / Custom URL) e inserisci: `http://127.0.0.1:8181/v1`.
@@ -160,9 +173,11 @@ Se per qualsiasi motivo (es. demone IA spento, formato illeggibile, o file immag
 
 Germano si mantiene aggiornato da solo, senza rinunciare al funzionamento offline:
 
-1. **Solo se il sistema operativo segnala che il PC è connesso a Internet** (circa 20 secondi dopo l'avvio e poi ogni 6 ore), Germano consulta direttamente `https://download.germano.ai/` (l'endpoint ufficiale di download) e rileva se è disponibile una versione più recente dell'installer per la propria piattaforma. Su un PC scollegato non avviene alcun tentativo di connessione.
-2. Se è disponibile un aggiornamento, l'installer ufficiale viene scaricato direttamente nella cartella temporanea di aggiornamento. Non sono richieste verifiche SHA o passaggi manuali: tutti i pacchetti distribuiti su `download.germano.ai` sono verificati e controllati alla fonte dal server ufficiale.
-3. L'installazione dell'aggiornamento aggiorna l'applicazione preservando intatti tutti i dati dell'utente: i file nelle cartelle di lavoro (`Documenti\Germano AI`), il Vault crittografico locale (`deanonymize_vault.json`) e le preferenze (`config.json`).
+1. **Solo se Windows segnala che il PC è connesso a Internet** (circa 20 secondi dopo l'avvio e poi ogni 6 ore), Germano consulta direttamente `https://download.germano.ai/version.json` (l'unica fonte degli aggiornamenti) e rileva se è disponibile una versione più recente dell'installer per la propria piattaforma. Su un PC scollegato non avviene alcun tentativo di connessione.
+2. Se è disponibile un aggiornamento, l'installer ufficiale (`germano-<versione>.exe`) viene scaricato nella cartella tecnica dell'utente (`%LOCALAPPDATA%\Germano AI\update`). Non sono richieste verifiche SHA o passaggi manuali: i file di `download.germano.ai` sono considerati attendibili; si controlla solo che il download sia completo.
+3. **Installa ora** (oppure il successivo avvio di Germano) esegue l'installer in modalità aggiornamento: chiude Germano, sostituisce il programma preservando intatti tutti i dati dell'utente (le cartelle di lavoro in `Documenti\Germano AI`, il Vault `extracted\deanonymize_vault.json` e le preferenze `config.json`) e lo riapre.
+
+Su macOS e Linux il controllo si avvia dalla Dashboard: se c'è una versione più recente, Germano indica il nuovo `germano-<versione>.pkg` / `.deb` da scaricare da `download.germano.ai` e aprire con un doppio clic.
 
 Le opzioni sono in Impostazioni, **Sistema e registro → Aggiornamenti** (oppure in `config.json`: `"check_updates": false` disattiva il controllo, `"auto_update": false` si limita a segnalare la nuova versione). Durante il controllo non viene inviato alcun dato dei documenti né dei testi.
 
@@ -176,8 +191,53 @@ Per garantire la massima sicurezza, evitare conflitti di permessi amministrativi
 - `Documenti\Germano AI\output`: I file anonimizzati, con formato e layout originale intatti.
 - `Documenti\Germano AI\processed`: File originali archiviati a fine lavoro.
 - `Documenti\Germano AI\failed`: Documenti corrotti, bloccati o non conformi (visibili nella scheda *Non riusciti* con il motivo).
-- `Documenti\Germano AI\vault`: Archivio cifrato locale per la de-anonimizzazione reversibile autorizzata.
-- `Documenti\Germano AI\extracted`: Report JSON con i log di audit GDPR di cosa è stato anonimizzato.
+- `Documenti\Germano AI\extracted`: Report JSON con i log di audit GDPR di cosa è stato anonimizzato e il **Vault** (`deanonymize_vault.json`), la tabella che associa le etichette (`[PERSONA_1]`...) ai dati originali e permette di ripristinarli. Il Vault è un file locale **non cifrato**: proteggilo come i documenti originali (resta su questo computer e non viene mai inviato a nessun servizio).
+
+
+---
+
+## 🛠️ Guida per Sviluppatori: Esecuzione dai Sorgenti GitHub
+
+Questo repository GitHub contiene **esclusivamente il codice sorgente pulito** dell'applicazione e gli asset grafici. Per mantenere il repository leggero (< 30 MB) e veloce da clonare, i modelli neurali e i runtime binari **non sono inclusi nei commit di GitHub**.
+
+### 📦 Cosa scaricare prima di avviare il codice in locale:
+
+1. **Modelli di Intelligenza Artificiale (`models/`):**
+   - Germano richiede i 6 modelli IA locali (filtro privacy, NER, EasyOCR, biometria facciale YuNet, rilevamento targhe e firme).
+   - 👉 **[Scarica il pacchetto completo dei Modelli](https://download.germano.ai/modelli/)** ed estrailo nella cartella `models/` della piattaforma scelta (es. `windows/germano/models/` o `linux/germano/models/`).
+   - *In alternativa:* puoi estrarre la cartella `models/` direttamente da qualsiasi installer ufficiale scaricato da [download.germano.ai](https://download.germano.ai).
+
+2. **Dipendenze e Runtime di Sistema:**
+   - **Windows:** Richiede Python 3.11+ a 64 bit e le librerie runtime **[Microsoft Visual C++ Redistributable 64-bit](https://aka.ms/vs/17/release/vc_redist.x64.exe)** (`vc_redist.x64.exe`).
+   - **Linux:** Richiede Python 3.11+ (`sudo apt install python3 python3-pip python3-venv`).
+   - **macOS:** Richiede Python 3.11+ (Apple Silicon o Intel).
+
+### 🚀 Come avviare l'ambiente di sviluppo in 4 passi:
+
+```bash
+# 1. Clona il repository ed entra nella cartella della piattaforma desiderata
+git clone https://github.com/germano-ai/germano-ai-standalone.git
+cd germano-ai-standalone/windows/germano  # oppure linux/germano o macos/germano
+
+# 2. Crea e attiva un ambiente virtuale (consigliato)
+python -m venv venv
+# Su Windows:
+venv\Scripts\activate
+# Su Linux/macOS:
+source venv/bin/activate
+
+# 3. Installa le dipendenze Python
+pip install -r requirements.txt
+
+# 4. Posiziona la cartella 'models/' scaricata nella directory corrente e avvia:
+python server.py
+```
+Per avviare invece la versione client leggera:
+```bash
+cd germano-ai-standalone/windows/germano-client
+pip install -r requirements.txt
+python client.py
+```
 
 ## 📜 Licenza e Contribuzione
 Questo progetto è orgogliosamente distribuito sotto licenza **GNU GPL v3**. Puoi usarlo gratuitamente anche per scopi commerciali, a patto di mantenere Open Source le tue eventuali modifiche. 

@@ -5,12 +5,86 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.60] - 2026-10-25
+Germano diventa una **vera applicazione desktop**, distribuita con **installer in un solo file** per Windows, macOS e
+Linux che contengono tutto il necessario e **non scaricano nulla da Internet**. Un solo programma, **`Germano`**
+(`Germano.exe` su Windows, `Germano.app` su macOS, voce di menu «Germano AI» su Linux): niente finestra nera del
+terminale, niente browser con barra degli indirizzi o schede, e la **X rossa chiude tutto**. L'architettura interna non
+cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Proxy API).
+
+### Aggiunto - Installer in un solo file
+- **Windows**: `germano-0.60.exe` (suite, ~2,8 GB) e `germano-client-0.60.exe` (~22 MB). Installazione guidata per
+  l'utente corrente in `%LOCALAPPDATA%\Programs\…`, **senza diritti di amministratore**, con collegamenti sul Desktop e
+  nel menu Start, voce in Impostazioni › App, cartelle di lavoro in `Documenti\Germano AI` e disinstallazione (a scelta
+  conservando cartelle di lavoro e Vault). Il runtime include le DLL di Microsoft Visual C++: nessun ridistribuibile
+  da installare.
+- **macOS**: `germano-0.60.pkg` (Apple Silicon, macOS 14 o successivo) e `germano-client-0.60.pkg` (Apple Silicon e
+  Intel, macOS 11 o successivo): pacchetti dell'Installer di macOS con `Germano.app` autosufficiente; con «Installa
+  solo per me» nessuna password di amministratore.
+- **Linux**: `germano-0.60.deb` e `germano-client-0.60.deb` per Ubuntu 26.04 LTS e le distribuzioni Debian/Ubuntu a 64
+  bit: programma in `/opt`, voce di menu e comando `germano-ai` / `germano-ai-client`, nessuna dipendenza da altri
+  pacchetti.
+- I pacchetti per macOS e Linux contengono Python 3.11 con le stesse versioni delle librerie collaudate su Windows.
+
+### Aggiunto - Applicazione desktop
+- **`Germano.exe`**, unico eseguibile su Windows: lanciatore grafico (nessuna console) che avvia il runtime incluso
+  (`runtime\pythonw.exe`) sul gestore della finestra `germano_desktop.py`.
+- Un solo nome per entrambe le edizioni: nella **suite completa** apre la **Dashboard unificata** (Standalone offline,
+  Server LAN, modalità Client); nel **client leggero** apre il pannello del client (`client_ui.py`: cerca server,
+  stato, AI del server, «chiedi a un'AI del server», «proteggi testo/file»).
+- **Finestra applicativa dedicata**: Microsoft Edge in modalità app su Windows, WebKit di sistema su macOS, Qt WebEngine
+  (incluso nel pacchetto) su Linux; profilo isolato, senza schede né barra degli indirizzi.
+- **Chiusura totale con la X rossa**: il gestore ferma in modo pulito **solo** i processi di Germano (server Flask +
+  demone IA), senza processi orfani e senza toccare altri processi del sistema.
+
+### Modificato - Aggiornamenti
+- Unica fonte: **https://download.germano.ai/** (`version.json`, in mancanza l'elenco dei file). Niente più Google Drive
+  e nessuna impronta SHA-256: i file del server ufficiale sono considerati attendibili, si controlla solo che il
+  download sia completo.
+- Windows: l'installer della nuova versione si scarica nella cartella tecnica dell'utente e, con «Installa ora» o al
+  successivo avvio, aggiorna Germano mantenendo cartelle di lavoro, Vault e impostazioni, poi lo riapre; un
+  aggiornamento non riuscito non viene ripetuto a ogni avvio.
+- macOS e Linux: la Dashboard indica il nuovo `.pkg` / `.deb` da scaricare e aprire con un doppio clic.
+
+### Modificato
+- `VERSION` → `0.60`; `config.json` ai valori predefiniti puliti; testi della Dashboard, della Guida e dei README
+  aggiornati (installazione, cartelle di lavoro, Vault in `extracted/deanonymize_vault.json`).
+- Struttura della release: `sorgenti/` (solo il codice pubblicabile su GitHub, per Windows, macOS e Linux),
+  `dipendenze/` (runtime e librerie per l'uso offline, per sistema operativo), `modelli/` (i 6 modelli IA) e
+  `releases/` (i soli installer).
+
+### Rimosso
+- Gli eseguibili con nomi diversi (`GermanoServer.exe`, `GermanoClient.exe`, `GermanoClient.app`, `GermanoClient.desktop`):
+  esiste solo `Germano`.
+- `START.bat` e `START_SERVER.bat`: Germano si installa con l'installer e si avvia dal collegamento; la modalità Server
+  si sceglie nelle Impostazioni dell'app.
+- I file del client separato (`client.py`, `client_ui.py`, …) dalla suite completa: la suite usa la propria modalità
+  Client integrata nella Dashboard.
+
 ## [0.52-alpha] - 2026-10-24
 Germano lavora ora in quattro **modalità operative**, scelte alla prima apertura e modificabili in qualsiasi momento:
 **Standalone** (predefinita, tutto su questo computer), **Server** (offre motore e Proxy agli altri PC dell'ufficio),
 **Client** (affida il calcolo dei modelli a un Germano Server della rete) oppure **Server + Client**. Ogni elemento
 della Dashboard ha un suggerimento al passaggio del mouse. Runtime e modelli invariati rispetto alla 0.51; funziona
 offline su Windows 11 appena installato.
+
+### Aggiunto - Interfaccia bilingue (italiano/inglese)
+- Tutta la Dashboard e la Guida offline sono **bilingui**. All'avvio la lingua è scelta dall'indirizzo (`?lang=it|en`),
+  poi dalla scelta salvata, infine dalla lingua del browser (italiano se inizia per `it`, altrimenti inglese).
+  Le **bandierine 🇮🇹 IT / 🇬🇧 EN** in alto cambiano lingua all'istante, tooltip compresi; la scelta è ricordata e
+  condivisa tra Dashboard e Guida. Le etichette usate nei documenti (`[PERSONA]`, …) e i messaggi del *Registro
+  attività* restano in italiano. I messaggi del server verso l'interfaccia seguono l'intestazione `X-Germano-Lang`.
+
+### Aggiunto - AI del Server condivise con i client
+- Il Germano Server può **eseguire per i client le proprie CLI di AI** (es. Claude Code): nuovi endpoint
+  `GET /api/harness/v1/tools` (elenco delle AI del server e di quali sono usabili da remoto) e
+  `POST /api/harness/v1/run` (esecuzione non interattiva, sempre attraverso il Proxy: verso l'AI esce solo testo
+  anonimizzato, la risposta torna con i dati reali). Un client senza quella CLI in locale la usa con `client ask`;
+  `client models` mostra il catalogo. La condivisione è **disattivata per impostazione predefinita** e si attiva in
+  *Impostazioni › Accesso dalla rete* (`share_ai_tools`), perché usa l'account e le credenziali del server. Gli
+  strumenti grafici (Antigravity, Cursor, Claude Desktop, Windsurf) sono elencati come non utilizzabili da remoto con
+  il motivo. La modalità Client e il motore remoto accettano l'indirizzo del server anche in forma breve
+  (`192.168.1.10`) o come Base URL con token copiato dalla Dashboard, con messaggi di rete comprensibili.
 
 ### Aggiunto - Modalità operativa all'avvio
 - **Finestra di benvenuto** alla prima apertura della Dashboard: tre caselle — **[x] Standalone** (predefinita),
@@ -26,7 +100,7 @@ offline su Windows 11 appena installato.
   Client avviano il motore da soli; cambiando la parte Client il motore si riavvia con il tipo giusto (locale o remoto).
 - Con la parte Server attiva le Impostazioni mostrano indirizzi IP, token per i client (con **Nuovo token**, che
   invalida subito il precedente) e stato del rilevamento automatico.
-- **`START_SERVER.bat`** ora imposta `GERMANO_MODE=server`: forza la modalità Server solo per quell'avvio, senza
+- **`Germano.exe`** ora imposta `GERMANO_MODE=server`: forza la modalità Server solo per quell'avvio, senza
   modificare la scelta salvata (la Dashboard lo segnala). Resta compatibile `GERMANO_HOST=0.0.0.0`.
 - Il cambio di modalità, il token e la ricerca dei server sono riservati al computer stesso (`/api/mode`,
   `/api/mode/token`, `/api/remote/servers`, mai dalla rete) e rispettano `lock_settings`: con le impostazioni
@@ -96,7 +170,7 @@ offline su Windows 11 appena installato.
   interrompeva subito, al primo avviso «porta irraggiungibile» che Windows restituisce per il ping a 127.0.0.1, e
   spesso non trovava i server della LAN. Ora ascolta le risposte per tutto il tempo previsto; vengono scartate anche
   le risposte con una porta non valida.
-- `START_SERVER.bat` usa i fine riga di Windows (CRLF), come `START.bat`.
+- `Germano.exe` usa i fine riga di Windows (CRLF), come `Germano.exe`.
 
 ### Aggiunto - Germano Client v0.01 (prodotto separato)
 - Nuova applicazione **`germano_client`** (cartella a parte), leggerissima: **non contiene modelli** (28 MB di
@@ -160,7 +234,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
   Google Drive per i file grandi), accettato solo via HTTPS da download.germano.ai e dai domini Google, controllato
   (download completo, impronta SHA-256 se nella cartella c'è anche `<nome dello ZIP>.sha256`, CRC di ogni file dello
   ZIP, VERSION uguale alla versione del nome), estratto e preparato nella cartella `update/`.
-- Installazione al successivo avvio di `START.bat` oppure subito con *Installa ora e riavvia*: un installatore separato
+- Installazione al successivo avvio di `Germano.exe` oppure subito con *Installa ora e riavvia*: un installatore separato
   sostituisce i componenti del programma, conserva `input`, `output`, `processed`, `failed`, `extracted`, `state` e
   `config.json`, rimette al suo posto la versione precedente in caso di errore e riavvia Germano.
 - Opzioni `check_updates` e `auto_update` (anche nella Dashboard, *Sistema e registro → Aggiornamenti*) e pulsante
@@ -222,7 +296,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
   cooperativo invece di thread lasciati in esecuzione).
 - Accesso concorrente ai modelli da più thread (errori casuali "Already borrowed"): ora serializzato.
 - Log letto per intero a ogni secondo e mai ruotato; scansione completa delle cartelle a ogni richiesta di stato.
-- `START.bat`: controllo `%errorlevel%` dentro un blocco (sempre valutato prima), cartelle di rete non supportate.
+- `Germano.exe`: controllo `%errorlevel%` dentro un blocco (sempre valutato prima), cartelle di rete non supportate.
 
 ### Sicurezza
 - Protezione anti DNS-rebinding (solo host locali) e anti CSRF (nessuna azione da siti web esterni) sull'API locale,
@@ -250,8 +324,8 @@ modelli invariati: funziona offline su Windows 11 appena installato.
   (precisione, timeout, nomi file anonimizzati, servizio Anthropic separato).
 - Blocco amministrativo delle impostazioni (`"lock_settings": true` in `config.json`) per il profilo PA.
 - Opzione per anonimizzare anche i nomi di file e cartelle (`anonymize_filenames`).
-- Avvio di `START.bat` con Germano già aperto: apre la Dashboard esistente invece di dare errore di porta occupata.
-- Avvisi di `START.bat` per Smart App Control, percorsi troppo lunghi e pacchetto incompleto.
+- Avvio di `Germano.exe` con Germano già aperto: apre la Dashboard esistente invece di dare errore di porta occupata.
+- Avvisi di `Germano.exe` per Smart App Control, percorsi troppo lunghi e pacchetto incompleto.
 - Proxy: certificati di Windows (reti aziendali con ispezione TLS), log di sessione giornalieri in JSONL.
 
 ### Modificato
@@ -268,9 +342,9 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 
 ## [0.50-alpha] - 2026-10-20
 ### Architettura Standalone & Compatibilità Windows 11 Vanilla (100% Offline)
-- **Zero-Admin Native C++ Runtime Bundling**: Estratte e integrate direttamente in `runtime/` e `runtime/Lib/site-packages/torch/lib/` tutte le 12 librerie dinamiche ufficiali a 64-bit del Microsoft Visual C++ Redistributable (`concrt140.dll`, `msvcp140.dll`, `msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`, `vcamp140.dll`, `vccorlib140.dll`, `vcomp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `vcruntime140_threads.dll`) insieme alle librerie di sistema `pywin32` (`pythoncom311.dll`, `pywintypes311.dll`). Questo risolve definitivamente gli errori `ImportError: DLL load failed` / `WinError 126` su installazioni **Windows 11 Vanilla** appena formattate, anche quando l'utente avvia `START.bat` senza privilegi di Amministratore (UAC).
+- **Zero-Admin Native C++ Runtime Bundling**: Estratte e integrate direttamente in `runtime/` e `runtime/Lib/site-packages/torch/lib/` tutte le 12 librerie dinamiche ufficiali a 64-bit del Microsoft Visual C++ Redistributable (`concrt140.dll`, `msvcp140.dll`, `msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`, `vcamp140.dll`, `vccorlib140.dll`, `vcomp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `vcruntime140_threads.dll`) insieme alle librerie di sistema `pywin32` (`pythoncom311.dll`, `pywintypes311.dll`). Questo risolve definitivamente gli errori `ImportError: DLL load failed` / `WinError 126` su installazioni **Windows 11 Vanilla** appena formattate, anche quando l'utente avvia `Germano.exe` senza privilegi di Amministratore (UAC).
 - **Configurazione `python311._pth` Isolata**: Aggiornato il file di path del runtime embedded per includere `..`, `Lib` e `Lib\site-packages` con `import site` attivo, garantendo la risoluzione deterministica dei moduli indipendentemente dalla working directory o da installazioni Python di sistema preesistenti.
-- **Launcher `START.bat` Riprogettato**: Riscritto lo script di avvio con codifica UTF-8 (`chcp 65001`), variabili d'ambiente rigorose per l'isolamento offline (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `HF_HUB_DISABLE_TELEMETRY=1`, `EASYOCR_MODULE_PATH`), pre-flight check dell'interprete embedded e verifica opzionale non bloccante delle librerie VC++.
+- **Launcher `Germano.exe` Riprogettato**: Riscritto lo script di avvio con codifica UTF-8 (`chcp 65001`), variabili d'ambiente rigorose per l'isolamento offline (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `HF_HUB_DISABLE_TELEMETRY=1`, `EASYOCR_MODULE_PATH`), pre-flight check dell'interprete embedded e verifica opzionale non bloccante delle librerie VC++.
 
 ### Aggiornamento Completo Software, Dipendenze e Modelli IA
 - **Aggiornamento Integrale dello Stack Python (39 Pacchetti)**:
@@ -344,7 +418,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 - **Pulsante e Manuale Offline Completo Bilingue (`/guide` & `GUIDA_OFFLINE.html`)**: Aggiunto nella testata della dashboard il pulsante *"📖 Guida & Docs"* che apre la guida offline bilingue (italiano e inglese commutabile all'istante). La guida illustra dapprima i concetti base a prova di errore della Modalità Semplice e il funzionamento delle 5 cartelle interne (`input`, `output`, `processed`, `failed`, `extracted`), prosegue con i controlli dettagliati della Modalità Avanzata (i 7 modelli IA locali e le 18 categorie granulari), e contiene le specifiche complete delle API REST e le istruzioni passo-passo per il Proxy con Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf e Claude Code.
 
 ### Pre-Distribution Bug Audit & Certificazione Windows 11 Home 100% Offline (Air-Gapped)
-- **Escape del Titolo Finestra in `START.bat`**: Sostituito `&` con `^&` in `TITLE Germano AI v0.50-alpha - Local Privacy Engine ^& API Proxy` per prevenire l'errore di sintassi della shell `cmd.exe` (`'API' non è riconosciuto come comando interno o esterno`) al doppio clic dell'utente.
+- **Escape del Titolo Finestra in `Germano.exe`**: Sostituito `&` con `^&` in `TITLE Germano AI v0.50-alpha - Local Privacy Engine ^& API Proxy` per prevenire l'errore di sintassi della shell `cmd.exe` (`'API' non è riconosciuto come comando interno o esterno`) al doppio clic dell'utente.
 - **Risoluzione Race Condition di Avvio & File Lock (`server.py` e `daemon.py`)**:
   - Scrittura immediata del PID (`proc.pid`) in `daemon.pid` al momento dello spawn del processo in `server.py` e alla prima riga di `main()` in `daemon.py` prima del caricamento di PyTorch (5–10s), evitando duplicazioni di processi in background dovute a doppi clic o upload immediati.
   - Chiusura esplicita del descrittore `log_f` nel processo padre in `server.py`, prevenendo lock su `daemon.log` e consentendo la pulizia dei log senza conflitti di condivisione file su Windows.

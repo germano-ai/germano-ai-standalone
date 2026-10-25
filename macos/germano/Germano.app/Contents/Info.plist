@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>Germano AI</string>
+    <key>CFBundleDisplayName</key><string>Germano AI</string>
+    <key>CFBundleIdentifier</key><string>ai.germano.app</string>
+    <key>CFBundleVersion</key><string>0.60</string>
+    <key>CFBundleShortVersionString</key><string>0.60</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleExecutable</key><string>Germano</string>
+    <key>CFBundleIconFile</key><string>germano.icns</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>LSMinimumSystemVersion</key><string>11.0</string>
+</dict>
+</plist>

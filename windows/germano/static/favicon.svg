@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <defs>
+    <linearGradient id="blueGrad_v1_curved_arc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+    <linearGradient id="arcGrad_v1_curved_arc" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00b4d8" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <filter id="glow_v1_curved_arc" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#00b4d8" flood-opacity="0.3" />
+    </filter>
+  </defs>
+  
+  <!-- Accento circonflesso dall'arco azzurro -->
+  <path d="M 31 30 Q 50 14 69 30 Q 50 21 31 30 Z" fill="url(#arcGrad_v1_curved_arc)" filter="url(#glow_v1_curved_arc)" />
+  
+  <!-- Lettera G del logo originale -->
+  <path d="M 48.80 71.71 Q 44.04 71.71 40.21 69.38 Q 36.38 67.03 34.19 62.94 Q 31.99 58.84 31.99 53.79 Q 31.99 48.72 34.19 44.71 Q 36.38 40.68 40.21 38.35 Q 44.04 36.00 48.80 36.00 Q 52.30 36.00 55.12 37.20 Q 57.96 38.38 59.82 40.53 L 59.82 36.74 L 68.00 36.74 L 68.00 70.97 Q 68.00 76.11 65.62 79.93 Q 63.24 83.77 58.99 85.92 Q 54.75 88.08 49.17 88.08 Q 43.52 88.08 39.28 86.03 Q 35.03 83.99 32.43 80.27 L 37.79 74.91 Q 39.95 77.59 42.70 78.93 Q 45.45 80.27 49.32 80.27 Q 54.16 80.27 56.98 77.77 Q 59.82 75.28 59.82 70.97 L 59.82 67.10 Q 57.96 69.26 55.12 70.49 Q 52.30 71.71 48.80 71.71 Z M 50.44 63.97 Q 54.90 63.97 57.61 61.18 Q 60.33 58.39 60.33 53.86 Q 60.33 49.24 57.61 46.50 Q 54.90 43.74 50.44 43.74 Q 45.97 43.74 43.18 46.53 Q 40.39 49.32 40.39 53.86 Q 40.39 58.39 43.18 61.18 Q 45.97 63.97 50.44 63.97 Z" fill="url(#blueGrad_v1_curved_arc)" />
+</svg>

@@ -1,0 +1,8 @@
+# Germano AI Client 0.60 - librerie Python del client, per chi lo esegue dai sorgenti (Python 3.11).
+# Il pacchetto germano-client-0.60.pkg le include gia' con il proprio Python (Apple Silicon e Intel): per usare il
+# client non serve installarle.
+Flask==3.1.3
+Werkzeug==3.1.9
+psutil==7.2.2
+# finestra dell'applicazione: pywebview con WebKit di sistema (PyObjC)
+pywebview==6.2.1

@@ -1,0 +1,28 @@
+#!/bin/bash
+# Germano AI v0.60 - avvio su macOS dal Finder (nessun terminale). Un solo lanciatore per tutti i pacchetti: la suite
+# completa apre la Dashboard unificata (Standalone / Server / Client), il pacchetto client leggero il pannello client.
+# Installato con germano-0.60.pkg il programma sta dentro l'app (Contents/Resources/app) con il proprio Python (runtime/;
+# runtime-x86_64/ per i Mac Intel, solo nel client). Nella copia di sviluppo Germano.app sta accanto ai sorgenti.
+HERE="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$HERE/../Resources/app/germano_desktop.py" ]; then
+  APP_ROOT="$(cd "$HERE/../Resources/app" && pwd)"; INSTALLED=1
+else
+  APP_ROOT="$(cd "$HERE/../../.." && pwd)"; INSTALLED=0
+fi
+PY="$APP_ROOT/runtime/bin/python3"
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" != "1" ]; then   # Mac Intel (anche se avviato con Rosetta vale 1)
+  if [ -x "$APP_ROOT/runtime-x86_64/bin/python3" ]; then
+    PY="$APP_ROOT/runtime-x86_64/bin/python3"
+  elif [ "$INSTALLED" = 1 ]; then
+    osascript -e 'display dialog "Questa edizione di Germano AI richiede un Mac con Apple Silicon (M1 o successivo). Sui Mac Intel si usa Germano AI Client (germano-client-0.60.pkg)." buttons {"OK"} with icon stop with title "Germano AI"'
+    exit 1
+  fi
+fi
+# Solo la copia di sviluppo ripiega sul Python del sistema: nel programma installato mai, perche' su un Mac senza
+# strumenti per sviluppatori /usr/bin/python3 chiederebbe di installarli da Internet.
+if [ ! -x "$PY" ] && [ "$INSTALLED" = 0 ]; then PY="$(command -v python3)"; fi
+if [ -z "$PY" ] || [ ! -x "$PY" ]; then
+  osascript -e 'display dialog "Germano AI non trova il proprio Python: reinstalla germano-0.60.pkg." buttons {"OK"} with icon stop with title "Germano AI"'
+  exit 1
+fi
+exec "$PY" "$APP_ROOT/germano_desktop.py" auto
