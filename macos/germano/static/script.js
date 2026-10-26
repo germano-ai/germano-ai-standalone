@@ -1584,7 +1584,7 @@ const TIPS = [
     ['.option:has(.cat-check)', optTitle, (el) => `Etichetta usata nei documenti: ${(el.querySelector('.option-desc')?.textContent || '').trim()}. Clicca per oscurare o lasciare in chiaro questa categoria.`],
     // --- sistema
     ['#btnNetChange', 'Cambia modalità', 'Apre le Impostazioni per scegliere Standalone, Server, Client o Server + Client.'],
-    ['#netSummary', 'Rete e modalità operativa', 'Stato attuale: ascolto sulla rete, collegamento al Germano Server e token per i client.'],
+    ['#netSummary', 'Rete e modalità operativa', 'Stato attuale: ascolto sulla rete, collegamento al Germano Server e accesso dalla rete (libero o con utente e password).'],
     ['.field:has(#hardware_mode)', 'Calcolo', 'Automatico usa una scheda video NVIDIA se presente, altrimenti il processore.'],
     ['.field:has(#precision)', 'Precisione del modello', 'FP32 è più veloce ma usa più memoria; BF16 la dimezza ed è più lento sui processori meno recenti. Vale dal prossimo avvio del motore.'],
     ['.field:has(#file_timeout_minutes)', 'Tempo massimo per documento', 'Oltre questo tempo il documento viene interrotto e spostato tra i non riusciti.'],
@@ -1617,13 +1617,16 @@ const TIPS = [
     // --- Impostazioni e modalità operativa
     ['#cardStandalone', 'Standalone', 'Disattiva Server e Client: Germano lavora solo su questo computer, senza alcuna attività di rete.'],
     ['#cardServer', 'Server', 'Al primo avvio Windows può chiedere di consentire Python sulle reti private: rispondi Consenti, altrimenti gli altri computer non raggiungono il server.'],
-    ['#cardClient', 'Client', 'Serve il token che il Germano Server mostra nelle sue Impostazioni (sezione «Accesso dalla rete»).'],
+    ['#cardClient', 'Client', 'Affida il calcolo a un Germano Server della rete. Se il server ha la gestione utenti attiva, inserisci utente e password che ti ha dato l\'amministratore.'],
     ['.field:has(#remoteServer)', 'Indirizzo del server', 'Lascia vuoto per la ricerca automatica in rete, oppure scrivi ad esempio http://192.168.1.10:8181.'],
-    ['.field:has(#remoteToken)', 'Token del server', 'Lo trovi sul server in Impostazioni › Accesso dalla rete, oppure nella sua finestra all\'avvio.'],
+    ['.field:has(#remoteUser)', 'Utente del server', 'Solo se il Germano Server ha la gestione utenti attiva: Germano accede con utente e password e conserva solo la sessione (mai la password).'],
     ['#btnFindServers', 'Cerca server in rete', 'Invia un breve messaggio di rilevamento (UDP 8182) sulla rete locale ed elenca i Germano Server che rispondono.'],
     ['.check-row:has(#clientFallback)', 'Ripiego sul motore locale', 'Se nessun server risponde, i modelli vengono caricati su questo computer (serve più memoria). Disattivato: i documenti restano in coda finché il server non risponde.'],
     ['.server-row', 'Usa questo server', 'Imposta questo Germano Server come destinazione della modalità Client.'],
-    ['[data-regen-token]', 'Nuovo token', 'Genera un nuovo token: quello attuale smette subito di funzionare e va aggiornato su tutti i client.'],
+    ['.check-row:has(#authEnabled)', 'Gestione utenti', 'Attiva: dalla rete servono utente e password (Remote Control e Germano Client). Disattiva: accesso libero a chiunque sia nella rete locale. Dal server stesso non servono mai.'],
+    ['#authAddBtn', 'Aggiungi utente', 'Crea un utente (o cambia la password di uno esistente). La password è salvata solo come impronta PBKDF2-SHA256.'],
+    ['[data-auth-pass]', 'Nuova password', 'Imposta una nuova password: le sessioni aperte di questo utente vengono chiuse.'],
+    ['[data-auth-del]', 'Elimina utente', 'Elimina l\'utente e chiude le sue sessioni. Senza utenti l\'accesso dalla rete torna libero.'],
     ['.toggle-row .switch', 'Suggerimenti', 'Attiva o disattiva queste spiegazioni al passaggio del mouse.'],
     ['#btnSaveSettings', 'Salva', 'Applica subito la modalità scelta: l\'ascolto sulla rete si accende o si spegne senza riavviare Germano.'],
     ['#btnCancelSettings', 'Annulla', 'Chiude senza modificare nulla.'],
@@ -1704,14 +1707,17 @@ const TIPS_EN = {
     '#copyApiKeyBtn': ['Copy API key', 'Copies dummy API key for local proxy auth.'],
     // --- settings & operational mode
     '#cardStandalone': ['Standalone', 'Disables Server and Client: Germano runs strictly locally with zero network activity.'],
-    '#cardServer': ['Server', 'Listens on local network and provides anonymization engine to other PCs with token authentication.'],
+    '#cardServer': ['Server', 'Listens on the local network and offers the anonymization engine, the Proxy and the Remote Control to other computers and devices (open access, or user name and password).'],
     '#cardClient': ['Client', 'Delegates compute to a remote Germano Server while keeping Vault and files locally.'],
     '.field:has(#remoteServer)': ['Server address', 'Leave blank for automatic LAN discovery, or enter IP (e.g. http://192.168.1.10:8181).'],
-    '.field:has(#remoteToken)': ['Server token', 'Found on the server under Settings › Network Access.'],
+    '.field:has(#remoteUser)': ['Server user', 'Only if the Germano Server has user management enabled: Germano signs in and keeps only the session (never the password).'],
     '#btnFindServers': ['Scan network for servers', 'Sends UDP discovery beacon (port 8182) and lists available Germano Servers.'],
     '.check-row:has(#clientFallback)': ['Fallback to local engine', 'If no remote server responds, loads models locally.'],
     '.server-row': ['Use this server', 'Sets this Germano Server as the remote compute target.'],
-    '[data-regen-token]': ['Generate new token', 'Generates a new security token, revoking the previous one.'],
+    '.check-row:has(#authEnabled)': ['User management', 'On: network access requires user name and password (Remote Control and Germano Client). Off: open access for anyone on the local network. Never needed on the server itself.'],
+    '#authAddBtn': ['Add user', 'Creates a user (or changes the password of an existing one). The password is stored only as a PBKDF2-SHA256 hash.'],
+    '[data-auth-pass]': ['New password', 'Sets a new password: the open sessions of this user are closed.'],
+    '[data-auth-del]': ['Delete user', 'Deletes the user and closes their sessions. Without users, network access is open again.'],
     '.toggle-row .switch': ['Tooltips', 'Toggle hover tooltips across the entire interface.'],
     '#btnSaveSettings': ['Save', 'Immediately applies mode settings without restarting Germano.'],
     '#btnCancelSettings': ['Cancel', 'Closes without making changes.'],
@@ -1929,19 +1935,140 @@ function renderServerInfo() {
     if (!box || !$('optServer').checked) return;
     const s = (modeState && modeState.server) || {};
     if (!s.enabled || !s.listening) {
-        box.innerHTML = '<span class="muted">Dopo il salvataggio Germano si mette in ascolto sulla rete e qui compaiono gli ' +
-            'indirizzi e il token da comunicare ai client. Al primo avvio Windows può chiedere di consentire Python sulle ' +
-            'reti private: rispondi «Consenti».</span>';
+        box.innerHTML = `<span class="muted">${escapeHtml(updText(
+            'Dopo il salvataggio Germano si mette in ascolto sulla rete e qui compaiono gli indirizzi del Remote Control, da ' +
+            'aprire nel browser dei computer, dei tablet e degli smartphone della rete. Al primo avvio Windows può chiedere di ' +
+            'consentire Python sulle reti private: rispondi «Consenti».',
+            'After saving, Germano listens on the network and the Remote Control addresses appear here, to open in the ' +
+            'browser of the network computers, tablets and smartphones. On first start Windows may ask to allow Python on ' +
+            'private networks: answer «Allow».'))}</span>`;
+        renderAuthAdmin(null);
         return;
     }
-    const ips = (s.ips || []).map(ip => `<code>http://${escapeHtml(ip)}:${escapeHtml(s.port)}</code>`).join(' ');
+    const urls = (s.ips || []).map(ip => `http://${ip}:${s.port}/remote`);
+    const list = urls.length
+        ? urls.map(u => `<div class="copy-line"><code>${escapeHtml(u)}</code>${copyButton(u, updText('Copia indirizzo', 'Copy address'))}</div>`).join('')
+        : `<span class="muted">${escapeHtml(updText('nessun indirizzo IPv4 trovato', 'no IPv4 address found'))}</span>`;
     box.innerHTML = `
-        <div><strong>In ascolto sulla rete</strong> · ${ips || '<span class="muted">nessun indirizzo IPv4 trovato</span>'}</div>
-        <div class="copy-line">Token per i client: <code>${escapeHtml(s.token)}</code>${copyButton(s.token, 'Copia token')}
-            <button type="button" class="btn btn-secondary btn-sm" data-regen-token>Nuovo token</button></div>
-        <div class="muted">Rilevamento automatico: ${s.discovery ? `attivo (UDP ${escapeHtml(s.discovery_port)})` : 'non attivo'}.
-            I client Germano inseriscono il token nelle loro Impostazioni; le CLI possono usare
-            <code>http://&lt;IP&gt;:${escapeHtml(s.port)}/g/&lt;token&gt;/v1</code>.</div>`;
+        <div><strong>${escapeHtml(updText('In ascolto sulla rete · Remote Control, da qualsiasi browser senza installare nulla:',
+                                          'Listening on the network · Remote Control, from any browser without installing anything:'))}</strong></div>
+        ${list}
+        <div class="muted">${escapeHtml(updText(
+            `Rilevamento automatico: ${s.discovery ? `attivo (UDP ${s.discovery_port})` : 'non attivo'}. Le CLI dei computer della ` +
+            `rete usano http://<IP>:${s.port}/v1 (e http://<IP>:${s.port}/p/<servizio>/v1 per DeepSeek, Kimi, Muse, Mistral, Grok…).`,
+            `Auto-discovery: ${s.discovery ? `on (UDP ${s.discovery_port})` : 'off'}. The CLIs of the network computers use ` +
+            `http://<IP>:${s.port}/v1 (and http://<IP>:${s.port}/p/<service>/v1 for DeepSeek, Kimi, Muse, Mistral, Grok…).`))}</div>`;
+    loadAuthAdmin();
+}
+
+// ------------------------------------------------------------------ GESTIONE UTENTI (accesso dalla rete)
+let authState = null;
+
+async function loadAuthAdmin() {
+    try {
+        const { ok, data } = await fetchJson('/api/auth/users', { cache: 'no-store' });
+        if (ok) authState = data;
+    } catch (e) { /* Germano non risponde */ }
+    renderAuthAdmin(authState);
+}
+
+function renderAuthAdmin(st) {
+    const box = $('authAdmin');
+    if (!box) return;
+    const s = (modeState && modeState.server) || {};
+    if (!st || !s.enabled || !s.listening) {
+        box.innerHTML = '';
+        return;
+    }
+    const locked = Boolean(st.locked);
+    const dis = locked ? ' disabled' : '';
+    const users = st.users || [];
+    const rows = users.map(u => `<div class="auth-user"><span>👤 <strong>${escapeHtml(u.username)}</strong>
+            <span class="muted">${escapeHtml(updText('dal', 'since'))} ${escapeHtml(u.created || '')}</span></span>
+        <span class="auth-user-actions">
+            <button type="button" class="btn btn-secondary btn-sm" data-auth-pass="${escapeHtml(u.username)}"${dis}>${escapeHtml(updText('Nuova password', 'New password'))}</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-auth-del="${escapeHtml(u.username)}"${dis}>${escapeHtml(updText('Elimina', 'Delete'))}</button>
+        </span></div>`).join('');
+    box.innerHTML = `
+        <h4 class="mode-detail-title">${escapeHtml(updText('Gestione utenti', 'User management'))}</h4>
+        <label class="check-row"><input type="checkbox" id="authEnabled"${st.enabled ? ' checked' : ''}${locked || !users.length ? ' disabled' : ''}>
+            <span>${escapeHtml(updText(
+                'Richiedi utente e password per l\'accesso dalla rete (Remote Control nel browser e Germano Client). Dal computer del server si accede sempre senza credenziali.',
+                'Require user name and password for network access (Remote Control in the browser and Germano Client). From the server computer access never needs credentials.'))}</span></label>
+        <p class="auth-state ${st.enabled ? 'is-on' : 'is-off'}">${escapeHtml(st.enabled
+            ? updText(`🔐 Accesso con utente e password · ${st.sessions} sessioni aperte.`, `🔐 Sign-in with user name and password · ${st.sessions} open sessions.`)
+            : updText('🔓 Accesso dalla rete LIBERO: chiunque sia collegato alla rete locale può usare Germano (motore, Proxy, Remote Control).',
+                      '🔓 Network access OPEN: anyone on the local network can use Germano (engine, Proxy, Remote Control).'))}</p>
+        <div class="auth-users">${rows || `<span class="muted">${escapeHtml(updText('Nessun utente: aggiungine uno per poter attivare l\'accesso con password.',
+                                                                                  'No users: add one to enable password sign-in.'))}</span>`}</div>
+        <div class="auth-add">
+            <input type="text" id="authNewUser" class="input" placeholder="${escapeHtml(updText('nuovo utente', 'new user'))}" autocomplete="off" spellcheck="false"${dis}>
+            <input type="password" id="authNewPass" class="input" placeholder="${escapeHtml(updText(`password (almeno ${st.min_password} caratteri)`, `password (at least ${st.min_password} characters)`))}" autocomplete="new-password"${dis}>
+            <button type="button" class="btn btn-secondary btn-sm" id="authAddBtn"${dis}>${escapeHtml(updText('Aggiungi utente', 'Add user'))}</button>
+        </div>
+        <p class="muted">${escapeHtml(updText(
+            'Le password sono salvate solo come impronta (PBKDF2-SHA256). In rete locale il collegamento non è cifrato (HTTP): usa Germano su reti fidate.',
+            'Passwords are stored only as a hash (PBKDF2-SHA256). On the local network the connection is not encrypted (HTTP): use Germano on trusted networks.'))}</p>
+        ${locked ? `<p class="muted">🔒 ${escapeHtml(updText('Bloccato dall\'amministratore (lock_settings).', 'Locked by the administrator (lock_settings).'))}</p>` : ''}`;
+}
+
+async function authCall(url, body, okMsg) {
+    try {
+        const { ok, data } = await postJson(url, body);
+        if (!ok) {
+            showToast(data.message || data.error || updText('Operazione non riuscita.', 'Operation failed.'), 'error', 7000);
+            return false;
+        }
+        authState = data;
+        renderAuthAdmin(authState);
+        renderNetSummary();
+        if (okMsg) showToast(okMsg, 'success');
+        return true;
+    } catch (e) {
+        showToast(updText('Germano non risponde.', 'Germano is not responding.'), 'error');
+        return false;
+    }
+}
+
+async function onAuthAdminClick(e) {
+    if (e.target.id === 'authAddBtn') {
+        const user = ($('authNewUser').value || '').trim();
+        const pass = $('authNewPass').value || '';
+        if (!user || !pass) {
+            showToast(updText('Scrivi nome utente e password.', 'Type user name and password.'), 'warn');
+            return;
+        }
+        if (await authCall('/api/auth/users', { username: user, password: pass },
+                           updText(`Utente «${user}» salvato.`, `User «${user}» saved.`))) {
+            $('authNewUser').value = '';
+            $('authNewPass').value = '';
+        }
+        return;
+    }
+    const del = e.target.closest('[data-auth-del]');
+    if (del) {
+        const user = del.dataset.authDel;
+        if (!confirm(updText(`Eliminare l'utente «${user}»? Le sue sessioni aperte vengono chiuse.`,
+                             `Delete the user «${user}»? Their open sessions are closed.`))) return;
+        await authCall('/api/auth/users/delete', { username: user }, updText(`Utente «${user}» eliminato.`, `User «${user}» deleted.`));
+        return;
+    }
+    const pw = e.target.closest('[data-auth-pass]');
+    if (pw) {
+        const user = pw.dataset.authPass;
+        const pass = prompt(updText(`Nuova password per «${user}» (le sue sessioni aperte vengono chiuse):`,
+                                    `New password for «${user}» (their open sessions are closed):`));
+        if (pass) await authCall('/api/auth/users', { username: user, password: pass }, updText('Password cambiata.', 'Password changed.'));
+    }
+}
+
+async function onAuthAdminChange(e) {
+    if (e.target.id !== 'authEnabled') return;
+    const enabled = e.target.checked;
+    const done = await authCall('/api/auth/enable', { enabled }, enabled
+        ? updText('Accesso con utente e password attivato.', 'Sign-in with user name and password enabled.')
+        : updText('Accesso dalla rete libero (senza credenziali).', 'Network access open (no credentials).'));
+    if (!done) e.target.checked = !enabled;
 }
 
 async function openSettings(opts = {}) {
@@ -1968,14 +2095,15 @@ async function openSettings(opts = {}) {
     const cl = st.client || {};
     setModeChecks(st.saved || 'standalone');
     $('remoteServer').value = cl.remote_server || '';
-    $('remoteToken').value = '';
-    $('remoteToken').placeholder = cl.token_set
-        ? '•••••••• già impostato (lascia vuoto per non cambiarlo)'
-        : 'Lo mostra il server nelle sue Impostazioni';
+    $('remoteUser').value = cl.remote_user || '';
+    $('remotePassword').value = '';
+    $('remotePassword').placeholder = cl.remote_user
+        ? updText('•••••••• accesso già fatto (lascia vuoto)', '•••••••• already signed in (leave empty)')
+        : '';
     $('clientFallback').checked = cl.fallback_local !== false;
     $('shareAiTools').checked = Boolean((st.server || {}).share_ai_tools);
     const locked = Boolean(st.locked) || Boolean(remoteViewer);
-    ['optStandalone', 'optServer', 'optClient', 'remoteServer', 'remoteToken', 'clientFallback', 'btnFindServers', 'shareAiTools']
+    ['optStandalone', 'optServer', 'optClient', 'remoteServer', 'remoteUser', 'remotePassword', 'clientFallback', 'btnFindServers', 'shareAiTools']
         .forEach(id => { if ($(id)) $(id).disabled = locked; });
     $('enable_tooltips').disabled = Boolean(remoteViewer);
     $('btnSaveSettings').disabled = Boolean(remoteViewer);
@@ -2019,7 +2147,12 @@ async function saveSettings({ keepMode = false } = {}) {
     const body = { operating_mode: mode, enable_tooltips: $('enable_tooltips').checked };
     if (!keepMode && mode.includes('client')) {
         body.remote_server = ($('remoteServer').value || '').trim();
-        if (($('remoteToken').value || '').trim()) body.remote_token = $('remoteToken').value.trim();
+        const ru = ($('remoteUser').value || '').trim();
+        const rp = $('remotePassword').value || '';
+        if (ru && rp) {
+            body.remote_user = ru;          // il server di Germano accede al server remoto e conserva solo la sessione
+            body.remote_password = rp;
+        }
         body.client_fallback_local = $('clientFallback').checked;
     }
     if (!keepMode && mode.includes('server')) body.share_ai_tools = $('shareAiTools').checked;
@@ -2095,23 +2228,6 @@ async function findServers() {
     }
 }
 
-async function regenToken() {
-    if (!confirm('Generare un nuovo token?\nIl token attuale smette subito di funzionare e va inserito di nuovo su tutti i client.')) return;
-    try {
-        const { ok, data } = await postJson('/api/mode/token', {});
-        if (ok && data.token) {
-            if (modeState && modeState.server) modeState.server.token = data.token;
-            renderServerInfo();
-            renderNetSummary();
-            showToast('Nuovo token generato: aggiornalo sui client.', 'success');
-        } else {
-            showToast(data.message || 'Operazione non riuscita.', 'error');
-        }
-    } catch (e) {
-        showToast('Germano non risponde.', 'error');
-    }
-}
-
 function renderModeChip(data) {
     const chip = $('modeChip');
     if (!chip || !data || !data.mode) return;
@@ -2172,8 +2288,11 @@ async function renderNetSummary() {
             ['Server', s.enabled ? (s.listening ? 'in ascolto sulla rete' : 'non in ascolto') : 'disattivato',
                 s.enabled && s.listening ? (s.ips || []).map(ip => `${ip}:${s.port}`).join(', ') || 'nessun IPv4' : 'nessuna porta aperta verso la rete'],
             ['Client', clientValue, clientSub],
-            ['Token per i client', s.enabled && s.token ? `${s.token.slice(0, 6)}…` : '—',
-                s.enabled ? 'completo in Impostazioni › Accesso dalla rete' : 'serve solo in modalità Server'],
+            [updText('Accesso dalla rete', 'Network access'),
+                s.enabled ? (s.auth_enabled ? updText(`utente e password (${s.users})`, `user and password (${s.users})`)
+                                            : updText('libero (senza credenziali)', 'open (no credentials)')) : '—',
+                s.enabled ? updText('Remote Control: http://<IP>:' + s.port + '/remote', 'Remote Control: http://<IP>:' + s.port + '/remote')
+                          : updText('serve solo in modalità Server', 'only in Server mode')],
         ];
         box.innerHTML = items.map(([l, v, sub]) => `<div class="net-item"><div class="net-item-label">${escapeHtml(l)}</div>` +
             `<div class="net-item-value">${escapeHtml(v)}</div><div class="net-item-sub">${escapeHtml(sub)}</div></div>`).join('');
@@ -2311,12 +2430,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!row) return;
         $('remoteServer').value = row.dataset.serverUrl;
         $('serverList').querySelectorAll('.server-row').forEach(r => r.classList.toggle('is-selected', r === row));
-        $('remoteToken').focus();
-        const tokenSet = Boolean(modeState && modeState.client && modeState.client.token_set);
-        setSettingsMsg(`Server selezionato: ${row.dataset.serverUrl}. ` + (tokenSet
-            ? 'Salva per usarlo (scrivi il token solo se è diverso da quello già impostato).'
-            : 'Inserisci il suo token e salva.'));
+        $('remoteUser').focus();
+        setSettingsMsg(updText(`Server selezionato: ${row.dataset.serverUrl}. Se richiede l'accesso inserisci utente e password, poi salva.`,
+                               `Server selected: ${row.dataset.serverUrl}. If it requires sign-in enter user name and password, then save.`));
     });
+    $('authAdmin').addEventListener('click', onAuthAdminClick);
+    $('authAdmin').addEventListener('change', onAuthAdminChange);
     $('settingsModal').addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             e.preventDefault();
@@ -2419,10 +2538,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.addEventListener('click', (e) => {
         if (e.target.closest('[data-open-settings]')) {
             openSettings();
-            return;
-        }
-        if (e.target.closest('[data-regen-token]')) {
-            regenToken();
             return;
         }
         const folderBtn = e.target.closest('[data-open-folder]');

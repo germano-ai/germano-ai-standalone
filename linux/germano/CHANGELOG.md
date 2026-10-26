@@ -45,6 +45,62 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
 - **Chiusura totale con la X rossa**: il gestore ferma in modo pulito **solo** i processi di Germano (server Flask +
   demone IA), senza processi orfani e senza toccare altri processi del sistema.
 
+### Aggiunto - Remote Control: Germano da qualsiasi browser della rete, senza installare nulla
+- Con la modalità Server attiva, qualsiasi PC, tablet o smartphone della rete locale apre
+  `http://<IP-del-server>:8181/` (pagina `/remote`, mobile e bilingue) e trova: le **AI del server** rilevate
+  automaticamente, la **chat protetta** (prompt e fino a 12 allegati anonimizzati dal server prima di uscire, risposta
+  con i dati ripristinati e il testo esatto ricevuto dall'AI), **Proteggi e ripristina** per qualsiasi AI (ripristino
+  sul dispositivo), le **opzioni di elaborazione** e gli indirizzi del Proxy per gli strumenti del dispositivo.
+- **Servizi di AI via API** attraverso Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen,
+  Mistral, Grok (xAI), Perplexity (Sonar), Google Gemini, OpenAI, Anthropic, OpenRouter, Groq e i modelli locali del
+  server (Ollama, LM Studio). Chiave API dell'utente (usata solo per quella richiesta, mai salvata dal server) oppure
+  quella del server, se l'amministratore condivide le AI di questo computer. Le CLI del server si eseguono per i client solo se verificate e
+  senza strumenti (Claude Code): gli agenti che eseguirebbero comandi o modificherebbero file sul server non vengono mai
+  eseguiti, e il Remote Control indica l'alternativa protetta.
+- Il **Proxy** inoltra anche ai servizi indicati nel percorso: `http://<server>:8181/p/<servizio>/v1` (es. `/p/deepseek/v1`,
+  `/p/moonshot/v1`, `/p/meta/v1`), cosi' Kimi Code, Mistral Vibe, Qwen Code, OpenCode e gli SDK passano da Germano.
+- **Germano Client** usa la stessa interfaccia (servita dal client, che inoltra al server): stesse capacità del browser,
+  piu' la ricerca del server in rete e l'avvio protetto delle CLI del PC. Nuovi comandi: `client login`, `client logout`,
+  `client options`; `client ask` anche con i servizi (`--model`, `--key`).
+
+### Aggiunto - Gestione utenti per l'accesso dalla rete
+- Di base dalla rete si accede **senza credenziali**. Nella Dashboard del server (Impostazioni › Accesso dalla rete ›
+  Gestione utenti) l'amministratore crea gli utenti e attiva l'accesso con **utente e password**, per il browser
+  (schermata di accesso, cookie di sessione `HttpOnly` e `SameSite=Strict`) e per Germano Client (`client login`).
+- Password salvate solo come impronta **PBKDF2-SHA256** (600.000 iterazioni, sale casuale) in `config.json`; sessioni
+  casuali a 256 bit conservate sul server solo come impronta SHA-256, valide 30 giorni dall'ultimo uso, chiuse cambiando
+  la password o eliminando l'utente; 5 tentativi sbagliati in 10 minuti bloccano l'indirizzo per 10 minuti; tempi di risposta uguali
+  per utenti esistenti e inesistenti. Senza credenziali le richieste dalla rete ricevono `401`. Dal computer del server
+  (127.0.0.1) si amministra sempre senza credenziali.
+- La modalità Client della Dashboard accede a un server con la gestione utenti attiva con utente e password (si conserva
+  solo la sessione). Se il server rifiuta l'accesso (sessione assente o scaduta) il motore si ferma subito con il
+  motivo, senza tentativi ripetuti, e nessun dato viene elaborato; con il ripiego locale attivo si usano i modelli di
+  questo computer.
+
+### Aggiunto - Opzioni di elaborazione dei client e blocco del profilo PA
+- Dal Remote Control e da Germano Client si scelgono soglia di confidenza, modelli attivi, le 18 categorie di dati
+  personali e il mascheramento (etichette numerate ripristinabili, etichette generiche o il nuovo oscuramento `████`):
+  valgono solo per le richieste di quel client, la configurazione del server non cambia.
+- **Profilo PA o `lock_settings`**: le opzioni sono disabilitate e in grigio nei client, con l'avviso «Bloccato dal
+  profilo di conformità PA del Server» (o del blocco dell'amministratore); il server respinge ogni modifica con
+  `403 Forbidden` (Compliance Lock) e anche il motore ignora le opzioni dei client.
+- Il motore rilegge le impostazioni a ogni richiesta: un cambio di profilo (PA/PD) vale subito, anche per le opzioni
+  dei client.
+
+### Aggiunto - Rilevamento delle AI esteso
+- Riconosciute anche: Meta Muse Code (Muse Wonder, Muse Spark), Kimi Code CLI, Qwen Code, DeepSeek (Deep Code, Reasonix),
+  Mistral Vibe, Grok Build (xAI), Perplexity (pplx), GitHub Copilot CLI, ChatGPT, Jules, Cursor CLI, Kiro e Kiro CLI,
+  Trae, Zed, OpenCode, Goose, Cline, Kilo Code, Amp, Droid, Crush, llama.cpp e Jan, oltre a quelle gia' note.
+- Il rilevamento legge anche il PATH salvato nel registro (CLI installate dopo l'avvio di Germano) e funziona anche su
+  macOS e Linux (eseguibili senza estensione, app in `/Applications`).
+
+### Sicurezza
+- Dalla rete (Proxy, Remote Control, AI condivise) il ripristino usa **solo le etichette della richiesta stessa**: un
+  dispositivo non può più farsi restituire i dati di altri documenti del Vault (es. chiedendo a un'AI di «ripetere
+  [PERSONA_1]»). Le richieste fatte dal computer del server continuano a usare l'intero Vault.
+- Rimosso il **token condiviso** per i client della rete (`lan_token`, «Nuovo token»): sostituito dall'accesso libero o
+  dalla gestione utenti. Il prefisso `/g/<token>/` del Base URL resta, con il token personale della sessione.
+
 ### Modificato - Dashboard: anteprima delle cartelle di lavoro
 - Al posto della sezione «Elaborazione dei documenti» (area di trascinamento e contatori In attesa / Pronti / Non
   riusciti) c'è un'**anteprima in stile file manager**: quattro riquadri `input`, `output`, `processed` e `failed` con

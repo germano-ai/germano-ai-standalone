@@ -141,6 +141,8 @@ class Anonymizer:
                     spans_per_unit[i] = sorted(existing + extra, key=lambda x: x.start)
 
         use_indexed = bool(settings.get("enable_deanonymize", True))
+        # Oscuramento ████ scelto da un client per i propri testi: irreversibile, nessuna voce nel Vault
+        override = getattr(ctx, "label_override", None)
         vault = ctx.vault
         results = [[] for _ in range(n)]
         for i in range(n):
@@ -149,13 +151,13 @@ class Anonymizer:
                 word = u.text.strip()
                 if not word or detect.ANY_TAG_RE.fullmatch(word):
                     continue
-                label = vault.label_for(word, u.force_label) if use_indexed else u.force_label
+                label = override or (vault.label_for(word, u.force_label) if use_indexed else u.force_label)
                 ctx.audit_add(word, label, "METADATA", 1.0)
                 results[i] = [(0, len(u.text), label)]
                 continue
             for sp in spans_per_unit[i]:
                 word = u.text[sp.start:sp.end]
-                label = vault.label_for(word, sp.label) if use_indexed else sp.label
+                label = override or (vault.label_for(word, sp.label) if use_indexed else sp.label)
                 ctx.audit_add(word, label, sp.group, sp.score)
                 results[i].append((sp.start, sp.end, label))
         return results

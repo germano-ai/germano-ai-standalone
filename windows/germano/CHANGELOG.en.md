@@ -44,6 +44,63 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
 - **Full shutdown with the red X**: the manager cleanly stops **only** Germano's processes (Flask server + AI daemon),
   with no orphan processes and without touching other system processes.
 
+### Added - Remote Control: Germano from any browser on the network, with nothing to install
+- With Server mode on, any PC, tablet or smartphone on the local network opens `http://<server-IP>:8181/` (the
+  `/remote` page, mobile-friendly and bilingual) and finds: the **server's AIs**, discovered automatically, the
+  **protected chat** (prompt and up to 12 attachments anonymized by the server before leaving, answer with the data
+  restored and the exact text received by the AI), **Protect and restore** for any AI (restoration on the device), the
+  **processing options** and the Proxy addresses for the device's tools.
+- **AI services via API** through Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen,
+  Mistral, Grok (xAI), Perplexity (Sonar), Google Gemini, OpenAI, Anthropic, OpenRouter, Groq and the server's local
+  models (Ollama, LM Studio). The user's API key (used only for that request, never stored by the server) or the
+  server's key, if the administrator shares this computer's AIs. The server runs its CLIs for the clients only when
+  verified and without tools (Claude Code): agents that would run commands or modify files on the server are never run,
+  and the Remote Control shows the protected alternative.
+- The **Proxy** also forwards to the service named in the path: `http://<server>:8181/p/<service>/v1` (e.g.
+  `/p/deepseek/v1`, `/p/moonshot/v1`, `/p/meta/v1`), so Kimi Code, Mistral Vibe, Qwen Code, OpenCode and the SDKs go
+  through Germano.
+- **Germano Client** uses the same interface (served by the client, which forwards to the server): the same
+  capabilities as the browser, plus finding the server on the network and launching the PC's CLIs protected. New
+  commands: `client login`, `client logout`, `client options`; `client ask` also with the services (`--model`, `--key`).
+
+### Added - User management for network access
+- By default network access needs **no credentials**. In the server's Dashboard (Settings › Network access › User
+  management) the administrator creates the users and enables sign-in with **user name and password**, for the browser
+  (sign-in screen, `HttpOnly` and `SameSite=Strict` session cookie) and for Germano Client (`client login`).
+- Passwords stored only as a **PBKDF2-SHA256** hash (600,000 iterations, random salt) in `config.json`; random 256-bit
+  sessions kept on the server only as a SHA-256 hash, valid 30 days from the last use, closed when the password changes
+  or the user is deleted; 5 wrong attempts in 10 minutes block the address for 10 minutes; the same response time for
+  existing and non-existing users. Without credentials, network requests get `401`. From the server computer
+  (127.0.0.1) administration never needs credentials.
+- The Dashboard's Client mode signs in to a server with user management enabled using user name and password (only the
+  session is kept). If the server refuses access (missing or expired session) the engine stops right away with the
+  reason, with no repeated attempts, and no data is processed; with the local fallback enabled this computer's models
+  are used.
+
+### Added - Client processing options and PA profile lock
+- From the Remote Control and Germano Client you choose the confidence threshold, the active models, the 18 categories
+  of personal data and the masking (restorable numbered tags, generic tags or the new `████` blackout): they apply only
+  to that client's requests, the server configuration does not change.
+- **PA profile or `lock_settings`**: the options are disabled and greyed out in the clients, with the notice «Locked by
+  the Server's PA compliance profile» (or the administrator's lock); the server rejects every change with
+  `403 Forbidden` (Compliance Lock) and the engine also ignores the clients' options.
+- The engine re-reads the settings at every request: a profile change (PA/PD) applies immediately, also to the
+  clients' options.
+
+### Added - Extended AI detection
+- Also recognized: Meta Muse Code (Muse Wonder, Muse Spark), Kimi Code CLI, Qwen Code, DeepSeek (Deep Code, Reasonix),
+  Mistral Vibe, Grok Build (xAI), Perplexity (pplx), GitHub Copilot CLI, ChatGPT, Jules, Cursor CLI, Kiro and Kiro CLI,
+  Trae, Zed, OpenCode, Goose, Cline, Kilo Code, Amp, Droid, Crush, llama.cpp and Jan, besides the ones already known.
+- Detection also reads the PATH saved in the registry (CLIs installed after Germano started) and also works on macOS
+  and Linux (executables without extension, apps in `/Applications`).
+
+### Security
+- From the network (Proxy, Remote Control, shared AIs) restoration uses **only the tags of the request itself**: a
+  device can no longer get back the data of other documents in the Vault (e.g. by asking an AI to «repeat
+  [PERSONA_1]»). Requests made from the server computer keep using the whole Vault.
+- Removed the **shared token** for the network clients (`lan_token`, «New token»): replaced by open access or user
+  management. The `/g/<token>/` Base URL prefix stays, with the session's personal token.
+
 ### Changed - Dashboard: work folders preview
 - The "Elaborazione dei documenti" (document processing) section (drop area and pending / ready / failed counters) is
   replaced by a **file-manager-style preview**: four boxes `input`, `output`, `processed` and `failed` with the folder's

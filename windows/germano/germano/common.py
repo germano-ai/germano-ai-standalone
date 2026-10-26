@@ -39,7 +39,8 @@ STATE_DIR = os.path.join(DATA_DIR, "state")
 CACHE_DIR = os.path.abspath(os.environ.get("GERMANO_CACHE_DIR") or os.path.join(BASE_DIR, "cache"))
 UPLOAD_DIR = os.path.join(STATE_DIR, "uploads")
 WORK_TMP_DIR = os.path.join(STATE_DIR, "tmp")
-MODELS_DIR = os.path.join(BASE_DIR, "models")
+# Modelli IA accanto al programma; dai sorgenti GERMANO_MODELS_DIR indica la cartella modelli/ della release (senza copie)
+MODELS_DIR = os.path.abspath(os.environ.get("GERMANO_MODELS_DIR") or os.path.join(BASE_DIR, "models"))
 
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 VERSION_FILE = os.path.join(BASE_DIR, "VERSION")
@@ -87,14 +88,19 @@ DEFAULT_SETTINGS = {
     "bind_host": "127.0.0.1",   # parte Server: IP di rete su cui ascoltare (127.0.0.1 o 0.0.0.0 = tutte le schede)
     "discovery_enabled": True,  # risponde ai ping UDP di rilevamento quando il server e' in ascolto sulla LAN
     "discovery_port": 8182,     # porta UDP del rilevamento automatico
-    "lan_token": "",            # token richiesto ai client LAN per Proxy, Studio e motore (generato al 1o avvio Server)
+    "lan_token": "",            # non piu' usato dalla 0.60 (sostituito dalla gestione utenti): conservato per compatibilita'
     "server_name": "",          # nome mostrato ai client nel rilevamento (vuoto = nome del computer)
     "share_ai_tools": False,    # i client possono usare le CLI di AI di questo computer (con le sue credenziali)
+    # --- Remote Control e gestione utenti (v0.60) ---
+    # False (predefinito): dalla rete locale si accede senza credenziali. True: servono utente e password (elenco
+    # «users» in config.json, password solo come impronta PBKDF2-SHA256; si gestiscono dalla Dashboard del server).
+    "auth_enabled": False,
     # --- Modalita' operativa (v0.52) ---
     "operating_mode": "standalone",  # standalone | server | client | server+client
     "first_run_done": False,         # False: alla prima apertura la Dashboard chiede la modalita' operativa
     "remote_server": "",             # Client: indirizzo del Germano Server (vuoto = ricerca automatica in rete)
-    "remote_token": "",              # Client: token del Germano Server remoto
+    "remote_token": "",              # Client: sessione (o token) per il Germano Server remoto
+    "remote_user": "",               # Client: utente con cui si e' acceduto al server remoto (gestione utenti attiva)
     "client_fallback_local": True,   # Client: se nessun server risponde si usa il motore di questo computer
     "instance_id": "",               # identificativo di questa installazione (per non rilevare se stessa)
     "instance_host": "",             # computer su cui e' stato generato instance_id
@@ -106,7 +112,7 @@ for _k in FEATURE_KEYS:
 _BOOL_KEYS = set(FEATURE_KEYS) | {
     "enable_deanonymize", "lock_settings", "anonymize_filenames", "save_proxy_logs", "check_updates",
     "auto_update", "discovery_enabled", "first_run_done", "client_fallback_local", "enable_tooltips",
-    "share_ai_tools",
+    "share_ai_tools", "auth_enabled",
 }
 OPERATING_MODES = ("standalone", "server", "client", "server+client")
 _ENUM_KEYS = {
@@ -121,7 +127,8 @@ _INT_KEYS = {"file_timeout_minutes": (5, 1440), "port": (1024, 65535), "discover
 _URL_KEYS = ("target_api_url", "target_anthropic_url", "remote_server")
 _HOST_KEYS = {"bind_host"}                       # 0.0.0.0, loopback o un IP letterale
 # stringhe libere (lunghezza massima)
-_STR_KEYS = {"lan_token": 128, "remote_token": 128, "server_name": 48, "instance_id": 64, "instance_host": 128}
+_STR_KEYS = {"lan_token": 128, "remote_token": 128, "server_name": 48, "instance_id": 64, "instance_host": 128,
+             "remote_user": 64}
 _TOKEN_KEYS = {"lan_token", "remote_token", "instance_id"}   # solo caratteri sicuri in URL e intestazioni
 # Chiavi modificabili anche quando l'amministratore ha bloccato le impostazioni (preferenze dell'interfaccia).
 # La modalita' operativa NO: decide se il computer si espone alla rete.
@@ -472,6 +479,79 @@ def save_config(updates, admin=False):
         if rejected:
             err = "Impostazioni bloccate dall'amministratore (lock_settings): modifiche ignorate."
         return cfg, err
+
+
+# ----------------------------------------------------------------------------------------
+# Opzioni scelte dai client della rete (Remote Control e Germano Client): valgono solo per le richieste di quel client,
+# mai per la configurazione del server. Profilo PA o lock_settings: non si cambiano (Compliance Lock).
+# ----------------------------------------------------------------------------------------
+CENSOR_KEYS = tuple(k for k in FEATURE_KEYS if k.startswith("censor_"))
+CLIENT_OPTION_KEYS = ("ai_threshold", "enable_model_velvet", "enable_model_italian_ner", "enable_regex") + CENSOR_KEYS
+# numbered: etichette numerate [PERSONA_1], ripristinabili; generic: [PERSONA], irreversibili; blackout: ████, irreversibile
+MASKING_MODES = ("numbered", "generic", "blackout")
+BLACKOUT_LABEL = "████"
+
+
+def options_locked(cfg):
+    """True se le opzioni di elaborazione dei client non si possono cambiare: profilo PA (protezione massima imposta)
+    oppure impostazioni bloccate dall'amministratore (lock_settings)."""
+    return cfg.get("compliance_mode") == "PA" or bool(cfg.get("lock_settings"))
+
+
+def server_options(cfg):
+    """Opzioni in vigore sul server, nel formato usato dai client."""
+    out = {k: cfg.get(k, DEFAULT_SETTINGS[k]) for k in CLIENT_OPTION_KEYS}
+    out["masking"] = "numbered" if cfg.get("enable_deanonymize", True) else "generic"
+    return out
+
+
+def validate_options(raw, cfg):
+    """Opzioni inviate da un client, validate come config.json (valori non validi = quelli del server)."""
+    base = server_options(cfg)
+    if not isinstance(raw, dict):
+        return base
+    out = dict(base)
+    for k in CLIENT_OPTION_KEYS:
+        if k in raw:
+            out[k] = _validate_value(k, raw[k], base[k])
+    m = raw.get("masking")
+    if m in MASKING_MODES:
+        out["masking"] = m
+    return out
+
+
+def options_differ(opts, cfg):
+    """True se le opzioni richieste cambiano qualcosa rispetto a quelle del server."""
+    return validate_options(opts, cfg) != server_options(cfg)
+
+
+def options_to_settings(opts):
+    """Opzioni di un client -> impostazioni del motore per quella sola richiesta (+ etichetta sostitutiva)."""
+    settings = {k: opts[k] for k in CLIENT_OPTION_KEYS if k in opts}
+    masking = opts.get("masking", "numbered")
+    settings["enable_deanonymize"] = masking == "numbered"
+    return settings, (BLACKOUT_LABEL if masking == "blackout" else None)
+
+
+def load_users():
+    """Utenti per l'accesso dalla rete: [{"username", "pbkdf2": {...}, "created"}]. Mai restituiti alla rete."""
+    users = (read_json(CONFIG_FILE, {}) or {}).get("users")
+    if not isinstance(users, list):
+        return []
+    return [u for u in users if isinstance(u, dict) and isinstance(u.get("username"), str)
+            and isinstance(u.get("pbkdf2"), dict)]
+
+
+def save_users(users):
+    """Scrive l'elenco degli utenti in config.json lasciando invariato tutto il resto."""
+    with _config_lock:
+        _backup_unreadable_config()
+        cfg = normalize_settings(read_json(CONFIG_FILE, {}))
+        cfg["users"] = list(users)
+        if not users:
+            cfg["auth_enabled"] = False      # senza utenti l'accesso con password non avrebbe nessun ingresso
+        atomic_write_json(CONFIG_FILE, cfg, indent=4)
+        return cfg
 
 
 # ----------------------------------------------------------------------------------------

@@ -17,7 +17,9 @@ applicativa dedicata** (niente finestra nera del terminale, niente browser con b
 **Dashboard unificata**, che contiene tutte le funzionalità:
 
 - **Standalone** (predefinita): tutto offline su questo computer;
-- **Server LAN**: offre motore, Proxy e AI condivise agli altri PC dell'ufficio (con token);
+- **Server LAN**: offre motore, Proxy, AI condivise e il **Remote Control** (da qualsiasi browser della rete:
+  `http://<IP-del-server>:8181/`, senza installare nulla) agli altri PC e dispositivi dell'ufficio; accesso libero di
+  base, oppure con utente e password (Impostazioni › Accesso dalla rete › Gestione utenti);
 - **Client**: affida il calcolo a un Germano Server della rete (Vault e file restano qui).
 
 La modalità si sceglie e si cambia in qualsiasi momento dalle **Impostazioni** della finestra. Per chiudere **tutto**
@@ -46,7 +48,8 @@ App e file tecnici.
 ## Client leggero per i colleghi
 Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.60.exe`** (~22 MB, senza
 modelli, nessun permesso di amministratore): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del
-client (collegamento **Germano AI Client**).
+client (collegamento **Germano AI Client**), che è lo stesso Remote Control del browser. Chi non vuole installare nulla
+apre direttamente nel browser `http://<IP-di-questo-PC>:8181/`.
 
 ## Per gli sviluppatori
 Questa cartella contiene solo i sorgenti (pubblicabili su GitHub). Il runtime Windows con le DLL di Visual C++ e

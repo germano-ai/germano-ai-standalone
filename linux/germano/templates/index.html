@@ -689,7 +689,7 @@
                         <input type="checkbox" id="optServer">
                         <span class="mode-card-body">
                             <span class="mode-card-title" data-en="📡 Server">📡 Server</span>
-                            <span class="mode-card-desc" data-en="Listens on the local network, responds to auto-discovery and offers the anonymization engine and Proxy to other computers (with a token). Ideal for the most powerful PC in the office.">Si mette in ascolto sulla rete locale, risponde al rilevamento automatico e offre il motore di anonimizzazione e il Proxy agli altri computer (con un token). Ideale sul PC più potente dell'ufficio.</span>
+                            <span class="mode-card-desc" data-en="Listens on the local network, responds to auto-discovery and offers the anonymization engine, the Proxy and the Remote Control (from any browser, without installing anything) to the other computers and devices. Ideal for the most powerful PC in the office.">Si mette in ascolto sulla rete locale, risponde al rilevamento automatico e offre il motore di anonimizzazione, il Proxy e il Remote Control (da qualsiasi browser, senza installare nulla) agli altri computer e dispositivi. Ideale sul PC più potente dell'ufficio.</span>
                         </span>
                     </label>
                     <label class="mode-card" id="cardClient">
@@ -710,8 +710,12 @@
                             <input type="text" id="remoteServer" class="input" spellcheck="false" placeholder="Automatico: ricerca in rete" data-en-placeholder="Automatic: network discovery">
                         </div>
                         <div class="field">
-                            <label for="remoteToken" data-en="Server token">Token del server</label>
-                            <input type="password" id="remoteToken" class="input" spellcheck="false" autocomplete="off" placeholder="Lo mostra il server nelle sue Impostazioni" data-en-placeholder="Shown by the server in its Settings">
+                            <label for="remoteUser" data-en="Server user (only if required)">Utente del server (solo se richiesto)</label>
+                            <input type="text" id="remoteUser" class="input" spellcheck="false" autocomplete="off" placeholder="Se il server ha la gestione utenti attiva" data-en-placeholder="If the server has user management enabled">
+                        </div>
+                        <div class="field">
+                            <label for="remotePassword" data-en="Password">Password</label>
+                            <input type="password" id="remotePassword" class="input" spellcheck="false" autocomplete="new-password">
                         </div>
                     </div>
                     <div class="mode-detail-actions">
@@ -731,8 +735,9 @@
                     <div class="server-info" id="serverInfo"></div>
                     <label class="check-row">
                         <input type="checkbox" id="shareAiTools">
-                        <span data-en="Share this computer's AI tools with the clients (e.g. Claude Code): the clients can use them with «client ask» even if they are not installed there. They run here with this computer's account and credentials, always through the Proxy (text anonymized towards the AI). Check that the service terms allow it: personal subscriptions usually do not.">Condividi con i client le AI di questo computer (es. Claude Code): i client le usano con «client ask» anche se da loro non sono installate. Vengono eseguite qui con l'account e le credenziali di questo computer, sempre attraverso il Proxy (testo anonimizzato verso l'AI). Verifica che i termini del servizio lo consentano: gli abbonamenti personali di solito no.</span>
+                        <span data-en="Share this computer's AIs with the clients and the Remote Control: the CLIs (e.g. Claude Code, run here without tools) and the API keys of the services set on this computer (e.g. DEEPSEEK_API_KEY). They use this computer's account and credentials, always with text anonymized towards the AI. Check that the service terms allow it: personal subscriptions usually do not. Without sharing, users can still use the services with their own key.">Condividi le AI di questo computer con i client e con il Remote Control: le CLI (es. Claude Code, eseguita qui senza strumenti) e le chiavi API dei servizi impostate su questo computer (es. DEEPSEEK_API_KEY). Usano l'account e le credenziali di questo computer, sempre con testo anonimizzato verso l'AI. Verifica che i termini del servizio lo consentano: gli abbonamenti personali di solito no. Senza condivisione gli utenti possono comunque usare i servizi con la propria chiave.</span>
                     </label>
+                    <div class="auth-admin" id="authAdmin"></div>
                 </div>
 
                 <p class="mode-note" data-en="🔁 &lt;strong&gt;This mode can always be changed at any time in Settings&lt;/strong&gt; (Settings button at the top) and in &lt;em&gt;System › Network &amp; Operating Mode&lt;/em&gt;.">🔁 <strong>Questa modalità è sempre modificabile in qualsiasi momento nelle Impostazioni</strong> (pulsante «Impostazioni» in alto) e nella scheda <em>Sistema › Rete e modalità operativa</em>.</p>

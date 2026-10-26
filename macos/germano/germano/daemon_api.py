@@ -90,18 +90,31 @@ class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
 
-def _ctx(daemon, mode, tag_map=None):
+def _ctx(daemon, mode, tag_map=None, settings=None):
     return formats.Ctx(
-        mode, dict(daemon.settings), engine=daemon.engine, vault=daemon.vault, tag_map=tag_map or {},
+        mode, settings or dict(daemon.settings), engine=daemon.engine, vault=daemon.vault, tag_map=tag_map or {},
         cancel=CancelToken(deadline=time.time() + REQUEST_TIMEOUT, stop_check=daemon.should_stop),
     )
+
+
+def _client_settings(daemon, options):
+    """Impostazioni per UNA richiesta con le opzioni scelte da un client della rete (Remote Control, Germano Client).
+    Profilo PA o lock_settings: le opzioni dei client non valgono, restano quelle del server."""
+    base = dict(daemon.settings)
+    if not isinstance(options, dict) or common.options_locked(base):
+        return base, None
+    settings, label = common.options_to_settings(common.validate_options(options, base))
+    base.update(settings)
+    return base, label
 
 
 def handle_texts(daemon, body):
     texts = body.get("texts") or []
     if not isinstance(texts, list):
         raise ValueError("'texts' deve essere una lista di stringhe")
-    ctx = _ctx(daemon, "anonymize")
+    settings, label = _client_settings(daemon, body.get("options"))
+    ctx = _ctx(daemon, "anonymize", settings=settings)
+    ctx.label_override = label
     units = [Unit(t if isinstance(t, str) else "") for t in texts]
     t0 = time.time()
     res = ctx.analyze(units, batch_context=bool(body.get("batch_context", False)))
@@ -222,6 +235,9 @@ def start_api(daemon):
             except Exception as e:
                 self._json(400, {"error": str(e)})
                 return
+            reload = getattr(daemon, "reload_settings", None)
+            if reload:
+                reload()     # impostazioni attuali anche subito dopo un cambio (es. profilo PA/PD, opzioni dei client)
             try:
                 if self.path == "/internal/anonymize_texts":
                     self._json(200, handle_texts(daemon, body))

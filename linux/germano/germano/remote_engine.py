@@ -111,8 +111,9 @@ class RemoteEngine:
             msg = _error_text(e)
             self.last_error = msg
             if e.code in (401, 403):
-                raise EngineUnavailable(f"Il Germano Server {self.base} ha rifiutato l'accesso ({e.code}): "
-                                        "controlla il token nelle Impostazioni.") from None
+                raise EngineUnavailable(f"Il Germano Server {self.base} ha rifiutato l'accesso ({e.code}): sul server "
+                                        "e' attiva la gestione utenti, accedi con utente e password nelle "
+                                        "Impostazioni (Rete e modalita' operativa).") from None
             if e.code == 409:
                 raise EngineUnavailable(f"Il Germano Server {self.base} delega a sua volta il motore a un altro "
                                         "server: scegline uno con il motore locale.") from None

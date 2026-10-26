@@ -11,14 +11,18 @@ It requires no heavy AI models or dedicated GPUs on your local machine: all comp
 ## ⚡ Key Capabilities
 
 1. **Automatic LAN Server Discovery (UDP 8182 Broadcast)**:
-   Upon startup, the Client automatically discovers active Germano Servers across the local subnet, establishing an instant connection secured by Bearer Token authentication.
+   Upon startup, the Client automatically discovers active Germano Servers across the local subnet and connects: open access by default, or **user name and password** (`client login`) when user management is enabled on the server. The Client keeps only the session, never the password.
 2. **Server AI Models & Harness Exposure**:
-   The Client queries the Server and displays all available AI engines and CLI agents (e.g. Claude Code, Google Antigravity, OpenAI Codex, Aider, Qwen, DeepSeek). You can execute and query them directly from the client seat, even if they are not installed locally.
-3. **Transparent Proxy Routing for Local AI Agents**:
-   For AI tools installed on your local PC, it automatically configures environment variables (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`) routing traffic through the Server's Privacy Proxy with transparent round-trip de-anonymization.
-4. **Document & File Protection**:
-   Protects text and documents on the fly prior to transmission: the server receives only masked tokens (`[PERSONA_1]`, `[TAX_ID_1]`, etc.), guaranteeing absolute GDPR compliance.
-5. **Dedicated Native Window Interface**:
+   The Client queries the Server and lists the AIs detected on the server (Claude Code, Codex, Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Kiro, OpenCode, Aider, Ollama, LM Studio...) and the **AI services via API** filtered by Germano (Meta Muse Wonder and Muse Spark, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic and the server's local models). With the protected chat you use them directly from your seat, even if they are not installed locally.
+3. **Same interface as the Remote Control**:
+   The Client panel is the same Remote Control the Server offers to any browser on the network (AIs, protected chat with up to 12 attachments, protect and restore, options, tool connection): Client users and browser users have the same capabilities. On top of that the Client discovers the server on the network and launches this PC's CLIs protected.
+4. **Processing options of this PC**:
+   Confidence threshold, active models, 18 personal data categories and masking (`client options`), valid only for this PC's requests. **With the server's PA profile they are locked and greyed out** (the server rejects any change: Compliance Lock).
+5. **Transparent Proxy Routing for Local AI Agents**:
+   For AI tools installed on your local PC, it automatically configures environment variables (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`) routing traffic through the Server's Privacy Proxy with transparent round-trip de-anonymization; for tools configured by hand (Kimi, Mistral Vibe, Muse Code, OpenCode...) it shows the exact address, also per service (`/p/<service>/v1`).
+6. **Document & File Protection**:
+   Protects text and documents on the fly prior to transmission: only masked tags (`[PERSONA_1]`, `[TAX_ID_1]`, etc.) leave towards the AI, guaranteeing absolute GDPR compliance.
+7. **Dedicated Native Window Interface**:
    Runs as a dedicated native desktop window (no black terminal windows, no generic browser address bars) as well as an extensible command-line interface (`client.py`) for automation.
 
 ---
@@ -27,22 +31,22 @@ It requires no heavy AI models or dedicated GPUs on your local machine: all comp
 
 ```
   [ Client Seat: Laptop / Standard PC ]
-     │  GUI Dashboard or CLI (Claude / Antigravity / Codex / Aider)
-     │  Secure Bearer Token Routing
+     │  GUI (Remote Control) or CLI (Claude Code / Codex / Aider / Qwen Code)
+     │  Open access, or the user's session when user management is enabled
      ▼
   [ GERMANO SERVER on LAN :8181 ]  (Workstation hosting the 6 local offline AI models)
      1. Receives requests and applies local offline privacy models
-     2. Masks prompts and documents (replacing PII with deterministic tokens)
-     3. Stores reverse mappings in the client's local Vault
+     2. Masks prompts and documents (replacing PII with deterministic tags)
+     3. Keeps the mappings in the server's Vault
      4. Forwards strictly anonymized payloads to the target LLM
-     5. Restores original identities on the return trip and delivers cleartext to Client
+     5. Restores the original data of THAT request on the return trip and delivers cleartext to Client
 ```
 
 ---
 
 ## 📦 Multiplatform Installation
 
-The official Client installers are single files on **[download.germano.ai](https://download.germano.ai/)** and bundle their own Python with all libraries: installation downloads nothing from the Internet. The client creates no working folders in Documents: its settings (server address, token) stay in the user's technical folder.
+The official Client installers are single files on **[download.germano.ai](https://download.germano.ai/)** and bundle their own Python with all libraries: installation downloads nothing from the Internet. The client creates no working folders in Documents: its settings (server address, session, options) stay in the user's technical folder.
 
 ### 🪟 Windows (10 / 11 64-bit)
 1. **Download:** download `germano-client-0.60.exe` (about 22 MB).
@@ -74,15 +78,23 @@ For automated scripts, pipelines, or power users, the Client provides a full CLI
 # Discover active Germano Servers on your local LAN
 python client.py discover
 
-# List AI models exposed by the server
+# Sign in with user name and password (only if user management is enabled on the server)
+python client.py login --user mario
+
+# List the AIs and services of the server
 python client.py models
 
-# Query a server-hosted AI directly
-python client.py ask "Explain GDPR privacy by design requirements"
+# Ask a server AI: a shared CLI or a service via API (text anonymized by the server)
+python client.py ask claude-code "Explain GDPR privacy by design requirements"
+python client.py ask meta "Summarize this contract: ..." --model muse-wonder-1.0 --key <Meta key>
+python client.py ask deepseek "..." --model deepseek-chat --key <DeepSeek key>
+
+# Processing options of this PC (locked with the server's PA profile)
+python client.py options
+python client.py options --set censor_date=no --set masking=blackout
 
 # Launch a local AI agent routed through the server's privacy proxy
-python client.py launch claude
-python client.py launch antigravity
+python client.py launch claude-code
 
 # Anonymize a local file via the server
 python client.py send document.pdf
@@ -91,7 +103,7 @@ python client.py send document.pdf
 ---
 
 ## 📖 Complete Documentation
-For full technical specifications on REST APIs, bearer tokens, and advanced networking, refer to the integrated manual:
+For full technical specifications on REST APIs, the Remote Control, user management and advanced networking, refer to the integrated manual:
 - **[GUIDA_OFFLINE.html](GUIDA_OFFLINE.html)** (100% offline, bundled in every package)
 - **[Official Online Guide](https://germano.ai/guide.html)**
 

@@ -43,24 +43,49 @@ PROFILES = {
     },
 }
 
-# Perche' un'AI installata sul server non si puo' usare dai client.
+# Perche' un'AI installata sul server non si puo' eseguire per i client (e con che cosa la si usa comunque protetta).
+_AGENT = ("agente che eseguirebbe comandi o modificherebbe file sul server: per sicurezza il server non lo esegue per "
+          "i client")
 NOT_REMOTE = {
     "antigravity": "applicazione grafica (IDE): si usa solo davanti al server e i suoi modelli passano dai servizi di "
-                   "Google, non dal Proxy di Germano",
-    "claude-desktop": "applicazione grafica: si collega direttamente a claude.ai e non passa da Germano; dai client "
-                      "usa claude-code",
+                   "Google, non dal Proxy di Germano. Per i modelli Gemini usa il servizio «Google Gemini» della chat",
+    "claude-desktop": "applicazione grafica: si collega direttamente a claude.ai e non passa da Germano; usa claude-code "
+                      "o il servizio «Anthropic» della chat",
+    "chatgpt": "applicazione grafica: si collega direttamente a OpenAI e non passa da Germano; usa il servizio «OpenAI» "
+               "della chat",
     "cursor": "applicazione grafica: costruisce i prompt sui propri server, non e' proteggibile",
     "windsurf": "applicazione grafica: usa i propri servizi, non passa dal Proxy di Germano",
-    "gemini-cli": "usa il protocollo Gemini di Google, che il Proxy non gestisce: non sarebbe protetta",
-    "codex": "eseguirebbe comandi sul server: per sicurezza non e' condivisa; installala sul PC client e usa "
-             "«client launch codex»",
-    "aider": "modificherebbe file sul server: per sicurezza non e' condivisa; installala sul PC client e usa "
-             "«client launch aider»",
-    "qwen": "eseguirebbe comandi sul server: per sicurezza non e' condivisa; installala sul PC client e usa "
-            "«client launch qwen»",
-    "kimi": "va configurata a mano nel suo config.toml: non e' condivisa",
-    "deepseek": "non e' una CLI ufficiale: non e' condivisa; usa claude-code con il servizio Anthropic di DeepSeek",
+    "kiro": "applicazione grafica: usa i servizi di Amazon, non passa dal Proxy di Germano",
+    "trae": "applicazione grafica: usa i propri servizi, non passa dal Proxy di Germano",
+    "zed": "editor: i suoi modelli si collegano al Proxy solo se configurati sul PC che lo usa (Base URL di Germano)",
+    "gemini-cli": _AGENT + "; per i modelli Gemini usa il servizio «Google Gemini» della chat",
+    "jules": "agente di Google che lavora sui repository nel cloud: non passa da Germano",
+    "codex": _AGENT + "; installala sul PC client e usa «client launch codex», oppure il servizio «OpenAI» della chat",
+    "aider": _AGENT + "; installala sul PC client e usa «client launch aider»",
+    "qwen": _AGENT + "; per i modelli Qwen usa il servizio «Qwen» della chat, oppure installala sul PC client "
+                     "(«client launch qwen»)",
+    "kimi": _AGENT + "; per i modelli Kimi usa il servizio «Kimi (Moonshot AI)» della chat, oppure collega la CLI del tuo "
+                     "PC al Proxy (base_url .../p/moonshot/v1 nel suo config.toml)",
+    "deepseek": _AGENT + "; per i modelli DeepSeek usa il servizio «DeepSeek» della chat (o .../p/deepseek/v1 dal tuo PC)",
+    "muse-code": _AGENT + "; per Muse Wonder e Muse Spark usa il servizio «Meta Muse» della chat (o .../p/meta/v1 dal "
+                          "tuo PC)",
+    "mistral-vibe": _AGENT + "; per i modelli Mistral usa il servizio «Mistral» della chat (o .../p/mistral/v1 dal tuo PC)",
+    "grok-build": _AGENT + "; per i modelli Grok usa il servizio «Grok (xAI)» della chat (o .../p/xai/v1 dal tuo PC)",
+    "perplexity": "pplx interroga la ricerca web di Perplexity (nessuna versione ufficiale per Windows): per i modelli "
+                  "Sonar usa il servizio «Perplexity» della chat",
+    "copilot-cli": _AGENT + " e usa i servizi di GitHub, che non passano dal Proxy di Germano",
+    "cursor-agent": _AGENT + " e usa i servizi di Cursor, che non passano dal Proxy di Germano",
+    "kiro-cli": _AGENT + " e usa i servizi di Amazon, che non passano dal Proxy di Germano",
+    "opencode": _AGENT + "; dal tuo PC si collega al Proxy come fornitore compatibile OpenAI (Base URL .../v1)",
+    "goose": _AGENT + "; dal tuo PC si collega al Proxy come fornitore compatibile OpenAI (Base URL .../v1)",
+    "cline": _AGENT,
+    "kilo": _AGENT,
+    "amp": _AGENT + " e usa i servizi di Sourcegraph",
+    "droid": _AGENT + " e usa i servizi di Factory",
+    "crush": _AGENT + "; dal tuo PC si collega al Proxy come fornitore compatibile OpenAI (Base URL .../v1)",
 }
+# Servizi di modelli locali del server utilizzabili dalla chat del Remote Control (germano/providers.py)
+_LOCAL_SERVICES = {"ollama": "ollama", "lm-studio": "lmstudio"}
 
 
 class HarnessError(RuntimeError):
@@ -82,13 +107,18 @@ def catalog(tools, sharing):
     for t in tools or []:
         if not t.get("detected"):
             continue
-        item = {k: t.get(k) for k in ("id", "name", "kind", "version")}
+        item = {k: t.get(k) for k in ("id", "name", "vendor", "kind", "version", "service")}
         prof = PROFILES.get(t.get("id")) if t.get("kind") == "cli" else None
         if prof and sharing:
             item["remote"] = {"usable": True, "state": prof["state"], "how": f'client ask {t["id"]} "..."'}
         elif prof:
             item["remote"] = {"usable": False, "reason": "condivisione delle AI disattivata sul server "
                                                          "(Impostazioni > Accesso dalla rete)"}
+        elif t.get("id") in _LOCAL_SERVICES:
+            item["remote"] = {"usable": False, "service": _LOCAL_SERVICES[t["id"]],
+                              "reason": "modelli locali del server: si usano dalla chat del Remote Control (servizio "
+                                        f"«{t.get('name')}», nessun dato esce dalla rete locale)"
+                                        + ("" if t.get("listening") else "; ora non e' in esecuzione sul server")}
         elif t.get("kind") == "service":
             item["remote"] = {"usable": False, "reason": "modelli locali del server: si usano tramite il Proxy se il "
                                                          "«Servizio OpenAI o compatibile» del server punta a questo "
@@ -141,7 +171,9 @@ def run(tool_id, exe, prompt, port, model=None, timeout=RUN_TIMEOUT):
         env = dict(os.environ)
         for k in _DROP_ENV:
             env.pop(k, None)
-        env[prof["env"]] = f"http://127.0.0.1:{port}"   # il Proxy locale: anonimizza, ripristina, blocca se serve
+        # Il Proxy locale anonimizza, blocca se serve e ripristina SOLO i dati di quella richiesta (/s/: mai il resto
+        # del Vault, anche se il prompt di un client chiedesse di ripetere etichette di altri documenti)
+        env[prof["env"]] = f"http://127.0.0.1:{port}/s/harness"
         for var in ("NO_PROXY", "no_proxy"):
             items = [x for x in (env.get(var) or "").split(",") if x.strip()]
             env[var] = ",".join(items + [h for h in ("127.0.0.1", "localhost") if h not in items])

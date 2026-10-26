@@ -20,6 +20,12 @@ Apri **Germano AI** dal menu delle applicazioni: si apre una **finestra dedicata
 `failed`) mostrano in tempo reale i file di ogni cartella, con il percorso completo sopra: trascina i documenti sul
 riquadro **input**; un clic su un riquadro apre la cartella nel file manager.
 
+In modalità **Server** gli altri PC, tablet e smartphone della rete usano dal browser, senza installare nulla, il
+**Remote Control** (`http://<IP-di-questo-PC>:8181/`): le AI di questo computer filtrate da Germano, la chat protetta
+con allegati, proteggi e ripristina, le opzioni (bloccate con il profilo PA). Di base l'accesso è libero; con la
+gestione utenti (Impostazioni › Accesso dalla rete) servono utente e password. Se il PC usa un firewall (es. `ufw`),
+consenti la porta 8181/tcp e, per la ricerca automatica, 8182/udp solo dalla rete locale.
+
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
 fuori dalla sessione grafica dell'utente.
 

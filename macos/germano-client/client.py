@@ -1,13 +1,18 @@
 #!/usr/bin/env python
-"""Germano Client - collega le CLI di AI di questo PC a un Germano Server della rete locale.
+"""Germano Client - collega questo PC a un Germano Server della rete locale.
 
 Leggerissimo (nessun modello IA): anonimizzazione, Vault e ripristino avvengono sul Server. Il Client trova il Server
-sulla LAN (broadcast UDP), verifica che sia davvero un Germano Server pronto e che il token sia valido, poi avvia le
-CLI con le variabili d'ambiente che le fanno passare dal Proxy del Server. Le CLI che non si possono proteggere in
-modo affidabile non vengono avviate come «protette»: il Client lo dice chiaramente.
+sulla LAN (broadcast UDP), verifica che sia davvero un Germano Server pronto e che l'accesso sia consentito (libero,
+oppure con utente e password se sul server e' attiva la gestione utenti: «client login»), poi:
+- usa le AI del server (CLI condivise e servizi via API come Meta Muse, Kimi, DeepSeek, Qwen, Mistral, Grok,
+  Perplexity) con la chat protetta («client ask»), con le opzioni di elaborazione scelte qui («client options»: in
+  grigio, cioe' non modificabili, se il server e' nel profilo PA);
+- avvia le CLI di questo PC con le variabili d'ambiente che le fanno passare dal Proxy del Server («client launch»).
+Le CLI che non si possono proteggere in modo affidabile non vengono avviate come «protette»: il Client lo dice.
 
 Codici di uscita: 0 tutto bene, 1 server non raggiungibile o non valido, 2 uso errato dei comandi,
-3 token mancante o errato, 4 motore del server non pronto, 5 CLI non installata o non proteggibile.
+3 accesso richiesto o non valido, 4 motore del server non pronto, 5 CLI non installata o non proteggibile,
+6 opzioni bloccate dal profilo PA del server.
 """
 import argparse
 import getpass
@@ -35,7 +40,7 @@ CONFIG_FILE = os.path.join(BASE_DIR, "client_config.json")
 CREATE_NEW_CONSOLE = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
 DEFAULT_SERVER_PORT = 8181
 MAX_ATTACHMENTS = 12          # limite dello Studio del Server per un singolo invio
-OK, ERR_SERVER, ERR_USAGE, ERR_TOKEN, ERR_ENGINE, ERR_CLI = 0, 1, 2, 3, 4, 5
+OK, ERR_SERVER, ERR_USAGE, ERR_TOKEN, ERR_ENGINE, ERR_CLI, ERR_LOCKED = 0, 1, 2, 3, 4, 5, 6
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _CTRL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 _LOOPBACK = ("127.0.0.1", "localhost", "::1")
@@ -80,20 +85,81 @@ PROFILES = {
     "kimi": {
         "stato": "manuale",
         "motivo": "Kimi Code CLI non legge indirizzo e chiave del servizio dalle variabili d'ambiente, ma solo dal "
-                  "proprio config.toml: il Client non puo' instradarlo da solo.",
-        "istruzioni": "nel config.toml di Kimi imposta un fornitore compatibile OpenAI con base_url = {openai}",
+                  "proprio config.toml (~/.kimi/config.toml): il Client non puo' instradarlo da solo.",
+        "istruzioni": "nel config.toml di Kimi, nel fornitore in uso, imposta base_url = {base}/p/moonshot/v1 (il Proxy "
+                      "di Germano lo inoltra a Moonshot AI dopo aver anonimizzato i testi)",
     },
     "deepseek": {
         "stato": "manuale",
-        "motivo": "DeepSeek non ha una CLI ufficiale: il comando trovato e' uno strumento di terze parti, di cui il "
-                  "Client non puo' verificare il comportamento.",
-        "istruzioni": "per usare DeepSeek protetto avvia Claude Code (sul server il «Servizio Anthropic» di "
-                      "destinazione deve essere https://api.deepseek.com/anthropic); se invece lo strumento accetta un "
-                      "indirizzo compatibile OpenAI, impostalo a {openai}",
+        "motivo": "DeepSeek non ha una CLI ufficiale: il comando trovato (Deep Code, Reasonix o altro) e' uno strumento "
+                  "di terze parti, di cui il Client non puo' verificare il comportamento.",
+        "istruzioni": "imposta nello strumento l'indirizzo compatibile OpenAI {base}/p/deepseek/v1 (oppure, per Claude "
+                      "Code, il formato Anthropic {base}/p/deepseek); in alternativa usa «client ask deepseek»",
     },
+    "muse-code": {
+        "stato": "manuale",
+        "motivo": "Muse Code (Meta) si configura con un accesso dal browser o con la chiave della Meta Model API: il "
+                  "Client non sa ancora instradarlo da solo.",
+        "istruzioni": "se Muse Code permette un indirizzo personalizzato compatibile OpenAI impostalo a {base}/p/meta/v1; "
+                      "per Muse Wonder e Muse Spark protetti usa  client ask meta \"...\" --model muse-wonder-1.0",
+    },
+    "mistral-vibe": {
+        "stato": "manuale",
+        "motivo": "Mistral Vibe legge fornitore e chiave dal proprio ~/.vibe/config.toml.",
+        "istruzioni": "nel config.toml di Vibe imposta come indirizzo del fornitore Mistral {base}/p/mistral/v1, oppure "
+                      "usa  client ask mistral \"...\"",
+    },
+    "grok-build": {
+        "stato": "manuale",
+        "motivo": "Grok Build usa l'accesso a xAI configurato al suo interno.",
+        "istruzioni": "se Grok Build accetta un indirizzo personalizzato impostalo a {base}/p/xai/v1, oppure usa  "
+                      "client ask xai \"...\"",
+    },
+    "opencode": {
+        "stato": "manuale",
+        "motivo": "OpenCode sceglie fornitore e indirizzo nel proprio opencode.json.",
+        "istruzioni": "in opencode.json aggiungi un fornitore compatibile OpenAI con baseURL {openai} (o "
+                      "{base}/p/<servizio>/v1 per DeepSeek, Kimi, Qwen, Mistral, Grok...)",
+    },
+    "goose": {"stato": "manuale", "motivo": "Goose sceglie il fornitore nella propria configurazione.",
+              "istruzioni": "configura un fornitore compatibile OpenAI con indirizzo {openai}"},
+    "crush": {"stato": "manuale", "motivo": "Crush sceglie il fornitore nel proprio crush.json.",
+              "istruzioni": "aggiungi un fornitore compatibile OpenAI con base_url {openai}"},
+    "cline": {"stato": "manuale", "motivo": "Cline sceglie il fornitore nella propria configurazione.",
+              "istruzioni": "scegli il fornitore «OpenAI Compatible» con Base URL {openai}"},
+    "kilo": {"stato": "manuale", "motivo": "Kilo Code sceglie il fornitore nella propria configurazione.",
+             "istruzioni": "scegli il fornitore «OpenAI Compatible» con Base URL {openai}"},
+    "copilot-cli": {
+        "stato": "non_supportato",
+        "motivo": "GitHub Copilot CLI usa i servizi di GitHub e non permette di cambiare l'indirizzo dei modelli: le "
+                  "richieste non passerebbero da Germano.",
+        "alternativa": "Per lavorare protetti usa Claude Code, Codex, Aider o Qwen Code, oppure la chat protetta:  "
+                       "client ask <servizio> \"...\"",
+    },
+    "cursor-agent": {
+        "stato": "non_supportato",
+        "motivo": "Cursor CLI usa i servizi di Cursor: le richieste non passerebbero da Germano.",
+        "alternativa": "Usa Claude Code, Codex, Aider o Qwen Code, oppure  client ask <servizio> \"...\"",
+    },
+    "kiro-cli": {
+        "stato": "non_supportato",
+        "motivo": "Kiro CLI usa i servizi di Amazon: le richieste non passerebbero da Germano.",
+        "alternativa": "Usa Claude Code, Codex, Aider o Qwen Code, oppure  client ask <servizio> \"...\"",
+    },
+    "amp": {"stato": "non_supportato", "motivo": "Amp usa i servizi di Sourcegraph: non passerebbe da Germano.",
+            "alternativa": "Usa Claude Code, Codex, Aider o Qwen Code, oppure  client ask <servizio> \"...\""},
+    "droid": {"stato": "non_supportato", "motivo": "Droid usa i servizi di Factory: non passerebbe da Germano.",
+              "alternativa": "Usa Claude Code, Codex, Aider o Qwen Code, oppure  client ask <servizio> \"...\""},
+    "jules": {"stato": "non_supportato", "motivo": "Jules lavora nel cloud di Google sui repository: non passa da Germano.",
+              "alternativa": "Per i modelli Gemini protetti usa  client ask gemini \"...\""},
+    "perplexity": {"stato": "non_supportato",
+                   "motivo": "pplx interroga direttamente la ricerca di Perplexity: non passerebbe da Germano.",
+                   "alternativa": "Per i modelli Sonar protetti usa  client ask perplexity \"...\" --model sonar"},
 }
-ALIASES = {"claude": "claude-code", "gemini": "gemini-cli", "qwen-code": "qwen", "kimi-cli": "kimi",
-           "deepseek-cli": "deepseek", "openai-codex": "codex"}
+ALIASES = {"claude": "claude-code", "gemini": "gemini-cli", "qwen-code": "qwen", "kimi-cli": "kimi", "kimi-code": "kimi",
+           "deepseek-cli": "deepseek", "deepcode": "deepseek", "reasonix": "deepseek", "openai-codex": "codex",
+           "muse": "muse-code", "vibe": "mistral-vibe", "grok": "grok-build", "copilot": "copilot-cli",
+           "pplx": "perplexity", "kilocode": "kilo"}
 APPS = {
     "cursor": "Cursor non si puo' proteggere con Germano: costruisce i prompt sui propri server e il suo «Override "
               "OpenAI Base URL» accetta solo indirizzi pubblici su Internet (127.0.0.1 e gli IP della rete locale non "
@@ -109,7 +175,19 @@ APPS = {
     "claude-desktop": "Claude Desktop si collega direttamente a claude.ai e non offre un'impostazione per cambiare "
                       "l'indirizzo del servizio: non si puo' proteggere con Germano. Usa Claude Code:  "
                       "client launch claude-code",
+    "chatgpt": "L'app di ChatGPT si collega direttamente a OpenAI e non passa da Germano. Per lavorare protetti usa  "
+               "client ask openai \"...\" oppure il Remote Control nel browser.",
+    "kiro": "Kiro usa i servizi di Amazon e non documenta un indirizzo personalizzato per i modelli: le sue richieste "
+            "non passano da Germano.",
+    "trae": "Trae usa i propri servizi: le sue richieste non passano da Germano.",
+    "zed": "In Zed scegli un fornitore compatibile OpenAI con l'indirizzo {openai} (impostazioni language_models).",
 }
+# Nome di un'AI -> servizio API del Germano Server con cui la si usa protetta («client ask <nome>»)
+SERVICE_ALIASES = {"claude": "anthropic", "claude-code": "anthropic", "chatgpt": "openai", "codex": "openai",
+                   "gemini": "gemini", "gemini-cli": "gemini", "muse": "meta", "muse-code": "meta", "muse-wonder": "meta",
+                   "kimi": "moonshot", "kimi-cli": "moonshot", "qwen": "qwen", "qwen-code": "qwen", "deepseek": "deepseek",
+                   "mistral-vibe": "mistral", "vibe": "mistral", "codestral": "mistral", "grok": "xai",
+                   "grok-build": "xai", "perplexity": "perplexity", "pplx": "perplexity", "sonar": "perplexity"}
 STATE_LABEL = {"verificato": "protetta (collaudata)", "documentato": "protetta (secondo la documentazione)",
                "manuale": "da configurare a mano", "non_supportato": "NON proteggibile"}
 
@@ -344,9 +422,14 @@ def _json(body):
         return None
 
 
+def _auth_headers(tok):
+    return {"X-Germano-Auth": tok} if tok else {}
+
+
 def check_server(base, token, timeout=6.0):
     """Verifica, SENZA inviare dati personali, che all'indirizzo risponda un Germano Server, lo stato del suo motore e
-    la validita' del token. Solleva ClientError se il server non e' raggiungibile o non e' Germano."""
+    l'accesso (libero, oppure sessione valida se la gestione utenti e' attiva). Solleva ClientError se il server non e'
+    raggiungibile o non e' Germano."""
     t0 = time.perf_counter()
     st, body = _request("GET", base + "/api/discovery", timeout=timeout)
     ms = round((time.perf_counter() - t0) * 1000)
@@ -357,40 +440,66 @@ def check_server(base, token, timeout=6.0):
     if st != 200 or not isinstance(info, dict) or info.get("service") != "germano-server":
         raise ClientError(f"a {_where(base)} risponde un servizio che non e' un Germano Server v0.52 o successivo "
                           f"(HTTP {st}).")
-    res = {"info": info, "ms": ms, "engine_ready": bool(info.get("engine_ready")),
-           "token_required": info.get("token_required", True) is not False}
-    host = urllib.parse.urlsplit(base).hostname or ""
+    res = {"info": info, "ms": ms, "engine_ready": bool(info.get("engine_ready")), "user": None,
+           "token_required": bool(info.get("auth_required", info.get("token_required", True))), "remote": "remote" in info}
+    st2, body2 = _request("GET", base + "/api/auth/status", headers=_auth_headers(token), timeout=timeout)
+    a = _json(body2)
+    if st2 == 200 and isinstance(a, dict):            # Germano Server 0.60: gestione utenti
+        if a.get("local"):
+            res.update(token="non necessario (server su questo stesso computer)", token_ok=True)
+        elif not a.get("enabled"):
+            res.update(token="libero (il server non richiede credenziali)", token_ok=True)
+        elif a.get("logged_in"):
+            res.update(token=f"autenticato come «{_clean(a.get('user'), 64)}»", token_ok=True, user=a.get("user"))
+        else:
+            res.update(token="ACCESSO RICHIESTO" if not token else "SESSIONE SCADUTA O NON VALIDA", token_ok=False)
+        return res
+    host = urllib.parse.urlsplit(base).hostname or ""   # Germano Server 0.52: token condiviso
     if host in _LOOPBACK or host.startswith("127."):
         res.update(token="non necessario (server su questo stesso computer)", token_ok=True)
     elif not token:
         res.update(token="MANCANTE" if res["token_required"] else "non richiesto", token_ok=not res["token_required"])
     else:
-        st2, _ = _request("GET", f"{base}/g/{token}/api/engine/v1/info", timeout=timeout)
-        if st2 in (200, 409):
+        st3, _ = _request("GET", f"{base}/g/{token}/api/engine/v1/info", timeout=timeout)
+        if st3 in (200, 409):
             res.update(token="valido", token_ok=True)
-        elif st2 == 401:
+        elif st3 == 401:
             res.update(token="ERRATO", token_ok=False)
         else:
-            res.update(token=f"non verificabile (HTTP {st2})", token_ok=False)
+            res.update(token=f"non verificabile (HTTP {st3})", token_ok=False)
     return res
 
 
 def _token_help(tok):
     if tok:
-        return ("Il token non e' quello del server: copialo dalla finestra del server o dalle sue Impostazioni "
-                "(Accesso dalla rete) e salvalo con:  client config --token <TOKEN>")
-    return "Imposta il token mostrato dal server con:  client config --token <TOKEN>"
+        return ("La sessione non e' piu' valida (scaduta, password cambiata o utente eliminato): accedi di nuovo con:  "
+                "client login")
+    return "Sul server e' attiva la gestione utenti: accedi con utente e password:  client login"
+
+
+def remote_info(base, tok, timeout=8.0):
+    """Informazioni del Remote Control (Germano Server 0.60): AI, servizi, opzioni, profilo. None se non disponibile."""
+    st, body = _request("GET", base + "/api/remote/v1/info", headers=_auth_headers(tok), timeout=timeout)
+    data = _json(body)
+    return data if st == 200 and isinstance(data, dict) and data.get("service") == "germano-remote" else None
+
+
+def client_options():
+    """Opzioni di elaborazione scelte su questo PC (client_config.json), gia' convalidate dal server."""
+    opts = load_config().get("options")
+    return opts if isinstance(opts, dict) else None
 
 
 def server_tools(base, tok, timeout=8.0):
-    """AI installate sul SERVER: (catalogo, avviso | None). Il catalogo completo (con cio' che si puo' usare da qui)
-    richiede il token; senza token valido, o con un server meno recente, si ripiega sull'elenco in sola lettura."""
+    """AI installate sul SERVER: (catalogo, avviso | None). Con la gestione utenti attiva il catalogo completo (con cio'
+    che si puo' usare da qui) richiede l'accesso; senza, o con un server meno recente, si ripiega sull'elenco in sola
+    lettura."""
     headers = {"X-Germano-Auth": tok} if tok else {}
     st, body = _request("GET", base + "/api/harness/v1/tools", headers=headers, timeout=timeout)
     data = _json(body)
     if st == 200 and isinstance(data, dict) and isinstance(data.get("tools"), list):
         return data, None
-    note = {401: "token mancante o errato: elenco in sola lettura, le AI del server non si possono usare da qui",
+    note = {401: "accesso richiesto (client login): elenco in sola lettura, le AI del server non si possono usare da qui",
             404: "il server non condivide ancora le sue AI (versione precedente): elenco in sola lettura"}.get(
         st, f"catalogo non disponibile (HTTP {st}): elenco in sola lettura")
     st2, body2 = _request("GET", base + "/api/ai/detect", timeout=timeout)
@@ -454,7 +563,14 @@ def cmd_status(args):
           f"(risposta in {r['ms']} ms)")
     print("  motore IA: " + ("pronto" if r["engine_ready"] else
                              "NON PRONTO: il server blocca le richieste finche' il motore non e' attivo (nessun dato esce)"))
-    print(f"  token    : {r['token']}")
+    print(f"  accesso  : {r['token']}")
+    prof = info.get("profile")
+    if prof:
+        print(f"  profilo  : {prof}" + (" (opzioni di elaborazione imposte dal server, non modificabili da qui)"
+                                       if info.get("options_locked") else " (opzioni di elaborazione personalizzabili: "
+                                                                          "client options)"))
+    if r.get("remote"):
+        print(f"  browser  : {base}/remote  (Remote Control, anche da tablet e smartphone)")
     if not r["token_ok"]:
         print("  " + _token_help(tok))
         return ERR_TOKEN
@@ -475,10 +591,18 @@ def _preflight(base, tok, what):
         print(f"{what}: nessun dato e' stato inviato.")
         return e.code, None
     if not r["token_ok"]:
-        print(f"Token {r['token']}: {what}, nessun dato e' stato inviato.")
+        print(f"Accesso {r['token']}: {what}, nessun dato e' stato inviato.")
         print(_token_help(tok))
         return ERR_TOKEN, r
     return OK, r
+
+
+def _options_field(r):
+    """Opzioni da inviare con la richiesta: solo con un server 0.60 che non le blocca (profilo PA o lock_settings)."""
+    opts = client_options()
+    if not opts or not r.get("remote") or r["info"].get("options_locked"):
+        return None
+    return json.dumps(opts, ensure_ascii=False)
 
 
 def cmd_send(args):
@@ -509,12 +633,15 @@ def cmd_send(args):
     if not r["engine_ready"]:
         print("Il motore del server non e' pronto: invio annullato, nessun dato e' stato inviato. Riprova tra poco.")
         return ERR_ENGINE
-    body, ctype = _multipart({"prompt": prompt, "target": "germano-client"}, parts)
-    headers = {"Content-Type": ctype}
-    if tok:
-        headers["X-Germano-Auth"] = tok
+    fields = {"prompt": prompt, "target": "germano-client"}
+    opts = _options_field(r)
+    if opts:
+        fields["options"] = opts
+    body, ctype = _multipart(fields, parts)
+    headers = {"Content-Type": ctype, **_auth_headers(tok)}
+    path = "/api/remote/v1/protect" if r.get("remote") else "/api/studio/send"
     try:
-        st, raw = _request("POST", base + "/api/studio/send", data=body, headers=headers, timeout=1800)
+        st, raw = _request("POST", base + path, data=body, headers=headers, timeout=1800)
     except ClientError as e:
         print(f"Invio non riuscito: {e}")
         return e.code
@@ -529,12 +656,15 @@ def cmd_send(args):
             print(f"Attenzione: allegati senza testo non inclusi ({', '.join(skipped)}): per oscurare immagini e "
                   "scansioni usa l'anonimizzazione dei file sul server.")
         print("--- testo protetto, pronto da inviare all'AI ---")
-        print(data.get("composed", ""))
+        print(data.get("protected", data.get("composed", "")))
         return OK
     msg = _clean(data.get("message") or data.get("error") or f"risposta inattesa (HTTP {st})", 400)
     print(f"[{st}] {msg}")
     if st in (401, 403, 503):
         print("Nessun dato e' uscito verso servizi di AI.")
+    if st == 403 and data.get("code") == "compliance_lock":
+        print("Le opzioni di questo PC non valgono con il profilo PA del server: rimuovile con  client options --reset")
+        return ERR_LOCKED
     return ERR_TOKEN if st == 401 else ERR_ENGINE if st == 503 else ERR_SERVER
 
 
@@ -553,9 +683,21 @@ def cmd_models(args):
     info = r["info"]
     data, note = server_tools(base, tok)
     tools = data.get("tools") or []
+    rinfo = remote_info(base, tok) if r.get("remote") and r["token_ok"] else None
     print(f"AI del Germano Server «{_clean(info.get('name'))}» ({base}, v{_clean(info.get('version'), 20)}; {origin}):")
     if note:
         print(f"  nota: {note}.")
+    services = (rinfo or {}).get("services") or []
+    if services:
+        print("  Servizi di AI attraverso Germano (testo anonimizzato dal server prima di uscire):")
+        for s in services:
+            if s.get("local"):
+                how = "modelli locali del server" if s.get("available") else "modelli locali: ora non in esecuzione"
+            else:
+                how = "chiave del server condivisa" if s.get("key") == "server" else "con la tua chiave (--key)"
+            models = f"; modelli: {', '.join(_clean(m, 40) for m in s.get('models') or [])}" if s.get("models") else ""
+            print(f"    - {s.get('id'):<11} {_clean(s.get('name'))} ({how}{models})")
+        print('        client ask <servizio> "il tuo prompt" --model <modello> [--key <chiave API>]')
     usable = [t for t in tools if (t.get("remote") or {}).get("usable")]
     others = [t for t in tools if not (t.get("remote") or {}).get("usable")]
     if usable:
@@ -590,8 +732,23 @@ def cmd_models(args):
     return OK
 
 
+def _resolve_target(name, rinfo):
+    """Nome scritto dall'utente -> ('tool:<id>' | 'service:<id>', nome leggibile) tra le AI utilizzabili del server."""
+    raw = (name or "").strip().lower()
+    tool_id = ALIASES.get(raw, raw)
+    for t in rinfo.get("tools") or []:
+        if t.get("id") == tool_id and (t.get("remote") or {}).get("usable"):
+            return "tool:" + tool_id, t.get("name") or tool_id
+    services = {s.get("id"): s for s in rinfo.get("services") or [] if s.get("available")}
+    for sid in (raw, tool_id, SERVICE_ALIASES.get(raw), SERVICE_ALIASES.get(tool_id)):
+        if sid and sid in services:
+            return "service:" + sid, services[sid].get("name") or sid
+    return None, None
+
+
 def cmd_ask(args):
-    """Usa da questo PC un'AI a riga di comando installata sul SERVER (es. Claude Code)."""
+    """Usa da questo PC un'AI del SERVER: una CLI condivisa (es. Claude Code) o un servizio via API (es. Meta Muse,
+    Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity), sempre con i testi anonimizzati dal server."""
     tool_id = ALIASES.get((args.tool or "").lower(), (args.tool or "").lower())
     prompt = (args.prompt or "").strip()
     if not prompt:
@@ -608,11 +765,54 @@ def cmd_ask(args):
     if not r["engine_ready"]:
         print("Il motore del server non e' pronto: richiesta annullata, nessun dato e' stato inviato. Riprova tra poco.")
         return ERR_ENGINE
-    payload = json.dumps({"tool": tool_id, "prompt": prompt, "model": getattr(args, "model", None) or ""},
-                         ensure_ascii=False).encode("utf-8")
-    headers = {"Content-Type": "application/json; charset=utf-8"}
-    if tok:
-        headers["X-Germano-Auth"] = tok
+    rinfo = remote_info(base, tok) if r.get("remote") else None
+    if rinfo is None:          # Germano Server 0.52: solo le CLI condivise
+        return _ask_harness(base, origin, tok, tool_id, prompt, getattr(args, "model", None) or "")
+    target, target_name = _resolve_target(args.tool, rinfo)
+    if not target:
+        usable = [t.get("id") for t in rinfo.get("tools") or [] if (t.get("remote") or {}).get("usable")]
+        usable += [s.get("id") for s in rinfo.get("services") or [] if s.get("available")]
+        print(f"«{_clean(args.tool, 30)}» non e' utilizzabile su questo server. Disponibili: {', '.join(usable) or 'nessuna'}. "
+              "Dettagli:  client models")
+        return ERR_CLI
+    fields = {"target": target, "model": getattr(args, "model", None) or "", "prompt": prompt}
+    opts = _options_field(r)
+    if opts:
+        fields["options"] = opts
+    body, ctype = _multipart(fields, [])
+    headers = {"Content-Type": ctype, **_auth_headers(tok)}
+    key = (getattr(args, "key", None) or "").strip()
+    if key:
+        headers["X-Germano-Provider-Key"] = key
+    print(f"{target_name} tramite il Germano Server {base} ({origin}): il server anonimizza il prompt prima di inoltrarlo...")
+    try:
+        st, raw = _request("POST", base + "/api/remote/v1/ask", data=body, headers=headers, timeout=660)
+    except ClientError as e:
+        print(f"Richiesta non riuscita: {e}")
+        return e.code
+    data = _json(raw) or {}
+    if st == 200 and data.get("status") == "success":
+        model = f" · {_clean(data.get('model'), 60)}" if data.get("model") else ""
+        print(f"--- risposta di {_clean(data.get('target_name') or target_name)}{model} ({data.get('seconds')} s; "
+              f"{_plural(data.get('entity_count', 0), 'dato oscurato', 'dati oscurati')}, ripristinati da Germano) ---")
+        print(data.get("answer", ""))
+        return OK
+    msg = _clean(data.get("message") or data.get("error") or f"risposta inattesa (HTTP {st})", 800)
+    print(f"[{st}] {msg}")
+    if st in (401, 403, 404, 503):
+        print("Nessun dato e' uscito verso servizi di AI.")
+    if st == 403 and data.get("code") == "compliance_lock":
+        print("Le opzioni di questo PC non valgono con il profilo PA del server: rimuovile con  client options --reset")
+        return ERR_LOCKED
+    if data.get("code") == "key_needed":
+        print("Indica la tua chiave API con  --key <chiave>  (non viene salvata da nessuna parte).")
+    return ERR_TOKEN if st == 401 else ERR_ENGINE if st == 503 else ERR_CLI if st in (400, 403, 404, 429) else ERR_SERVER
+
+
+def _ask_harness(base, origin, tok, tool_id, prompt, model):
+    """Germano Server 0.52: esecuzione di una CLI condivisa (/api/harness/v1/run)."""
+    payload = json.dumps({"tool": tool_id, "prompt": prompt, "model": model}, ensure_ascii=False).encode("utf-8")
+    headers = {"Content-Type": "application/json; charset=utf-8", **_auth_headers(tok)}
     print(f"{tool_id} sul Germano Server {base} ({origin}): il server anonimizza il prompt prima di inoltrarlo all'AI...")
     try:
         st, raw = _request("POST", base + "/api/harness/v1/run", data=payload, headers=headers, timeout=330)
@@ -633,6 +833,157 @@ def cmd_ask(args):
     if st in (403, 404):
         print("Per vedere le AI del server e come usarle da qui:  client models")
     return ERR_TOKEN if st == 401 else ERR_ENGINE if st == 503 else ERR_CLI if st in (403, 404, 429) else ERR_SERVER
+
+
+# ------------------------------------------------------------------ accesso e opzioni (Germano Server 0.60)
+def _login(base, user, password):
+    """Accede al server e restituisce il token di sessione ('' se il server non richiede credenziali)."""
+    body = json.dumps({"username": user, "password": password, "client": True}, ensure_ascii=False).encode("utf-8")
+    st, raw = _request("POST", base + "/api/auth/login", data=body,
+                       headers={"Content-Type": "application/json; charset=utf-8"}, timeout=20)
+    data = _json(raw) or {}
+    if st == 200 and data.get("token"):
+        return data["token"]
+    if st == 400 and data.get("code") == "auth_disabled":
+        return ""
+    if st == 404:
+        raise ClientError("questo server non ha la gestione utenti (versione precedente alla 0.60): usa il suo token "
+                          "con  client config --token <TOKEN>", ERR_TOKEN)
+    raise ClientError(_clean(data.get("error") or data.get("message") or f"accesso non riuscito (HTTP {st})", 300),
+                      ERR_TOKEN)
+
+
+def cmd_login(args):
+    base, origin = resolve_server(args)
+    user = (getattr(args, "user", None) or "").strip()
+    password = getattr(args, "password", None)
+    if not user:
+        user = _ask("Utente: ")
+        if not user:
+            print("Accesso annullato.")
+            return ERR_USAGE
+    if password is None:
+        password = _ask("Password (non viene mostrata): ", secret=True)
+        if not password:
+            print("Accesso annullato.")
+            return ERR_USAGE
+    token = _login(base, user, password)
+    cfg = load_config()
+    if not cfg.get("server_url") and not getattr(args, "server", None):
+        cfg["server_url"] = base          # la sessione vale per questo server: lo si ricorda
+    elif getattr(args, "server", None):
+        cfg["server_url"] = base
+    cfg["token"] = token
+    cfg["user"] = user if token else ""
+    save_config(cfg)
+    if token:
+        print(f"Accesso riuscito su {base} come «{_clean(user, 64)}»: sessione salvata in client_config.json "
+              "(valida 30 giorni dall'ultimo uso; la password non viene salvata).")
+    else:
+        print(f"{base} non richiede credenziali: l'accesso dalla rete e' libero.")
+    return OK
+
+
+def cmd_logout(args):
+    cfg = load_config()
+    tok = cfg.get("token") or ""
+    if tok and cfg.get("server_url"):
+        try:
+            _request("POST", parse_server(cfg["server_url"])[0] + "/api/auth/logout", data=b"{}",
+                     headers={"Content-Type": "application/json", **_auth_headers(tok)}, timeout=8)
+        except ClientError:
+            pass
+    cfg["token"] = ""
+    cfg["user"] = ""
+    save_config(cfg)
+    print("Uscito: la sessione e' stata chiusa e rimossa da questo PC.")
+    return OK
+
+
+OPTION_NAMES = {
+    "ai_threshold": "soglia di confidenza dell'IA (0 = protezione massima, fino a 0.95)",
+    "enable_model_velvet": "modello Velvet Privacy Filter", "enable_model_italian_ner": "modello Italian NER XXL",
+    "enable_regex": "regole validate (RegEx)", "censor_person": "nomi", "censor_profession": "professioni e titoli",
+    "censor_address": "indirizzi", "censor_cadastre": "dati catastali", "censor_cf_iva": "codici fiscali e P.IVA",
+    "censor_email": "email e PEC", "censor_phone": "telefoni", "censor_account": "IBAN, conti e carte",
+    "censor_financial": "importi e dati finanziari", "censor_date": "date", "censor_org": "aziende ed enti",
+    "censor_plates_docs": "targhe e documenti", "censor_medical": "dati sanitari", "censor_medicine": "farmaci e terapie",
+    "censor_legal": "dati giudiziari", "censor_civil_status": "stato civile", "censor_secret": "password e segreti",
+    "censor_url": "URL e indirizzi IP",
+    "masking": "mascheramento: numbered ([PERSONA_1], ripristinabile), generic ([PERSONA]) o blackout (████)",
+}
+
+
+def cmd_options(args):
+    """Mostra o imposta le opzioni di elaborazione di questo PC (valgono solo per le sue richieste)."""
+    base, origin = resolve_server(args)
+    tok = _token(args)
+    code, r = _preflight(base, tok, "opzioni non lette")
+    if code:
+        return code
+    rinfo = remote_info(base, tok)
+    if rinfo is None:
+        print("Questo server non supporta le opzioni dei client (versione precedente alla 0.60).")
+        return ERR_SERVER
+    locked = bool(rinfo.get("locked"))
+    cfg = load_config()
+    if getattr(args, "reset", False):
+        cfg.pop("options", None)
+        save_config(cfg)
+        print("Opzioni di questo PC rimosse: valgono quelle del server.")
+    sets = getattr(args, "set", None) or []
+    if sets:
+        if locked:
+            print("🔒 Opzioni bloccate dal " + ("profilo di conformità PA del Server: le regole di protezione e i filtri "
+                                                "di privacy sono imposti centralmente e non possono essere alterati dal "
+                                                "client." if rinfo.get("lock_reason") == "pa"
+                                                else "l'amministratore del Server (lock_settings)."))
+            return ERR_LOCKED
+        new = dict(client_options() or rinfo.get("options") or {})
+        for item in sets:
+            key, sep, value = item.partition("=")
+            key = key.strip()
+            if not sep or key not in OPTION_NAMES:
+                print(f"Opzione non valida: «{_clean(item, 60)}». Usa nome=valore; nomi: {', '.join(OPTION_NAMES)}.")
+                return ERR_USAGE
+            v = value.strip()
+            if key == "masking":
+                new[key] = v.lower()
+            elif key == "ai_threshold":
+                try:
+                    new[key] = float(v.replace(",", "."))
+                except ValueError:
+                    print(f"Valore non valido per ai_threshold: «{_clean(v, 20)}» (un numero da 0 a 0.95).")
+                    return ERR_USAGE
+            else:
+                new[key] = v.lower() in ("1", "true", "si", "sì", "yes", "on")
+        body = json.dumps({"options": new}, ensure_ascii=False).encode("utf-8")
+        st, raw = _request("POST", base + "/api/remote/v1/options", data=body,
+                           headers={"Content-Type": "application/json; charset=utf-8", **_auth_headers(tok)}, timeout=10)
+        data = _json(raw) or {}
+        if st == 403:
+            print(_clean(data.get("error") or "Opzioni bloccate dal server.", 300))
+            return ERR_LOCKED
+        if st != 200:
+            print(f"[{st}] {_clean(data.get('message') or data.get('error') or 'opzioni non salvate', 300)}")
+            return ERR_SERVER
+        cfg = load_config()
+        cfg["options"] = data["options"]
+        save_config(cfg)
+        print("Opzioni salvate in client_config.json: valgono per le prossime richieste di questo PC.")
+    mine = client_options()
+    current = dict(rinfo.get("options") or {}, **(mine if mine and not locked else {}))
+    print(f"Profilo del server: {rinfo.get('profile')}" + (" — 🔒 opzioni bloccate (in grigio nel Remote Control)" if locked
+                                                           else " — opzioni personalizzabili da questo PC"))
+    print("Opzioni in uso per le richieste di questo PC" + (" (personalizzate)" if mine and not locked else " (del server)") + ":")
+    for key, label in OPTION_NAMES.items():
+        value = current.get(key)
+        shown = value if not isinstance(value, bool) else ("sì" if value else "no")
+        print(f"  {key:<26} {str(shown):<10} {label}")
+    if not locked:
+        print("Per cambiarle:  client options --set censor_date=no --set ai_threshold=0.5 --set masking=blackout   "
+              "(--reset per tornare a quelle del server)")
+    return OK
 
 
 def _launch_options(rest):
@@ -734,12 +1085,12 @@ def _local_tools():
 
 
 def _addresses(args):
-    """Indirizzi da mostrare nelle istruzioni (segnaposto se il server non e' noto)."""
+    """Indirizzi da mostrare nelle istruzioni (segnaposto se il server non e' noto): (openai, anthropic/base, token)."""
     try:
         base, _ = resolve_server(args)
         tok = _token(args)
     except ClientError:
-        return "http://<server>:8181/g/<token>/v1", "http://<server>:8181/g/<token>", None
+        return "http://<server>:8181/v1", "http://<server>:8181", None
     anth = f"{base}/g/{tok}" if tok else base
     return anth + "/v1", anth, tok
 
@@ -784,7 +1135,7 @@ def cmd_launch(args):
         openai, anth, tok = _addresses(args)
         hint = APPS.get(tool_id, "{name} e' un'applicazione grafica: il Client non puo' configurarla. Se permette un "
                                  "servizio OpenAI personalizzato, imposta l'indirizzo {openai}.")
-        print(_mask(hint.format(openai=openai, anthropic=anth, name=name), tok))
+        print(_mask(hint.format(openai=openai, anthropic=anth, base=anth, name=name), tok))
         return ERR_CLI
     profile = PROFILES.get(tool_id, {"stato": "manuale", "motivo": "CLI non classificata dal Client.",
                                      "istruzioni": "configurala perche' usi l'indirizzo {openai} (formato OpenAI)"})
@@ -795,7 +1146,7 @@ def cmd_launch(args):
     if profile["stato"] == "manuale" and not force:
         openai, anth, tok = _addresses(args)
         print(f"{name}: NON avviato come «protetto». {profile['motivo']}")
-        print(_mask("Per proteggerlo: " + profile["istruzioni"].format(openai=openai, anthropic=anth) + ".", tok))
+        print(_mask("Per proteggerlo: " + profile["istruzioni"].format(openai=openai, anthropic=anth, base=anth) + ".", tok))
         print(f"Dopo averlo configurato cosi', avvialo con:  client launch {tool_id} --forza")
         return ERR_CLI
     exe = tool["path"]
@@ -861,6 +1212,14 @@ def cmd_config(args):
         check_token_format(token)
         cfg["token"] = token
         changed = True
+    user = (getattr(args, "user", None) or "").strip()
+    password = getattr(args, "password", None)
+    if user and password:                     # accesso con utente e password: si conserva solo la sessione
+        if not cfg.get("server_url"):
+            raise ClientError("per accedere indica anche l'indirizzo del server con --server.", ERR_USAGE)
+        cfg["token"] = _login(parse_server(cfg["server_url"])[0], user, password)
+        cfg["user"] = user if cfg["token"] else ""
+        changed = True
     cfg.setdefault("server_url", "")
     cfg.setdefault("token", "")
     cfg.setdefault("discovery_port", discovery.DEFAULT_PORT)
@@ -868,13 +1227,16 @@ def cmd_config(args):
         save_config(cfg)
         print("Configurazione salvata in client_config.json.")
     print(f"  server_url     : {cfg.get('server_url') or '(automatico: ricerca in rete)'}")
-    print(f"  token          : {'(impostato)' if cfg.get('token') else '(non impostato)'}")
+    print(f"  accesso        : " + (f"sessione di «{_clean(cfg.get('user'), 64)}»" if cfg.get("token") and cfg.get("user")
+                                    else "token impostato" if cfg.get("token") else "nessuna sessione (accesso libero o "
+                                                                                     "«client login»)"))
+    print(f"  opzioni        : {'personalizzate (client options)' if client_options() else 'quelle del server'}")
     print(f"  discovery_port : {cfg.get('discovery_port')}")
     if changed and cfg.get("server_url"):
         try:
             r = check_server(cfg["server_url"], cfg.get("token") or "", timeout=4.0)
             print(f"Verifica: server raggiungibile, motore {'pronto' if r['engine_ready'] else 'non ancora pronto'}, "
-                  f"token {r['token']}.")
+                  f"accesso {r['token']}.")
         except ClientError as e:
             print(f"Verifica: {e}")
     return OK
@@ -912,23 +1274,25 @@ def _menu_config():
     srv = _ask("Indirizzo del server (es. 192.168.1.10:8181; invio = invariato, «-» = ricerca automatica): ")
     if srv is None:
         return
-    tok = _ask("Token del server (non viene mostrato; invio = invariato, «-» = nessuno): ", secret=True)
-    if tok is None:
-        return
     server = None if not srv else ("" if srv == "-" else srv)
-    token = None if not tok else ("" if tok == "-" else tok)
-    if server is None and token is None:
+    if server is None:
         _safe(cmd_config, argparse.Namespace())
     else:
-        _safe(cmd_config, argparse.Namespace(server=server, token=token))
+        _safe(cmd_config, argparse.Namespace(server=server, token=None))
 
 
 def _menu_ask():
     usable = []
     try:
         base, _origin = resolve_server(argparse.Namespace(server=None, token=None))
-        data, _note = server_tools(base, _token(argparse.Namespace(token=None)), timeout=5.0)
-        usable = [t.get("id") for t in data.get("tools") or [] if (t.get("remote") or {}).get("usable")]
+        tok = _token(argparse.Namespace(token=None))
+        rinfo = remote_info(base, tok, timeout=5.0)
+        if rinfo:
+            usable = [t.get("id") for t in rinfo.get("tools") or [] if (t.get("remote") or {}).get("usable")]
+            usable += [s.get("id") for s in rinfo.get("services") or [] if s.get("available")]
+        else:
+            data, _note = server_tools(base, tok, timeout=5.0)
+            usable = [t.get("id") for t in data.get("tools") or [] if (t.get("remote") or {}).get("usable")]
     except ClientError as e:
         print(f"Errore: {e}")
         return
@@ -938,9 +1302,12 @@ def _menu_ask():
     tool = _ask(f"  Quale AI del server ({', '.join(usable)}; invio = {usable[0]}): ")
     if tool is None:
         return
+    model = _ask("  Modello (obbligatorio per i servizi via API, es. deepseek-chat; invio = predefinito): ")
+    key = _ask("  La tua chiave API (solo se il servizio la richiede; non viene salvata): ", secret=True)
     prompt = _ask("  Prompt: ")
     if prompt:
-        _safe(cmd_ask, argparse.Namespace(server=None, token=None, tool=tool or usable[0], prompt=prompt, model=None))
+        _safe(cmd_ask, argparse.Namespace(server=None, token=None, tool=tool or usable[0], prompt=prompt,
+                                          model=model or None, key=key or None))
 
 
 def interactive():
@@ -954,18 +1321,22 @@ def interactive():
         "1": ("Cerca il server sulla rete", lambda: _safe(cmd_discover, argparse.Namespace(timeout=1.5))),
         "2": ("Stato della connessione", lambda: _safe(cmd_status, argparse.Namespace(server=None, token=None))),
         "3": ("AI e modelli del server", lambda: _safe(cmd_models, argparse.Namespace(server=None, token=None))),
-        "4": ("Chiedi a un'AI del server", _menu_ask),
+        "4": ("Chiedi a un'AI del server (anche Meta Muse, Kimi, DeepSeek, Qwen, Mistral, Grok...)", _menu_ask),
         "5": ("Avvia una CLI protetta (installata su questo PC)", None),
         "6": ("Proteggi un testo o dei file", _menu_send),
-        "7": ("Imposta server e token", _menu_config),
-        "8": ("Esci", None),
+        "7": ("Imposta il server", _menu_config),
+        "8": ("Accedi al server (utente e password)", lambda: _safe(cmd_login, argparse.Namespace(server=None, user=None,
+                                                                                                   password=None))),
+        "9": ("Opzioni di elaborazione di questo PC", lambda: _safe(cmd_options, argparse.Namespace(server=None, token=None,
+                                                                                                    set=None, reset=False))),
+        "0": ("Esci", None),
     }
     while True:
         print("\nComandi:")
         for k, (label, _) in actions.items():
             print(f"  {k}) {label}")
         c = _ask("> ")
-        if c is None or c.lower() in ("8", "q", "esci", "exit", "quit"):
+        if c is None or c.lower() in ("0", "q", "esci", "exit", "quit"):
             return OK
         if c == "5":
             clis = [i for i, lbl in _local_tools() if lbl.startswith(("protetta", "da configurare", "NON"))]
@@ -976,7 +1347,7 @@ def interactive():
         elif c in actions and actions[c][1]:
             actions[c][1]()
         elif c:
-            print("  Comando non riconosciuto: scegli un numero da 1 a 8.")
+            print("  Comando non riconosciuto: scegli un numero da 0 a 9.")
 
 
 def main(argv=None):
@@ -984,37 +1355,51 @@ def main(argv=None):
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--server", default=argparse.SUPPRESS,
                         help="indirizzo del Germano Server (es. http://192.168.1.10:8181)")
-    common.add_argument("--token", default=argparse.SUPPRESS, help="token del server (se richiesto)")
-    p = argparse.ArgumentParser(prog="client", description="Germano Client - harness LAN per le AI.",
+    common.add_argument("--token", default=argparse.SUPPRESS, help="token di sessione (di solito lo salva «login»)")
+    p = argparse.ArgumentParser(prog="client", description="Germano Client - collega questo PC a un Germano Server.",
                                 epilog="Codici di uscita: 0 ok, 1 server non raggiungibile o non valido, 2 uso errato, "
-                                       "3 token mancante o errato, 4 motore del server non pronto, "
-                                       "5 CLI non installata o non proteggibile.")
+                                       "3 accesso richiesto o non valido, 4 motore del server non pronto, "
+                                       "5 CLI non installata o non proteggibile, 6 opzioni bloccate dal profilo PA.")
     p.add_argument("--server", default=None, help="indirizzo del Germano Server (es. http://192.168.1.10:8181)")
-    p.add_argument("--token", default=None, help="token del server (se richiesto)")
+    p.add_argument("--token", default=None, help="token di sessione (di solito lo salva «login»)")
     p.add_argument("--version", action="version", version=f"Germano Client {get_version()}")
     sub = p.add_subparsers(dest="cmd")
     sp = sub.add_parser("discover", parents=[common], help="cerca i Germano Server sulla rete locale")
     sp.add_argument("--timeout", type=float, default=1.5, help="durata della ricerca in secondi (predefinita 1,5)")
-    sub.add_parser("status", parents=[common], help="stato del collegamento: server, motore, token")
-    sub.add_parser("models", parents=[common], help="AI e modelli installati sul server e come usarli da qui")
-    sa = sub.add_parser("ask", parents=[common], help="usa da qui un'AI installata sul server (es. claude-code)",
-                        epilog='Esempio: ask claude-code "Riassumi in tre righe: ..."')
-    sa.add_argument("tool", help="AI del server (vedi: models)")
+    sub.add_parser("status", parents=[common], help="stato del collegamento: server, motore, accesso, profilo")
+    sub.add_parser("models", parents=[common], help="AI e servizi del server e come usarli da qui")
+    sa = sub.add_parser("ask", parents=[common], help="usa un'AI del server (CLI condivisa o servizio via API)",
+                        epilog='Esempi: ask claude-code "Riassumi: ..." | ask deepseek "..." --model deepseek-chat '
+                               '--key sk-... | ask meta "..." --model muse-wonder-1.0 | ask ollama "..." --model llama3')
+    sa.add_argument("tool", help="AI o servizio del server (vedi: models)")
     sa.add_argument("prompt", help="testo della richiesta (anonimizzato dal server prima di uscire)")
-    sa.add_argument("--model", default=None, help="modello da usare (es. haiku, sonnet), se la CLI lo permette")
+    sa.add_argument("--model", default=None, help="modello da usare (obbligatorio per i servizi via API)")
+    sa.add_argument("--key", default=None, help="la tua chiave API del servizio (non viene salvata)")
+    sg = sub.add_parser("login", parents=[common], help="accede al server con utente e password (gestione utenti)")
+    sg.add_argument("--user", default=None, help="nome utente (se manca viene chiesto)")
+    sg.add_argument("--password", default=None, help="password (se manca viene chiesta senza mostrarla)")
+    sub.add_parser("logout", parents=[common], help="chiude la sessione sul server e la toglie da questo PC")
+    so = sub.add_parser("options", parents=[common], help="opzioni di elaborazione di questo PC (soglia, modelli, "
+                                                          "categorie, mascheramento)")
+    so.add_argument("--set", action="append", metavar="NOME=VALORE", help="imposta un'opzione (ripetibile)")
+    so.add_argument("--reset", action="store_true", help="torna alle opzioni del server")
     sl = sub.add_parser("launch", parents=[common], help="avvia una CLI di questo PC protetta dal server",
                         epilog="Esempi: launch claude-code --dry-run | launch codex -- --model gpt-5")
     sl.add_argument("--dry-run", action="store_true", help="mostra cosa verrebbe impostato senza avviare la CLI")
     sl.add_argument("--forza", action="store_true", help="avvia anche le CLI da configurare a mano")
-    sl.add_argument("tool", help="claude-code, codex, aider, qwen, kimi, deepseek, gemini-cli")
+    sl.add_argument("tool", help="claude-code, codex, aider, qwen, kimi, deepseek, muse-code, mistral-vibe, grok-build, "
+                                 "opencode, gemini-cli...")
     sl.add_argument("args", nargs=argparse.REMAINDER, help="argomenti per la CLI (dopo --)")
     ss = sub.add_parser("send", parents=[common], help="protegge un testo e dei file e mostra il testo protetto")
     ss.add_argument("prompt", nargs="?", default="")
     ss.add_argument("files", nargs="*")
-    sub.add_parser("config", parents=[common], help="mostra o salva server_url e token in client_config.json")
+    sc = sub.add_parser("config", parents=[common], help="mostra o salva il server (e l'accesso) in client_config.json")
+    sc.add_argument("--user", default=None, help="accede con questo utente (con --password)")
+    sc.add_argument("--password", default=None, help="password dell'utente (non viene salvata)")
     args = p.parse_args(argv)
     handlers = {"discover": cmd_discover, "status": cmd_status, "models": cmd_models, "ask": cmd_ask,
-                "launch": cmd_launch, "send": cmd_send, "config": cmd_config}
+                "launch": cmd_launch, "send": cmd_send, "config": cmd_config, "login": cmd_login,
+                "logout": cmd_logout, "options": cmd_options}
     try:
         if not args.cmd:
             return interactive()

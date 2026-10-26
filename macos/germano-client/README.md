@@ -11,14 +11,18 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
 ## ⚡ Caratteristiche Principali
 
 1. **Rilevamento Automatico del Server (Broadcast UDP 8182)**:
-   All'avvio, il Client ricerca automaticamente sulla rete locale i Server Germano attivi, stabilendo una connessione istantanea protetta da Bearer Token di sicurezza.
+   All'avvio, il Client ricerca automaticamente sulla rete locale i Server Germano attivi e si collega: accesso libero di base, oppure con **utente e password** (`client login`) se sul server è attiva la gestione utenti. Il Client conserva solo la sessione, mai la password.
 2. **Esposizione delle AI e dei Modelli del Server**:
-   Il Client interroga il Server ed elenca tutte le intelligenze artificiali e gli agenti CLI configurati (es. Claude Code, Google Antigravity, OpenAI Codex, Aider, Qwen, DeepSeek). Permette di interrogarli ed eseguirli direttamente dalla propria postazione, anche se non sono installati localmente.
-3. **Instradamento Trasparente per Agenti AI Locali**:
-   Per gli agenti installati localmente, configura automaticamente le variabili d'ambiente (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`) reindirizzando il traffico verso il Proxy di Privacy del Server con de-anonimizzazione trasparente al ritorno.
-4. **Protezione dei Documenti e dei File**:
-   Tratta file e testi al volo prima della trasmissione: il server riceve unicamente dati con placeholder anonimizzati (`[PERSONA_1]`, `[COD.FISCALE_1]`, ecc.), garantendo la piena conformità GDPR e CAD.
-5. **Nuova Interfaccia Applicativa Dedicata**:
+   Il Client interroga il Server ed elenca le AI rilevate sul server (Claude Code, Codex, Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Kiro, OpenCode, Aider, Ollama, LM Studio...) e i **servizi di AI via API** filtrati da Germano (Meta Muse Wonder e Muse Spark, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic e i modelli locali del server). Con la chat protetta li usa direttamente dalla propria postazione, anche se non sono installati localmente.
+3. **Stessa interfaccia del Remote Control**:
+   Il pannello del Client è lo stesso Remote Control che il Server offre a qualsiasi browser della rete (AI, chat protetta con fino a 12 allegati, proteggi e ripristina, opzioni, collegamento degli strumenti): chi usa il Client e chi usa il browser ha le stesse capacità. In più il Client cerca il server in rete e avvia protette le CLI di questo PC.
+4. **Opzioni di elaborazione di questo PC**:
+   Soglia di confidenza, modelli attivi, 18 categorie di dati personali e mascheramento (`client options`), valide solo per le richieste di questo PC. **Con il profilo PA del server sono bloccate e in grigio** (il server respinge ogni modifica: Compliance Lock).
+5. **Instradamento Trasparente per Agenti AI Locali**:
+   Per gli agenti installati localmente, configura automaticamente le variabili d'ambiente (`ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`) reindirizzando il traffico verso il Proxy di Privacy del Server con de-anonimizzazione trasparente al ritorno; per gli strumenti che si configurano a mano (Kimi, Mistral Vibe, Muse Code, OpenCode...) indica l'indirizzo esatto, anche per servizio (`/p/<servizio>/v1`).
+6. **Protezione dei Documenti e dei File**:
+   Tratta file e testi al volo prima della trasmissione: verso l'AI escono unicamente dati con placeholder anonimizzati (`[PERSONA_1]`, `[COD.FISCALE_1]`, ecc.), garantendo la piena conformità GDPR e CAD.
+7. **Nuova Interfaccia Applicativa Dedicata**:
    Disponibile sia in finestra grafica dedicata (senza barre di navigazione generiche né console nera) sia tramite interfaccia a riga di comando (`client.py`) per automazioni e script.
 
 ---
@@ -27,22 +31,22 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
 
 ```
   [ Postazione Client: Notebook / PC Ufficio ]
-     │  Interfaccia Grafica o CLI (Claude / Antigravity / Codex / Aider)
-     │  Instradamento con Bearer Token protetto
+     │  Interfaccia Grafica (Remote Control) o CLI (Claude Code / Codex / Aider / Qwen Code)
+     │  Accesso libero, o sessione dell'utente se la gestione utenti è attiva
      ▼
   [ GERMANO SERVER sulla LAN :8181 ]  (Workstation con i 6 modelli IA locali)
      1. Riceve le richieste e applica i modelli di privacy locali offline
-     2. Anonimizza prompt e documenti (sostituzione PII con token)
-     3. Registra i mapping nel Vault locale del client
+     2. Anonimizza prompt e documenti (sostituzione PII con etichette)
+     3. Conserva le corrispondenze nel Vault del server
      4. Inoltra all'LLM di destinazione solo il testo anonimizzato
-     5. Ripristina i dati reali nella risposta e la restituisce in chiaro al Client
+     5. Ripristina nella risposta i dati reali di QUELLA richiesta e la restituisce in chiaro al Client
 ```
 
 ---
 
 ## 📦 Installazione Multipiattaforma
 
-Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](https://download.germano.ai/)** e includono il proprio Python con tutte le librerie: l'installazione non scarica nulla da Internet. Il client non crea cartelle di lavoro in Documenti: le sue impostazioni (indirizzo del server, token) restano nella cartella tecnica dell'utente.
+Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](https://download.germano.ai/)** e includono il proprio Python con tutte le librerie: l'installazione non scarica nulla da Internet. Il client non crea cartelle di lavoro in Documenti: le sue impostazioni (indirizzo del server, sessione, opzioni) restano nella cartella tecnica dell'utente.
 
 ### 🪟 Windows (10 / 11 a 64 bit)
 1. **Download:** scarica `germano-client-0.60.exe` (circa 22 MB).
@@ -74,15 +78,23 @@ Per script, pipeline CI/CD o utenti avanzati, il Client offre una completa inter
 # Mostra la lista dei server attivi sulla LAN
 python client.py discover
 
-# Mostra i modelli e le AI esposte dal server
+# Accede con utente e password (solo se sul server è attiva la gestione utenti)
+python client.py login --user mario
+
+# Mostra le AI e i servizi del server
 python client.py models
 
-# Chiede direttamente a un'AI del server
-python client.py ask "Spiega il principio di privacy by design"
+# Chiede a un'AI del server: una CLI condivisa o un servizio via API (testo anonimizzato dal server)
+python client.py ask claude-code "Spiega il principio di privacy by design"
+python client.py ask meta "Riassumi questo contratto: ..." --model muse-wonder-1.0 --key <chiave Meta>
+python client.py ask deepseek "..." --model deepseek-chat --key <chiave DeepSeek>
+
+# Opzioni di elaborazione di questo PC (bloccate con il profilo PA del server)
+python client.py options
+python client.py options --set censor_date=no --set masking=blackout
 
 # Avvia un agente locale reindirizzandolo verso il server
-python client.py launch claude
-python client.py launch antigravity
+python client.py launch claude-code
 
 # Anonimizza un documento locale tramite il server
 python client.py send documento.pdf
@@ -91,7 +103,7 @@ python client.py send documento.pdf
 ---
 
 ## 📖 Documentazione Completa
-Per tutti i dettagli tecnici su API, token di sicurezza e configurazione avanzata, consulta il manuale integrato:
+Per tutti i dettagli tecnici su API, Remote Control, gestione utenti e configurazione avanzata, consulta il manuale integrato:
 - **[GUIDA_OFFLINE.html](GUIDA_OFFLINE.html)** (100% offline, inclusa in ogni pacchetto)
 - **[Guida Online Ufficiale](https://germano.ai/guide.html)**
 

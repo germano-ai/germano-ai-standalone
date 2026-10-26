@@ -16,6 +16,12 @@ chiude tutto: finestra, server e motore IA. Nella sezione **Cartelle di lavoro**
 `processed`, `failed`) mostrano in tempo reale i file di ogni cartella, con il percorso completo sopra: trascina i
 documenti sul riquadro **input**; un clic su un riquadro apre la cartella nel Finder.
 
+In modalità **Server** gli altri computer, tablet e smartphone della rete usano dal browser, senza installare nulla, il
+**Remote Control** (`http://<IP-di-questo-Mac>:8181/`): le AI di questo computer filtrate da Germano, la chat protetta
+con allegati, proteggi e ripristina, le opzioni (bloccate con il profilo PA). Di base l'accesso è libero; con la
+gestione utenti (Impostazioni › Accesso dalla rete) servono utente e password. Alla prima attivazione macOS può
+chiedere di consentire le connessioni in entrata a Python: rispondi **Consenti**.
+
 ## Dati e privacy
 - Cartelle di lavoro in `~/Documents/Germano AI` (in `~/Germano AI` se Documenti è sincronizzata con iCloud): `input`,
   `output`, `processed`, `failed`, `extracted`.

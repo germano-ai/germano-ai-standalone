@@ -134,8 +134,9 @@ class Daemon:
         except OSError:
             sig = None
         if sig != self._cfg_sig:
-            self._cfg_sig = sig
+            # prima le impostazioni, poi la firma: una richiesta API concorrente non usa mai impostazioni superate
             self.settings = common.load_config()
+            self._cfg_sig = sig
 
     # ------------------------------------------------------------------ avvio
     def check_single_instance(self):
@@ -471,6 +472,8 @@ class Daemon:
                 last = str(e)
                 if "non e' ancora pronto" in last:
                     deadline = start + 240
+                elif "rifiutato l'accesso" in last:
+                    break                # utente/password mancanti o non validi: riprovare non serve
             if time.time() > deadline:
                 break
             self.set_status(state="loading", detail=f"ricerca del Germano Server: {last}", force=True)

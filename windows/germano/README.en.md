@@ -81,15 +81,31 @@ Germano AI implements a modular hybrid architecture, selectable on initial launc
 
 ### Three Native Operating Modes:
 *   **🖥️ Standalone (Default & 100% Offline):** everything runs locally on this computer in complete isolation. Zero open ports to the external network and zero client discovery. All 6 local AI models load into local memory, the de-anonymization Vault remains on local disk, and zero packets leave the workstation.
-*   **📡 LAN Server (Shared Inference Engine):** Germano listens on the local network (default port **8181**) and responds to UDP broadcast auto-discovery (port **8182**). It exposes the local inference engine and the AI Proxy to authorized workstations across the office or studio, protected by Bearer Token authentication. Launches directly via `Germano.exe`.
+*   **📡 LAN Server (Shared Inference Engine):** Germano listens on the local network (default port **8181**) and responds to UDP broadcast auto-discovery (port **8182**). It exposes the local inference engine, the AI Proxy and the **Remote Control** (from any browser on the network, nothing to install) to the workstations and devices of the office or studio: open access by default, or **user name and password** when the administrator enables user management. Launches directly via `Germano.exe`.
 *   **🌐 Client (Lightweight Germano Client ~28 MB):** an agile, portable executable designed for laptops or workstations with limited resources. On launch, it automatically discovers the LAN Germano Server and offloads heavy model inference. **Original documents, anonymized files, and the de-anonymization vault strictly reside on the client workstation**: if the server is unreachable, zero data leaves the client and documents remain queued.
 *   **Server + Client together:** the host workstation shares inference across the LAN while concurrently processing its own local queue.
 
 ### Dual Mode & User Interface:
 *   **Dual Mode (Batch + AI Studio):** toggle instantly with a single click between:
     *   **📁 Anonymize files (Batch Processing):** clear and focused interface for massive batch processing, featuring quick-access buttons to open `input` and `output` folders, interactive tabs for `input`, `output`, `failed`, `processed`, and `extracted`, real-time throughput metrics (files/min, redacted PII), hardware monitoring (CPU/RAM), detailed error diagnostics with a **Re-queue** button, and CSV export.
-    *   **🤖 AI Studio (Local Harness):** interactive workbench styled after Google Antigravity, featuring automatic detection of installed local AI agents and CLIs (Claude Code, OpenAI Codex CLI, Google Antigravity, Aider, Qwen, Kimi, DeepSeek) with granular model configuration.
+    *   **🤖 AI Studio (Local Harness):** interactive workbench styled after Google Antigravity, featuring automatic detection of installed AIs (Claude Code, OpenAI Codex CLI, ChatGPT, Google Antigravity and Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Windsurf, Kiro, OpenCode, Aider, Ollama, LM Studio and more) with granular model configuration.
 *   **100% Bilingual Interface & Contextual Tooltips (Italian / English):** automatic browser language detection (`it` -> Italian, otherwise English by default), quick flag toggle (🇮🇹 IT / 🇬🇧 EN) in the top navigation bar, and over 112 localized interactive hover tooltips across all controls, toggled in Settings.
+
+---
+
+## 📱 Remote Control: Germano from any device on the network, nothing to install
+
+With **Server** mode on, from a Windows, Mac or Linux PC, a tablet or a smartphone on the same local network just open the browser at **`http://<server-IP>:8181/`** (the Remote Control opens, also at `/remote`; the exact addresses are in the server Settings). Like Google Antigravity's Remote Control, the work stays on the server: the device is a secure window.
+
+- **Server AIs, detected automatically:** the CLIs and apps installed on the server (with the reason why a CLI cannot run remotely: agents that would run commands or edit files on the server are never run for clients) and the **AI services via API** filtered by Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen, Mistral, Grok (xAI), Perplexity (Sonar), Google Gemini, OpenAI, Anthropic, OpenRouter, Groq and the **server's local models** (Ollama, LM Studio: no data leaves the local network).
+- **Protected chat:** the prompt and up to **12 attachments** are anonymized by the server engine before leaving; the answer comes back with the original data **of that request only**. For every answer you can see exactly the protected text the AI received. API key: the user's own (it stays on the device, the server does not save it) or the server's, if the administrator shares this computer's AIs.
+- **Protect and restore:** protected text to copy into any AI, and the answer restored right on the device.
+- **Client processing options:** confidence threshold, active models, the 18 personal data categories, masking (numbered tags `[PERSONA_1]`, restorable; generic tags `[PERSONA]` or blackout `████`, irreversible). They apply only to that device's requests, never to the server configuration. **With the PA profile (or `lock_settings`) they are disabled and greyed out**, and the server rejects any change with `403 Forbidden` (Compliance Lock).
+- **Connect the device's tools:** the Proxy addresses to use as Base URL: `/v1` (OpenAI format), the root (Anthropic format) and `/p/<service>/v1` for Meta, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, etc.
+
+**User management (optional).** By default network access needs no credentials. In the server Dashboard, Settings › Network access, the administrator can create one or more users and enable sign-in with **user name and password**: it applies to the Remote Control in the browser (sign-in screen, `HttpOnly` session cookie) and to Germano Client (`client login`). Passwords are stored only as a **PBKDF2-SHA256** hash (600,000 iterations, random salt); sessions last 30 days from last use and are closed when the password changes or the user is deleted; after 5 wrong attempts the address is blocked for 10 minutes. From the server computer (127.0.0.1) administration never needs credentials.
+
+**Security.** From the network, data restoration only covers the tags of the request itself: no device can get back the data of other Vault documents (not even by asking an AI to "repeat [PERSONA_1]"). The full Dashboard, settings, Vault and files stay accessible only from the server. On the local network the connection is plain HTTP, not encrypted: use Germano on trusted networks.
 
 ---
 
