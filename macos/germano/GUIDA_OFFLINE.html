@@ -2182,7 +2182,7 @@ claude</code></pre>
                         <div class="callout-content">
                             <strong>Cosa serve oltre ai sorgenti:</strong>
                             <ul>
-                                <li><strong>Modelli IA (<code>models/</code>):</strong> i 6 modelli per l'anonimizzazione dei dati personali, OCR, NER e biometria facciale YuNet, scaricabili da <a href="https://download.germano.ai/modelli/" target="_blank" rel="noopener"><strong>download.germano.ai/modelli/</strong></a> (oppure estraibili da un installer ufficiale), da mettere nella cartella <code>models/</code> accanto a <code>server.py</code>.</li>
+                                <li><strong>Modelli IA (<code>models/</code>):</strong> i 6 modelli per l'anonimizzazione dei dati personali, OCR, NER e biometria facciale YuNet, già inclusi e pre-installati negli installer ufficiali di Germano AI (per lo sviluppo dai sorgenti, è sufficiente copiare la cartella <code>models/</code> dalla directory dell'applicazione installata o estrarla dall'installer) e posizionarla accanto a <code>server.py</code>.</li>
                                 <li><strong>Python 3.11 a 64 bit</strong> con le librerie di <code>requirements.txt</code> (su Linux torch per CPU dall'indice di PyTorch: <code>--extra-index-url https://download.pytorch.org/whl/cpu</code>). Su Windows PyTorch richiede il ridistribuibile <a href="https://aka.ms/vs/17/release/vc_redist.x64.exe" target="_blank" rel="noopener"><strong>Microsoft Visual C++ 64-bit (vc_redist.x64.exe)</strong></a>, le cui librerie sono già incluse negli installer.</li>
                             </ul>
                         </div>
@@ -2198,11 +2198,11 @@ python -m venv venv
 # Windows: venv\Scripts\activate | Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
 
-# 3. Metti qui la cartella 'models/' (da download.germano.ai/modelli/)
+# 3. Copia qui la cartella 'models/' (dall'installazione di Germano AI)
 
 # 4. Avvia l'applicazione nella sua finestra (solo il server: python server.py)
 python germano_desktop.py</code></pre>
-                    <p>Gli installer (<code>.exe</code>, <code>.deb</code>, <code>.pkg</code>) si costruiscono con gli script di <code>windows/germano/build/</code> (<code>costruisci_installer_windows.py</code>, <code>costruisci_deb.py</code>, <code>costruisci_pkg.py</code>), che uniscono i sorgenti, i runtime e le librerie per ogni sistema operativo (<code>dipendenze/</code>) e i modelli (<code>modelli/</code>) della cartella di release.</p>
+                    <p>Gli installer (<code>.exe</code>, <code>.deb</code>, <code>.pkg</code>) si costruiscono con gli script di <code>windows/germano/build/</code> (<code>costruisci_installer_windows.py</code>, <code>costruisci_deb.py</code>, <code>costruisci_pkg.py</code>), che uniscono i sorgenti, i runtime e le librerie per ogni sistema operativo (<code>dipendenze/</code>) e i 6 modelli IA (<code>models/</code>).</p>
                 </div>
 
                 <div class="lang-en">
@@ -2213,7 +2213,7 @@ python germano_desktop.py</code></pre>
                         <div class="callout-content">
                             <strong>What you need besides the sources:</strong>
                             <ul>
-                                <li><strong>AI Models (<code>models/</code>):</strong> the 6 local models for PII redaction, OCR, NER and YuNet facial biometrics, available from <a href="https://download.germano.ai/modelli/" target="_blank" rel="noopener"><strong>download.germano.ai/modelli/</strong></a> (or extractable from an official installer), to be placed in the <code>models/</code> folder next to <code>server.py</code>.</li>
+                                <li><strong>AI Models (<code>models/</code>):</strong> the 6 local models for PII redaction, OCR, NER and YuNet facial biometrics, bundled and pre-installed inside the official Germano AI installers (for development from source, simply copy the <code>models/</code> folder from the installed application directory or extract it from the installer) and place it next to <code>server.py</code>.</li>
                                 <li><strong>64-bit Python 3.11</strong> with the libraries in <code>requirements.txt</code> (on Linux CPU torch from the PyTorch index: <code>--extra-index-url https://download.pytorch.org/whl/cpu</code>). On Windows PyTorch requires the <a href="https://aka.ms/vs/17/release/vc_redist.x64.exe" target="_blank" rel="noopener"><strong>Microsoft Visual C++ 64-bit redistributable (vc_redist.x64.exe)</strong></a>, whose libraries are already bundled in the installers.</li>
                             </ul>
                         </div>
@@ -2229,11 +2229,11 @@ python -m venv venv
 # Windows: venv\Scripts\activate | Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
 
-# 3. Place the 'models/' folder here (from download.germano.ai/modelli/)
+# 3. Copy the 'models/' folder here (from your Germano AI installation)
 
 # 4. Launch the application in its window (server only: python server.py)
 python germano_desktop.py</code></pre>
-                    <p>The installers (<code>.exe</code>, <code>.deb</code>, <code>.pkg</code>) are built with the scripts in <code>windows/germano/build/</code> (<code>costruisci_installer_windows.py</code>, <code>costruisci_deb.py</code>, <code>costruisci_pkg.py</code>), which combine the sources, the per-OS runtimes and libraries (<code>dipendenze/</code>) and the models (<code>modelli/</code>) of the release folder.</p>
+                    <p>The installers (<code>.exe</code>, <code>.deb</code>, <code>.pkg</code>) are built with the scripts in <code>windows/germano/build/</code> (<code>costruisci_installer_windows.py</code>, <code>costruisci_deb.py</code>, <code>costruisci_pkg.py</code>), which combine the sources, the per-OS runtimes and libraries (<code>dipendenze/</code>) and the 6 local AI models (<code>models/</code>).</p>
                 </div>
             </section>
 

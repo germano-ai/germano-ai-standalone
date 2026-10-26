@@ -125,7 +125,7 @@ Questo repository GitHub contiene **esclusivamente il codice sorgente pulito** d
 
 1. **Modelli di Intelligenza Artificiale (`models/`):**
    - Germano richiede i 6 modelli IA locali (filtro privacy, NER, EasyOCR, biometria facciale YuNet, rilevamento targhe e firme).
-   - 👉 **[Scarica il pacchetto completo dei Modelli](https://download.germano.ai/modelli/)** ed estrailo nella cartella `models/` della piattaforma scelta (es. `windows/germano/models/` o `linux/germano/models/`).
+   - 👉 **[Scarica il pacchetto completo dei Modelli](https://download.germano.ai/)** ed estrailo nella cartella `models/` della piattaforma scelta (es. `windows/germano/models/` o `linux/germano/models/`).
    - *In alternativa:* puoi estrarre la cartella `models/` direttamente da qualsiasi installer ufficiale scaricato da [download.germano.ai](https://download.germano.ai).
 
 2. **Dipendenze e Runtime di Sistema:**

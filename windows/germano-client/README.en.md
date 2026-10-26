@@ -125,7 +125,7 @@ This GitHub repository contains **exclusively clean source code and assets**. To
 
 1. **AI Models (`models/`):**
    - Germano requires the 6 local AI models (privacy-filter, NER, EasyOCR, YuNet facial biometrics, license plate and signature detection).
-   - 👉 **[Download the complete Models Bundle](https://download.germano.ai/modelli/)** and extract it into the `models/` directory of your chosen platform (e.g. `windows/germano/models/` or `linux/germano/models/`).
+   - 👉 All 6 AI models are bundled inside the official Germano AI installers: for development from source, copy the `models/` folder from the installed application into your chosen platform directory (e.g. `windows/germano/models/` or `linux/germano/models/`).
    - *Alternatively:* you can extract the `models/` folder directly from any official installer package on [download.germano.ai](https://download.germano.ai).
 
 2. **System Dependencies & Runtimes:**
