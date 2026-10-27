@@ -10,7 +10,7 @@
            TEMA SCURO & STILI SPECIFICI DELLA DOCUMENTAZIONE (GUIDE.HTML)
            ========================================================================== */
         :root {
-            --bg-doc-body: #070b19;
+            --bg-doc-body: #060813;
             --bg-doc-card: rgba(13, 20, 49, 0.75);
             --bg-doc-card-hover: rgba(17, 26, 62, 0.85);
             --bg-terminal: #060919;
@@ -30,9 +30,24 @@
             color: var(--text-doc-main);
             min-height: 100vh;
             overflow-x: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             margin: 0;
             padding: 0;
+            position: relative;
+        }
+
+        /* Top aurora subtle background matching download.germano.ai */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -200px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 1000px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.16) 0%, rgba(124, 58, 237, 0.08) 45%, transparent 70%);
+            pointer-events: none;
+            z-index: 0;
         }
 
         /* BILINGUAL LANGUAGE SWITCHING */
@@ -231,12 +246,21 @@
             }
         }
 
-        /* HERO BANNER */
+        /* HERO BANNER matching download.germano.ai */
         .kb-hero {
+            position: relative;
+            z-index: 1;
             text-align: center;
             padding: 3.5rem 1.5rem 2.5rem;
             max-width: 1100px;
             margin: 0 auto;
+            background: transparent !important;
+        }
+
+        .kb-hero::before,
+        .kb-hero::after {
+            display: none !important;
+            content: none !important;
         }
 
         .kb-hero .badge-pill {
@@ -292,6 +316,8 @@
 
         /* TWO-COLUMN LAYOUT */
         .layout-container {
+            position: relative;
+            z-index: 1;
             max-width: 1400px;
             margin: 0 auto;
             display: grid;
