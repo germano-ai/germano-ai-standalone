@@ -54,6 +54,16 @@
         body:not([data-lang="en"]) .lang-en { display: none !important; }
         body[data-lang="en"] .lang-it { display: none !important; }
 
+        @property --g-angle {
+            syntax: '<angle>';
+            inherits: false;
+            initial-value: 0deg;
+        }
+
+        @keyframes spinAngle {
+            to { --g-angle: 360deg; }
+        }
+
         /* NAVBAR & HEADER WRAPPER */
         .navbar-wrapper {
             position: sticky;
@@ -72,16 +82,67 @@
             justify-content: space-between;
             gap: 1.5rem;
             padding: 0.6rem 1.25rem;
-            background: rgba(9, 13, 32, 0.90);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 12px;
+            background: transparent;
+            border-radius: 14px;
+            border: 1.5px solid transparent;
             backdrop-filter: blur(14px);
             -webkit-backdrop-filter: blur(14px);
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+            isolation: isolate;
         }
 
-        .navbar::before, .navbar::after {
-            display: none !important;
+        /* Rotating colorful border around the navbar */
+        .navbar::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            border-radius: inherit;
+            border: 1.5px solid transparent;
+            background:
+                linear-gradient(rgba(9, 13, 32, 0.90), rgba(9, 13, 32, 0.90)) padding-box,
+                conic-gradient(from var(--g-angle, 0deg),
+                    rgba(148, 163, 184, 0.35) 0deg,
+                    #3b82f6 45deg,
+                    #8b5cf6 90deg,
+                    #ec4899 135deg,
+                    #f59e0b 175deg,
+                    #10b981 215deg,
+                    #22d3ee 250deg,
+                    rgba(148, 163, 184, 0.35) 300deg,
+                    rgba(148, 163, 184, 0.35) 360deg
+                ) border-box;
+            animation: spinAngle 6s linear infinite;
+            pointer-events: none;
+        }
+
+        /* Soft subtle glow aura behind rotating navbar */
+        .navbar::after {
+            content: '';
+            position: absolute;
+            inset: 1px;
+            z-index: -2;
+            border-radius: inherit;
+            background: conic-gradient(from var(--g-angle, 0deg),
+                transparent 0deg,
+                #3b82f6 45deg,
+                #8b5cf6 90deg,
+                #ec4899 135deg,
+                #f59e0b 175deg,
+                #10b981 215deg,
+                #22d3ee 250deg,
+                transparent 300deg,
+                transparent 360deg
+            );
+            filter: blur(12px);
+            opacity: 0.45;
+            animation: spinAngle 6s linear infinite;
+            transition: opacity 0.35s ease;
+            pointer-events: none;
+        }
+
+        .navbar:hover::after {
+            opacity: 0.75;
         }
 
         .logo a {
