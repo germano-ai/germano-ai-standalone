@@ -799,7 +799,7 @@
 <h2 class="section-title lang-en">1. Introduction &amp; Operating Modes (Standalone, Server, Client, Remote Control)</h2>
 </div>
 <div class="lang-it">
-<p><strong>Germano AI</strong> è una suite autonoma progettata per proteggere la privacy, eliminare i dati personali sensibili (GDPR Art. 9 e 10) e consentire l'utilizzo sicuro di strumenti di Intelligenza Artificiale Cloud (come ChatGPT, Claude o Google Gemini) e ambienti di sviluppo (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) su qualsiasi computer con <strong>Windows 11</strong>.</p>
+<p><strong>Germano AI</strong> è una suite autonoma progettata per proteggere la privacy, eliminare i dati personali sensibili (GDPR Art. 9 e 10) e consentire l'utilizzo sicuro di strumenti di Intelligenza Artificiale Cloud (come ChatGPT, Claude o Google Gemini) e ambienti di sviluppo (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) su qualsiasi computer con <strong>Windows 10 o 11</strong>, su <strong>Windows Server 2019 o successivo</strong> e nelle <strong>macchine virtuali</strong> (oltre che su macOS e Linux).</p>
 <div class="callout callout-success">
 <div class="callout-icon">🛡️</div>
 <div class="callout-content">
@@ -835,9 +835,17 @@
                         <li><strong>Sicurezza:</strong> l'API locale rifiuta le richieste provenienti da siti web esterni e il motore interno è protetto da token. Nessun dato dei documenti viene inviato in rete: l'unico collegamento automatico è il controllo degli aggiornamenti, solo quando Windows segnala che il PC è connesso a Internet.</li>
                         <li><strong>Per gli amministratori:</strong> blocco delle impostazioni per il profilo PA (<code>"lock_settings": true</code>), scelta della precisione del modello (FP32/BF16), anonimizzazione dei nomi dei file, servizio Anthropic configurabile a parte.</li>
                     </ul>
+<h3 class="sub-title">Sistemi supportati: Windows 10/11, Windows Server e macchine virtuali</h3>
+<ul>
+<li><strong>Windows 10 e 11</strong> a 64 bit.</li>
+<li><strong>Windows Server 2019, 2022 e 2025</strong> (Standard e Datacenter), con <em>Esperienza desktop</em> per la finestra di Germano. Windows Server 2019 non include Microsoft Edge: senza Edge (o Chrome) Germano non usa Internet Explorer, che non sa mostrare la Dashboard, ma resta attivo come server senza finestra e indica gli indirizzi da aprire (anche da un altro computer); installando Microsoft Edge torna la sua finestra. Su <em>Server Core</em>, che non ha né Edge né il desktop, si usa la modalità senza finestra (capitolo 11).</li>
+<li><strong>Macchine virtuali</strong>: VMware (ESXi, Workstation), Hyper-V, Proxmox VE (KVM/QEMU), VirtualBox e le istanze cloud (AWS EC2, Azure, Google Compute Engine). Non serve una GPU: tutta la pipeline gira su CPU; il numero di thread si adatta alle vCPU e la precisione al processore (capitolo 9). Per l'accesso dalla rete la VM deve avere una scheda in modalità <em>bridge</em> (o uno switch virtuale esterno): dietro un NAT servono l'inoltro della porta TCP 8181 e l'indirizzo indicato a mano nei client, perché il rilevamento automatico (UDP 8182) non attraversa il NAT.</li>
+<li><strong>Nessuna installazione esterna</strong>: il programma contiene Python 3.11 e le DLL di Microsoft Visual C++ 2015-2022 (<code>vcruntime140.dll</code>, <code>vcruntime140_1.dll</code>, <code>msvcp140.dll</code>, <code>msvcp140_1.dll</code>, <code>msvcp140_2.dll</code>, <code>vcomp140.dll</code> per OpenMP, <code>concrt140.dll</code> e le altre): funziona anche su un Windows Server appena installato, senza ridistribuibili. Le altre DLL usate sono componenti standard di Windows.</li>
+<li>I dati (Vault, cartelle di lavoro, stato) possono stare su dischi virtuali (vmdk, vhdx, qcow2) come su quelli fisici. Una cartella dati su una condivisione di rete (SMB o NFS) è protetta da un blocco del sistema operativo: un secondo Germano, anche da un altro computer, non può usarla insieme al primo (il Vault non può avere due scrittori).</li>
+</ul>
 </div>
 <div class="lang-en">
-<p><strong>Germano AI</strong> is a standalone suite engineered to safeguard privacy, redact sensitive personally identifiable information (GDPR Art. 9 &amp; 10), and empower users to securely leverage Cloud AI models (ChatGPT, Claude, Google Gemini) and AI development harnesses (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) on vanilla <strong>Windows 11</strong> workstations.</p>
+<p><strong>Germano AI</strong> is a standalone suite engineered to safeguard privacy, redact sensitive personally identifiable information (GDPR Art. 9 &amp; 10), and empower users to securely leverage Cloud AI models (ChatGPT, Claude, Google Gemini) and AI development harnesses (Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf, Claude Code) on any <strong>Windows 10 or 11</strong> computer, on <strong>Windows Server 2019 or later</strong> and in <strong>virtual machines</strong> (as well as on macOS and Linux).</p>
 <div class="callout callout-success">
 <div class="callout-icon">🛡️</div>
 <div class="callout-content">
@@ -873,6 +881,14 @@
                         <li><strong>Security:</strong> the local API rejects requests coming from external websites and the internal engine is protected by a token. No document data is sent over the network: the only automatic connection is the update check, only when Windows reports that the PC is connected to the Internet.</li>
                         <li><strong>For administrators:</strong> settings lock for the PA profile (<code>"lock_settings": true</code>), choice of the model precision (FP32/BF16), file name anonymization, separately configurable Anthropic service.</li>
                     </ul>
+<h3 class="sub-title">Supported systems: Windows 10/11, Windows Server and virtual machines</h3>
+<ul>
+<li><strong>Windows 10 and 11</strong>, 64-bit.</li>
+<li><strong>Windows Server 2019, 2022 and 2025</strong> (Standard and Datacenter), with the <em>Desktop Experience</em> for Germano's window. Windows Server 2019 does not include Microsoft Edge: without Edge (or Chrome) Germano does not use Internet Explorer, which cannot show the Dashboard, but stays active as a server without a window and shows the addresses to open (also from another computer); after installing Microsoft Edge its window is back. On <em>Server Core</em>, which has neither Edge nor the desktop, use the windowless mode (chapter 11).</li>
+<li><strong>Virtual machines</strong>: VMware (ESXi, Workstation), Hyper-V, Proxmox VE (KVM/QEMU), VirtualBox and cloud instances (AWS EC2, Azure, Google Compute Engine). No GPU is needed: the whole pipeline runs on the CPU; the number of threads adapts to the vCPUs and the precision to the processor (chapter 9). For network access the VM needs an adapter in <em>bridged</em> mode (or an external virtual switch): behind NAT you need TCP port 8181 forwarding and the address entered by hand in the clients, because auto-discovery (UDP 8182) does not cross NAT.</li>
+<li><strong>No external installation</strong>: the program contains Python 3.11 and the Microsoft Visual C++ 2015-2022 DLLs (<code>vcruntime140.dll</code>, <code>vcruntime140_1.dll</code>, <code>msvcp140.dll</code>, <code>msvcp140_1.dll</code>, <code>msvcp140_2.dll</code>, <code>vcomp140.dll</code> for OpenMP, <code>concrt140.dll</code> and the others): it also works on a freshly installed Windows Server, with no redistributables. The other DLLs used are standard Windows components.</li>
+<li>The data (Vault, working folders, state) can live on virtual disks (vmdk, vhdx, qcow2) as on physical ones. A data folder on a network share (SMB or NFS) is protected by an operating-system lock: a second Germano, even from another computer, cannot use it together with the first one (the Vault cannot have two writers).</li>
+</ul>
 </div>
 </section>
 <section class="doc-section" id="modalita-semplice">
@@ -1709,16 +1725,18 @@
 <p>Germano include 3 modalità di esecuzione selezionabili:</p>
 <ol>
 <li><strong>Automatico (Consigliato):</strong> usa una scheda NVIDIA (CUDA) se disponibile, altrimenti il processore. <em>Nota:</em> il pacchetto standard include PyTorch per CPU, che funziona su qualsiasi PC senza driver aggiuntivi; l'accelerazione GPU richiede di sostituire PyTorch con una versione CUDA.</li>
-<li><strong>Solo CPU:</strong> esegue tutti i modelli sul processore centrale (funziona su qualsiasi PC Windows 11).</li>
+<li><strong>Solo CPU:</strong> esegue tutti i modelli sul processore centrale (funziona su qualsiasi PC, server o macchina virtuale, senza GPU né driver).</li>
 <li><strong>Forza GPU NVIDIA:</strong> per installazioni con PyTorch CUDA; in caso di errore della GPU Germano passa comunque alla CPU.</li>
 </ol>
 <h3 class="sub-title">Memoria RAM e Precisione del Modello</h3>
 <p>Il modello principale (1,5 miliardi di parametri) può essere caricato in due modi:</p>
 <ul>
-<li><strong>FP32 (veloce):</strong> circa 5,5 GB di RAM. Scelto automaticamente sui PC con almeno 12 GB di RAM.</li>
-<li><strong>BF16 (leggero):</strong> circa 2,8 GB di RAM, ma su processori meno recenti l'analisi del testo può essere molto più lenta. Scelto automaticamente sui PC con meno di 12 GB di RAM, per evitare che Windows rallenti per mancanza di memoria.</li>
+<li><strong>FP32 (veloce):</strong> circa 5,3 GB di RAM. Scelto automaticamente con almeno 12 GB di RAM, e anche con meno se ci sono almeno 7 GB liberi e il processore non ha il BF16 nativo.</li>
+<li><strong>BF16 (leggero):</strong> circa 2,7 GB di RAM. Scelto automaticamente quando la memoria non basta per FP32. Sui processori senza BF16 nativo (AVX2: Intel Haswell e Broadwell, Xeon E5 v3/v4, molti host di virtualizzazione) è <strong>da 4 a 10 volte più lento</strong> (misurato su un i5-4570: 12,4 s contro 1,6 s per blocco di testo); sui processori con AVX-512 o AMX (Xeon Scalable, AMD EPYC Zen 4) la differenza è contenuta.</li>
 </ul>
-<p>Requisiti consigliati: 16 GB di RAM (minimo 8 GB) e 6 GB di spazio libero su disco. La scelta si può forzare in Modalità Avanzata (<em>Sistema e registro → Precisione del modello principale</em>) e vale dal successivo avvio del motore.</p>
+<p>Se il BF16 non funziona sul processore (operazioni mancanti), Germano passa da solo a FP32, sia all'avvio sia durante l'elaborazione, e lo annota nel registro. Requisiti consigliati: 16 GB di RAM (minimo 8 GB), almeno 4 processori (o vCPU) e 6 GB di spazio libero su disco. La scelta si può forzare in Modalità Avanzata (<em>Sistema e registro → Precisione del modello principale</em>) e vale dal successivo avvio del motore.</p>
+<h3 class="sub-title">Processori, thread e macchine virtuali</h3>
+<p>Germano usa i processori che il sistema concede al programma (le vCPU di una macchina virtuale, o l'affinità impostata dall'amministratore): tutti fino a 2, poi uno lasciato libero per il server web, il sistema e gli altri servizi della macchina (su 4 core costa circa il 2% di velocità), al massimo 16. Il numero si cambia con <code>"cpu_threads"</code> in <code>config.json</code> (0 = automatico) o con la variabile <code>GERMANO_CPU_THREADS</code>; un <code>OMP_NUM_THREADS</code> già impostato dall'amministratore viene rispettato. Il registro del motore (<code>daemon.log</code>) e il suggerimento sullo stato del motore mostrano processori, thread, precisione, presenza del BF16 nativo e l'eventuale macchina virtuale (VMware, Hyper-V, KVM/Proxmox, VirtualBox, cloud). Non serve nessuna GPU: tutta la pipeline (modelli di testo, OCR, volti, firme, targhe) gira su CPU.</p>
 <h3 class="sub-title">Gestione del Vault delle Corrispondenze</h3>
 <p>La tabella delle corrispondenze risiede localmente in <code>extracted/deanonymize_vault.json</code>. In Modalità Avanzata, scheda <em>Sistema e registro</em>, riquadro <em>Archivio delle corrispondenze</em>: <strong>Mostra</strong> visualizza tutte le etichette attive, <strong>Svuota</strong> azzera le corrispondenze per iniziare una nuova sessione pulita (i documenti protetti in precedenza non potranno più essere ripristinati).</p>
 <div class="callout callout-info">
@@ -1739,16 +1757,18 @@
 <p>Germano supports 3 selectable compute execution backends:</p>
 <ol>
 <li><strong>Automatic (Recommended):</strong> uses an NVIDIA (CUDA) GPU when available, otherwise the CPU. <em>Note:</em> the standard package ships the CPU build of PyTorch, which works on any PC without extra drivers; GPU acceleration requires replacing PyTorch with a CUDA build.</li>
-<li><strong>CPU Only:</strong> executes models exclusively on the CPU (works on any Windows 11 PC).</li>
+<li><strong>CPU Only:</strong> executes models exclusively on the CPU (works on any PC, server or virtual machine, with no GPU or drivers).</li>
 <li><strong>Force NVIDIA GPU:</strong> for installations with CUDA PyTorch; on GPU errors Germano still falls back to the CPU.</li>
 </ol>
 <h3 class="sub-title">RAM and Model Precision</h3>
 <p>The main model (1.5 billion parameters) can be loaded in two ways:</p>
 <ul>
-<li><strong>FP32 (fast):</strong> about 5.5 GB of RAM. Selected automatically on PCs with at least 12 GB of RAM.</li>
-<li><strong>BF16 (light):</strong> about 2.8 GB of RAM, but text analysis can be much slower on older CPUs. Selected automatically on PCs with less than 12 GB of RAM, so Windows does not run out of memory.</li>
+<li><strong>FP32 (fast):</strong> about 5.3 GB of RAM. Selected automatically with at least 12 GB of RAM, and also with less when at least 7 GB are free and the CPU has no native BF16.</li>
+<li><strong>BF16 (light):</strong> about 2.7 GB of RAM. Selected automatically when memory is not enough for FP32. On CPUs without native BF16 (AVX2: Intel Haswell and Broadwell, Xeon E5 v3/v4, many virtualization hosts) it is <strong>4 to 10 times slower</strong> (measured on an i5-4570: 12.4 s versus 1.6 s per text block); on CPUs with AVX-512 or AMX (Xeon Scalable, AMD EPYC Zen 4) the difference is small.</li>
 </ul>
-<p>Recommended: 16 GB of RAM (8 GB minimum) and 6 GB of free disk space. The choice can be forced in Advanced Mode (<em>Sistema e registro → Precisione del modello principale</em>, main model precision) and applies from the next engine start.</p>
+<p>If BF16 does not work on the CPU (missing operations), Germano switches to FP32 by itself, both at startup and during processing, and records it in the log. Recommended: 16 GB of RAM (8 GB minimum), at least 4 processors (or vCPUs) and 6 GB of free disk space. The choice can be forced in Advanced Mode (<em>Sistema e registro → Precisione del modello principale</em>, main model precision) and applies from the next engine start.</p>
+<h3 class="sub-title">Processors, threads and virtual machines</h3>
+<p>Germano uses the processors the system grants to the program (the vCPUs of a virtual machine, or the affinity set by the administrator): all of them up to 2, then one is left free for the web server, the system and the other services of the machine (on 4 cores it costs about 2% of speed), at most 16. The number is changed with <code>"cpu_threads"</code> in <code>config.json</code> (0 = automatic) or with the <code>GERMANO_CPU_THREADS</code> variable; an <code>OMP_NUM_THREADS</code> already set by the administrator is honored. The engine log (<code>daemon.log</code>) and the engine status tooltip show processors, threads, precision, native BF16 and the virtual machine, if any (VMware, Hyper-V, KVM/Proxmox, VirtualBox, cloud). No GPU is needed: the whole pipeline (text models, OCR, faces, signatures, plates) runs on the CPU.</p>
 <h3 class="sub-title">Vault Memory Management</h3>
 <p>The reverse de-anonymization dictionary is persisted locally in <code>extracted/deanonymize_vault.json</code>. In Advanced Mode, <em>Sistema e registro</em> tab, <em>Archivio delle corrispondenze</em> (mapping archive) box: <strong>Mostra</strong> (Show) displays the current associations, <strong>Svuota</strong> (Clear) purges them to start a clean session (previously protected documents can no longer be restored).</p>
 <div class="callout callout-info">
@@ -1995,6 +2015,20 @@ client send "Scrivi a Mario Rossi" lettera.docx   protegge testo e file e mostra
                         <li>In rete locale il collegamento è HTTP, quindi <strong>non cifrato</strong>: usa il Remote Control su reti fidate (la rete dell'ufficio, non una Wi-Fi pubblica) e, se serve la cifratura, metti davanti al server un proxy HTTPS.</li>
                         <li>Il Vault del server (<code>extracted/deanonymize_vault.json</code>) non è cifrato: proteggi l'accesso al computer del server.</li>
                     </ul>
+<h3 class="sub-title">Germano Server senza finestra (Windows Server, macchine virtuali, avvio automatico)</h3>
+<p>Su un server, in una macchina virtuale o su <em>Server Core</em> Germano può funzionare senza finestra e senza browser: server web, Proxy e motore IA partono, nessuna finestra o messaggio viene aperto e gli indirizzi locali e di rete vengono scritti nel registro (<code>%LOCALAPPDATA%\Germano AI\desktop.log</code>) e nella console, se Germano è stato avviato da una console.</p>
+<div class="code-block"><pre><code>Germano.exe --no-browser --mode=server     senza finestra, in modalità Server solo per questo avvio
+Germano.exe --stop                         arresta il Germano senza finestra (server e motore)
+runtime\python.exe germano_desktop.py --no-browser --mode=server     stessa cosa con gli indirizzi nella console (Ctrl+C per arrestare)
+schtasks /Create /TN "Germano AI" /SC ONSTART /RU utente /RP * /TR "\"%LOCALAPPDATA%\Programs\Germano AI\Germano.exe\" --no-browser --mode=server"</code></pre></div>
+<p><code>--headless</code> equivale a <code>--no-browser</code> (anche la variabile <code>GERMANO_HEADLESS=1</code>). Con <code>--mode=server</code> la modalità vale solo per quell'avvio; per tenerla sempre, scegli <em>Server</em> nelle Impostazioni o imposta <code>"operating_mode": "server"</code> in <code>config.json</code>. L'attività pianificata va eseguita con l'utente che ha installato Germano (le cartelle dati e tecniche sono le sue). Se mentre Germano gira senza finestra lo si riapre dal collegamento, si apre solo una finestra sulla stessa Dashboard (chiuderla non lo ferma) e non parte un secondo server. Senza Microsoft Edge o Chrome (es. Windows Server 2019) Germano propone da solo di restare attivo in questo modo.</p>
+<h3 class="sub-title">Rete e firewall su Windows Server e nelle macchine virtuali</h3>
+<ul>
+<li>L'installer crea la regola del firewall «Germano AI (Server LAN)» per il Python del programma, valida per TCP 8181 e UDP 8182 (anche se le porte cambiano) sulle reti <strong>private e di dominio</strong>, quindi anche sui server di un dominio Active Directory.</li>
+<li>Se una scheda di rete è classificata come <strong>Pubblica</strong> (frequente nelle macchine virtuali e nei server in gruppo di lavoro), Windows blocca i client. La Dashboard del server lo segnala con il comando per correggerlo (PowerShell come amministratore): <code>Set-NetConnectionProfile -InterfaceAlias "Ethernet" -NetworkCategory Private</code>.</li>
+<li>Se i criteri di gruppo ignorano le regole locali del firewall, la Dashboard lo segnala: l'amministratore di dominio deve consentire <code>runtime\python.exe</code> di Germano (TCP 8181, UDP 8182) con un criterio. Segnala anche una regola mancante, disattivata o per un altro programma, con il comando <code>netsh</code> per ricrearla.</li>
+<li>Le schede di rete virtuali (VirtIO, vmxnet3, switch di Hyper-V, bridge di Proxmox) funzionano come quelle fisiche: la Dashboard e il Remote Control mostrano per primo l'indirizzo della scheda usata per uscire verso la rete ed escludono gli indirizzi automatici 169.254.x.x.</li>
+</ul>
 </div>
 <div class="lang-en">
 <p>Germano AI includes an embedded <strong>Bidirectional Transparent Proxy</strong> compliant with the OpenAI standard (`/v1/chat/completions`), Anthropic standard (`/v1/messages`), and Responses API (`/v1/responses`).</p>
@@ -2053,6 +2087,20 @@ client send "Write to Mario Rossi" letter.docx   protect text and files and show
                         <li>On the local network the connection is HTTP, therefore <strong>not encrypted</strong>: use the Remote Control on trusted networks (the office network, not a public Wi-Fi) and, if encryption is needed, put an HTTPS proxy in front of the server.</li>
                         <li>The server's Vault (<code>extracted/deanonymize_vault.json</code>) is not encrypted: protect access to the server computer.</li>
                     </ul>
+<h3 class="sub-title">Germano Server without a window (Windows Server, virtual machines, automatic start)</h3>
+<p>On a server, in a virtual machine or on <em>Server Core</em> Germano can run without a window and without a browser: web server, Proxy and AI engine start, no window or message is opened and the local and network addresses are written to the log (<code>%LOCALAPPDATA%\Germano AI\desktop.log</code>) and to the console, if Germano was started from a console.</p>
+<div class="code-block"><pre><code>Germano.exe --no-browser --mode=server     no window, Server mode for this start only
+Germano.exe --stop                         stops the windowless Germano (server and engine)
+runtime\python.exe germano_desktop.py --no-browser --mode=server     same, with the addresses in the console (Ctrl+C to stop)
+schtasks /Create /TN "Germano AI" /SC ONSTART /RU user /RP * /TR "\"%LOCALAPPDATA%\Programs\Germano AI\Germano.exe\" --no-browser --mode=server"</code></pre></div>
+<p><code>--headless</code> is the same as <code>--no-browser</code> (so is the <code>GERMANO_HEADLESS=1</code> variable). With <code>--mode=server</code> the mode applies to that start only; to keep it, choose <em>Server</em> in the Settings or set <code>"operating_mode": "server"</code> in <code>config.json</code>. The scheduled task must run as the user who installed Germano (the data and technical folders are theirs). If Germano is reopened from its shortcut while it runs without a window, only a window on the same Dashboard opens (closing it does not stop it) and no second server starts. Without Microsoft Edge or Chrome (e.g. Windows Server 2019) Germano offers by itself to stay active this way.</p>
+<h3 class="sub-title">Network and firewall on Windows Server and in virtual machines</h3>
+<ul>
+<li>The installer creates the «Germano AI (Server LAN)» firewall rule for the program's Python, valid for TCP 8181 and UDP 8182 (even if the ports change) on <strong>private and domain</strong> networks, therefore also on servers of an Active Directory domain.</li>
+<li>If a network adapter is classified as <strong>Public</strong> (common in virtual machines and in workgroup servers), Windows blocks the clients. The server's Dashboard reports it with the command to fix it (PowerShell as administrator): <code>Set-NetConnectionProfile -InterfaceAlias "Ethernet" -NetworkCategory Private</code>.</li>
+<li>If Group Policy ignores local firewall rules, the Dashboard reports it: the domain administrator must allow Germano's <code>runtime\python.exe</code> (TCP 8181, UDP 8182) with a policy. It also reports a rule that is missing, disabled or for another program, with the <code>netsh</code> command to recreate it.</li>
+<li>Virtual network adapters (VirtIO, vmxnet3, Hyper-V switch, Proxmox bridge) work like physical ones: the Dashboard and the Remote Control show first the address of the adapter used to reach the network and leave out the automatic 169.254.x.x addresses.</li>
+</ul>
 </div>
 </section>
 <section class="doc-section" id="setup-editor">
@@ -2150,7 +2198,11 @@ claude</code></pre>
 <h3 class="sub-title">D: Germano AI invia qualcosa su Internet?</h3>
 <p><strong>R: Nessun dato dei documenti.</strong> L'anonimizzazione di documenti e testi avviene interamente sul PC: i 6 modelli IA risiedono nella cartella <code>models/</code> e la telemetria delle librerie è disattivata. Le sole connessioni sono il <strong>controllo degli aggiornamenti</strong>, solo se Windows segnala che il PC è connesso a Internet (guarda nella cartella ufficiale di download <code>download.germano.ai</code> se c'è una versione più recente e, se serve, la scarica: vedi la domanda sugli aggiornamenti), e il <strong>Proxy API</strong>, solo se lo usi, che inoltra all'AI scelta da te le richieste già anonimizzate.</p>
 <h3 class="sub-title">D: Quanta memoria serve?</h3>
-<p><strong>R:</strong> Consigliati 16 GB di RAM (minimo 8 GB). Con meno di 12 GB Germano carica automaticamente il modello principale in versione leggera (BF16): funziona, ma l'analisi del testo è più lenta. Vedi il capitolo 9.</p>
+<p><strong>R:</strong> Consigliati 16 GB di RAM (minimo 8 GB). Con meno di 12 GB Germano usa comunque la versione veloce (FP32) se ci sono almeno 7 GB liberi; altrimenti carica il modello principale in versione leggera (BF16): funziona, ma sui processori senza BF16 nativo l'analisi del testo è da 4 a 10 volte più lenta. In una macchina virtuale assegna almeno 12 GB di RAM e 4 vCPU. Vedi il capitolo 9.</p>
+<h3 class="sub-title">D: Germano funziona su Windows Server o in una macchina virtuale?</h3>
+<p><strong>R: Sì.</strong> Windows Server 2019, 2022 e 2025 e le macchine virtuali VMware, Hyper-V, Proxmox VE, VirtualBox e cloud sono supportati, senza GPU e senza installare altro (le DLL di Visual C++ sono incluse). Su Windows Server 2019, che non ha Microsoft Edge, Germano resta attivo come server senza finestra e indica gli indirizzi da aprire; per avviarlo senza finestra fin dall'inizio, anche all'accensione del server: <code>Germano.exe --no-browser --mode=server</code> (capitolo 11).</p>
+<h3 class="sub-title">D: Dagli altri computer il Remote Control non si apre</h3>
+<p><strong>R:</strong> Controlla le Impostazioni del server (<em>Accesso dalla rete</em>): se la scheda di rete è classificata come Pubblica, se la regola del firewall manca o se i criteri di gruppo ignorano le regole locali, la Dashboard lo dice con il comando per correggerlo. In una macchina virtuale con rete NAT serve l'inoltro della porta TCP 8181 (oppure una scheda in modalità bridge) e l'indirizzo va indicato a mano nei client.</p>
 <h3 class="sub-title">D: Il motore non parte o compare un messaggio rosso di errore</h3>
 <p><strong>R:</strong> Il messaggio in alto nella Dashboard indica la causa; il dettaglio completo è nel file <code>daemon.log</code> nella cartella <code>Documenti\Germano AI</code>. Su alcuni PC appena installati la funzione di Windows <em>Smart App Control</em> o l'antivirus possono bloccare i componenti IA: Germano lo segnala tempestivamente all'avvio.</p>
 <h3 class="sub-title">D: Cosa succede se il programma indica che la porta 8181 è occupata?</h3>
@@ -2173,7 +2225,11 @@ claude</code></pre>
 <h3 class="sub-title">Q: Does Germano AI transmit any data over the Internet?</h3>
 <p><strong>A: No document data.</strong> Document and text anonymization runs entirely on the PC: all 6 AI models live in <code>models/</code> and library telemetry is disabled. The only connections are the <strong>update check</strong>, only when Windows reports that the PC is connected to the Internet (it looks in the official download folder <code>download.germano.ai</code> for a newer version and, if needed, downloads it: see the question about updates), and the <strong>API Proxy</strong>, only if you use it, which forwards already anonymized requests to the AI service you chose.</p>
 <h3 class="sub-title">Q: How much memory is needed?</h3>
-<p><strong>A:</strong> 16 GB of RAM recommended (8 GB minimum). With less than 12 GB Germano automatically loads the main model in its light version (BF16): it works, but text analysis is slower. See chapter 9.</p>
+<p><strong>A:</strong> 16 GB of RAM recommended (8 GB minimum). With less than 12 GB Germano still uses the fast version (FP32) when at least 7 GB are free; otherwise it loads the main model in its light version (BF16): it works, but on CPUs without native BF16 text analysis is 4 to 10 times slower. In a virtual machine assign at least 12 GB of RAM and 4 vCPUs. See chapter 9.</p>
+<h3 class="sub-title">Q: Does Germano work on Windows Server or in a virtual machine?</h3>
+<p><strong>A: Yes.</strong> Windows Server 2019, 2022 and 2025 and VMware, Hyper-V, Proxmox VE, VirtualBox and cloud virtual machines are supported, with no GPU and nothing else to install (the Visual C++ DLLs are included). On Windows Server 2019, which has no Microsoft Edge, Germano stays active as a server without a window and shows the addresses to open; to start it without a window from the beginning, also when the server boots: <code>Germano.exe --no-browser --mode=server</code> (chapter 11).</p>
+<h3 class="sub-title">Q: The Remote Control does not open from the other computers</h3>
+<p><strong>A:</strong> Check the server Settings (<em>Network access</em>): if the network adapter is classified as Public, if the firewall rule is missing or if Group Policy ignores local rules, the Dashboard says so with the command to fix it. In a virtual machine with NAT networking you need TCP port 8181 forwarding (or a bridged adapter) and the address must be entered by hand in the clients.</p>
 <h3 class="sub-title">Q: The engine does not start or a red error message appears</h3>
 <p><strong>A:</strong> The message at the top of the Dashboard shows the cause; full details are in <code>daemon.log</code> in the <code>Documents\Germano AI</code> folder. On some freshly installed PCs, Windows <em>Smart App Control</em> or the antivirus may block the AI components: Germano promptly reports it at startup.</p>
 <h3 class="sub-title">Q: What if port 8181 is reported in use?</h3>
