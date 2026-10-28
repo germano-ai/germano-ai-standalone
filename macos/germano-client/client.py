@@ -692,7 +692,9 @@ def cmd_models(args):
         print("  Servizi di AI attraverso Germano (testo anonimizzato dal server prima di uscire):")
         for s in services:
             if s.get("local"):
-                how = "modelli locali del server" if s.get("available") else "modelli locali: ora non in esecuzione"
+                how = (("modelli locali del server, rilevati in automatico" if s.get("models_detected")
+                        else "modelli locali del server") if s.get("available")
+                       else f"modelli locali: {_clean(s.get('reason') or 'non in esecuzione sul server', 80)}")
             else:
                 how = "chiave del server condivisa" if s.get("key") == "server" else "con la tua chiave (--key)"
             models = f"; modelli: {', '.join(_clean(m, 40) for m in s.get('models') or [])}" if s.get("models") else ""
@@ -775,7 +777,14 @@ def cmd_ask(args):
         print(f"«{_clean(args.tool, 30)}» non e' utilizzabile su questo server. Disponibili: {', '.join(usable) or 'nessuna'}. "
               "Dettagli:  client models")
         return ERR_CLI
-    fields = {"target": target, "model": getattr(args, "model", None) or "", "prompt": prompt}
+    model = (getattr(args, "model", None) or "").strip()
+    if not model and target.startswith("service:"):
+        # modelli locali del server: senza --model si usa il primo modello installato (rilevato in automatico)
+        svc = next((s for s in rinfo.get("services") or [] if "service:" + str(s.get("id")) == target), {})
+        if svc.get("local") and svc.get("models_detected") and svc.get("models"):
+            model = str(svc["models"][0])
+            print(f"Modello: {_clean(model, 60)} (il primo installato sul server; per sceglierne un altro: --model <modello>)")
+    fields = {"target": target, "model": model, "prompt": prompt}
     opts = _options_field(r)
     if opts:
         fields["options"] = opts

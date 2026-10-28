@@ -46,7 +46,8 @@ SERVICES = {
                  "port": 1234},
 }
 ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
-MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@\[\]-]{0,127}$")
+# nomi dei modelli: anche quelli dei modelli locali (es. «qwen2.5-coder:7b-instruct-q4_K_M», «hf.co/utente/modello»)
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@\[\]+-]{0,127}$")
 KEY_RE = re.compile(r"^[\x21-\x7e]{8,512}$")       # caratteri stampabili, senza spazi
 MAX_ANSWER = 400_000
 TIMEOUT = (15, 600)
@@ -74,16 +75,29 @@ def server_key(service_id):
     return ""
 
 
-def describe(sharing, listening=None):
-    """Servizi per il Remote Control: disponibilita' e provenienza della chiave (mai la chiave)."""
+def describe(sharing, listening=None, local_models=None):
+    """Servizi per il Remote Control: disponibilita' e provenienza della chiave (mai la chiave). Per i modelli locali
+    (Ollama, LM Studio) local_models = {porta: [modelli installati] | None} dal rilevamento automatico: un servizio in
+    ascolto ma senza modelli installati non e' disponibile; None = il servizio non li elenca (si scrive il modello)."""
     listening = listening or {}
+    local_models = local_models or {}
     out = []
     for sid, spec in SERVICES.items():
         item = {"id": sid, "name": spec["name"], "formats": [f for f in ("openai", "anthropic") if spec.get(f)],
                 "models": list(spec.get("models", ())), "local": bool(spec.get("local"))}
         if spec.get("local"):
             up = bool(listening.get(spec.get("port")))
-            item.update(available=up, key="none", reason=None if up else "non in esecuzione sul server")
+            installed = local_models.get(spec.get("port")) if up else None
+            if installed is not None:
+                installed = [m for m in installed if MODEL_RE.match(m)]   # solo i nomi che il servizio accetta da qui
+                item["models"] = installed
+                item["models_detected"] = True
+            if not up:
+                item.update(available=False, key="none", reason="non in esecuzione sul server")
+            elif installed == []:
+                item.update(available=False, key="none", reason="nessun modello installato")
+            else:
+                item.update(available=True, key="none", reason=None)
         elif sharing and server_key(sid):
             item.update(available=True, key="server")
         else:

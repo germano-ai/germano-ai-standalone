@@ -15,29 +15,38 @@ DEFAULT_PORT = 8182
 _MAX = 2048
 
 
+def _usable(ip):
+    """Indirizzo raggiungibile dagli altri computer: niente loopback, niente APIPA 169.254.x.x (scheda senza DHCP,
+    tipica delle schede virtuali scollegate), niente 0.0.0.0."""
+    return bool(ip) and not ip.startswith(("127.", "169.254.", "0."))
+
+
 def local_ipv4_addresses():
-    """IPv4 non di loopback di questo computer (per mostrarle nel banner del server)."""
-    addrs = set()
+    """IPv4 di questo computer raggiungibili dalla rete, PRIMA quelle delle schede usate per uscire verso la rete
+    (anche schede virtuali: VirtIO, vmxnet3, Hyper-V, bridge), poi le altre (es. switch interni dell'hypervisor)."""
+    primary = []
+    # L'indirizzo che il sistema sceglie per raggiungere la rete: nessun pacchetto inviato (UDP senza dati).
+    for probe in ("10.255.255.255", "172.31.255.255", "192.168.255.255", "8.8.8.8"):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect((probe, 1))
+                ip = s.getsockname()[0]
+                if _usable(ip) and ip not in primary:
+                    primary.append(ip)
+            finally:
+                s.close()
+        except OSError:
+            pass
+    others = set()
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
             ip = info[4][0]
-            if not ip.startswith("127."):
-                addrs.add(ip)
-    except socket.gaierror:
+            if _usable(ip) and ip not in primary:
+                others.add(ip)
+    except (socket.gaierror, OSError):
         pass
-    # Ripiego affidabile: l'indirizzo scelto dal sistema per uscire verso la LAN (nessun pacchetto inviato).
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.connect(("192.168.255.255", 1))
-            ip = s.getsockname()[0]
-            if not ip.startswith("127."):
-                addrs.add(ip)
-        finally:
-            s.close()
-    except OSError:
-        pass
-    return sorted(addrs)
+    return primary + sorted(others)
 
 
 class DiscoveryResponder:

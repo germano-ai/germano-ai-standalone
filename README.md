@@ -32,7 +32,7 @@ Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.ge
 
 | Sistema | Suite completa | Client leggero |
 |---|---|---|
-| Windows 10/11 a 64 bit | `germano-0.60.exe` | `germano-client-0.60.exe` |
+| Windows 10/11 e Windows Server 2019/2022/2025 a 64 bit (anche in macchina virtuale) | `germano-0.60.exe` | `germano-client-0.60.exe` |
 | macOS | `germano-0.60.pkg` (Apple Silicon, macOS 14 o successivo) | `germano-client-0.60.pkg` (Apple Silicon e Intel, macOS 11 o successivo) |
 | Linux Ubuntu/Debian a 64 bit | `germano-0.60.deb` | `germano-client-0.60.deb` |
 
@@ -41,6 +41,11 @@ Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.ge
 2. **Installazione:** doppio clic sull'installer. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows valida solo per il Python di Germano e solo per le reti private e di dominio (modalità Server LAN). Il programma si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI`, con i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni > App e le cartelle di lavoro in `Documenti\Germano AI`; al termine la finestra dell'installer si chiude e **Germano AI si apre da solo**, con i permessi normali dell'utente. Le librerie Microsoft Visual C++ sono già incluse: non serve installare altro.
 3. **Avvio:** collegamento **Germano AI** sul Desktop o nel menu Start (finestra dedicata, senza finestre nere di terminale).
 4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI (chiede i permessi di amministratore per togliere la regola del firewall); puoi scegliere se conservare le cartelle di lavoro e il Vault.
+
+### 🏢 Windows Server e macchine virtuali
+- **Windows Server 2019, 2022 e 2025** (Standard e Datacenter) e macchine virtuali **VMware, Hyper-V, Proxmox VE (KVM), VirtualBox** e cloud (AWS, Azure, Google Cloud): nessuna GPU e nessun ridistribuibile da installare (le DLL di Visual C++ sono incluse). Consigliati 12 GB di RAM e 4 vCPU: i thread si adattano alle vCPU e la precisione al processore (FP32, oppure BF16 con poca RAM).
+- **Senza finestra** (server, Server Core, attività pianificate): `Germano.exe --no-browser --mode=server` avvia server e motore senza finestre e scrive gli indirizzi locali e di rete nel registro e nella console; `Germano.exe --stop` lo arresta. Su Windows Server 2019, che non ha Microsoft Edge, Germano propone da solo di restare attivo così (Internet Explorer non viene usato).
+- **Rete**: la regola del firewall vale per le reti private e di dominio; se una scheda è classificata come «Pubblica» (frequente nelle VM), se la regola manca o se i criteri di gruppo ignorano le regole locali, la Dashboard del server lo segnala con il comando per correggerlo. Nelle VM con rete NAT servono l'inoltro della porta TCP 8181 o una scheda in modalità bridge.
 
 L'installer della suite pesa circa 3 GB: al primo doppio clic Microsoft Defender lo analizza e la finestra può comparire dopo qualche secondo. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC» scegli **Ulteriori informazioni > Esegui comunque**.
 
@@ -88,7 +93,7 @@ Germano AI implementa un'architettura ibrida e modulare, configurabile al primo 
 ### Dual Mode & Interfaccia Utente:
 *   **Dual Mode (Batch + Studio AI):** passaggio istantaneo con un clic tra:
     *   **📁 Anonimizza file (Batch Processing):** vista sobria per l'elaborazione massiva di lotti con pulsanti rapidi per aprire le cartelle `input` e `output`, schede interattive per `input`, `output`, `failed`, `processed`, `extracted`, statistiche di throughput in tempo reale (file/minuto, PII rimosse), monitoraggio hardware (CPU/RAM), visualizzazione dei motivi di scarto con pulsante **Rimetti in coda** ed esportazione elenco in CSV.
-    *   **🤖 Studio AI (Local Harness):** interfaccia interattiva stile Google Antigravity con rilevamento automatico delle AI installate sul sistema (Claude Code, OpenAI Codex CLI, ChatGPT, Google Antigravity e Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Windsurf, Kiro, OpenCode, Aider, Ollama, LM Studio e altre) e configurazione granulare.
+    *   **🤖 Studio AI (Local Harness):** interfaccia interattiva stile Google Antigravity con rilevamento automatico delle AI installate sul sistema (Claude Code, OpenAI Codex CLI, ChatGPT, Google Antigravity e Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Windsurf, Kiro, OpenCode, Aider, Ollama, LM Studio e altre) e configurazione granulare. «Invia a» propone solo le AI rilevate (le altre restano in grigio, non selezionabili) e si aggiorna da solo, anche con i modelli installati di Ollama e LM Studio.
 *   **Interfaccia e Tooltips Bilingui al 100% (Italiano / Inglese):** rilevamento automatico della lingua del browser (`it` -> italiano, altrimenti inglese di default), commutatore rapido con bandierine (🇮🇹 IT / 🇬🇧 EN) nella barra superiore e oltre 112 suggerimenti contestuali interattivi (tooltips) al passaggio del mouse su ogni controllo, disattivabili nelle Impostazioni.
 
 ---
@@ -98,7 +103,7 @@ Germano AI implementa un'architettura ibrida e modulare, configurabile al primo 
 Con la modalità **Server** attiva, da un PC Windows, Mac o Linux, da un tablet o da uno smartphone collegati alla stessa rete locale basta aprire il browser su **`http://<IP-del-server>:8181/`** (si apre il Remote Control, anche all'indirizzo `/remote`; gli indirizzi esatti sono nelle Impostazioni del server). Come il Remote Control di Google Antigravity, il lavoro resta sul server: il dispositivo è una finestra sicura.
 
 - **AI del server, rilevate automaticamente:** le CLI e le app installate sul server (con il motivo per cui una CLI non si può eseguire da remoto: gli agenti che eseguirebbero comandi o modificherebbero file sul server non vengono mai eseguiti per i client) e i **servizi di AI via API** filtrati da Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen, Mistral, Grok (xAI), Perplexity (Sonar), Google Gemini, OpenAI, Anthropic, OpenRouter, Groq e i **modelli locali del server** (Ollama, LM Studio: nessun dato esce dalla rete locale).
-- **Chat protetta:** prompt e fino a **12 allegati** vengono anonimizzati dal motore del server prima di uscire; la risposta torna con i dati originali **della sola richiesta**. Per ogni risposta si vede esattamente il testo protetto ricevuto dall'AI. Chiave API: quella dell'utente (resta sul dispositivo, il server non la salva) oppure quella del server, se l'amministratore condivide le AI di questo computer.
+- **Chat protetta:** prompt e fino a **12 allegati** vengono anonimizzati dal motore del server prima di uscire; la risposta torna con i dati originali **della sola richiesta**. Per ogni risposta si vede esattamente il testo protetto ricevuto dall'AI. Chiave API: quella dell'utente (resta sul dispositivo, il server non la salva) oppure quella del server, se l'amministratore condivide le AI di questo computer. Nella chat si scelgono solo le AI rilevate e utilizzabili (le altre restano in grigio con il motivo) e l'elenco si aggiorna da solo.
 - **Proteggi e ripristina:** testo protetto da copiare in qualsiasi AI e ripristino della risposta direttamente sul dispositivo.
 - **Opzioni di elaborazione del client:** soglia di confidenza, modelli attivi, le 18 categorie di dati personali, mascheramento (etichette numerate `[PERSONA_1]` ripristinabili, etichette generiche `[PERSONA]` o oscuramento `████` irreversibili). Valgono solo per le richieste di quel dispositivo, mai per la configurazione del server. **Con il profilo PA (o `lock_settings`) sono disabilitate e in grigio** e il server respinge ogni modifica con `403 Forbidden` (Compliance Lock).
 - **Collega gli strumenti del dispositivo:** gli indirizzi del Proxy da usare come Base URL: `/v1` (formato OpenAI), la radice (formato Anthropic) e `/p/<servizio>/v1` per Meta, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, ecc.
@@ -132,7 +137,7 @@ Con la modalità **Server** attiva, da un PC Windows, Mac o Linux, da un tablet 
     *   🌐 **Web, Dati, Email & Archivi (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Elaborazione DOM/MIME nativa, allegati email, ispezione ricorsiva di archivi `.zip` e file firmati `.p7m` (es. `fattura.xml.p7m`).
 *   **Affidabilità e Concorrenza:** Vault protetto da accessi concorrenti, elaborazione file solo a copia completata per evitare letture parziali, chiusura pulita del motore al termine della sessione.
 
-**Requisiti:** Windows 10/11 a 64 bit, macOS 14 o successivo su Apple Silicon, oppure Linux Ubuntu/Debian a 64 bit; 8 GB di RAM (16 GB consigliati) e circa 6 GB di spazio libero (più lo spazio dei documenti). Su Windows l'installer della suite chiede i permessi di amministratore appena si apre (regola del firewall per l'accesso dalla rete locale; il client non li chiede); su macOS («Installa solo per me») non servono; su Linux, come per ogni pacchetto .deb, serve la password di amministratore.
+**Requisiti:** Windows 10/11 o Windows Server 2019 o successivo a 64 bit (anche in macchina virtuale), macOS 14 o successivo su Apple Silicon, oppure Linux Ubuntu/Debian a 64 bit; 8 GB di RAM (16 GB consigliati), almeno 4 processori o vCPU e circa 6 GB di spazio libero (più lo spazio dei documenti); nessuna GPU necessaria. Su Windows l'installer della suite chiede i permessi di amministratore appena si apre (regola del firewall per l'accesso dalla rete locale; il client non li chiede); su macOS («Installa solo per me») non servono; su Linux, come per ogni pacchetto .deb, serve la password di amministratore.
 
 ## 🔌 Integrazione REST API
 
@@ -220,7 +225,7 @@ Questo repository GitHub contiene **esclusivamente il codice sorgente pulito** d
 
 1. **Modelli di Intelligenza Artificiale (`models/`):**
    - Germano richiede i 6 modelli IA locali (filtro privacy, NER, EasyOCR, biometria facciale YuNet, rilevamento targhe e firme).
-   - 👉 **[Scarica il pacchetto completo dei Modelli](https://download.germano.ai/modelli/)** ed estrailo nella cartella `models/` della piattaforma scelta (es. `windows/germano/models/` o `linux/germano/models/`).
+   - 👉 **[Scarica il pacchetto completo dei Modelli](https://download.germano.ai/)** ed estrailo nella cartella `models/` della piattaforma scelta (es. `windows/germano/models/` o `linux/germano/models/`).
    - *In alternativa:* puoi estrarre la cartella `models/` direttamente da qualsiasi installer ufficiale scaricato da [download.germano.ai](https://download.germano.ai).
 
 2. **Dipendenze e Runtime di Sistema:**

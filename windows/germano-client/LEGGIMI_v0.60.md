@@ -19,8 +19,10 @@ Disinstallazione: Impostazioni › App › App installate › Germano AI Client.
    con l'utente e la password impostati dall'amministratore (il client conserva solo la sessione, mai la password).
 3. Usa le schede:
    - **AI** — le AI del server rilevate automaticamente: le CLI condivise, i servizi via API filtrati da Germano (Meta
-     Muse, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic...) e i modelli locali del server;
-   - **Chat** — prompt e fino a 12 allegati, anonimizzati dal server prima di uscire; la risposta torna con i tuoi dati;
+     Muse, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic...) e i modelli locali del server
+     con i modelli installati;
+   - **Chat** — prompt e fino a 12 allegati, anonimizzati dal server prima di uscire; la risposta torna con i tuoi dati. Si
+     scelgono solo le AI rilevate (le altre restano in grigio) e l'elenco si aggiorna da solo;
    - **Proteggi** — il testo protetto da usare in qualsiasi AI, e il ripristino della risposta;
    - **Opzioni** — soglia, modelli, le 18 categorie e il mascheramento per le richieste di questo PC (in grigio e non
      modificabili se il server usa il profilo PA);
@@ -37,7 +39,9 @@ anche `login --user mario`, `models`, `ask claude-code "..."`, `ask deepseek "..
 `options` o il lancio di agenti locali protetti dal server). Dettagli in `README.md`.
 
 ## Requisiti
-- Windows 10/11 a 64 bit, Microsoft Edge (di serie) per la finestra dedicata.
+- Windows 10/11 o Windows Server 2019 o successivo a 64 bit (anche in macchina virtuale), Microsoft Edge per la
+  finestra dedicata (di serie su Windows 10/11; su Windows Server 2019 va installato, altrimenti il client indica
+  l'indirizzo del pannello e si può usare la riga di comando).
 - Un Germano Server v0.60 o successivo attivo in modalità Server sulla stessa rete locale (il pannello usa il Remote
   Control del server, che non esiste nelle versioni precedenti).
 

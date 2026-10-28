@@ -11,4 +11,4 @@ if [ -z "$PY" ] || [ ! -x "$PY" ]; then
   echo "$MSG" >&2
   exit 1
 fi
-exec "$PY" "$DIR/germano_desktop.py" auto
+exec "$PY" "$DIR/germano_desktop.py" auto "$@"   # opzioni: --no-browser, --mode=server, --stop (server senza desktop)

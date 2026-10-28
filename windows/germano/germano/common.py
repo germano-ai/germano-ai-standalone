@@ -105,6 +105,8 @@ DEFAULT_SETTINGS = {
     "instance_id": "",               # identificativo di questa installazione (per non rilevare se stessa)
     "instance_host": "",             # computer su cui e' stato generato instance_id
     "enable_tooltips": True,         # suggerimenti al passaggio del mouse nella Dashboard
+    # --- Prestazioni (v0.60): 0 = automatico (processori disponibili, uno lasciato libero da 3 in su, massimo 16) ---
+    "cpu_threads": 0,
 }
 for _k in FEATURE_KEYS:
     DEFAULT_SETTINGS[_k] = True
@@ -123,7 +125,8 @@ _ENUM_KEYS = {
     "operating_mode": OPERATING_MODES,
 }
 _FLOAT_KEYS = {"ai_threshold": (0.0, 0.95)}
-_INT_KEYS = {"file_timeout_minutes": (5, 1440), "port": (1024, 65535), "discovery_port": (1024, 65535)}
+_INT_KEYS = {"file_timeout_minutes": (5, 1440), "port": (1024, 65535), "discovery_port": (1024, 65535),
+             "cpu_threads": (0, 256)}
 _URL_KEYS = ("target_api_url", "target_anthropic_url", "remote_server")
 _HOST_KEYS = {"bind_host"}                       # 0.0.0.0, loopback o un IP letterale
 # stringhe libere (lunghezza massima)
@@ -281,6 +284,167 @@ def force_utf8_stdio():
             stream.reconfigure(encoding="utf-8", errors="replace")
         except Exception:
             pass
+
+
+# ----------------------------------------------------------------------------------------
+# Processore: thread dei modelli e macchina virtuale
+# ----------------------------------------------------------------------------------------
+MAX_AUTO_THREADS = 16   # oltre, su CPU l'inferenza non accelera (limite della memoria) e i server NUMA rallentano
+_THREADS_CONFIGURED = []   # scelta fatta da configure_cpu_threads in questo processo (prima di importare torch)
+
+
+def cpus_available():
+    """Processori che il sistema concede a questo processo (vCPU di una VM, affinita' impostata
+    dall'amministratore, quote dei container), non quelli fisici dell'host."""
+    try:
+        import psutil
+        n = len(psutil.Process().cpu_affinity() or [])
+        if n:
+            return n
+    except Exception:
+        pass
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):
+        return max(1, os.cpu_count() or 1)
+
+
+def cpu_threads(settings=None):
+    """(thread per i modelli, origine). Ordine: GERMANO_CPU_THREADS, «cpu_threads» in config.json, OMP_NUM_THREADS
+    gia' impostata dall'amministratore, automatico: tutti i processori disponibili fino a 2, poi uno lasciato libero
+    per il server web, il sistema e gli altri servizi della macchina (misurato su 4 core: -2% di velocita'), al
+    massimo 16. Dopo configure_cpu_threads vale la scelta fatta allora (le librerie di calcolo l'hanno gia' letta)."""
+    if _THREADS_CONFIGURED:
+        return _THREADS_CONFIGURED[0]
+    avail = cpus_available()
+    for source, raw in (("GERMANO_CPU_THREADS", os.environ.get("GERMANO_CPU_THREADS")),
+                        ("config.json", (settings or {}).get("cpu_threads")),
+                        ("OMP_NUM_THREADS", os.environ.get("OMP_NUM_THREADS"))):
+        try:
+            n = int(str(raw).strip())
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            return min(n, 256), source
+    return (avail if avail <= 2 else min(MAX_AUTO_THREADS, avail - 1)), "automatico"
+
+
+def configure_cpu_threads(settings=None):
+    """Da chiamare PRIMA di importare torch/numpy (demone): le librerie di calcolo (OpenMP, MKL, OpenBLAS) creano i
+    loro thread all'avvio con questi valori. Le variabili gia' impostate dall'amministratore restano."""
+    del _THREADS_CONFIGURED[:]
+    n, source = cpu_threads(settings)
+    os.environ["OMP_NUM_THREADS"] = str(n)          # sempre quello scelto (PyTorch usa OpenMP)
+    for var in ("MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ.setdefault(var, str(n))
+    _THREADS_CONFIGURED.append((n, source))
+    return n, source
+
+
+_VM_CACHE = []
+
+
+def virtual_machine():
+    """Nome dell'ambiente virtuale (VMware, Hyper-V, KVM/Proxmox, VirtualBox, cloud...) o '' su una macchina fisica.
+    Solo informativo (registro e Dashboard): Germano funziona allo stesso modo, sempre su CPU."""
+    if _VM_CACHE:
+        return _VM_CACHE[0]
+    text = ""
+    try:
+        if os.name == "nt":
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as k:
+                parts = []
+                for name in ("SystemManufacturer", "SystemProductName", "BIOSVendor", "BaseBoardManufacturer"):
+                    try:
+                        parts.append(str(winreg.QueryValueEx(k, name)[0]))
+                    except OSError:
+                        pass
+                text = " ".join(parts)
+        elif sys.platform == "darwin":
+            import subprocess
+            out = subprocess.run(["sysctl", "-n", "kern.hv_vmm_present"], capture_output=True, text=True, timeout=5)
+            text = "virtual machine (macOS)" if out.stdout.strip() == "1" else ""
+        else:
+            parts = []
+            for name in ("sys_vendor", "product_name", "bios_vendor"):
+                try:
+                    with open(f"/sys/class/dmi/id/{name}", encoding="utf-8", errors="replace") as f:
+                        parts.append(f.read().strip())
+                except OSError:
+                    pass
+            text = " ".join(parts)
+    except Exception:
+        text = ""
+    low = text.lower()
+    rules = (("vmware", "VMware"), ("virtualbox", "VirtualBox"), ("innotek", "VirtualBox"),
+             ("amazon ec2", "AWS EC2"), ("google compute engine", "Google Compute Engine"),
+             ("proxmox", "Proxmox VE (KVM)"), ("qemu", "KVM/QEMU (es. Proxmox VE)"), ("kvm", "KVM/QEMU (es. Proxmox VE)"),
+             ("openstack", "OpenStack"), ("nutanix", "Nutanix AHV"), ("xen", "Xen"), ("parallels", "Parallels"),
+             ("bochs", "KVM/QEMU (es. Proxmox VE)"), ("virtual machine (macos)", "macchina virtuale"))
+    name = next((label for key, label in rules if key in low), "")
+    if not name and "microsoft corporation" in low and "virtual machine" in low:
+        name = "Hyper-V (o Azure)"
+    _VM_CACHE.append(name)
+    return name
+
+
+# ----------------------------------------------------------------------------------------
+# Blocco della cartella dati: un solo motore per cartella, anche fra computer diversi
+# ----------------------------------------------------------------------------------------
+class DataFolderLock:
+    """Blocco esclusivo del sistema operativo su state/daemon.lock: impedisce a due motori di scrivere lo stesso
+    Vault, anche quando la cartella dati e' una condivisione di rete (SMB o NFS) usata da due computer. Il sistema lo
+    rilascia da solo se il processo si chiude o termina in modo anomalo (nessun blocco «orfano»)."""
+
+    def __init__(self, path=None):
+        self.path = path or os.path.join(STATE_DIR, "daemon.lock")
+        self.info_path = self.path + ".json"
+        self._f = None
+
+    def acquire(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        f = open(self.path, "a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                f.seek(0)
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.lockf(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            f.close()
+            return False
+        self._f = f
+        try:
+            import socket
+            atomic_write_json(self.info_path, {"host": socket.gethostname(), "pid": os.getpid(), "since": time.time()})
+        except Exception:
+            pass
+        return True
+
+    def holder(self):
+        """Chi tiene il blocco (computer, PID), se l'ha annotato."""
+        return read_json(self.info_path, {}) or {}
+
+    def release(self):
+        if self._f is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self._f.seek(0)
+                msvcrt.locking(self._f.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.lockf(self._f, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        try:
+            self._f.close()
+        finally:
+            self._f = None
 
 
 # ----------------------------------------------------------------------------------------

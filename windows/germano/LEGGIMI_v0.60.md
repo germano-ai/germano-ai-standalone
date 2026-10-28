@@ -45,6 +45,18 @@ Impostazioni › App › App installate › Germano AI, a scelta conservando le 
 permessi di amministratore per togliere la regola del firewall; rimuove programma, collegamenti, voce in Impostazioni ›
 App e file tecnici.
 
+## Windows Server e macchine virtuali
+- Supportati **Windows Server 2019, 2022 e 2025** (Standard e Datacenter) e le macchine virtuali **VMware, Hyper-V,
+  Proxmox VE (KVM), VirtualBox** e cloud: nessuna GPU e nessun ridistribuibile (le DLL di Visual C++ sono incluse).
+  Consigliati 12 GB di RAM e 4 vCPU; thread e precisione si adattano da soli (dettagli nella Guida, capitolo 9).
+- **Senza finestra** (server, Server Core, avvio automatico con un'attività pianificata):
+  `Germano.exe --no-browser --mode=server`; per arrestarlo `Germano.exe --stop`. Gli indirizzi locali e di rete sono
+  nel registro `%LOCALAPPDATA%\Germano AI\desktop.log`. Su Windows Server 2019, che non ha Microsoft Edge, Germano
+  propone da solo di restare attivo così.
+- **Rete**: la regola del firewall vale per le reti private e di dominio. Se una scheda è «Pubblica», se la regola
+  manca o se i criteri di gruppo ignorano le regole locali, la Dashboard del server lo dice con il comando per
+  correggerlo; nelle VM con NAT serve l'inoltro della porta TCP 8181 (o una scheda in modalità bridge).
+
 ## Client leggero per i colleghi
 Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.60.exe`** (~22 MB, senza
 modelli, nessun permesso di amministratore): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del

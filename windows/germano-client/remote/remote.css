@@ -112,7 +112,7 @@ textarea.rc-input { resize: vertical; line-height: 1.45; }
 .rc-list { display: grid; gap: 8px; }
 .rc-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
 .rc-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 11px 13px; background: var(--surface-2);
-           display: grid; gap: 5px; }
+           display: grid; gap: 5px; align-content: start; }
 .rc-item.usable { border-color: var(--primary-border); background: var(--surface); }
 .rc-item-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 .rc-item-name { font-weight: 700; }
@@ -124,6 +124,10 @@ textarea.rc-input { resize: vertical; line-height: 1.45; }
 .rc-pill.warn { background: var(--warning-soft); color: var(--warning); }
 .rc-pill.local { background: var(--primary-soft); color: var(--primary); }
 .rc-empty { color: var(--muted); font-size: 14px; padding: 6px 2px; }
+.rc-keyform { display: grid; gap: 4px; border-top: 1px solid var(--border-soft); padding-top: 8px; }
+.rc-keyform .rc-check { margin: 0; }
+/* destinazioni non rilevate: visibili, in grigio, non selezionabili */
+select.rc-input option:disabled, select.rc-input option.rc-opt-off { color: var(--muted); font-style: italic; }
 .rc-details summary { cursor: pointer; font-weight: 600; color: var(--text-2); padding: 6px 0; }
 .rc-details .rc-list { margin-top: 8px; }
 

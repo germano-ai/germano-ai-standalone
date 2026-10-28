@@ -20,6 +20,9 @@ from germano import common  # noqa: E402
 
 common.setup_offline_env()
 common.force_utf8_stdio()
+# Thread di calcolo decisi PRIMA di importare torch/numpy (OpenMP, MKL e OpenBLAS li leggono all'avvio): su una VM
+# con poche vCPU il motore non satura l'hypervisor e lascia un processore al server web e al sistema.
+CPU_THREADS, CPU_THREADS_SOURCE = common.configure_cpu_threads(common.load_config())
 
 import warnings  # noqa: E402
 
@@ -104,6 +107,8 @@ class Daemon:
         self._last_cleanup = 0.0
         self._engine_wait_until = 0.0   # modalita' Client: pausa dei lotti finche' il server remoto non risponde
         self._last_ping = 0.0
+        self.data_lock = common.DataFolderLock()   # un solo motore per cartella dati (anche su SMB/NFS)
+        self.owner = False                         # True solo per l'istanza che ha ottenuto la cartella dati
 
     # ------------------------------------------------------------------ stato
     def should_stop(self):
@@ -490,8 +495,21 @@ class Daemon:
     # ------------------------------------------------------------------ ciclo principale
     def run(self):
         common.ensure_dirs()
+        if not self.data_lock.acquire():
+            import socket
+            who = self.data_lock.holder()
+            if who.get("host") and who.get("host") != socket.gethostname():
+                # stessa cartella dati usata da un altro computer (disco di rete): lo si dice nella Dashboard
+                self.fatal(f"la cartella dati {common.DATA_DIR} e' gia' usata dal motore Germano del computer "
+                           f"«{who.get('host')}». Ogni computer deve avere la propria cartella dati (anche su un disco "
+                           "di rete): il Vault non puo' avere due scrittori.")
+            else:
+                log(f"Un altro demone Germano usa gia' questa cartella dati (PID {who.get('pid', '?')}): "
+                    "chiusura di questa istanza.")
+            return 0
         if not self.check_single_instance():
             return 0
+        self.owner = True
         self.write_state(status="loading")
         self.cleanup_leftovers()
         self.start_watchdog()
@@ -576,11 +594,16 @@ class Daemon:
 
     def shutdown(self):
         self.stop_event.set()
+        if not self.owner:
+            # istanza rifiutata (cartella gia' usata da un altro motore): i file di stato sono dell'altro, non si toccano
+            self.data_lock.release()
+            return
         for f in (common.READY_FLAG, common.STOP_FLAG, common.STATUS_FILE):
             common.remove_quietly(f)
         st = common.read_json(common.DAEMON_STATE_FILE, {}) or {}
         if st.get("pid") == os.getpid():
             common.remove_quietly(common.DAEMON_STATE_FILE)
+        self.data_lock.release()
 
 
 def main():

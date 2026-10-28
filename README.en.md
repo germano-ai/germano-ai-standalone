@@ -32,7 +32,7 @@ All official installers are single ready-to-use files on **[download.germano.ai]
 
 | System | Full suite | Lightweight client |
 |---|---|---|
-| Windows 10/11 64-bit | `germano-0.60.exe` | `germano-client-0.60.exe` |
+| Windows 10/11 and Windows Server 2019/2022/2025 64-bit (also in a virtual machine) | `germano-0.60.exe` | `germano-client-0.60.exe` |
 | macOS | `germano-0.60.pkg` (Apple Silicon, macOS 14 or later) | `germano-client-0.60.pkg` (Apple Silicon and Intel, macOS 11 or later) |
 | Linux Ubuntu/Debian 64-bit | `germano-0.60.deb` | `germano-client-0.60.deb` |
 
@@ -41,6 +41,11 @@ All official installers are single ready-to-use files on **[download.germano.ai]
 2. **Installation:** double-click the installer. **As soon as it opens it asks for administrator permission** (Windows UAC prompt: choose **Yes**): it is needed to allow access from the local network, always enabled, with a Windows Firewall rule that only applies to Germano's Python and only to private and domain networks (Server LAN mode). The program installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI`, with the Desktop and Start menu shortcuts, the entry in Settings > Apps and the working folders in `Documents\Germano AI`; at the end the installer window closes and **Germano AI opens by itself**, with the user's normal permissions. The Microsoft Visual C++ libraries are already included: nothing else to install.
 3. **Launch:** **Germano AI** shortcut on the Desktop or in the Start menu (dedicated window, no black terminal windows).
 4. **Uninstall:** Settings > Apps > Installed apps > Germano AI (it asks for administrator permission to remove the firewall rule); you can choose whether to keep the working folders and the Vault.
+
+### 🏢 Windows Server and virtual machines
+- **Windows Server 2019, 2022 and 2025** (Standard and Datacenter) and **VMware, Hyper-V, Proxmox VE (KVM), VirtualBox** and cloud (AWS, Azure, Google Cloud) virtual machines: no GPU and no redistributable to install (the Visual C++ DLLs are included). 12 GB of RAM and 4 vCPUs recommended: threads adapt to the vCPUs and precision to the processor (FP32, or BF16 with little RAM).
+- **Without a window** (servers, Server Core, scheduled tasks): `Germano.exe --no-browser --mode=server` starts server and engine with no windows and writes the local and network addresses to the log and the console; `Germano.exe --stop` stops it. On Windows Server 2019, which has no Microsoft Edge, Germano offers by itself to stay active this way (Internet Explorer is not used).
+- **Network**: the firewall rule applies to private and domain networks; if an adapter is classified as «Public» (common in VMs), if the rule is missing or if Group Policy ignores local rules, the server Dashboard reports it with the command to fix it. In VMs with NAT networking you need TCP port 8181 forwarding or a bridged adapter.
 
 The full suite installer is about 3 GB: on the first double-click Microsoft Defender scans it, so the window may take a few seconds to appear. The installer is not digitally signed yet: if "Windows protected your PC" appears, choose **More info > Run anyway**.
 
@@ -88,7 +93,7 @@ Germano AI implements a modular hybrid architecture, selectable on initial launc
 ### Dual Mode & User Interface:
 *   **Dual Mode (Batch + AI Studio):** toggle instantly with a single click between:
     *   **📁 Anonymize files (Batch Processing):** clear and focused interface for massive batch processing, featuring quick-access buttons to open `input` and `output` folders, interactive tabs for `input`, `output`, `failed`, `processed`, and `extracted`, real-time throughput metrics (files/min, redacted PII), hardware monitoring (CPU/RAM), detailed error diagnostics with a **Re-queue** button, and CSV export.
-    *   **🤖 AI Studio (Local Harness):** interactive workbench styled after Google Antigravity, featuring automatic detection of installed AIs (Claude Code, OpenAI Codex CLI, ChatGPT, Google Antigravity and Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Windsurf, Kiro, OpenCode, Aider, Ollama, LM Studio and more) with granular model configuration.
+    *   **🤖 AI Studio (Local Harness):** interactive workbench styled after Google Antigravity, featuring automatic detection of installed AIs (Claude Code, OpenAI Codex CLI, ChatGPT, Google Antigravity and Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Windsurf, Kiro, OpenCode, Aider, Ollama, LM Studio and more) with granular model configuration. "Send to" offers only the detected AIs (the others stay greyed out, not selectable) and refreshes by itself, including the installed models of Ollama and LM Studio.
 *   **100% Bilingual Interface & Contextual Tooltips (Italian / English):** automatic browser language detection (`it` -> Italian, otherwise English by default), quick flag toggle (🇮🇹 IT / 🇬🇧 EN) in the top navigation bar, and over 112 localized interactive hover tooltips across all controls, toggled in Settings.
 
 ---
@@ -98,7 +103,7 @@ Germano AI implements a modular hybrid architecture, selectable on initial launc
 With **Server** mode on, from a Windows, Mac or Linux PC, a tablet or a smartphone on the same local network just open the browser at **`http://<server-IP>:8181/`** (the Remote Control opens, also at `/remote`; the exact addresses are in the server Settings). Like Google Antigravity's Remote Control, the work stays on the server: the device is a secure window.
 
 - **Server AIs, detected automatically:** the CLIs and apps installed on the server (with the reason why a CLI cannot run remotely: agents that would run commands or edit files on the server are never run for clients) and the **AI services via API** filtered by Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen, Mistral, Grok (xAI), Perplexity (Sonar), Google Gemini, OpenAI, Anthropic, OpenRouter, Groq and the **server's local models** (Ollama, LM Studio: no data leaves the local network).
-- **Protected chat:** the prompt and up to **12 attachments** are anonymized by the server engine before leaving; the answer comes back with the original data **of that request only**. For every answer you can see exactly the protected text the AI received. API key: the user's own (it stays on the device, the server does not save it) or the server's, if the administrator shares this computer's AIs.
+- **Protected chat:** the prompt and up to **12 attachments** are anonymized by the server engine before leaving; the answer comes back with the original data **of that request only**. For every answer you can see exactly the protected text the AI received. API key: the user's own (it stays on the device, the server does not save it) or the server's, if the administrator shares this computer's AIs. In the chat only the detected, usable AIs can be chosen (the others stay greyed out with the reason) and the list refreshes by itself.
 - **Protect and restore:** protected text to copy into any AI, and the answer restored right on the device.
 - **Client processing options:** confidence threshold, active models, the 18 personal data categories, masking (numbered tags `[PERSONA_1]`, restorable; generic tags `[PERSONA]` or blackout `████`, irreversible). They apply only to that device's requests, never to the server configuration. **With the PA profile (or `lock_settings`) they are disabled and greyed out**, and the server rejects any change with `403 Forbidden` (Compliance Lock).
 - **Connect the device's tools:** the Proxy addresses to use as Base URL: `/v1` (OpenAI format), the root (Anthropic format) and `/p/<service>/v1` for Meta, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, etc.
@@ -132,7 +137,7 @@ With **Server** mode on, from a Windows, Mac or Linux PC, a tablet or a smartpho
     *   🌐 **Web, Data, Email & Archives (`HTML`, `XML`/FatturaPA, `JSON`, `EML`, `ZIP`, `P7M`):** Native DOM/MIME handling, email attachment recursion, archive traversal for `.zip`, and PKCS#7 signed file parsing (`.p7m`).
 *   **Reliability & Concurrency:** Thread-safe Vault operations, atomic file processing only after copy completion, and clean graceful shutdown.
 
-**Requirements:** Windows 10/11 64-bit, macOS 14 or later on Apple Silicon, or 64-bit Ubuntu/Debian Linux; 8 GB RAM (16 GB recommended) and about 6 GB of free disk space (plus the space for your documents). On Windows the suite installer asks for administrator permission as soon as it opens (firewall rule for local network access; the client does not ask for it); on macOS ("Install for me only") it is not needed; on Linux, as for any .deb package, the administrator password is required.
+**Requirements:** 64-bit Windows 10/11 or Windows Server 2019 or later (also in a virtual machine), macOS 14 or later on Apple Silicon, or 64-bit Ubuntu/Debian Linux; 8 GB RAM (16 GB recommended), at least 4 processors or vCPUs and about 6 GB of free disk space (plus the space for your documents); no GPU needed. On Windows the suite installer asks for administrator permission as soon as it opens (firewall rule for local network access; the client does not ask for it); on macOS ("Install for me only") it is not needed; on Linux, as for any .deb package, the administrator password is required.
 
 ## 🔌 REST API Integration
 
@@ -220,7 +225,7 @@ This GitHub repository contains **exclusively clean source code and assets**. To
 
 1. **AI Models (`models/`):**
    - Germano requires the 6 local AI models (privacy-filter, NER, EasyOCR, YuNet facial biometrics, license plate and signature detection).
-   - 👉 **[Download the complete Models Bundle](https://download.germano.ai/modelli/)** and extract it into the `models/` directory of your chosen platform (e.g. `windows/germano/models/` or `linux/germano/models/`).
+   - 👉 All 6 AI models are bundled inside the official Germano AI installers: for development from source, copy the `models/` folder from the installed application into your chosen platform directory (e.g. `windows/germano/models/` or `linux/germano/models/`).
    - *Alternatively:* you can extract the `models/` folder directly from any official installer package on [download.germano.ai](https://download.germano.ai).
 
 2. **System Dependencies & Runtimes:**

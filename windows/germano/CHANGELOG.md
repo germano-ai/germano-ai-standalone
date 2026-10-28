@@ -25,6 +25,13 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
   anche cartelle di lavoro e Vault). Il client non chiede permessi e ha collegamenti propri («Germano AI Client»), così
   le due edizioni possono stare sullo stesso computer. Il runtime include le DLL di Microsoft Visual C++: nessun
   ridistribuibile da installare.
+- **Windows, schermata di avvio immediata**: appena si apre l'installer compare subito una finestra «Germano AI» con una
+  barra animata, che resta durante la richiesta UAC e l'estrazione e si chiude da sola quando compare la finestra
+  dell'installazione. Anche la **richiesta UAC arriva in pochi istanti**: i permessi si chiedono per un piccolo avviatore
+  (lo stesso programma senza i dati, pochi KB) invece che per il file da circa 3 GB, che Windows prima verificava per
+  intero senza mostrare nulla (27 secondi misurati su un PC di prova). La pagina di conferma non mostra più la nota
+  sulla regola del firewall: la regola si crea comunque, in silenzio, con i permessi di amministratore (l'esito resta
+  nel registro dell'installazione).
 - **macOS**: `germano-0.60.pkg` (Apple Silicon, macOS 14 o successivo) e `germano-client-0.60.pkg` (Apple Silicon e
   Intel, macOS 11 o successivo): pacchetti dell'Installer di macOS con `Germano.app` autosufficiente; con «Installa
   solo per me» nessuna password di amministratore; alla fine Germano si apre da solo (non nelle installazioni da riga di
@@ -87,12 +94,54 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
 - Il motore rilegge le impostazioni a ogni richiesta: un cambio di profilo (PA/PD) vale subito, anche per le opzioni
   dei client.
 
-### Aggiunto - Rilevamento delle AI esteso
+### Aggiunto - Rilevamento delle AI esteso e automatico
 - Riconosciute anche: Meta Muse Code (Muse Wonder, Muse Spark), Kimi Code CLI, Qwen Code, DeepSeek (Deep Code, Reasonix),
   Mistral Vibe, Grok Build (xAI), Perplexity (pplx), GitHub Copilot CLI, ChatGPT, Jules, Cursor CLI, Kiro e Kiro CLI,
   Trae, Zed, OpenCode, Goose, Cline, Kilo Code, Amp, Droid, Crush, llama.cpp e Jan, oltre a quelle gia' note.
 - Il rilevamento legge anche il PATH salvato nel registro (CLI installate dopo l'avvio di Germano) e funziona anche su
   macOS e Linux (eseguibili senza estensione, app in `/Applications`).
+- **«Invia a» solo verso le AI rilevate** (Studio AI, Remote Control e Germano Client): si scelgono solo le CLI e le
+  applicazioni installate, i modelli installati di Ollama e LM Studio in esecuzione (un'opzione per modello) e, nel
+  Remote Control, i servizi via API con una chiave (del server, oppure inserita sul dispositivo con «🔑 Inserisci la
+  chiave»); le altre voci restano visibili **in grigio, non selezionabili**, con il motivo («non rilevato», «non in
+  esecuzione», «nessun modello installato», «serve la chiave API»). Destinazione predefinita: la prima AI rilevata,
+  altrimenti la copia del testo protetto.
+- **Rilevamento automatico dei modelli installati**: Germano legge l'elenco dei modelli di Ollama (`/api/tags`) e di
+  LM Studio / Jan (`/v1/models`), solo su `127.0.0.1`; le pagine si aggiornano da sole ogni 12 secondi, quando tornano in
+  primo piano e all'apertura dello Studio o della chat, senza ricaricare né riavviare Germano (cache del server di 5
+  secondi). Se la destinazione scelta sparisce si passa alla prima disponibile, con un avviso. Il server rifiuta comunque
+  un modello locale non rilevato (409); `client ask` con un modello locale senza `--model` usa il primo installato.
+
+### Aggiunto - Windows Server e macchine virtuali
+- **Windows Server 2019, 2022 e 2025** (Standard e Datacenter) e **macchine virtuali** (VMware, Hyper-V, Proxmox VE /
+  KVM, VirtualBox, AWS, Azure, Google Cloud). L'installer controlla la versione vera di Windows e avvisa: «Germano AI
+  richiede Windows 10, Windows 11 o Windows Server 2019 o superiori a 64 bit».
+- **Senza Microsoft Edge né Chrome** (Windows Server 2019, Server Core) Germano non apre Internet Explorer, che non sa
+  mostrare la Dashboard: un avviso indica gli indirizzi da aprire e con OK Germano resta attivo come server senza
+  finestra (con Annulla si chiude). Lo stesso se la finestra non si apre (es. criteri aziendali), invece di chiudersi.
+  Riconosciuto anche Edge installato per l'utente.
+- **Modalità senza finestra** per server, VM e attività pianificate: `Germano.exe --no-browser` (o `--headless`,
+  `GERMANO_HEADLESS=1`), `--mode=server` per un solo avvio, `Germano.exe --stop` per arrestarlo; gli indirizzi locali e
+  di rete (Remote Control, Proxy) e gli avvisi di rete vanno nel registro e nella console, nessun dialogo. Riaperto dal
+  collegamento mentre gira senza finestra, Germano apre solo una finestra sulla stessa Dashboard (nessun secondo server).
+  `GERMANO_TECH_DIR` sceglie la cartella tecnica.
+- **Thread adattati alle vCPU**: tutti i processori concessi al programma fino a 2, poi uno lasciato libero per server
+  web e sistema (su 4 core costa il 2%), al massimo 16; OpenMP, MKL e OpenBLAS impostati prima di caricare PyTorch;
+  `"cpu_threads"` in `config.json` o `GERMANO_CPU_THREADS` per sceglierli, `OMP_NUM_THREADS` dell'amministratore
+  rispettata.
+- **Precisione secondo il processore**: sulle CPU senza BF16 nativo (AVX2, es. Xeon E5 v3/v4) il BF16 è da 4 a 10 volte
+  più lento (misurato), quindi si usa FP32 anche con meno di 12 GB di RAM se ce ne sono almeno 7 liberi; se il BF16 non
+  funziona Germano passa da solo a FP32, all'avvio o durante l'elaborazione.
+- Macchina virtuale, processori, thread e BF16 nativo indicati nel registro del motore e nello stato del motore.
+- **Rete e firewall**: nella Dashboard del server, nella console e nel registro, avvisi con il comando per correggere una
+  rete classificata come «Pubblica», una regola del firewall mancante, disattivata o per un altro programma, e i criteri
+  di gruppo che ignorano le regole locali. Gli indirizzi del Remote Control mettono per primo quello della scheda verso
+  la rete (anche schede virtuali) ed escludono gli indirizzi automatici 169.254.x.x.
+- **Cartella dati condivisa** (SMB/NFS, dischi virtuali): blocco del sistema operativo sulla cartella dati, un secondo
+  motore (anche da un altro computer) viene rifiutato con un messaggio chiaro: il Vault non ha mai due scrittori.
+- Runtime autosufficiente verificato: DLL di Visual C++ 2015-2022 incluse (`vcruntime140`, `vcruntime140_1`,
+  `msvcp140`, `msvcp140_1`, `msvcp140_2`, `vcomp140`, `concrt140` e le altre) e dipendenze di tutti i 408 binari del
+  runtime controllate: le restanti sono componenti standard di Windows.
 
 ### Sicurezza
 - Dalla rete (Proxy, Remote Control, AI condivise) il ripristino usa **solo le etichette della richiesta stessa**: un
@@ -125,6 +174,10 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
 - Struttura della release: `sorgenti/` (solo il codice pubblicabile su GitHub, per Windows, macOS e Linux),
   `dipendenze/` (runtime e librerie per l'uso offline, per sistema operativo), `modelli/` (i 6 modelli IA) e
   `releases/` (i soli installer).
+
+### Corretto
+- Un secondo motore avviato per errore sulla stessa cartella dati cancellava, chiudendosi, i file di stato del primo
+  (`ready.flag`, `status.json`): ora un'istanza rifiutata non li tocca.
 
 ### Rimosso
 - Gli eseguibili con nomi diversi (`GermanoServer.exe`, `GermanoClient.exe`, `GermanoClient.app`, `GermanoClient.desktop`):

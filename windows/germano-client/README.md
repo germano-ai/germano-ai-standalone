@@ -15,7 +15,7 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
 2. **Esposizione delle AI e dei Modelli del Server**:
    Il Client interroga il Server ed elenca le AI rilevate sul server (Claude Code, Codex, Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Kiro, OpenCode, Aider, Ollama, LM Studio...) e i **servizi di AI via API** filtrati da Germano (Meta Muse Wonder e Muse Spark, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic e i modelli locali del server). Con la chat protetta li usa direttamente dalla propria postazione, anche se non sono installati localmente.
 3. **Stessa interfaccia del Remote Control**:
-   Il pannello del Client è lo stesso Remote Control che il Server offre a qualsiasi browser della rete (AI, chat protetta con fino a 12 allegati, proteggi e ripristina, opzioni, collegamento degli strumenti): chi usa il Client e chi usa il browser ha le stesse capacità. In più il Client cerca il server in rete e avvia protette le CLI di questo PC.
+   Il pannello del Client è lo stesso Remote Control che il Server offre a qualsiasi browser della rete (AI, chat protetta con fino a 12 allegati, proteggi e ripristina, opzioni, collegamento degli strumenti): chi usa il Client e chi usa il browser ha le stesse capacità. Nella chat si scelgono solo le AI rilevate sul server (le altre restano in grigio, non selezionabili) e l'elenco si aggiorna da solo. In più il Client cerca il server in rete e avvia protette le CLI di questo PC.
 4. **Opzioni di elaborazione di questo PC**:
    Soglia di confidenza, modelli attivi, 18 categorie di dati personali e mascheramento (`client options`), valide solo per le richieste di questo PC. **Con il profilo PA del server sono bloccate e in grigio** (il server respinge ogni modifica: Compliance Lock).
 5. **Instradamento Trasparente per Agenti AI Locali**:
@@ -48,7 +48,7 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
 
 Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](https://download.germano.ai/)** e includono il proprio Python con tutte le librerie: l'installazione non scarica nulla da Internet. Il client non crea cartelle di lavoro in Documenti: le sue impostazioni (indirizzo del server, sessione, opzioni) restano nella cartella tecnica dell'utente.
 
-### 🪟 Windows (10 / 11 a 64 bit)
+### 🪟 Windows (10 / 11 e Windows Server 2019 o successivo, a 64 bit, anche in macchina virtuale)
 1. **Download:** scarica `germano-client-0.60.exe` (circa 22 MB).
 2. **Installazione:** doppio clic sull'installer. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client` **senza diritti di amministratore (nessuna richiesta UAC)**, con i collegamenti sul Desktop e nel menu Start e la voce in Impostazioni > App. Le impostazioni del client sono in `%LOCALAPPDATA%\Germano AI Client`.
 3. **Avvio:** al termine dell'installazione il client si apre da solo; poi dal collegamento **Germano AI Client** sul Desktop o nel menu Start (finestra dedicata, senza terminale; nome diverso da quello della suite, così le due edizioni possono stare sullo stesso computer).

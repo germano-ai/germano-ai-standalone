@@ -15,6 +15,9 @@
     let conv = [];
     let restoreMap = {};
     let rendered = false;
+    let keyOpen = '';           // servizio di cui e' aperto il modulo della chiave API (scheda AI)
+    let lastSig = '';           // disponibilita' delle AI all'ultimo rilevamento (aggiornamento automatico)
+    const DETECT_MS = 12000;    // rilevamento automatico: ogni 12 secondi e quando la pagina torna in primo piano
 
     // ------------------------------------------------------------------ lingua
     function T(it, en) { return lang === 'en' ? en : it; }
@@ -154,7 +157,16 @@
         }
         $('rcLogin').hidden = true;
         $('rcApp').hidden = false;
-        if (full || !rendered) renderAll();
+        const sig = availabilitySignature();
+        if (full || !rendered) {
+            renderAll();
+        } else if (sig !== lastSig) {
+            // rilevamento automatico: un modello o una CLI appena installati (o spenti) aggiornano subito la pagina
+            if (editingKey()) return;
+            renderAi();
+            renderTargets(true);
+        }
+        lastSig = sig;
     }
 
     function renderHeader() {
@@ -270,14 +282,46 @@
         sl.replaceChildren();
         services.forEach(s => {
             const pills = [];
-            if (s.local) pills.push(el('span', { class: 'rc-pill ' + (s.available ? 'local' : 'warn'),
-                text: s.available ? T('locale sul server', 'local on the server') : T('non in esecuzione', 'not running') }));
-            else if (s.key === 'server') pills.push(el('span', { class: 'rc-pill ok', text: T('chiave del server', 'server key') }));
-            else pills.push(el('span', { class: 'rc-pill', text: T('serve la tua chiave', 'needs your key') }));
+            let reason = null;
+            let ready = s.available;
+            const own = !s.local && s.key === 'user' && Boolean(deviceKey(s.id));
+            if (s.local) {
+                const none = s.reason === 'nessun modello installato';
+                pills.push(el('span', { class: 'rc-pill ' + (s.available ? 'local' : 'warn'), text: s.available
+                    ? T('locale sul server', 'local on the server') : none ? T('nessun modello installato', 'no model installed')
+                    : T('non in esecuzione', 'not running') }));
+                const models = s.models_detected ? (s.models || []) : [];
+                if (s.available && models.length) {
+                    reason = T(`Modelli rilevati (${models.length}): `, `Detected models (${models.length}): `) +
+                        models.slice(0, 8).join(', ') + (models.length > 8 ? '…' : '');
+                } else if (!s.available) {
+                    reason = none ? T('Installa un modello sul server: compare qui da solo, senza ricaricare la pagina.',
+                                      'Install a model on the server: it shows up here by itself, without reloading the page.')
+                        : T('Avvialo sul server: Germano lo rileva da solo entro pochi secondi.',
+                            'Start it on the server: Germano detects it by itself within a few seconds.');
+                }
+            } else if (s.key === 'server') {
+                pills.push(el('span', { class: 'rc-pill ok', text: T('chiave del server', 'server key') }));
+            } else if (own) {
+                pills.push(el('span', { class: 'rc-pill ok', text: T('chiave su questo dispositivo', 'key on this device') }));
+            } else {
+                pills.push(el('span', { class: 'rc-pill', text: T('serve la tua chiave', 'needs your key') }));
+                ready = false;
+            }
             const sub = (s.formats || []).map(f => f === 'openai' ? T('formato OpenAI', 'OpenAI format') : T('formato Anthropic', 'Anthropic format')).join(' · ');
-            const btn = s.available ? el('button', { class: 'rc-btn rc-btn-sm', type: 'button', text: T('Chatta', 'Chat'),
+            const btn = ready ? el('button', { class: 'rc-btn rc-btn-sm', type: 'button', text: T('Chatta', 'Chat'),
                 onclick: () => openChat('service:' + s.id) }) : null;
-            sl.append(aiItem(s.name, sub, pills, null, btn, s.available));
+            const keyBtn = !s.local && s.key === 'user' ? el('button', { class: 'rc-btn rc-btn-sec rc-btn-sm', type: 'button',
+                text: own ? T('🔑 Chiave', '🔑 Key') : T('🔑 Inserisci la chiave', '🔑 Enter the key'),
+                'aria-expanded': String(keyOpen === s.id), onclick: () => {
+                    keyOpen = keyOpen === s.id ? '' : s.id;
+                    renderAi();
+                    const input = keyOpen && document.querySelector('#rcServices .rc-keyform input[type="password"]');
+                    if (input) input.focus();
+                } }) : null;
+            const card = aiItem(s.name, sub, pills, reason, [keyBtn, btn], ready);
+            if (keyOpen === s.id && keyBtn) card.append(keyForm(s));
+            sl.append(card);
         });
 
         const ol = $('rcOthers');
@@ -302,45 +346,152 @@
             reason ? el('div', { class: 'rc-item-reason', text: reason }) : null);
     }
 
+    // Chiave API di un servizio via API inserita dall'utente: resta su questo dispositivo (sessione o «ricorda») e
+    // viaggia solo con le richieste; con la chiave il servizio diventa selezionabile nella chat.
+    function keyForm(s) {
+        const input = el('input', { type: 'password', class: 'rc-input', autocomplete: 'off', spellcheck: 'false',
+            'aria-label': T(`Chiave API di ${s.name}`, `${s.name} API key`), placeholder: T('chiave API del servizio', 'service API key') });
+        input.value = deviceKey(s.id);
+        const remember = el('input', { type: 'checkbox' });
+        remember.checked = Boolean(load('local', K.keys, {})[s.id]);
+        const msg = el('span', { class: 'rc-muted', role: 'status' });
+        const save = () => {
+            const key = input.value.trim();
+            if (!/^[\x21-\x7e]{8,512}$/.test(key)) {
+                msg.textContent = T('Chiave non valida (almeno 8 caratteri, senza spazi).', 'Invalid key (at least 8 characters, no spaces).');
+                return;
+            }
+            setDeviceKey(s.id, key, remember.checked);
+            keyOpen = '';
+            renderAi();
+            renderTargets();
+        };
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+        return el('div', { class: 'rc-keyform' },
+            el('div', { class: 'rc-row rc-tight' }, input,
+                el('button', { class: 'rc-btn rc-btn-sm', type: 'button', text: T('Salva', 'Save'), onclick: save }),
+                deviceKey(s.id) ? el('button', { class: 'rc-btn rc-btn-sec rc-btn-sm', type: 'button', text: T('Togli', 'Remove'),
+                    onclick: () => { setDeviceKey(s.id, ''); keyOpen = ''; renderAi(); renderTargets(); } }) : null),
+            el('label', { class: 'rc-check' }, remember, el('span', { text: T('Ricorda la chiave su questo dispositivo (altrimenti si dimentica chiudendo la pagina)',
+                'Remember the key on this device (otherwise it is forgotten when the page is closed)') })), msg);
+    }
+
+    function setDeviceKey(id, key, remember) {
+        const local = load('local', K.keys, {});
+        const session = load('session', K.keys, {});
+        delete local[id];
+        delete session[id];
+        if (key) (remember ? local : session)[id] = key;
+        store('local', K.keys, local);
+        store('session', K.keys, session);
+    }
+
+    // l'utente sta scrivendo una chiave: il rilevamento periodico non ridisegna la scheda (riprova al giro dopo)
+    function editingKey() {
+        const a = document.activeElement;
+        return Boolean(a && a.closest && a.closest('.rc-keyform'));
+    }
+
     // ------------------------------------------------------------------ chat
+    // Chiave API di un servizio salvata su questo dispositivo (sessione o «ricorda»): mai inviata al server se non
+    // con la richiesta.
+    function deviceKey(id) {
+        return Object.assign({}, load('local', K.keys, {}), load('session', K.keys, {}))[id] || '';
+    }
+
+    // Tutte le destinazioni, rilevate o no: solo quelle rilevate (enabled) si possono scegliere, le altre restano in
+    // grigio con il motivo. CLI eseguite dal server: installate e condivise. Modelli locali (Ollama, LM Studio): una
+    // voce per ogni modello installato. Servizi via API: con la chiave del server o una chiave su questo dispositivo.
     function targets() {
         const out = [];
-        (info.tools || []).filter(t => (t.remote || {}).usable).forEach(t => out.push({ value: 'tool:' + t.id, label: t.name, group: 'tool', item: t }));
-        (info.services || []).filter(s => s.available).forEach(s => out.push({ value: 'service:' + s.id, label: s.name, group: 'service', item: s }));
+        (info.runnable || []).forEach(r => out.push({ value: 'tool:' + r.id, target: 'tool:' + r.id, label: r.name,
+            group: 'tool', enabled: Boolean(r.usable), why: r.reason || '', item: r }));
+        (info.services || []).forEach(s => {
+            if (s.local) {
+                const models = s.models_detected ? (s.models || []) : null;
+                if (s.available && models && models.length) {
+                    models.forEach(m => out.push({ value: `service:${s.id}|${m}`, target: 'service:' + s.id, model: m,
+                        label: `${s.name.replace(/ \(.*\)$/, '')} · ${m}`, group: 'local', enabled: true, item: s }));
+                } else {
+                    out.push({ value: 'service:' + s.id, target: 'service:' + s.id, label: s.name.replace(/ \(.*\)$/, ''),
+                        group: 'local', enabled: Boolean(s.available), item: s,
+                        why: s.available ? '' : (s.reason === 'nessun modello installato' ? T('nessun modello installato', 'no model installed')
+                            : T('non in esecuzione sul server', 'not running on the server')) });
+                }
+            } else {
+                const ok = s.key === 'server' || Boolean(deviceKey(s.id));
+                out.push({ value: 'service:' + s.id, target: 'service:' + s.id, label: s.name, group: 'service',
+                    enabled: ok, item: s, why: ok ? '' : T('serve la chiave API: inseriscila nella scheda AI', 'API key needed: enter it in the AI tab') });
+            }
+        });
         return out;
     }
 
-    function renderTargets() {
+    // Impronta della disponibilita': se non cambia, il rilevamento periodico non tocca la pagina
+    function availabilitySignature() {
+        if (!info) return '';
+        return JSON.stringify([(info.runnable || []).map(r => [r.id, r.usable]),
+            (info.services || []).map(s => [s.id, s.available, s.key, s.models_detected ? s.models : null]),
+            (info.tools || []).map(t => [t.id, (t.remote || {}).usable])]);
+    }
+
+    function renderTargets(notify) {
         const sel = $('rcTarget');
-        const current = sel.value || load('local', K.target, '');
+        const before = sel.value;
+        const beforeLabel = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+        const typed = { model: $('rcModel').value, key: $('rcKey').value };
+        const current = before || load('local', K.target, '');
         sel.replaceChildren();
         const list = targets();
         const groups = { tool: el('optgroup', { label: T('Eseguite dal server', 'Run by the server') }),
+                         local: el('optgroup', { label: T('Modelli locali del server (rilevati in automatico)', 'Server local models (detected automatically)') }),
                          service: el('optgroup', { label: T('Servizi via API (filtrati da Germano)', 'API services (filtered by Germano)') }) };
-        list.forEach(t => groups[t.group].append(el('option', { value: t.value, text: t.label })));
+        list.forEach(t => {
+            const o = el('option', { value: t.value, text: t.enabled ? t.label : `${t.label} — ${t.why || T('non rilevata', 'not detected')}` });
+            if (!t.enabled) { o.disabled = true; o.className = 'rc-opt-off'; }
+            groups[t.group].append(o);
+        });
         Object.values(groups).forEach(g => { if (g.children.length) sel.append(g); });
-        if (!list.length) sel.append(el('option', { value: '', text: T('(nessuna AI disponibile)', '(no AI available)') }));
-        if (list.some(t => t.value === current)) sel.value = current;
+        const usable = list.filter(t => t.enabled);
+        if (!usable.length) {
+            const none = el('option', { value: '', text: T('(nessuna AI rilevata: installa o avvia un modello sul server)', '(no AI detected: install or start a model on the server)') });
+            sel.prepend(none);
+            sel.value = '';
+        } else if (usable.some(t => t.value === current)) {
+            sel.value = current;
+        } else {
+            sel.value = usable[0].value;           // destinazione predefinita: la prima AI rilevata
+            // la destinazione scelta non c'e' piu' (servizio spento, modello disinstallato): la chat lo dice
+            if (notify && before && beforeLabel) addBubble('wait', T(`«${beforeLabel}» non è più disponibile: ora la destinazione è «${usable[0].label}».`,
+                                                                     `«${beforeLabel}» is no longer available: the destination is now «${usable[0].label}».`));
+        }
+        $('rcSend').disabled = !usable.length;
         onTargetChange();
+        if (before && sel.value === before) {      // stessa destinazione: resta cio' che l'utente aveva scritto
+            if (!$('rcModel').readOnly) $('rcModel').value = typed.model;
+            if (!$('rcKeyBox').hidden && typed.key) $('rcKey').value = typed.key;
+        }
     }
 
     function currentTarget() {
-        return targets().find(t => t.value === $('rcTarget').value) || null;
+        return targets().find(t => t.value === $('rcTarget').value && t.enabled) || null;
     }
 
     function onTargetChange() {
         const t = currentTarget();
-        store('local', K.target, $('rcTarget').value);
-        const isService = t && t.group === 'service';
+        if ($('rcTarget').value) store('local', K.target, $('rcTarget').value);
+        const isService = t && (t.group === 'service' || t.group === 'local');
+        const fixed = Boolean(t && t.model);           // modello locale rilevato: e' gia' scelto con la destinazione
         const models = load('local', K.model, {});
-        $('rcModel').value = (t && models[t.value]) || (isService && t.item.models && t.item.models[0]) || '';
+        $('rcModel').value = fixed ? t.model : ((t && models[t.value]) || (isService && t.item.models && t.item.models[0]) || '');
+        $('rcModel').readOnly = fixed;
         $('rcModel').placeholder = isService ? T('obbligatorio: scegli o scrivi il modello', 'required: choose or type the model')
             : T('facoltativo (es. sonnet)', 'optional (e.g. sonnet)');
         const dl = $('rcModelList');
         dl.replaceChildren();
-        ((t && t.item.models) || []).forEach(m => dl.append(el('option', { value: m })));
-        $('rcModelLoad').hidden = !isService;
-        const needKey = isService && t.item.key === 'user';
+        ((t && !fixed && t.item.models) || []).forEach(m => dl.append(el('option', { value: m })));
+        $('rcModelLoad').hidden = !isService || fixed;
+        const needKey = Boolean(t && t.group === 'service' && t.item.key === 'user');
         $('rcKeyBox').hidden = !needKey;
         $('rcKeyRemember').hidden = !needKey;
         if (needKey) {
@@ -352,25 +503,23 @@
 
     function serviceKey(target) {
         if (!target || target.group !== 'service' || target.item.key !== 'user') return '';
+        if (!$('rcKey').value.trim()) $('rcKey').value = deviceKey(target.item.id);
         const key = $('rcKey').value.trim();
-        const id = target.item.id;
-        const local = load('local', K.keys, {});
-        const session = load('session', K.keys, {});
-        if ($('rcKeyRememberBox').checked) { local[id] = key; delete session[id]; } else { session[id] = key; delete local[id]; }
-        store('local', K.keys, local);
-        store('session', K.keys, session);
+        setDeviceKey(target.item.id, key, $('rcKeyRememberBox').checked);
         return key;
     }
 
     function openChat(value) {
         selectTab('chat');
-        $('rcTarget').value = value;
+        // per i modelli locali si apre il primo modello rilevato di quel servizio
+        const t = targets().find(x => x.enabled && (x.value === value || x.target === value));
+        if (t) $('rcTarget').value = t.value;
         onTargetChange();
     }
 
     async function loadModels() {
         const t = currentTarget();
-        if (!t || t.group !== 'service') return;
+        if (!t || (t.group !== 'service' && t.group !== 'local')) return;
         const headers = {};
         const key = serviceKey(t);
         if (key) headers['X-Germano-Provider-Key'] = key;
@@ -454,12 +603,14 @@
         const prompt = $('rcPrompt').value.trim();
         if (!t) { banner(T('Scegli un\'AI.', 'Choose an AI.'), true); return; }
         if (!prompt && !chatFiles.length) return;
-        const model = $('rcModel').value.trim();
-        const models = load('local', K.model, {});
-        models[t.value] = model;
-        store('local', K.model, models);
+        const model = t.model || $('rcModel').value.trim();
+        if (!t.model) {
+            const models = load('local', K.model, {});
+            models[t.value] = model;
+            store('local', K.model, models);
+        }
         const fd = new FormData();
-        fd.append('target', t.value);
+        fd.append('target', t.target);
         fd.append('model', model);
         fd.append('prompt', prompt);
         fd.append('history', JSON.stringify(conv.filter(m => m.role === 'user' || m.role === 'assistant').map(m => ({ role: m.role, text: m.text }))));
@@ -687,7 +838,10 @@
         $('rcEn').addEventListener('click', () => setLang('en'));
         $('rcUser').addEventListener('click', logout);
         $('rcLoginForm').addEventListener('submit', login);
-        document.querySelectorAll('.rc-tabs [role="tab"]').forEach(b => b.addEventListener('click', () => selectTab(b.dataset.tab)));
+        document.querySelectorAll('.rc-tabs [role="tab"]').forEach(b => b.addEventListener('click', () => {
+            selectTab(b.dataset.tab);
+            if (b.dataset.tab === 'ai' || b.dataset.tab === 'chat') loadInfo(false);   // AI aggiornate all'apertura
+        }));
         $('rcAiRefresh').addEventListener('click', () => loadInfo(true));
         $('rcTarget').addEventListener('change', onTargetChange);
         $('rcModelLoad').addEventListener('click', loadModels);
@@ -711,11 +865,12 @@
         $('rcServerSave').addEventListener('click', saveClientServer);
         $('rcServerFind').addEventListener('click', findServers);
         document.addEventListener('visibilitychange', () => { if (!document.hidden) loadInfo(false); });
+        window.addEventListener('focus', () => loadInfo(false));
     }
 
     initLang();
     applyLang();
     bind();
     loadInfo(true);
-    setInterval(() => { if (!document.hidden) loadInfo(false); }, 20000);
+    setInterval(() => { if (!document.hidden) loadInfo(false); }, DETECT_MS);
 })();

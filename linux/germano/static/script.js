@@ -103,15 +103,25 @@ const FOLDER_INFO = [
     ['extracted', 'Report e archivio', 'report di audit, registri del proxy, corrispondenze']
 ];
 
-// Studio: destinazioni sempre disponibili (oltre alle CLI locali rilevate). mode: come si inoltra il testo protetto.
-const STUDIO_CLOUD_TARGETS = [
-    { id: 'deepseek', name: 'DeepSeek', mode: 'cloud' },
-    { id: 'kimi', name: 'Kimi (Moonshot)', mode: 'cloud' },
-    { id: 'qwen', name: 'Qwen (DashScope)', mode: 'cloud' },
-    { id: 'clipboard', name: 'Copia testo protetto', mode: 'clipboard' }
-];
+// Studio: «Invia a» propone solo le AI rilevate su questo computer (CLI, applicazioni, modelli locali in esecuzione con
+// i modelli installati); le altre restano visibili in grigio e non si possono scegliere. La copia del testo protetto e'
+// sempre disponibile. Rilevamento automatico: all'apertura dello Studio, ogni 12 secondi mentre e' aperto e quando la
+// finestra torna in primo piano (solo disco e porte locali, nessun programma avviato).
+const STUDIO_DETECT_MS = 12000;
+const STUDIO_TARGET_KEY = 'germano_studio_target';
+let studioDetectSig = '';         // impronta dell'ultimo rilevamento: se non cambia, la pagina non si tocca
+let studioDetectBusy = false;
+let studioRenderPending = false;  // rilevamento cambiato mentre l'utente ha aperto l'elenco: si aggiorna all'uscita
 // Come si comporta Germano con il testo protetto, per tipo di destinazione.
-const STUDIO_TARGET_MODE = { cli: 'harness locale', app: 'harness locale', service: 'servizio locale', cloud: 'gateway cloud', clipboard: 'copia manuale' };
+const STUDIO_TARGET_MODE = {
+    cli: ['harness locale', 'local harness'], app: ['harness locale', 'local harness'],
+    service: ['modello locale', 'local model'], clipboard: ['copia manuale', 'manual copy']
+};
+const STUDIO_GROUPS = [
+    ['cli', 'CLI', 'CLIs'], ['app', 'Applicazioni', 'Apps'],
+    ['service', 'Modelli locali (rilevati in automatico)', 'Local models (detected automatically)'],
+    ['clipboard', 'Qualsiasi AI', 'Any AI']
+];
 
 // ------------------------------------------------------------------ UTILITÀ
 const $ = (id) => document.getElementById(id);
@@ -300,28 +310,102 @@ function applyAppMode(app, save = true) {
     }
     if (currentApp === 'studio') {
         window.scrollTo(0, 0);
-        if (!studioDetected) detectAI(false);
         if (!$('studioTarget').options.length) populateStudioTargets();
+        detectAI(false);          // AI aggiornate a ogni apertura dello Studio
     }
 }
 
 // ------------------------------------------------------------------ RILEVAMENTO AI (Studio)
-function aiChip(t) {
-    const ver = t.version ? ` <span class="ai-ver">${escapeHtml(t.version)}</span>` : '';
-    const mark = t.detected ? ' ✓' : '';
-    const where = t.path || (t.detected ? '' : 'non rilevato');   // dalla rete il server non comunica i percorsi
-    return `<span class="ai-chip ${t.detected ? 'on' : ''}" title="${escapeHtml(where)}"><span class="dot"></span>${escapeHtml(t.name)}${ver}${mark}</span>`;
+function studioServiceState(t) {
+    // modelli locali con porta (Ollama, LM Studio, Jan): in esecuzione e con modelli installati
+    if (t.kind !== 'service' || t.listening === null || t.listening === undefined) return null;
+    if (!t.detected) return 'missing';
+    if (!t.listening) return 'stopped';
+    if (Array.isArray(t.models)) return t.models.length ? 'models' : 'empty';
+    return 'up';
 }
 
-function populateStudioTargets() {
+function aiChip(t) {
+    const ver = t.version ? ` <span class="ai-ver">${escapeHtml(t.version)}</span>` : '';
+    const st = studioServiceState(t);
+    const on = t.detected && st !== 'stopped' && st !== 'empty';
+    const extra = st === 'stopped' ? updText('spento', 'stopped')
+        : st === 'empty' ? updText('nessun modello', 'no models')
+        : st === 'models' ? updText(plural(t.models.length, 'modello', 'modelli'), plural(t.models.length, 'model', 'models')) : '';
+    const models = st === 'models' ? ` data-models="${escapeHtml(t.models.join(', '))}"` : '';
+    // dalla rete il server non comunica i percorsi
+    return `<span class="ai-chip ${on ? 'on' : ''}" title="${escapeHtml(t.path || '')}" data-state="${st || ''}"${models}>` +
+        `<span class="dot"></span>${escapeHtml(t.name)}${ver}${extra ? ` <span class="ai-state">${escapeHtml(extra)}</span>` : ''}${on ? ' ✓' : ''}</span>`;
+}
+
+// Tutte le destinazioni, rilevate o no (enabled = si puo' scegliere). Un'opzione per ogni modello locale installato.
+function studioTargets(tools) {
+    const out = [];
+    (tools || []).forEach(t => {
+        const st = studioServiceState(t);
+        const base = { kind: t.kind === 'cli' || t.kind === 'app' ? t.kind : 'service', value: t.id, label: t.name };
+        if (st === 'models') {
+            t.models.forEach(m => out.push({ ...base, value: `${t.id}|${m}`, label: `${t.name} · ${m}`, enabled: true }));
+        } else if (st === 'up') {
+            out.push({ ...base, enabled: true });
+        } else {
+            const why = st === 'stopped' ? updText('non in esecuzione', 'not running')
+                : st === 'empty' ? updText('nessun modello installato', 'no model installed') : updText('non rilevato', 'not detected');
+            out.push({ ...base, enabled: Boolean(t.detected) && !st, why });
+        }
+    });
+    out.push({ kind: 'clipboard', value: 'clipboard', enabled: true,
+               label: updText('Copia testo protetto (qualsiasi AI)', 'Copy protected text (any AI)') });
+    return out;
+}
+
+function studioSavedTarget() {
+    try { return localStorage.getItem(STUDIO_TARGET_KEY) || ''; } catch (e) { return ''; }
+}
+
+function populateStudioTargets(notify = false) {
     const sel = $('studioTarget');
     if (!sel) return;
-    const prev = sel.value;
-    const detected = (studioDetected || []).filter(t => t.detected && (t.kind === 'cli' || t.kind === 'app'));
-    const opts = detected.map(t => `<option value="${escapeHtml(t.id)}" data-kind="${t.kind}">${escapeHtml(t.name)}</option>`);
-    opts.push(...STUDIO_CLOUD_TARGETS.map(t => `<option value="${t.id}" data-kind="clipboard">${escapeHtml(t.name)}</option>`));
-    sel.innerHTML = opts.join('');
-    if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+    const before = sel.value;                       // '' = nessuna scelta ancora (primo rilevamento in corso)
+    const beforeLabel = sel.selectedOptions[0]?.textContent || '';
+    const list = studioTargets(studioDetected);
+    sel.replaceChildren();
+    if (!studioDetected) {
+        const wait = document.createElement('option');
+        wait.value = '';
+        wait.textContent = updText('Rilevamento delle AI in corso…', 'Detecting AIs…');
+        sel.append(wait);
+    }
+    const ordered = [];                             // ordine dell'elenco: per gruppo, prima le AI rilevate
+    STUDIO_GROUPS.forEach(([kind, it, en]) => {
+        const items = list.filter(t => t.kind === kind);
+        if (!items.length) return;
+        const group = document.createElement('optgroup');
+        group.label = updText(it, en);
+        [...items.filter(t => t.enabled), ...items.filter(t => !t.enabled)].forEach(t => {
+            ordered.push(t);
+            const o = document.createElement('option');
+            o.value = t.value;
+            o.dataset.kind = t.kind;
+            o.textContent = t.enabled ? t.label : `${t.label} (${t.why})`;
+            if (!t.enabled) { o.disabled = true; o.className = 'opt-off'; }   // visibile, in grigio, non selezionabile
+            group.append(o);
+        });
+        sel.append(group);
+    });
+    if (studioDetected) {
+        const usable = ordered.filter(t => t.enabled);
+        const keep = [before, studioSavedTarget()].find(v => v && usable.some(t => t.value === v));
+        if (keep) {
+            sel.value = keep;
+        } else {
+            // destinazione predefinita: la prima AI rilevata, altrimenti la copia del testo protetto
+            const def = usable.find(t => t.kind !== 'clipboard') || usable[usable.length - 1];
+            sel.value = def.value;
+            if (notify && before) showToast(updText(`«${beforeLabel}» non è più disponibile: ora la destinazione è «${def.label}».`,
+                                                    `«${beforeLabel}» is no longer available: the destination is now «${def.label}».`), 'warn', 5000);
+        }
+    }
     updateStudioTargetBadge();
 }
 
@@ -330,29 +414,66 @@ function updateStudioTargetBadge() {
     const badge = $('studioTargetBadge');
     if (!sel || !badge) return;
     const opt = sel.selectedOptions[0];
-    const kind = opt ? opt.dataset.kind : 'clipboard';
-    const label = STUDIO_TARGET_MODE[kind] || '';
+    const mode = opt && opt.value ? STUDIO_TARGET_MODE[opt.dataset.kind] : null;
+    const label = mode ? updText(mode[0], mode[1]) : '';
     badge.textContent = label;
     badge.hidden = !label;
 }
 
-async function detectAI(force) {
+function renderAiStrip() {
     const strip = $('aiStrip');
-    if (strip && force) strip.innerHTML = '<span class="ai-strip-empty">Ricerca in corso…</span>';
+    if (!strip || !studioDetected) return;
+    const found = studioDetected.filter(t => t.detected);
+    strip.innerHTML = found.length
+        ? found.map(aiChip).join('')
+        : `<span class="ai-strip-empty">${escapeHtml(updText('Nessuna AI o CLI rilevata su questo computer: quando ne installi una (o avvii Ollama o LM Studio) compare qui da sola.',
+            'No AI or CLI detected on this computer: when you install one (or start Ollama or LM Studio) it shows up here by itself.'))}</span>`;
+}
+
+function renderStudioDetection(notify = false) {
+    const sel = $('studioTarget');
+    if (sel && document.activeElement === sel) { studioRenderPending = true; return; }   // elenco aperto: si aspetta
+    studioRenderPending = false;
+    renderAiStrip();
+    populateStudioTargets(notify);
+}
+
+function studioSignature(tools) {
+    return JSON.stringify((tools || []).map(t => [t.id, t.detected, t.listening, t.models || null, t.version || null]));
+}
+
+async function detectAI(force) {
+    if (studioDetectBusy) return;
+    studioDetectBusy = true;
+    const strip = $('aiStrip');
+    if (strip && force) strip.innerHTML = `<span class="ai-strip-empty">${escapeHtml(updText('Ricerca in corso…', 'Searching…'))}</span>`;
     try {
         const { ok, data } = await fetchJson('/api/ai/detect' + (force ? '?refresh=1' : ''));
-        if (!ok || !data.tools) return;
+        if (!ok || !data.tools) throw new Error('detect');
+        const previous = studioDetected;
         studioDetected = data.tools;
-        const found = data.tools.filter(t => t.detected);
-        if (strip) {
-            strip.innerHTML = found.length
-                ? found.map(aiChip).join('')
-                : '<span class="ai-strip-empty">Nessuna AI o CLI rilevata su questo computer.</span>';
+        const sig = studioSignature(data.tools);
+        if (force || sig !== studioDetectSig) {
+            studioDetectSig = sig;
+            renderStudioDetection(Boolean(previous));
+            if (previous && !force) {
+                // rilevamento automatico: si segnala cio' che e' appena diventato disponibile
+                const was = new Set(studioTargets(previous).filter(t => t.enabled).map(t => t.value));
+                const fresh = studioTargets(data.tools).filter(t => t.enabled && t.kind !== 'clipboard' && !was.has(t.value));
+                if (fresh.length) showToast(updText('Rilevata in automatico: ', 'Detected automatically: ') +
+                                            fresh.slice(0, 4).map(t => t.label).join(', ') + (fresh.length > 4 ? '…' : ''), 'success', 4000);
+            }
         }
-        populateStudioTargets();
-        if (force) showToast(`Rilevate ${plural(found.length, 'AI', 'AI')} su questo computer.`, found.length ? 'success' : 'info', 3000);
+        const found = data.tools.filter(t => t.detected);
+        if (force) showToast(updText(`Rilevate ${plural(found.length, 'AI', 'AI')} su questo computer.`,
+                                     `${plural(found.length, 'AI', 'AIs')} detected on this computer.`), found.length ? 'success' : 'info', 3000);
     } catch (e) {
-        if (strip) strip.innerHTML = '<span class="ai-strip-empty">Rilevamento non riuscito.</span>';
+        // nel rilevamento periodico si tiene l'ultimo risultato; si avvisa solo se non c'e' ancora nulla
+        if (strip && (force || !studioDetected)) {
+            strip.innerHTML = `<span class="ai-strip-empty">${escapeHtml(updText('Rilevamento non riuscito.', 'Detection failed.'))}</span>`;
+        }
+    } finally {
+        studioDetectBusy = false;
     }
 }
 
@@ -1507,7 +1628,7 @@ const TIPS = [
         let t = 'Il motore esegue i modelli di anonimizzazione. Verde = attivo, giallo = in avvio, grigio = in pausa, rosso = fermo per errore.';
         const eng = (lastStatus && lastStatus.running && lastStatus.engine) || null;
         if (eng && eng.mode === 'remote') t += ` Calcolo affidato al Germano Server «${eng.server_name || eng.server}» (${eng.server}).`;
-        else if (eng && eng.device) t += ` Calcolo su ${String(eng.device).toUpperCase()}${eng.precision ? `, precisione ${String(eng.precision).toUpperCase()}` : ''}.`;
+        else if (eng && eng.device) t += ` Calcolo su ${String(eng.device).toUpperCase()}${eng.threads ? ` (${eng.threads} thread su ${eng.cpus || '?'} processori)` : ''}${eng.precision ? `, precisione ${String(eng.precision).toUpperCase()}` : ''}${eng.vm ? `, macchina virtuale ${eng.vm}` : ''}.`;
         return t;
     }],
     ['#modeChip', 'Modalità operativa', (el) => `Questo computer è in modalità «${(el.textContent || '').trim()}». Clicca per scegliere Standalone, Server, Client o Server + Client.`],
@@ -1599,16 +1720,20 @@ const TIPS = [
     ['#logTerminal', 'Registro attività', 'Messaggi del motore in tempo reale: elaborazioni, avvisi ed errori.'],
     ['.folder-row [data-open-folder]', 'Apri', 'Apre la cartella in Esplora file di Windows.'],
     // --- Studio AI
-    ['#studioTarget', 'Destinazione', 'Dove inviare il testo protetto: una CLI rilevata su questo computer oppure la copia negli appunti.'],
-    ['#aiStrip', 'AI rilevate', 'AI e CLI trovate su questo computer leggendo il disco e le porte locali, senza avviare programmi né usare la rete.'],
+    ['#studioTarget', 'Destinazione', 'Dove preparare il testo protetto: si scelgono solo le AI rilevate su questo computer (CLI, applicazioni e i modelli installati di Ollama o LM Studio in esecuzione); le altre restano in grigio. La copia negli appunti è sempre disponibile.'],
+    ['#aiStrip', 'AI rilevate', 'AI, CLI e modelli locali trovati su questo computer leggendo il disco e le porte locali, senza avviare programmi né usare Internet. Si aggiorna da solo ogni 12 secondi con lo Studio aperto.'],
     ['.ai-chip', (el) => (el.textContent || '').replace('✓', '').trim(), (el, n) => {
-        if (!el.classList.contains('on')) return 'Non trovata su questo computer.';
-        return n ? `Installata in: ${n}` : 'Installata sul computer che esegue Germano.';
+        const st = el.dataset.state;
+        if (st === 'stopped') return updText('Installato ma non in esecuzione: avvialo e Germano lo rileva da solo.', 'Installed but not running: start it and Germano detects it by itself.');
+        if (st === 'empty') return updText('In esecuzione ma senza modelli installati: scaricane uno e compare da solo.', 'Running but with no model installed: download one and it shows up by itself.');
+        if (!el.classList.contains('on')) return updText('Non trovata su questo computer.', 'Not found on this computer.');
+        const where = n ? updText(`Installata in: ${n}`, `Installed in: ${n}`) : updText('Installata sul computer che esegue Germano.', 'Installed on the computer running Germano.');
+        return el.dataset.models ? `${where} · ${updText('Modelli installati', 'Installed models')}: ${el.dataset.models}` : where;
     }],
     ['#btnStudioAttach', 'Allega file', 'Il testo degli allegati viene estratto e anonimizzato insieme al prompt (le immagini vanno elaborate con «Anonimizza file»).'],
     ['#studioPrompt', 'Prompt', 'Scrivi la richiesta. Invio = invia, Maiusc+Invio = a capo. Il testo viene protetto prima dell\'invio.'],
     ['#btnStudioSend', 'Proteggi e invia', 'Anonimizza prompt e allegati con il motore e mostra esattamente cosa riceverà l\'AI.'],
-    ['#btnDetectAI', 'Rileva AI', 'Cerca di nuovo le AI e le CLI installate su questo computer.'],
+    ['#btnDetectAI', 'Rileva AI', 'Il rilevamento è automatico: questo pulsante cerca subito di nuovo le AI, le CLI e i modelli installati su questo computer.'],
     ['#btnGranularConfig', 'Configurazione granulare', 'Apre in un pannello laterale profilo di protezione, modelli e categorie di dati.'],
     ['[data-copy-protected]', 'Copia testo protetto', 'Copia negli appunti il testo anonimizzato, pronto da incollare nell\'AI.'],
     ['[data-studio-start]', 'Avvia motore', 'Avvia il motore: senza motore nessun dato viene inviato.'],
@@ -1646,7 +1771,7 @@ const TIPS_EN = {
         let t = 'The engine runs anonymization models. Green = active, yellow = starting, gray = paused, red = error.';
         const eng = (lastStatus && lastStatus.running && lastStatus.engine) || null;
         if (eng && eng.mode === 'remote') t += ` Computing delegated to Germano Server «${eng.server_name || eng.server}» (${eng.server}).`;
-        else if (eng && eng.device) t += ` Running on ${String(eng.device).toUpperCase()}${eng.precision ? `, precision ${String(eng.precision).toUpperCase()}` : ''}.`;
+        else if (eng && eng.device) t += ` Running on ${String(eng.device).toUpperCase()}${eng.threads ? ` (${eng.threads} threads on ${eng.cpus || '?'} processors)` : ''}${eng.precision ? `, precision ${String(eng.precision).toUpperCase()}` : ''}${eng.vm ? `, virtual machine ${eng.vm}` : ''}.`;
         return t;
     }],
     '#modeChip': ['Operating mode', (el) => `This computer is in «${(el.textContent || '').trim()}» mode. Click to choose Standalone, Server, Client, or Server + Client.`],
@@ -1723,12 +1848,12 @@ const TIPS_EN = {
     '#btnCancelSettings': ['Cancel', 'Closes without making changes.'],
     '#btnCloseSettings': ['Close', 'Closes Settings modal.'],
     // --- Studio AI
-    '#studioTarget': ['Destination', 'Target AI: detected local CLI or copy to clipboard.'],
-    '#aiStrip': ['Detected AIs', 'AIs and CLIs found on this machine by filesystem scan, safely offline.'],
+    '#studioTarget': ['Destination', 'Where to prepare the protected text: only the AIs detected on this computer can be chosen (CLIs, apps and the installed models of a running Ollama or LM Studio); the others stay greyed out. Copy to clipboard is always available.'],
+    '#aiStrip': ['Detected AIs', 'AIs, CLIs and local models found on this computer from the disk and local ports, without starting programs or using the Internet. Refreshes by itself every 12 seconds while the Studio is open.'],
     '#btnStudioAttach': ['Attach file', 'Extracts and anonymizes attachments alongside the prompt.'],
     '#studioPrompt': ['Prompt', 'Type request. Enter = send, Shift+Enter = newline. Protected before sending.'],
     '#btnStudioSend': ['Protect & send', 'Anonymizes prompt and attachments with local engine.'],
-    '#btnDetectAI': ['Detect AI', 'Scans again for installed AIs and CLIs on this PC.'],
+    '#btnDetectAI': ['Detect AI', 'Detection is automatic: this button scans again right away for the AIs, CLIs and models installed on this PC.'],
     '#btnGranularConfig': ['Granular Settings', 'Opens sidebar for models, threshold and PII categories.'],
     '[data-copy-protected]': ['Copy protected text', 'Copies anonymized text to clipboard ready for AI.'],
     '[data-studio-start]': ['Start engine', 'Starts engine: required before sending prompts.'],
@@ -1937,11 +2062,13 @@ function renderServerInfo() {
     if (!s.enabled || !s.listening) {
         box.innerHTML = `<span class="muted">${escapeHtml(updText(
             'Dopo il salvataggio Germano si mette in ascolto sulla rete e qui compaiono gli indirizzi del Remote Control, da ' +
-            'aprire nel browser dei computer, dei tablet e degli smartphone della rete. Al primo avvio Windows può chiedere di ' +
-            'consentire Python sulle reti private: rispondi «Consenti».',
+            'aprire nel browser dei computer, dei tablet e degli smartphone della rete. Con l\'installer la regola del firewall ' +
+            'di Windows (reti private e di dominio) è già pronta; eseguendo Germano dai sorgenti Windows può chiedere di ' +
+            'consentire Python: rispondi «Consenti».',
             'After saving, Germano listens on the network and the Remote Control addresses appear here, to open in the ' +
-            'browser of the network computers, tablets and smartphones. On first start Windows may ask to allow Python on ' +
-            'private networks: answer «Allow».'))}</span>`;
+            'browser of the network computers, tablets and smartphones. With the installer the Windows Firewall rule (private ' +
+            'and domain networks) is already in place; when running Germano from source Windows may ask to allow Python: ' +
+            'answer «Allow».'))}</span>`;
         renderAuthAdmin(null);
         return;
     }
@@ -1949,10 +2076,24 @@ function renderServerInfo() {
     const list = urls.length
         ? urls.map(u => `<div class="copy-line"><code>${escapeHtml(u)}</code>${copyButton(u, updText('Copia indirizzo', 'Copy address'))}</div>`).join('')
         : `<span class="muted">${escapeHtml(updText('nessun indirizzo IPv4 trovato', 'no IPv4 address found'))}</span>`;
+    // Reti «Pubbliche», regola del firewall, criteri di gruppo: perché i client potrebbero non raggiungere il server
+    const warns = (s.network_warnings || []).map(w => `<div class="net-warning">⚠️ ${escapeHtml(updText(w.it, w.en))}${
+        w.command ? `<div class="copy-line"><code>${escapeHtml(w.command)}</code>${copyButton(w.command, updText('Copia comando', 'Copy command'))}</div>` : ''}</div>`).join('');
+    if (s.network_warnings === null && !renderServerInfo.retry) {   // primo controllo ancora in corso (circa 2 s)
+        renderServerInfo.retry = setTimeout(async () => {
+            try {
+                const { ok, data } = await fetchJson('/api/mode', { cache: 'no-store' });
+                if (ok) modeState = data;
+            } catch (e) { /* si resta con l'ultimo stato */ }
+            renderServerInfo.retry = null;
+            if (modeState && modeState.server && modeState.server.network_warnings !== null) renderServerInfo();
+        }, 3500);
+    }
     box.innerHTML = `
         <div><strong>${escapeHtml(updText('In ascolto sulla rete · Remote Control, da qualsiasi browser senza installare nulla:',
                                           'Listening on the network · Remote Control, from any browser without installing anything:'))}</strong></div>
         ${list}
+        ${warns}
         <div class="muted">${escapeHtml(updText(
             `Rilevamento automatico: ${s.discovery ? `attivo (UDP ${s.discovery_port})` : 'non attivo'}. Le CLI dei computer della ` +
             `rete usano http://<IP>:${s.port}/v1 (e http://<IP>:${s.port}/p/<servizio>/v1 per DeepSeek, Kimi, Muse, Mistral, Grok…).`,
@@ -2193,7 +2334,8 @@ async function saveSettings({ keepMode = false } = {}) {
             $('btnCancelSettings').hidden = true;
             setText('btnSaveSettings', 'Fatto');
             renderServerInfo();
-            setSettingsMsg(`✅ ${msg} Comunica ai client l'indirizzo e il token qui sopra.`);
+            setSettingsMsg(`✅ ${msg} ` + updText('Comunica ai client l\'indirizzo qui sopra (e, se la gestione utenti è attiva, utente e password).',
+                                                   'Give the clients the address above (and, with user management on, user name and password).'));
             return;
         }
         hideSettings();
@@ -2369,6 +2511,7 @@ function setLanguage(lang) {
         try { renderJob(lastStatus); } catch (e) {}
     }
     try { renderFileManager(true); } catch (e) {}
+    try { if (studioDetected) renderStudioDetection(false); else populateStudioTargets(); } catch (e) {}
 }
 
 function initLanguage() {
@@ -2469,7 +2612,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Studio AI: rilevamento, destinazione, allegati, invio
     $('btnDetectAI').addEventListener('click', () => detectAI(true));
-    $('studioTarget').addEventListener('change', updateStudioTargetBadge);
+    $('studioTarget').addEventListener('change', () => {
+        try { localStorage.setItem(STUDIO_TARGET_KEY, $('studioTarget').value); } catch (e) { /* archivio non disponibile */ }
+        updateStudioTargetBadge();
+    });
+    $('studioTarget').addEventListener('blur', () => { if (studioRenderPending) renderStudioDetection(true); });
+    // rilevamento automatico delle AI installate: con lo Studio aperto, ogni 12 secondi e al ritorno sulla finestra
+    setInterval(() => { if (currentApp === 'studio' && !document.hidden) detectAI(false); }, STUDIO_DETECT_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && currentApp === 'studio') detectAI(false); });
+    window.addEventListener('focus', () => { if (currentApp === 'studio') detectAI(false); });
     $('btnStudioAttach').addEventListener('click', () => $('studioFileInput').click());
     $('studioFileInput').addEventListener('change', (e) => { addStudioFiles(e.target.files); e.target.value = ''; });
     $('attachChips').addEventListener('click', (e) => {

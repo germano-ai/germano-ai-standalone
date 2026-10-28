@@ -15,6 +15,13 @@ CHUNK_CHARS = 2000
 CHUNK_OVERLAP = 240
 ITA_MIN_SCORE = 0.70
 PF_BATCH = 8  # misurato su CPU: batch da 8 blocchi circa 1,5x piu' veloce del blocco singolo, risultati identici
+# Precisione automatica. Il Privacy Filter occupa +5,3 GB in FP32 e +2,7 GB in BF16 (misurato). Sui processori senza
+# BF16 nativo (AVX2: es. Intel Haswell/Broadwell, Xeon E5 v3/v4, molti host di virtualizzazione) il BF16 e' da 4 a 10
+# volte piu' lento (i5-4570: 12,4 s contro 1,6 s per blocco con 4 thread), quindi lì si usa FP32 tutte le volte che la
+# memoria libera lo consente; il BF16 resta per i computer con poca RAM.
+FP32_TOTAL_GB = 11.5      # RAM totale oltre la quale si usa sempre FP32 (come prima)
+FP32_FREE_GB = 7.0        # RAM libera sufficiente per FP32 anche sotto quella soglia (modello + altri modelli + margine)
+SELF_TEST_TEXT = "Il signor Mario Rossi abita in via Roma 1 a Milano."
 
 
 class CancelledError(Exception):
@@ -104,6 +111,10 @@ class Engine:
         except Exception:
             pass
 
+        threads, threads_source = self._cpu_threads(torch, settings)
+        capability = self._cpu_capability(torch)
+        bf16_native = self._bf16_native(torch)
+        vm = common.virtual_machine()
         hw = settings.get("hardware_mode", "gpu_fallback")
         self.device = "cpu"
         if hw in ("gpu", "gpu_fallback"):
@@ -113,33 +124,40 @@ class Engine:
                     self.log("Hardware: GPU NVIDIA (CUDA) disponibile, accelerazione attivata.")
             except Exception:
                 pass
-        if self.device == "cpu":
+        if self.device == "cpu":     # VM senza GPU, server, PC comuni: tutta la pipeline gira su CPU
             build = "CPU" if "+cpu" in getattr(torch, "__version__", "") else "standard"
-            self.log(f"Hardware: elaborazione su processore (CPU, {os.cpu_count()} thread logici, PyTorch {build}).")
+            self.log(f"Hardware: elaborazione su processore (CPU {capability}, {common.cpus_available()} processori "
+                     f"disponibili{', macchina virtuale ' + vm if vm else ''}; {threads} thread per i modelli "
+                     f"({threads_source}); BF16 nativo: {'si' if bf16_native else 'no'}; PyTorch {build}).")
 
-        total_gb = psutil.virtual_memory().total / (1024 ** 3)
-        pref = settings.get("precision", "auto")
-        if pref == "fp32":
-            dt = torch.float32
-        elif pref == "bf16":
-            dt = torch.bfloat16
-        else:
-            dt = torch.float32 if (total_gb >= 11.5 or self.device == "cuda") else torch.bfloat16
-        self.precision = "bf16" if dt == torch.bfloat16 else "fp32"
-        if self.precision == "bf16":
-            self.log(f"RAM totale {total_gb:.1f} GB: Privacy Filter caricato in BF16 (meta' memoria, elaborazione piu' lenta).")
-        else:
-            self.log(f"RAM totale {total_gb:.1f} GB: Privacy Filter caricato in FP32 (massima velocita').")
+        mem = psutil.virtual_memory()
+        total_gb, free_gb = mem.total / (1024 ** 3), mem.available / (1024 ** 3)
+        dt, why = self._choose_dtype(torch, settings.get("precision", "auto"), total_gb, free_gb, bf16_native)
+        self.log(f"RAM totale {total_gb:.1f} GB ({free_gb:.1f} GB liberi): Privacy Filter in "
+                 f"{'BF16' if dt == torch.bfloat16 else 'FP32'} - {why}.")
 
         pf_path = os.path.join(common.MODELS_DIR, "privacy-filter")
         if not os.path.isdir(pf_path) or not os.listdir(pf_path):
             raise FileNotFoundError(f"Modello locale non trovato in {pf_path}")
         t = time.time()
         self.log("Caricamento modello Privacy Filter 1.5B (100% offline)...")
-        self.pf = pipeline(
-            task="token-classification", model=pf_path, tokenizer=pf_path,
-            aggregation_strategy="simple", device=self.device, model_kwargs={"dtype": dt},
-        )
+        try:
+            self.pf = self._load_pf(pipeline, pf_path, dt)
+            if dt == torch.bfloat16:
+                t2 = time.time()
+                self.pf(SELF_TEST_TEXT)       # alcune CPU o librerie non hanno tutte le operazioni in BF16
+                self.log(f"Prova del modello in BF16 riuscita ({time.time() - t2:.1f} s).")
+        except Exception as e:
+            if dt != torch.bfloat16:
+                raise
+            self.log(f"ATTENZIONE: BF16 non utilizzabile su questo processore ({type(e).__name__}: {e}): ripiego "
+                     "automatico su FP32.")
+            self.pf = None
+            import gc
+            gc.collect()
+            dt = torch.float32
+            self.pf = self._load_pf(pipeline, pf_path, dt)
+        self.precision = "bf16" if dt == torch.bfloat16 else "fp32"
         self.log(f"Privacy Filter pronto in {time.time() - t:.0f}s.")
 
         ita_path = os.path.join(common.MODELS_DIR, "italian-ner-xxl")
@@ -173,25 +191,92 @@ class Engine:
             "device": self.device,
             "precision": self.precision,
             "ram_gb": round(total_gb, 1),
+            "threads": threads,
+            "cpus": common.cpus_available(),
+            "cpu": capability,
+            "bf16_native": bf16_native,
+            "vm": vm,
             "privacy_filter": self.pf is not None,
             "italian_ner": self.ita is not None,
             "ocr": self.ocr_reader is not None,
         }
 
+    # ------------------------------------------------------------------ processore e precisione
+    @staticmethod
+    def _cpu_threads(torch, settings):
+        """Thread di calcolo: gli stessi che il demone ha impostato prima di importare torch (OMP_NUM_THREADS)."""
+        n, source = common.cpu_threads(settings)
+        try:
+            torch.set_num_threads(n)
+        except Exception:
+            pass
+        try:
+            torch.set_num_interop_threads(min(2, n))   # i modelli non usano il parallelismo fra operazioni
+        except Exception:
+            pass                                       # gia' impostato in questo processo: si lascia com'e'
+        return torch.get_num_threads(), source
+
+    @staticmethod
+    def _cpu_capability(torch):
+        try:
+            return str(torch.backends.cpu.get_cpu_capability())
+        except Exception:
+            return "sconosciuta"
+
+    @staticmethod
+    def _bf16_native(torch):
+        """True se oneDNN accelera il BF16 su questa CPU (AVX-512 / AMX); False su AVX2 e sulle vCPU che lo nascondono."""
+        try:
+            return bool(torch.ops.mkldnn._is_mkldnn_bf16_supported())
+        except Exception:
+            return False
+
+    @staticmethod
+    def _choose_dtype(torch, pref, total_gb, free_gb, bf16_native):
+        """(dtype, motivo) del Privacy Filter."""
+        if pref == "fp32":
+            return torch.float32, "scelta nelle impostazioni"
+        if pref == "bf16":
+            return torch.bfloat16, "scelta nelle impostazioni" + (
+                "" if bf16_native else " (su questo processore senza BF16 nativo e' da 4 a 10 volte piu' lento)")
+        if total_gb >= FP32_TOTAL_GB:
+            return torch.float32, "massima velocita'"
+        if not bf16_native and free_gb >= FP32_FREE_GB:
+            return torch.float32, ("processore senza BF16 nativo: con la memoria libera disponibile FP32 e' da 4 a 10 "
+                                   "volte piu' veloce")
+        if bf16_native:
+            return torch.bfloat16, "poca RAM: meta' memoria"
+        return torch.bfloat16, ("poca RAM: meta' memoria, ma da 4 a 10 volte piu' lento su questo processore senza BF16 "
+                                f"nativo; per la velocita' piena servono almeno {FP32_TOTAL_GB:.0f} GB di RAM (o "
+                                f"{FP32_FREE_GB:.0f} GB liberi)")
+
+    def _load_pf(self, pipeline, pf_path, dt):
+        return pipeline(
+            task="token-classification", model=pf_path, tokenizer=pf_path,
+            aggregation_strategy="simple", device=self.device, model_kwargs={"dtype": dt},
+        )
+
     # ------------------------------------------------------------------ inferenza testo
     def _run_pipe(self, pipe, texts, **kw):
         try:
             out = pipe(texts, **kw)
-        except Exception:
-            if self.device != "cuda":
+        except Exception as e:
+            if self.device == "cuda":
+                # Fallback automatico su CPU (es. memoria GPU esaurita)
+                self.log("ATTENZIONE: errore GPU, passaggio automatico alla CPU.")
+                for p in (self.pf, self.ita):
+                    if p is not None:
+                        p.model = p.model.to("cpu")
+                        p.device = self.torch.device("cpu")
+                self.device = "cpu"
+            elif self.precision == "bf16" and pipe is self.pf:
+                # Operazione non disponibile in BF16 su questa CPU (es. testi con forme insolite): si passa a FP32
+                self.log(f"ATTENZIONE: errore del modello in BF16 ({type(e).__name__}: {e}): passaggio automatico a FP32.")
+                self.pf.model = self.pf.model.to(self.torch.float32)
+                self.precision = "fp32"
+                self.info["precision"] = "fp32"
+            else:
                 raise
-            # Fallback automatico su CPU (es. memoria GPU esaurita)
-            self.log("ATTENZIONE: errore GPU, passaggio automatico alla CPU.")
-            for p in (self.pf, self.ita):
-                if p is not None:
-                    p.model = p.model.to("cpu")
-                    p.device = self.torch.device("cpu")
-            self.device = "cpu"
             out = pipe(texts, **kw)
         if len(texts) == 1 and out and isinstance(out[0], dict):
             out = [out]

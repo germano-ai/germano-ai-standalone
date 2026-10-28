@@ -29,6 +29,14 @@ consenti la porta 8181/tcp e, per la ricerca automatica, 8182/udp solo dalla ret
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
 fuori dalla sessione grafica dell'utente.
 
+## Server senza desktop (anche in macchina virtuale)
+Su un server Ubuntu/Debian senza ambiente grafico, o in una macchina virtuale (VMware, Proxmox, Hyper-V, VirtualBox,
+cloud), Germano funziona senza finestra: `germano-ai --no-browser --mode=server` avvia server e motore IA e scrive nel
+terminale e nel registro (`~/.local/state/germano/desktop.log`) gli indirizzi locali e di rete; `germano-ai --stop` lo
+arresta. Non serve una GPU: i thread si adattano alle vCPU e la precisione al processore. Per l'avvio automatico, un
+servizio systemd con `User=<utente>`, `ExecStart=/usr/bin/germano-ai --no-browser --mode=server` e
+`ExecStop=/usr/bin/germano-ai --stop`.
+
 ## Dati e privacy
 - Cartelle di lavoro in `Documenti/Germano AI` (la cartella Documenti nella lingua del sistema): `input`, `output`,
   `processed`, `failed`, `extracted`.

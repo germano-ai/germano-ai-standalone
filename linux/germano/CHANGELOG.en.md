@@ -25,6 +25,12 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
   Settings › Apps entry and the technical files (optionally the working folders and the Vault too). The client asks for
   no permission and has its own shortcuts ("Germano AI Client"), so both editions can live on the same computer. The
   runtime includes the Microsoft Visual C++ DLLs: no redistributable to install.
+- **Windows, immediate startup screen**: as soon as the installer opens, a "Germano AI" window with an animated bar
+  appears right away; it stays during the UAC prompt and the extraction, and closes by itself when the setup window
+  appears. The **UAC prompt also arrives within moments**: permission is requested for a small launcher (the same
+  program without the data, a few KB) instead of the ~3 GB file, which Windows used to check in full without showing
+  anything (27 seconds measured on a test PC). The confirmation page no longer shows the note about the firewall
+  rule: the rule is still created, silently, with the administrator permission (the outcome stays in the setup log).
 - **macOS**: `germano-0.60.pkg` (Apple Silicon, macOS 14 or later) and `germano-client-0.60.pkg` (Apple Silicon and
   Intel, macOS 11 or later): macOS Installer packages with a self-contained `Germano.app`; with "Install for me only"
   no administrator password; at the end Germano opens by itself (not for command-line installs).
@@ -87,12 +93,53 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
 - The engine re-reads the settings at every request: a profile change (PA/PD) applies immediately, also to the
   clients' options.
 
-### Added - Extended AI detection
+### Added - Extended and automatic AI detection
 - Also recognized: Meta Muse Code (Muse Wonder, Muse Spark), Kimi Code CLI, Qwen Code, DeepSeek (Deep Code, Reasonix),
   Mistral Vibe, Grok Build (xAI), Perplexity (pplx), GitHub Copilot CLI, ChatGPT, Jules, Cursor CLI, Kiro and Kiro CLI,
   Trae, Zed, OpenCode, Goose, Cline, Kilo Code, Amp, Droid, Crush, llama.cpp and Jan, besides the ones already known.
 - Detection also reads the PATH saved in the registry (CLIs installed after Germano started) and also works on macOS
   and Linux (executables without extension, apps in `/Applications`).
+- **"Send to" only towards the detected AIs** (AI Studio, Remote Control and Germano Client): only the installed CLIs and
+  apps, the installed models of a running Ollama or LM Studio (one option per model) and, in the Remote Control, the
+  services via API with a key (the server's, or entered on the device with "🔑 Enter the key") can be chosen; the other
+  entries stay visible **greyed out and not selectable**, with the reason ("not detected", "not running", "no model
+  installed", "API key needed"). Default destination: the first detected AI, otherwise copying the protected text.
+- **Automatic detection of the installed models**: Germano reads the model list of Ollama (`/api/tags`) and of
+  LM Studio / Jan (`/v1/models`), on `127.0.0.1` only; the pages refresh by themselves every 12 seconds, when they come
+  back to the foreground and when the Studio or the chat opens, without reloading or restarting Germano (5-second server
+  cache). If the chosen destination disappears, the first available one is used, with a notice. The server refuses an
+  undetected local model anyway (409); `client ask` with a local model and no `--model` uses the first installed one.
+
+### Added - Windows Server and virtual machines
+- **Windows Server 2019, 2022 and 2025** (Standard and Datacenter) and **virtual machines** (VMware, Hyper-V, Proxmox
+  VE / KVM, VirtualBox, AWS, Azure, Google Cloud). The installer checks the real Windows version and reports: «Germano
+  AI requires 64-bit Windows 10, Windows 11 or Windows Server 2019 or higher».
+- **Without Microsoft Edge or Chrome** (Windows Server 2019, Server Core) Germano does not open Internet Explorer, which
+  cannot show the Dashboard: a notice shows the addresses to open and with OK Germano stays active as a server without a
+  window (with Cancel it closes). The same happens if the window does not open (e.g. corporate policies), instead of
+  closing. Edge installed for the user is recognized too.
+- **Windowless mode** for servers, VMs and scheduled tasks: `Germano.exe --no-browser` (or `--headless`,
+  `GERMANO_HEADLESS=1`), `--mode=server` for a single start, `Germano.exe --stop` to stop it; the local and network
+  addresses (Remote Control, Proxy) and the network warnings go to the log and the console, no dialogs. Reopened from
+  the shortcut while it runs without a window, Germano only opens a window on the same Dashboard (no second server).
+  `GERMANO_TECH_DIR` picks the technical folder.
+- **Threads sized to the vCPUs**: all the processors granted to the program up to 2, then one left free for the web
+  server and the system (on 4 cores it costs 2%), at most 16; OpenMP, MKL and OpenBLAS set before PyTorch loads;
+  `"cpu_threads"` in `config.json` or `GERMANO_CPU_THREADS` to choose them, the administrator's `OMP_NUM_THREADS`
+  honored.
+- **Precision according to the processor**: on CPUs without native BF16 (AVX2, e.g. Xeon E5 v3/v4) BF16 is 4 to 10
+  times slower (measured), so FP32 is used even with less than 12 GB of RAM when at least 7 are free; if BF16 does not
+  work Germano switches to FP32 by itself, at startup or during processing.
+- Virtual machine, processors, threads and native BF16 shown in the engine log and in the engine status.
+- **Network and firewall**: in the server Dashboard, the console and the log, warnings with the command to fix a network
+  classified as «Public», a firewall rule that is missing, disabled or for another program, and Group Policy ignoring
+  local rules. The Remote Control addresses list first the adapter that reaches the network (virtual adapters too) and
+  leave out the automatic 169.254.x.x addresses.
+- **Shared data folder** (SMB/NFS, virtual disks): an operating-system lock on the data folder, a second engine (even
+  from another computer) is refused with a clear message: the Vault never has two writers.
+- Self-contained runtime verified: Visual C++ 2015-2022 DLLs included (`vcruntime140`, `vcruntime140_1`, `msvcp140`,
+  `msvcp140_1`, `msvcp140_2`, `vcomp140`, `concrt140` and the others) and the dependencies of all 408 runtime binaries
+  checked: the rest are standard Windows components.
 
 ### Security
 - From the network (Proxy, Remote Control, shared AIs) restoration uses **only the tags of the request itself**: a
@@ -125,6 +172,10 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
 - Release layout: `sorgenti/` (only the code publishable on GitHub, for Windows, macOS and Linux), `dipendenze/`
   (runtimes and libraries for offline use, per operating system), `modelli/` (the 6 AI models) and `releases/` (the
   installers only).
+
+### Fixed
+- A second engine started by mistake on the same data folder deleted, while closing, the status files of the first
+  one (`ready.flag`, `status.json`): a refused instance now leaves them alone.
 
 ### Removed
 - Executables with different names (`GermanoServer.exe`, `GermanoClient.exe`, `GermanoClient.app`,

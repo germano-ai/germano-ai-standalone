@@ -110,14 +110,16 @@ CATALOG = (
     {"id": "amp", "name": "Amp", "vendor": "Sourcegraph", "kind": "cli", "bins": ("amp",)},
     {"id": "droid", "name": "Droid", "vendor": "Factory", "kind": "cli", "bins": ("droid",)},
     {"id": "crush", "name": "Crush", "vendor": "Charm", "kind": "cli", "bins": ("crush",)},
-    # --- modelli locali
+    # --- modelli locali («models»: dove il servizio elenca i modelli installati, interrogato solo se e' in ascolto)
     {"id": "ollama", "name": "Ollama", "vendor": "Ollama", "kind": "service", "bins": ("ollama",),
-     "globs": (r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe",), "mac": "Ollama.app", "port": 11434, "service": "ollama"},
+     "globs": (r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe",), "mac": "Ollama.app", "port": 11434, "service": "ollama",
+     "models": ("/api/tags", "ollama")},
     {"id": "lm-studio", "name": "LM Studio", "vendor": "LM Studio", "kind": "service", "bins": ("lms",),
      "globs": (r"%LOCALAPPDATA%\Programs\LM Studio\LM Studio.exe",), "mac": "LM Studio.app", "port": 1234,
-     "service": "lmstudio"},
+     "service": "lmstudio", "models": ("/v1/models", "openai")},
     {"id": "jan", "name": "Jan", "vendor": "Menlo Research", "kind": "service", "bins": (),
-     "globs": (r"%LOCALAPPDATA%\Programs\jan\Jan.exe",), "mac": "Jan.app", "port": 1337},
+     "globs": (r"%LOCALAPPDATA%\Programs\jan\Jan.exe",), "mac": "Jan.app", "port": 1337,
+     "models": ("/v1/models", "openai")},
 )
 
 
@@ -258,6 +260,31 @@ def _start_port_probes(ports):
     return collect
 
 
+def _local_models(port, api):
+    """Modelli installati in un servizio locale in ascolto (Ollama: /api/tags; LM Studio e Jan: /v1/models in formato
+    OpenAI). Solo 127.0.0.1, mai attraverso un proxy. None se il servizio non risponde come previsto."""
+    import json
+    import urllib.request
+    path, fmt = api
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(f"http://127.0.0.1:{int(port)}{path}", timeout=1.5) as r:
+            data = json.loads(r.read(2_000_000).decode("utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return None
+    items = (data.get("models") if fmt == "ollama" else data.get("data")) if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return None
+    names = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name = (it.get("name") or it.get("model")) if fmt == "ollama" else it.get("id")
+        if isinstance(name, str) and name.strip() and name.strip() not in names:
+            names.append(name.strip()[:128])
+    return names[:200]
+
+
 def runnable(path):
     """True se Germano puo' avviare direttamente questo file (non gli script .ps1)."""
     if not path or not os.path.isfile(path):
@@ -285,17 +312,31 @@ def detect(check_ports=True):
                 via = "install"
         found.append((spec, path, version, via))
     ports = collect_ports()  # le sonde hanno lavorato durante la scansione del disco
+    # Modelli installati nei servizi locali in ascolto (in parallelo, al massimo ~1,5 s anche se uno non risponde)
+    models, threads = {}, []
+    for spec, *_rest in found:
+        if spec.get("models") and spec.get("port") and ports.get(spec["port"]):
+            th = threading.Thread(target=lambda s=spec: models.__setitem__(s["id"], _local_models(s["port"], s["models"])),
+                                  daemon=True)
+            th.start()
+            threads.append(th)
+    for th in threads:
+        th.join(2.0)
     tools = []
     for spec, path, version, via in found:
         detected = path is not None
         listening = bool(spec.get("port") and ports.get(spec["port"]))
         if not detected and listening:
             detected, via = True, "port"
-        tools.append({
+        item = {
             "id": spec["id"], "name": spec["name"], "vendor": spec.get("vendor"), "kind": spec["kind"],
             "detected": detected, "path": path, "version": version, "via": via,
             "listening": listening if spec.get("port") else None, "service": spec.get("service"),
-        })
+        }
+        if spec.get("models"):
+            # elenco dei modelli installati (None = il servizio non e' in ascolto o non li elenca)
+            item["models"] = models.get(spec["id"]) if listening else None
+        tools.append(item)
     return {"tools": tools, "elapsed_ms": round((time.perf_counter() - t0) * 1000, 1), "checked_at": time.time()}
 
 

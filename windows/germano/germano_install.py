@@ -27,7 +27,10 @@ dove si disinstalla. Nessun servizio.
 
 Interfaccia: le finestre native di Windows (TaskDialog), una sola finestra che passa da conferma ad avanzamento; a
 installazione completata si chiude e Germano si apre. In italiano o in inglese secondo la lingua di Windows. Ogni
-pagina mostrata è annotata nel registro %TEMP%\\germano_install.log.
+pagina mostrata è annotata nel registro %TEMP%\\germano_install.log. Fino alla comparsa della finestra l'avviatore
+mostra subito una schermata di avvio (richiesta UAC, estrazione), che poi si chiude da sola; la richiesta UAC riguarda
+un piccolo avviatore (pochi KB), così Windows non deve prima verificare l'intero file da 3 GB.
+Nessuna nota sul firewall: la regola si crea in silenzio e l'esito resta nel registro.
 
 Uso:  germano-0.60.exe [opzioni]           (installer in un solo file)
       Germano.exe --uninstall [opzioni]    (disinstallazione del programma installato)
@@ -1529,15 +1532,9 @@ def install_ui(plan, opts):
                              "documenti originali e il Vault, le cartelle di lavoro vanno nella cartella del tuo "
                              "profilo.", "\n\nYour Documents folder is synced with OneDrive: to keep the original "
                              "documents and the Vault out of the cloud, the work folders go in your profile folder.")
-        if is_admin():
-            footer = T("Accesso dalla rete locale consentito: con i permessi di amministratore appena concessi viene "
-                       "creata la regola del firewall di Windows per Germano (solo reti private e di dominio).",
-                       "Local network access allowed: with the administrator permission just granted, the Windows "
-                       "Firewall rule for Germano is created (private and domain networks only).")
-        else:
-            footer = T("Permessi di amministratore non disponibili: la regola del firewall per l'accesso dalla rete "
-                       "locale non verrà creata.", "Administrator permission not available: the firewall rule for "
-                       "local network access will not be created.")
+        # nessuna nota sul firewall: la regola per l'accesso dalla rete locale (solo reti private e di dominio) si crea
+        # comunque in silenzio con i permessi di amministratore concessi all'avvio; l'esito resta nel registro
+        footer = None
     else:
         title = (T(f"Aggiornare Germano AI Client alla versione {p['version']}?",
                    f"Update Germano AI Client to version {p['version']}?") if update and not same else
@@ -1616,9 +1613,8 @@ def install_ui(plan, opts):
                 if job.phase == "final":
                     text = T("Creazione delle cartelle di lavoro e dei collegamenti...",
                              "Creating the work folders and shortcuts...") + "\n "
-                else:
-                    text = T("Accesso dalla rete locale: regola del firewall di Windows...",
-                             "Local network access: Windows Firewall rule...") + "\n "
+                else:                 # regola del firewall: in silenzio, senza avvisi
+                    text = T("Completamento dell'installazione...", "Finishing setup...") + "\n "
                 w.set_text(TDE_CONTENT, text)
             elif job.phase == "done" and job.shown != "done":
                 job.shown = "done"            # niente pagina finale: la finestra si chiude e si apre Germano

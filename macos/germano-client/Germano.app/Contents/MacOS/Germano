@@ -20,4 +20,4 @@ if [ -z "$PY" ] || [ ! -x "$PY" ]; then
   osascript -e 'display dialog "Germano AI non trova il proprio Python: reinstalla germano-client-0.60.pkg." buttons {"OK"} with icon stop with title "Germano AI"'
   exit 1
 fi
-exec "$PY" "$APP_ROOT/germano_desktop.py" auto
+exec "$PY" "$APP_ROOT/germano_desktop.py" auto "$@"

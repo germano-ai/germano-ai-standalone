@@ -7,8 +7,10 @@ Germano.exe (l'unico programma) viene creato qui da build_exe.py e messo solo ne
 senza binari.
 
 Struttura dell'eseguibile:  [avviatore .NET] [kit ZIP] [archivio ZIP del programma] [coda di 48 byte]
-- avviatore: sfx_stub.cs compilato con il csc.exe di .NET Framework 4 (presente in ogni Windows 10/11), con l'icona
-  ufficiale e le informazioni di versione; nessuna console. Quello della suite chiede subito i permessi di
+- avviatore: sfx_stub.cs compilato con il csc.exe di .NET Framework 4 (presente in ogni Windows 10/11 e Windows
+  Server 2019+), con l'icona
+  ufficiale e le informazioni di versione; nessuna console. Mostra subito una schermata di avvio, che si chiude da
+  sola quando compare la finestra dell'installazione. Quello della suite chiede subito i permessi di
   amministratore (UAC) e alla fine apre Germano con i permessi normali; quello del client non chiede permessi;
 - kit: interprete Python minimo (dal runtime leggero del client: interprete, libreria standard, psutil) +
   germano_install.py + favicon.ico + setup.json (edizione e versione);
@@ -77,7 +79,7 @@ def compile_stub(edition, version, icon, out):
     try:
         r = subprocess.run([CSC, "/nologo", "/codepage:65001", "/target:winexe", "/optimize+", "/platform:anycpu",
                             f"/win32icon:{icon}", "/r:System.IO.Compression.dll", "/r:System.Windows.Forms.dll",
-                            f"/out:{out}", src], capture_output=True, text=True)
+                            "/r:System.Drawing.dll", f"/out:{out}", src], capture_output=True, text=True)
     finally:
         os.remove(src)
     if r.returncode != 0:

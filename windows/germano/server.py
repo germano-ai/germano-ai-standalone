@@ -191,6 +191,12 @@ _upstream = requests.Session()  # verso gli LLM: usa proxy di sistema/ambiente s
 common.ensure_dirs()
 
 
+# Rilevamento delle AI: la scansione dura poche decine di millisecondi, quindi basta una cache breve perche' una CLI o
+# un modello locale appena installati (o un servizio appena avviato o spento) compaiano da soli nelle pagine, che
+# interrogano il server ogni 12 secondi e quando tornano in primo piano.
+AI_DETECT_TTL = 5.0
+
+
 def cached(key, ttl, fn):
     now = time.time()
     hit = _cache.get(key)
@@ -231,6 +237,7 @@ def _start_lan_listener():
         threading.Thread(target=srv.serve_forever, name="germano-lan", daemon=True).start()
         _LAN_SERVER = srv
         LAN_MODE = True
+        _network_warnings()          # avvia in background il controllo di reti e firewall (Windows)
         if common.load_config().get("discovery_enabled", True) and _DISCOVERY is None:
             try:
                 from germano import discovery as gdiscovery
@@ -241,6 +248,18 @@ def _start_lan_listener():
                 return _L(f"in ascolto sulla rete, ma il rilevamento automatico (UDP {DISCOVERY_PORT}) non e' partito: {e}",
                           f"listening on the network, but auto-discovery (UDP {DISCOVERY_PORT}) did not start: {e}")
         return None
+
+
+def _network_warnings(wait=False):
+    """Avvisi su reti e firewall di Windows che impedirebbero ai client di raggiungere la parte Server (rete
+    «Pubblica», regola del firewall mancante, criteri di gruppo): [] se tutto e' a posto, None durante il primo
+    controllo."""
+    if not LAN_MODE:
+        return []
+    from germano import netcheck
+    installed = os.path.isfile(os.path.join(common.BASE_DIR, "germano_install.json"))
+    return netcheck.warnings(program=sys.executable, installed=installed, port=PORT, discovery_port=DISCOVERY_PORT,
+                             wait=wait)
 
 
 def _stop_lan_listener():
@@ -613,11 +632,12 @@ def api_status():
 @app.route("/api/ai/detect")
 def api_ai_detect():
     """Elenco delle AI/CLI installate su questo computer. Solo file system e porte locali (nessun processo
-    avviato, nessuna rete): il risultato e' in cache per 30 s, con ?refresh=1 si forza una nuova scansione."""
+    avviato, nessuna rete; per i modelli locali in ascolto anche l'elenco dei modelli installati): il risultato e' in
+    cache per AI_DETECT_TTL secondi (rilevamento automatico dalle pagine), con ?refresh=1 si forza una nuova scansione."""
     from germano import ai_detect
     if request.args.get("refresh") in ("1", "true", "yes"):
         _cache.pop("ai_detect", None)
-    data = cached("ai_detect", 30.0, ai_detect.detect)
+    data = cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)
     if not _remote_is_local():
         # dalla rete solo nomi e versioni: i percorsi rivelerebbero il nome utente di Windows del server
         data = {**data, "tools": [{k: v for k, v in t.items() if k != "path"} for t in data["tools"]]}
@@ -674,7 +694,7 @@ def api_harness_tools():
     from germano import ai_detect, harness
     cfg = common.load_config()
     sharing = bool(cfg.get("share_ai_tools"))
-    data = cached("ai_detect", 30.0, ai_detect.detect)
+    data = cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)
     return jsonify({
         "api": 1,
         "server": {"name": cfg.get("server_name") or MACHINE_NAME, "version": APP_VERSION, "engine_ready": daemon_ready()},
@@ -710,7 +730,7 @@ def api_harness_run():
         return jsonify({"status": "error", "message": _L(f"«{tool}» non e' utilizzabile dai client",
                                                          f"«{tool}» cannot be used by the clients")
                         + (f": {reason}." if reason else ".")}), 404
-    info = next((t for t in cached("ai_detect", 30.0, ai_detect.detect)["tools"] if t.get("id") == tool), None)
+    info = next((t for t in cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)["tools"] if t.get("id") == tool), None)
     if not info or not info.get("detected") or not info.get("path"):
         return jsonify({"status": "error", "message": _L(f"{tool} non e' installata su questo server.",
                                                          f"{tool} is not installed on this server.")}), 404
@@ -813,6 +833,7 @@ def _mode_state():
             "discovery": _DISCOVERY is not None, "discovery_port": DISCOVERY_PORT,
             "share_ai_tools": bool(cfg.get("share_ai_tools")),
             "auth_enabled": _auth_enabled(cfg), "users": len(common.load_users()),
+            "network_warnings": _network_warnings(),
         },
         "client": {
             "enabled": cli, "remote_server": cfg.get("remote_server") or "",
@@ -1812,6 +1833,35 @@ def _listening_ports(detected):
     return ports
 
 
+def _local_models(detected):
+    """{porta: [modelli installati] | None} dei servizi di modelli locali in ascolto (Ollama, LM Studio, Jan)."""
+    from germano import ai_detect
+    out = {}
+    for t in detected.get("tools") or []:
+        spec = next((s for s in ai_detect.CATALOG if s["id"] == t.get("id")), None)
+        if spec and spec.get("port") and t.get("listening") and "models" in t:
+            out[spec["port"]] = t.get("models")
+    return out
+
+
+def _runnable_tools(detected, sharing):
+    """CLI che il server sa eseguire per i client (harness.PROFILES), anche se non installate: la chat le mostra
+    disattivate e in grigio finche' non vengono rilevate (o finche' la condivisione e' spenta)."""
+    from germano import ai_detect, harness
+    by_id = {t.get("id"): t for t in detected.get("tools") or []}
+    out = []
+    for tid in harness.PROFILES:
+        t = by_id.get(tid) or {}
+        spec = next((s for s in ai_detect.CATALOG if s["id"] == tid), {})
+        detected_ok = bool(t.get("detected") and t.get("path"))
+        out.append({"id": tid, "name": t.get("name") or spec.get("name") or tid, "detected": detected_ok,
+                    "usable": detected_ok and sharing,
+                    "reason": None if detected_ok and sharing else (
+                        _L("non rilevata sul server", "not detected on the server") if not detected_ok else
+                        _L("condivisione delle AI disattivata sul server", "sharing of the server AIs disabled"))})
+    return out
+
+
 def _service_key(service_id, sharing):
     """Chiave API per un servizio: quella inviata dall'utente (intestazione, mai salvata) oppure, se l'amministratore
     condivide le AI di questo computer, quella del server."""
@@ -1876,13 +1926,15 @@ def api_remote_info():
     }
     if authorized:
         sharing = bool(cfg.get("share_ai_tools"))
-        detected = cached("ai_detect", 30.0, ai_detect.detect)
+        detected = cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)
         base = f"{request.scheme}://{request.host}"
         info.update(
             options=common.server_options(cfg), option_keys=list(common.CLIENT_OPTION_KEYS),
             masking_modes=list(common.MASKING_MODES), sharing=sharing,
             tools=harness.catalog(detected["tools"], sharing),
-            services=gproviders.describe(sharing, _listening_ports(detected)),
+            runnable=_runnable_tools(detected, sharing),
+            services=gproviders.describe(sharing, _listening_ports(detected), _local_models(detected)),
+            detected_at=detected.get("checked_at"),
             proxy={"base": base, "openai": base + "/v1", "anthropic": base, "services": base + "/p/<servizio>/v1",
                    "session_in_url": enabled and not local})
     return jsonify(info)
@@ -1981,7 +2033,7 @@ def api_remote_ask():
                 raise _Refused(404, {"status": "error", "message": _L(f"«{ident}» non e' eseguibile dal server",
                                                                         f"«{ident}» cannot be run by the server")
                                      + (f": {reason}." if reason else ".")})
-            tool_info = next((t for t in cached("ai_detect", 30.0, ai_detect.detect)["tools"] if t.get("id") == ident),
+            tool_info = next((t for t in cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)["tools"] if t.get("id") == ident),
                              None)
             if not tool_info or not tool_info.get("detected") or not tool_info.get("path"):
                 raise _Refused(404, {"status": "error", "message": _L(f"{ident} non e' installata su questo server.",
@@ -2003,6 +2055,18 @@ def api_remote_ask():
             if not model or not gproviders.MODEL_RE.match(model):
                 raise _Refused(400, {"status": "error", "message": _L("Indica il modello da usare.",
                                                                         "Enter the model to use.")})
+            if spec.get("local"):
+                # modelli locali: solo quelli rilevati (in ascolto e installati), come nel selettore della chat
+                det = cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)
+                port = spec.get("port")
+                if not _listening_ports(det).get(port):
+                    raise _Refused(409, {"status": "error", "code": "not_detected", "message": _L(
+                        f"{spec['name']} non e' in esecuzione sul server.", f"{spec['name']} is not running on the server.")})
+                installed = _local_models(det).get(port)
+                if isinstance(installed, list) and model not in installed:
+                    raise _Refused(409, {"status": "error", "code": "not_detected", "message": _L(
+                        f"Il modello «{model}» non e' installato in {spec['name']} sul server.",
+                        f"The model «{model}» is not installed in {spec['name']} on the server.")})
         else:
             raise _Refused(400, {"status": "error", "message": _L("Scegli un'AI.", "Choose an AI.")})
         if not daemon_ready():
@@ -2444,6 +2508,11 @@ def main():
         for n in notes:
             print(f" ATTENZIONE: {n}")
         print("=" * 64)
+        if LAN_MODE and os.name == "nt":
+            def _log_network_warnings():   # reti «Pubbliche», regola del firewall, criteri di gruppo (circa 2 s)
+                for w in _network_warnings(wait=True) or []:
+                    common.log("ATTENZIONE rete: " + w["it"] + (f" {w['command']}" if w.get("command") else ""))
+            threading.Thread(target=_log_network_warnings, name="germano-netcheck-log", daemon=True).start()
     if client_on:
         print(" CLIENT: all'avvio del motore Germano cerca in rete un Germano Server a cui delegare il calcolo")
         print("         (Vault, file ed etichette restano su questo computer).")

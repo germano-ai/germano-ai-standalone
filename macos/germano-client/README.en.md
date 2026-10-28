@@ -15,7 +15,7 @@ It requires no heavy AI models or dedicated GPUs on your local machine: all comp
 2. **Server AI Models & Harness Exposure**:
    The Client queries the Server and lists the AIs detected on the server (Claude Code, Codex, Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Kiro, OpenCode, Aider, Ollama, LM Studio...) and the **AI services via API** filtered by Germano (Meta Muse Wonder and Muse Spark, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic and the server's local models). With the protected chat you use them directly from your seat, even if they are not installed locally.
 3. **Same interface as the Remote Control**:
-   The Client panel is the same Remote Control the Server offers to any browser on the network (AIs, protected chat with up to 12 attachments, protect and restore, options, tool connection): Client users and browser users have the same capabilities. On top of that the Client discovers the server on the network and launches this PC's CLIs protected.
+   The Client panel is the same Remote Control the Server offers to any browser on the network (AIs, protected chat with up to 12 attachments, protect and restore, options, tool connection): Client users and browser users have the same capabilities. In the chat only the AIs detected on the server can be chosen (the others stay greyed out, not selectable) and the list refreshes by itself. On top of that the Client discovers the server on the network and launches this PC's CLIs protected.
 4. **Processing options of this PC**:
    Confidence threshold, active models, 18 personal data categories and masking (`client options`), valid only for this PC's requests. **With the server's PA profile they are locked and greyed out** (the server rejects any change: Compliance Lock).
 5. **Transparent Proxy Routing for Local AI Agents**:
@@ -48,7 +48,7 @@ It requires no heavy AI models or dedicated GPUs on your local machine: all comp
 
 The official Client installers are single files on **[download.germano.ai](https://download.germano.ai/)** and bundle their own Python with all libraries: installation downloads nothing from the Internet. The client creates no working folders in Documents: its settings (server address, session, options) stay in the user's technical folder.
 
-### 🪟 Windows (10 / 11 64-bit)
+### 🪟 Windows (10 / 11 and Windows Server 2019 or later, 64-bit, also in a virtual machine)
 1. **Download:** download `germano-client-0.60.exe` (about 22 MB).
 2. **Installation:** double-click the installer. It installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI Client` **without administrator privileges (no UAC prompt)**, with Desktop and Start menu shortcuts and the entry in Settings > Apps. The client settings are in `%LOCALAPPDATA%\Germano AI Client`.
 3. **Launch:** at the end of the installation the client opens by itself; afterwards use the **Germano AI Client** shortcut on the Desktop or in the Start menu (dedicated window, no terminal; its name differs from the suite's, so both editions can live on the same computer).

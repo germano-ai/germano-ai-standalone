@@ -4,12 +4,18 @@ NON cambia l'architettura: avvia lo stesso server Flask (server.py) o il pannell
 sottoprocesso, attende che sia pronto e apre l'interfaccia in una FINESTRA DEDICATA, con la X rossa e titolo/icona
 propri. Alla chiusura della finestra TUTTO si chiude: finestra, server Flask e demone IA (solo l'albero dei NOSTRI
 sottoprocessi, senza toccare altri processi del sistema). La finestra:
-- Windows: Microsoft Edge (presente in ogni Windows 10/11) in modalità applicazione `--app`;
+- Windows: Microsoft Edge (presente in Windows 10/11 e in Windows Server 2022/2025 con Esperienza desktop; su Windows
+  Server 2019 va installato) o Google Chrome, in modalità applicazione `--app`;
 - macOS: finestra nativa con il WebKit di sistema (pywebview + PyObjC, inclusi nel programma), nello stesso processo
   dell'app, così nel Dock compare Germano;
 - Linux: finestra Qt WebEngine (pywebview + PySide6, inclusi nel programma) in un processo separato (germano_window.py);
 - ripiego, se la finestra dedicata non si può aprire: un browser Chromium in modalità app, altrimenti il browser
-  predefinito.
+  predefinito (Linux, macOS). Su Windows senza Edge né Chrome (es. Windows Server 2019, Server Core) Germano NON apre
+  Internet Explorer, che non sa mostrare la Dashboard: resta attivo come server senza finestra e spiega dove collegarsi.
+
+SERVER SENZA FINESTRA (Windows Server, macchine virtuali, avvio come attività pianificata): `--no-browser` (o
+`--headless`, o GERMANO_HEADLESS=1) avvia server e motore senza aprire finestre né messaggi e scrive nel registro (e
+nella console, se c'è) gli indirizzi locali e di rete; resta attivo finché non si esegue `--stop` (o Ctrl+C).
 
 UN SOLO LANCIATORE PER TUTTI I PACCHETTI (Germano.exe / Germano.app / germano.sh): la suite completa (contiene
 server.py) apre la Dashboard unificata (Standalone, Server LAN, Client); il client leggero apre il pannello del client.
@@ -23,7 +29,8 @@ CARTELLE (dalla 0.60):
 - Copia portatile (sorgenti, senza installazione): i dati restano accanto al programma, come nelle versioni
   precedenti; se la cartella del programma non e' scrivibile si usano le cartelle dell'utente.
 
-Uso: germano_desktop.py [auto|server|client] [--uninstall [--silent]]
+Uso: germano_desktop.py [auto|server|client] [--no-browser | --headless] [--stop] [--uninstall [--silent]]
+     (Germano.exe accetta le stesse opzioni; GERMANO_DATA_DIR e GERMANO_TECH_DIR scelgono cartella dati e tecnica)
 """
 import importlib.util
 import json
@@ -42,6 +49,9 @@ APP_DIR = os.environ.get("GERMANO_APP_DIR") or os.path.dirname(os.path.abspath(_
 ARGS = sys.argv[1:]
 _ROLE_ARG = (ARGS[0] if ARGS and not ARGS[0].startswith("--") else os.environ.get("GERMANO_DESKTOP_ROLE") or "auto").lower()
 FLAGS = [a for a in ARGS if a.startswith("--")]
+# Senza finestra: Windows Server (anche Server Core), macchine virtuali, attività pianificate, servizi
+HEADLESS = bool({"--no-browser", "--headless"} & set(FLAGS)) or os.environ.get("GERMANO_HEADLESS") == "1"
+_MODE_FLAG = next((a.split("=", 1)[1].strip().lower() for a in FLAGS if a.startswith("--mode=")), "")
 if _ROLE_ARG in ("server", "client"):
     ROLE = _ROLE_ARG
 else:   # auto: suite completa se c'e' server.py, altrimenti pacchetto client leggero
@@ -148,10 +158,13 @@ elif _writable(APP_DIR):
 else:
     DATA_DIR = default_data_dir()           # programma in una cartella protetta senza installer
 PORTABLE = not INSTALL and os.path.normcase(os.path.abspath(DATA_DIR)) == os.path.normcase(os.path.abspath(APP_DIR))
-TECH_DIR = os.path.join(DATA_DIR, "state") if PORTABLE else (INSTALL.get("tech_dir") or default_tech_dir())
+TECH_DIR = os.path.join(DATA_DIR, "state") if PORTABLE else (
+    os.environ.get("GERMANO_TECH_DIR") or INSTALL.get("tech_dir") or default_tech_dir())
 WEBVIEW_PROFILE = os.path.join(TECH_DIR, "webview_client" if IS_CLIENT else "webview")
 LOG = os.path.join(DATA_DIR if PORTABLE else TECH_DIR, "desktop.log")
 SERVER_LOG = os.path.join(DATA_DIR if PORTABLE else TECH_DIR, "server_stdout.log")
+HEADLESS_FILE = os.path.join(TECH_DIR, "headless.json")      # Germano senza finestra in esecuzione (per --stop)
+STOP_REQUEST = os.path.join(TECH_DIR, "headless.stop")       # scritto da --stop: il Germano senza finestra si chiude
 
 
 def log(msg):
@@ -163,8 +176,38 @@ def log(msg):
         pass
 
 
+def _lang_it():
+    if IS_WIN:
+        try:
+            import ctypes
+            return (ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF) == 0x10
+        except Exception:
+            return True
+    return (os.environ.get("LANG") or os.environ.get("LC_ALL") or "it").lower().startswith("it")
+
+
+def T(it, en):
+    return it if _lang_it() else en
+
+
+def _announce(lines):
+    """Righe per l'amministratore: sempre nel registro, e nella console se Germano e' stato avviato da una console
+    (python.exe; con pythonw/Germano.exe non c'e' console)."""
+    for line in lines:
+        log(line)
+        try:
+            if sys.stdout is not None:
+                print(line, flush=True)
+        except Exception:
+            pass
+
+
 def _message(text, flags=0x10):
-    """Avviso all'utente senza console (Windows: finestra di messaggio; macOS: dialogo; Linux: zenity se c'e')."""
+    """Avviso all'utente senza console (Windows: finestra di messaggio; macOS: dialogo; Linux: zenity se c'e').
+    Senza finestra (--no-browser) nessun dialogo: potrebbe non esserci nessuno a chiuderlo (servizio, sessione 0)."""
+    if HEADLESS:
+        _announce([text])
+        return
     log(text)
     try:
         if IS_WIN:
@@ -234,6 +277,7 @@ def _find_browser():
         la = os.environ.get("LOCALAPPDATA", "")
         cands = [os.path.join(pf86, r"Microsoft\Edge\Application\msedge.exe"),
                  os.path.join(pf, r"Microsoft\Edge\Application\msedge.exe"),
+                 os.path.join(la, r"Microsoft\Edge\Application\msedge.exe"),     # Edge installato per l'utente
                  os.path.join(pf, r"Google\Chrome\Application\chrome.exe"),
                  os.path.join(pf86, r"Google\Chrome\Application\chrome.exe"),
                  os.path.join(la, r"Google\Chrome\Application\chrome.exe")]
@@ -451,9 +495,13 @@ def _window_helper(url, srv):
 
 def _window_browser(url, srv, psutil):
     """Windows (Edge) e ripiego altrove: browser Chromium in modalita' app con un profilo dedicato, o il browser
-    predefinito. Restituisce True se il server ha lasciato il posto a un aggiornamento."""
+    predefinito. Restituisce True se il server ha lasciato il posto a un aggiornamento; None su Windows se la finestra
+    non si puo' aprire (nessun Edge/Chrome, oppure il browser non si e' aperto: criteri aziendali, Server Core)."""
     browser = _find_browser()
     if not browser:
+        if IS_WIN:      # Windows Server 2019 / Server Core: c'e' al massimo Internet Explorer, che non va usato
+            log("nessun Microsoft Edge o Google Chrome trovato.")
+            return None
         log("nessun browser Chromium trovato: apro il browser predefinito.")
         import webbrowser
         webbrowser.open(url)
@@ -469,7 +517,19 @@ def _window_browser(url, srv, psutil):
         args.append(f"--remote-debugging-port={dbg}")
     log(f"apro la finestra app: {browser} --app={url}")
     subprocess.Popen(args, **({"creationflags": NO_WINDOW} if IS_WIN else {"start_new_session": True}))
-    time.sleep(3.0)
+    end = time.time() + 25           # il primo avvio di Edge (profilo nuovo) puo' richiedere qualche secondo
+    while not _browser_procs(psutil):
+        if time.time() > end:
+            log(f"la finestra di {os.path.basename(browser)} non si e' aperta.")
+            if IS_WIN:
+                return None
+            import webbrowser
+            webbrowser.open(url)
+            return srv.wait() == UPDATE_EXIT_CODE
+        if srv.poll() is not None:
+            return srv.returncode == UPDATE_EXIT_CODE
+        time.sleep(0.5)
+    time.sleep(1.0)
     while True:          # finche' la finestra e' aperta e il server e' vivo, si resta qui
         if not _browser_procs(psutil):
             log("finestra chiusa (X rossa): spengo server e demone.")
@@ -484,9 +544,183 @@ def _window_browser(url, srv, psutil):
         time.sleep(1.0)
 
 
+# ------------------------------------------------------------------------------------- senza finestra (server)
+def _addresses(port):
+    """Indirizzi da comunicare: la Dashboard su questo computer e, se la parte Server e' in ascolto, il Remote
+    Control e il Proxy per i computer della rete (anche dietro schede di rete virtuali)."""
+    lines = [T(f"Dashboard su questo computer:   http://127.0.0.1:{port}/",
+               f"Dashboard on this computer:     http://127.0.0.1:{port}/")]
+    st, end = {}, time.time() + 15
+    while True:
+        try:
+            with _OPENER.open(f"http://127.0.0.1:{port}/api/mode", timeout=15) as r:
+                st = json.loads(r.read().decode("utf-8"))
+        except (OSError, ValueError):
+            return lines
+        s = st.get("server") or {}
+        # controllo di reti e firewall ancora in corso (circa 2 s dopo l'ascolto in rete): si aspetta un poco
+        if not (s.get("listening") and s.get("network_warnings") is None) or time.time() > end:
+            break
+        time.sleep(1.0)
+    s = st.get("server") or {}
+    if s.get("listening"):
+        p = s.get("port") or port
+        for ip in s.get("ips") or []:
+            lines.append(T(f"Remote Control dalla rete:      http://{ip}:{p}/remote   (Proxy per le CLI: http://{ip}:{p}/v1)",
+                           f"Remote Control from the network: http://{ip}:{p}/remote   (Proxy for CLIs: http://{ip}:{p}/v1)"))
+        for w in s.get("network_warnings") or []:
+            lines.append(T("ATTENZIONE: ", "WARNING: ") + T(w.get("it", ""), w.get("en", ""))
+                         + (f" {w['command']}" if w.get("command") else ""))
+    elif not IS_CLIENT:
+        lines.append(T("Accesso dalla rete spento (modalità Standalone): per offrirlo ai computer della rete scegli la "
+                       "modalità Server nelle Impostazioni, oppure avvia con --mode=server.",
+                       "Network access off (Standalone mode): to offer it to the network computers choose Server mode in "
+                       "the Settings, or start with --mode=server."))
+    return lines
+
+
+def _read_json_file(path):
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _run_headless(port, srv, headline):
+    """Server e motore senza finestra finche' il server e' vivo, finche' arriva --stop o Ctrl+C. True se il server
+    ha lasciato il posto a un aggiornamento."""
+    common_lines = [headline] + _addresses(port) + [
+        T("Per arrestarlo: Germano.exe --stop (oppure Ctrl+C se è stato avviato da questa console).",
+          "To stop it: Germano.exe --stop (or Ctrl+C if it was started from this console).")]
+    try:
+        os.makedirs(TECH_DIR, exist_ok=True)
+        if os.path.exists(STOP_REQUEST):
+            os.remove(STOP_REQUEST)
+        with open(HEADLESS_FILE, "w", encoding="utf-8") as f:
+            json.dump({"pid": os.getpid(), "port": port, "server_pid": srv.pid, "started": time.time()}, f)
+    except OSError as e:
+        log(f"file di stato senza finestra non scritto ({e}).")
+    _announce(common_lines)
+    try:
+        while True:
+            rc = srv.poll()
+            if rc is not None:
+                update = rc == UPDATE_EXIT_CODE
+                log("il server lascia il posto all'aggiornamento." if update else f"il server si è chiuso (codice {rc}).")
+                return update
+            if os.path.exists(STOP_REQUEST):
+                _announce([T("Richiesta di arresto ricevuta (--stop): chiudo server e motore.",
+                             "Stop request received (--stop): closing server and engine.")])
+                return False
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        _announce([T("Ctrl+C: chiudo server e motore.", "Ctrl+C: closing server and engine.")])
+        return False
+    finally:
+        for p in (HEADLESS_FILE, STOP_REQUEST):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+
+def _no_browser_window(port, srv):
+    """Windows senza Microsoft Edge ne' Google Chrome (es. Windows Server 2019 con Internet Explorer, Server Core):
+    un avviso con gli indirizzi; con OK Germano resta attivo come server senza finestra, con Annulla si chiude."""
+    lines = _addresses(port)
+    text = T("Su questo computer non c'è Microsoft Edge (né Google Chrome), che Germano usa per la sua finestra "
+             "(Internet Explorer non sa mostrare la Dashboard).\n\nGermano può restare attivo come server senza "
+             "finestra:\n\n", "This computer has no Microsoft Edge (nor Google Chrome), which Germano uses for its window "
+             "(Internet Explorer cannot show the Dashboard).\n\nGermano can stay active as a server without a window:\n\n")
+    text += "\n".join("  " + ln for ln in lines) + "\n\n" + T(
+        "Apri questi indirizzi da un browser moderno (anche da un altro computer della rete). Per arrestare Germano: "
+        "«Germano.exe --stop». Installando Microsoft Edge Germano avrà di nuovo la sua finestra.\n\nOK = resta attivo   "
+        "Annulla = chiudi Germano",
+        "Open these addresses from a modern browser (also from another computer of the network). To stop Germano: "
+        "\"Germano.exe --stop\". After installing Microsoft Edge Germano will have its window again.\n\nOK = stay "
+        "active   Cancel = close Germano")
+    log("avviso: nessun browser compatibile, chiedo se restare attivo come server.")
+    try:
+        import ctypes
+        answer = ctypes.windll.user32.MessageBoxW(0, text, PRODUCT, 0x1 | 0x40 | 0x10000)   # OKCANCEL, INFO, primo piano
+    except Exception:
+        answer = 1
+    if answer != 1:
+        log("scelto «Annulla»: chiudo Germano.")
+        return False
+    return _run_headless(port, srv, T("Germano AI attivo senza finestra (nessun browser compatibile su questo computer).",
+                                      "Germano AI running without a window (no compatible browser on this computer)."))
+
+
+def _stop_running():
+    """--stop: chiude il Germano avviato senza finestra con la stessa cartella tecnica (stesso utente)."""
+    info = _read_json_file(HEADLESS_FILE)
+    pid = info.get("pid")
+    sys.path.insert(0, APP_DIR)
+    import psutil
+    if not pid or not psutil.pid_exists(int(pid)):
+        _announce([T("Nessun Germano AI senza finestra in esecuzione.", "No windowless Germano AI is running.")])
+        return 1
+    os.makedirs(TECH_DIR, exist_ok=True)
+    with open(STOP_REQUEST, "w", encoding="utf-8") as f:
+        f.write(str(time.time()))
+    try:
+        psutil.Process(int(pid)).wait(timeout=90)
+    except psutil.TimeoutExpired:
+        _announce([T("Germano AI non si è chiuso entro 90 secondi.", "Germano AI did not close within 90 seconds.")])
+        return 1
+    except psutil.NoSuchProcess:
+        pass
+    _announce([T("Germano AI arrestato.", "Germano AI stopped.")])
+    return 0
+
+
+def _headless_running():
+    """Porta del Germano senza finestra gia' in esecuzione per questo utente (avviato con --no-browser), o None."""
+    info = _read_json_file(HEADLESS_FILE)
+    try:
+        import psutil
+        if info.get("pid") and psutil.pid_exists(int(info["pid"])) and info.get("port"):
+            with _OPENER.open(f"http://127.0.0.1:{int(info['port'])}/api/status", timeout=5) as r:
+                if r.status == 200:
+                    return int(info["port"])
+    except Exception:
+        pass
+    return None
+
+
+def _open_existing(port):
+    """Germano e' gia' attivo senza finestra: si apre solo una finestra sulla sua Dashboard (chiuderla non lo ferma),
+    invece di avviare un secondo server sulla stessa cartella dati."""
+    url = f"http://127.0.0.1:{port}/"
+    browser = _find_browser()
+    log(f"Germano senza finestra gia' attivo sulla porta {port}: " + ("apro una finestra." if browser else "avviso."))
+    if browser:
+        subprocess.Popen([browser, f"--app={url}", f"--user-data-dir={WEBVIEW_PROFILE}", "--no-first-run",
+                          "--no-default-browser-check", "--window-size=1280,860"],
+                         **({"creationflags": NO_WINDOW} if IS_WIN else {"start_new_session": True}))
+        return 0
+    _message(T(f"Germano AI è già attivo senza finestra: Dashboard su {url}. Per arrestarlo: Germano.exe --stop",
+               f"Germano AI is already running without a window: Dashboard at {url}. To stop it: Germano.exe --stop"),
+             0x40)
+    return 0
+
+
 def main():
     if "--uninstall" in FLAGS:
         return _uninstall()
+    if "--stop" in FLAGS:
+        return _stop_running()
+    sys.path.insert(0, APP_DIR)
+    existing = _headless_running()
+    if existing:
+        if HEADLESS:
+            _announce([T(f"Germano AI è già attivo senza finestra sulla porta {existing}.",
+                         f"Germano AI is already running without a window on port {existing}.")])
+            return 0
+        return _open_existing(existing)
     sys.path.insert(0, APP_DIR)
     import psutil
 
@@ -510,6 +744,12 @@ def main():
         env["GERMANO_TECH_DIR"] = TECH_DIR                       # aggiornamenti scaricati (germano/updater.py)
         env["GERMANO_CACHE_DIR"] = os.path.join(TECH_DIR, "cache")   # cache dei modelli fuori dal programma
     env.setdefault("PYTHONIOENCODING", "utf-8")
+    if _MODE_FLAG in ("standalone", "server", "client", "server+client"):
+        env["GERMANO_MODE"] = _MODE_FLAG          # --mode=server: modalita' solo per questo avvio (es. server senza finestra)
+    elif _MODE_FLAG:
+        _message(T(f"Modalità «{_MODE_FLAG}» non valida: usa standalone, server, client o server+client.",
+                   f"Invalid mode «{_MODE_FLAG}»: use standalone, server, client or server+client."))
+        return 2
     run_kwargs = dict(cwd=APP_DIR, env=env, stdin=subprocess.DEVNULL)
     if IS_WIN:
         run_kwargs["creationflags"] = NO_WINDOW
@@ -518,8 +758,11 @@ def main():
 
     # Aggiornamento già scaricato (installer di download.germano.ai): si installa prima di avviare; l'installer
     # chiude e riapre Germano da solo a installazione finita (stessa posizione usata da germano/updater.py).
+    # Senza finestra no: la riapertura avverrebbe con la finestra e senza le opzioni di questo avvio.
     update_ready = os.path.join(APP_DIR if PORTABLE else TECH_DIR, "update", "ready.json")
-    if not IS_CLIENT and os.path.isfile(update_ready):
+    if HEADLESS and not IS_CLIENT and os.path.isfile(update_ready):
+        log("aggiornamento pronto: si installa al prossimo avvio con la finestra (o dalla Dashboard).")
+    elif not IS_CLIENT and os.path.isfile(update_ready):
         log("aggiornamento pronto: avvio dell'installazione prima di aprire Germano.")
         rc = subprocess.run([_interpreter(), "-B", os.path.join(APP_DIR, "server.py"), "--install-update"],
                             **run_kwargs).returncode
@@ -540,12 +783,18 @@ def main():
             _message("Germano AI non è riuscito ad avviarsi. Dettagli nel file:\n" + SERVER_LOG)
             return 1
         url = f"http://127.0.0.1:{port}/"
-        result = None
-        mode = os.environ.get("GERMANO_WINDOW", "auto")   # «browser» per forzare il ripiego (diagnostica)
-        if not IS_WIN and mode != "browser":
-            result = _window_inprocess(url, srv) if IS_MAC else _window_helper(url, srv)
-        if result is None:
-            result = _window_browser(url, srv, psutil)
+        if HEADLESS:
+            result = _run_headless(port, srv, T("Germano AI attivo senza finestra (--no-browser).",
+                                                "Germano AI running without a window (--no-browser)."))
+        else:
+            result = None
+            mode = os.environ.get("GERMANO_WINDOW", "auto")   # «browser» per forzare il ripiego (diagnostica)
+            if not IS_WIN and mode != "browser":
+                result = _window_inprocess(url, srv) if IS_MAC else _window_helper(url, srv)
+            if result is None:
+                result = _window_browser(url, srv, psutil)
+            if result is None:              # Windows senza un browser compatibile (es. Windows Server 2019)
+                result = _no_browser_window(port, srv)
         update_exit = bool(result)
     finally:
         if not update_exit:
