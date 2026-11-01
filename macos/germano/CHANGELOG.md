@@ -5,6 +5,108 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.70] - 2026-11-01
+Germano AI v0.70 - Nuova architettura **Harness AI**, **Glass Window** trasparente in tempo reale, sanitizzazione
+manuale integrata e **aggiornamenti silenziosi stile Google Chrome**. L'interfaccia è stata rivista e semplificata: si
+presenta in tutto e per tutto come un harness AI moderno, con sopra la scheda per la sanitizzazione manuale dei file. La
+stessa interfaccia è nella Dashboard, nel Remote Control e in Germano Client. Motore, modelli, Proxy, formati e cartelle
+di lavoro non cambiano.
+
+### Aggiunto - Chatbot e Agenti AI (nuova scheda predefinita)
+- Quattro schede in alto: **Chatbot e Agenti AI** (predefinita), **Sanitizzazione Manuale & Vault**, **Impostazioni**,
+  **Guida**; tema scuro (`#0b0f19`, `#0f172a`, `#1e293b`, `#334155`, accenti `#38bdf8` e `#818cf8`).
+- Conversazioni nella barra laterale (nuova, ricerca, raggruppate per data, rinomina, elimina; conservate nel profilo
+  della finestra, mai nel cloud, oppure solo per la sessione), istruzioni per l'assistente, esportazione in Markdown.
+- Risposte in **streaming** con Markdown (titoli, elenchi, tabelle, citazioni), **evidenziazione della sintassi** e
+  pulsante **Copia codice**; dati ripristinati evidenziati con l'etichetta di origine, «Mostra etichette»; indicatori di
+  tempo totale, primo token, token in ingresso e in uscita, dati oscurati e ripristinati; azioni Copia, Rigenera,
+  Modifica.
+- Riquadro di scrittura che cresce con il testo (**Invio** invia, **Maiusc+Invio** va a capo), allegati con la
+  graffetta o **trascinandoli** (fino a 12), indicatore della protezione e del profilo.
+- **Selettore del modello in basso a destra**, con ricerca: solo le AI rilevate e utilizzabili sono selezionabili
+  (regola del turno 21), le altre restano in grigio con il motivo e, quando c'è, l'alternativa protetta. Destinazioni:
+  *Solo protezione* (copia del testo protetto), modelli locali di **Ollama, LM Studio e Jan** (un'opzione per modello
+  installato), **Claude Code** eseguita senza strumenti, servizi via API (OpenAI, Anthropic, Meta Muse, Kimi, DeepSeek,
+  Qwen, Mistral, Grok, Perplexity, Gemini, OpenRouter, Groq) con la chiave del computer o una inserita nel selettore.
+  Rilevamento automatico ogni 12 secondi e al ritorno in primo piano.
+- Il motore si avvia da solo al primo invio; finché non è pronto la richiesta viene bloccata (nessun dato esce).
+
+### Aggiunto - Glass Window (Ispezione Trasparente)
+- Pulsante **Glass Window** (anche Ctrl+Maiusc+G) che apre un pannello laterale in vetro smerigliato
+  (`backdrop-filter: blur(16px)`) con lo stato della richiesta, il cronometro, il selettore delle richieste della
+  sessione e le cinque fasi in tempo reale: **testo originale inserito**, **filtro di privacy Germano e corrispondenze
+  del Vault** (categorie, testo evidenziato, tabella originale → etichetta → affidabilità, tempi e cache), **testo
+  effettivo inviato al modello**, **payload HTTP / CLI grezzo** (indirizzo, intestazioni con le chiavi sempre oscurate,
+  corpo JSON; per Claude Code comando, variabili, standard input e payload HTTP catturato dal Proxy) e **stream in tempo
+  reale della risposta** prima del ripristino (con i frame SSE grezzi a richiesta).
+- **Interrompi operazione**: chiude subito la connessione con il servizio di AI (chiusura del socket) o termina la CLI
+  con tutti i suoi processi; messaggio «Operazione interrotta dall'utente tramite Glass Window: nessun dato ulteriore è
+  stato trasmesso o ricevuto.». Anche chiudere la pagina o la connessione ferma l'esecuzione sul server.
+- **Revisione prima dell'invio** (facoltativa): Germano si ferma dopo la protezione e mostra il payload esatto; parte
+  solo con **Invia ora**, oppure **Blocca invio**. **Anteprima mentre scrivi** con la Glass Window aperta, senza inviare
+  nulla.
+
+### Aggiunto - Sanitizzazione manuale, Remote Control e Germano Client
+- La scheda **Sanitizzazione Manuale & Vault** raccoglie il lavoro in blocco della 0.60 (quattro riquadri `input`,
+  `output`, `processed`, `failed` come un file manager, tabella dei documenti, rimetti in coda, CSV), la
+  sanitizzazione manuale di un testo e l'archivio delle corrispondenze.
+- **Remote Control e Germano Client** hanno la stessa interfaccia: Harness AI con selettore e Glass Window (AI del
+  server), **Sanitizzazione manuale** con file trascinati e restituiti anonimizzati nel loro formato e ripristino di un
+  file restituito da un'AI (solo con le corrispondenze del dispositivo), Impostazioni (AI e chiavi, opzioni di
+  elaborazione bloccate con il profilo PA, collegamento degli strumenti; nel Client anche server e aggiornamenti),
+  Guida. Il Client inoltra in streaming gli eventi dell'Harness e l'interruzione chiude anche la connessione verso il
+  server. Avviso chiaro se il server è di una versione precedente.
+
+### Aggiunto - Aggiornamenti silenziosi, come Google Chrome
+- **Attivi di default**, senza banner né finestre: solo quando il sistema segnala la connessione a Internet, Germano
+  legge `https://download.germano.ai/version.json`, **scarica in background a bassa priorità** (thread in modalità
+  background), controlla dimensione e struttura dell'installer e su Windows **prepara la nuova versione** accanto a
+  quella in uso (`Germano AI.nuovo`, installer `--update --silent --stage` a priorità minima) mentre Germano resta
+  aperto.
+- Al **successivo avvio** il lanciatore applica l'aggiornamento preparato in pochi secondi (`--apply-staged`: verifica
+  del contrassegno e delle dimensioni di ogni file, poi scambio rapido delle cartelle) e Germano si apre già aggiornato;
+  se qualcosa non va resta la versione in uso. Chi vuole subito trova solo un discreto **«Riavvia per aggiornare»** in
+  alto (e un puntino sulla scheda Impostazioni).
+- **Impostazioni › Aggiornamenti** come `chrome://settings/help`: «Germano AI è aggiornato (v0.70)» con l'ora
+  dell'ultimo controllo, «Download dell'aggiornamento in background…» con la barra, «Riavvia Germano per applicare
+  l'aggiornamento», «Controlla ora» e le opzioni. Su macOS e Linux il pacchetto si scarica allo stesso modo e si apre
+  quando lo decide l'utente.
+- **Germano Client** si aggiorna allo stesso modo (`client_updater.py`, solo libreria standard): download silenzioso e
+  aggiornamento al successivo avvio, con l'indirizzo del server e la sessione invariati.
+
+### Aggiunto - API
+- `GET /api/harness/v2/targets`, `POST /api/harness/v2/run` (flusso NDJSON: `start`, `original`, `phase`, `entities`,
+  `sanitized`, `payload`, `gate`, `delta`, `thinking`, `usage`, `frame`, `cli`, `ping`, `done` / `aborted` / `error`),
+  `POST /api/harness/v2/runs/<id>/abort`, `POST /api/harness/v2/runs/<id>/approve`, `POST /api/harness/v2/preview`,
+  `GET /api/harness/v2/models`; dalla rete valgono le regole del Remote Control.
+- `POST /api/remote/v1/anonymize_file` e `POST /api/remote/v1/restore_file` per la sanitizzazione dei file dai
+  dispositivi della rete (opzioni del dispositivo rispettate, blocco PA compreso).
+
+### Sicurezza
+- Claude Code dall'Harness: **nessun testo tra gli argomenti** (le CLI installate con npm sono file `.cmd` eseguiti da
+  `cmd.exe`, dove un argomento libero potrebbe diventare un comando): richiesta e istruzioni passano solo dallo standard
+  input. Profilo locale `--restricted --tools "" --strict-mcp-config --disable-slash-commands --no-session-persistence`,
+  profilo per i client `--bare`; il traffico della CLI passa dal Proxy di Germano, che ne cattura il payload per la Glass
+  Window (solo da questo computer).
+- Pagine con intestazioni CSP (`connect-src 'self'`, `img-src 'self'`); il renderer Markdown parte dal testo già
+  «escaped», non carica immagini esterne (un'AI potrebbe usarle per far uscire dati nell'indirizzo) e apre i
+  collegamenti a parte.
+- Chiavi sempre oscurate nella Glass Window; la chiave inserita da un dispositivo viaggia solo con le sue richieste e il
+  server non la salva.
+- L'istruzione al modello sulle etichette usa un esempio non ripristinabile (`[CATEGORIA_N]`) e compare solo quando la
+  richiesta contiene etichette; il ripristino resta limitato alle corrispondenze della richiesta.
+- La cache dell'anonimizzazione (impronta delle impostazioni e del testo) si svuota con il Vault. Dalla rete ogni
+  dispositivo o utente può avere al massimo 3 richieste dell'Harness in corso (429 oltre il limite) e solo chi ha avviato
+  una richiesta può interromperla o confermarla.
+
+### Modificato
+- Niente più selettore Semplice / Avanzata e niente più Studio AI: l'Harness lo sostituisce, i controlli dettagliati
+  sono nelle sezioni delle Impostazioni (Modalità e rete, Protezione e modelli, AI chiavi e Harness, Proxy e API,
+  Sistema e registro, Aggiornamenti, Informazioni).
+- Il Proxy legge gli stream SSE in modo incrementale anche quando il servizio non usa il chunked encoding: i frammenti
+  arrivano subito all'editor (prima si attendeva la fine).
+- Guida, README, LEGGIMI e CHANGELOG aggiornati; `VERSION` → `0.70`.
+
 ## [0.60] - 2026-10-25
 Germano diventa una **vera applicazione desktop**, distribuita con **installer in un solo file** per Windows, macOS e
 Linux che contengono tutto il necessario e **non scaricano nulla da Internet**. Un solo programma, **`Germano`**
@@ -541,7 +643,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
   - **Proxy API Bidirezionale Automatico per Harness AI (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`)**: Integrazione nativa trasparente con **Google Antigravity**, **OpenAI Codex CLI**, **Cursor**, **Windsurf**, **Claude Code** e **OpenCode**. Il Proxy anonimizza i messaggi e i file in uscita verso il Cloud e **rimette automaticamente al loro posto tutti i dati veri** nelle risposte e negli argomenti `tool_calls` (`write_file`, `edit_file`, `apply_patch`) di ritorno dall'AI, incluso il supporto **Streaming SSE con buffer di ricomposizione (`StreamTagBuffer`)** per i tag spezzati tra più token.
   - **Riconoscimento Automatico nella Cartella Interna `input/` e Dropzone**: Caricando un file o incollando un testo contenente etichette del Vault nella Dropzone o nella cartella `input/`, Germano lo riconosce automaticamente e ripristina i dati originali.
 - **Eliminazione Totale Dipendenze CDN Esterne**: Rimossi tutti i riferimenti a `cdnjs.cloudflare.com` (FontAwesome) e `fonts.googleapis.com` (Google Fonts) da `templates/index.html` e `static/style.css`. Tutte le icone sono ora **SVG/ vettoriali native** e la tipografia utilizza lo stack nativo di Windows 11 (`Segoe UI Variable Display`, `Cascadia Mono`, `Consolas`).
-- **Pulsante e Manuale Offline Completo Bilingue (`/guide` & `GUIDA_OFFLINE.html`)**: Aggiunto nella testata della dashboard il pulsante *"📖 Guida & Docs"* che apre la guida offline bilingue (italiano e inglese commutabile all'istante). La guida illustra dapprima i concetti base a prova di errore della Modalità Semplice e il funzionamento delle 5 cartelle interne (`input`, `output`, `processed`, `failed`, `extracted`), prosegue con i controlli dettagliati della Modalità Avanzata (i 7 modelli IA locali e le 18 categorie granulari), e contiene le specifiche complete delle API REST e le istruzioni passo-passo per il Proxy con Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf e Claude Code.
+- **Pulsante e Manuale Offline Completo Bilingue (`/guide` & `GUIDA_OFFLINE.html`)**: Aggiunto nella testata della dashboard il pulsante *"Guida & Docs"* che apre la guida offline bilingue (italiano e inglese commutabile all'istante). La guida illustra dapprima i concetti base a prova di errore della Modalità Semplice e il funzionamento delle 5 cartelle interne (`input`, `output`, `processed`, `failed`, `extracted`), prosegue con i controlli dettagliati della Modalità Avanzata (i 7 modelli IA locali e le 18 categorie granulari), e contiene le specifiche complete delle API REST e le istruzioni passo-passo per il Proxy con Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf e Claude Code.
 
 ### Pre-Distribution Bug Audit & Certificazione Windows 11 Home 100% Offline (Air-Gapped)
 - **Escape del Titolo Finestra in `Germano.exe`**: Sostituito `&` con `^&` in `TITLE Germano AI v0.50-alpha - Local Privacy Engine ^& API Proxy` per prevenire l'errore di sintassi della shell `cmd.exe` (`'API' non è riconosciuto come comando interno o esterno`) al doppio clic dell'utente.

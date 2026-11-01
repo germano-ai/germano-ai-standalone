@@ -1,7 +1,7 @@
-# Germano AI 0.60 — Suite completa per macOS
+# Germano AI 0.70 — Suite completa per macOS
 
 ## Installazione
-Scarica **`germano-0.60.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
+Scarica **`germano-0.70.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
 **macOS 14 Sonoma** o successivo: PyTorch non è più pubblicato per i Mac Intel, che usano il client leggero) e fai
 doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, i 6 modelli IA) e non scarica nulla.
 Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza
@@ -11,15 +11,23 @@ sicurezza** e scegli **Apri comunque**.
 
 ## Come si usa
 Apri **Germano** da Launchpad o dalla cartella Applicazioni: si apre una **finestra dedicata** (WebKit di sistema,
-niente terminale né browser) con la **Dashboard unificata** (Standalone, Server LAN, Client). La **X rossa** (o ⌘Q)
-chiude tutto: finestra, server e motore IA. Nella sezione **Cartelle di lavoro** quattro riquadri (`input`, `output`,
-`processed`, `failed`) mostrano in tempo reale i file di ogni cartella, con il percorso completo sopra: trascina i
-documenti sul riquadro **input**; un clic su un riquadro apre la cartella nel Finder.
+niente terminale né browser) che si presenta come un **harness AI**. La **X rossa** (o ⌘Q) chiude tutto: finestra,
+server e motore IA.
+
+- **🧠 Harness AI** (scheda predefinita): scrivi alla tua AI e scegli il modello **in basso a destra** (solo le AI
+  rilevate: Claude Code, i modelli di Ollama, LM Studio e Jan, i servizi via API con una chiave); Germano oscura i dati
+  personali prima dell'invio e li rimette nella risposta. La **Glass Window** mostra in tempo reale tutto ciò che viene
+  comunicato al modello e **Interrompi operazione** ferma tutto.
+- **📂 Sanitizzazione Manuale & Vault**: quattro riquadri (`input`, `output`, `processed`, `failed`) mostrano in tempo
+  reale i file di ogni cartella, con il percorso completo sopra: trascina i documenti sul riquadro **input**; un clic su
+  un riquadro apre la cartella nel Finder.
+- **⚙️ Impostazioni** (modalità Standalone, Server LAN, Client e tutte le opzioni) e **📖 Guida**.
 
 In modalità **Server** gli altri computer, tablet e smartphone della rete usano dal browser, senza installare nulla, il
-**Remote Control** (`http://<IP-di-questo-Mac>:8181/`): le AI di questo computer filtrate da Germano, la chat protetta
-con allegati, proteggi e ripristina, le opzioni (bloccate con il profilo PA). Di base l'accesso è libero; con la
-gestione utenti (Impostazioni › Accesso dalla rete) servono utente e password. Alla prima attivazione macOS può
+**Remote Control** (`http://<IP-di-questo-Mac>:8181/`) con la stessa interfaccia: Harness AI con le AI di questo
+computer filtrate da Germano e la Glass Window, sanitizzazione manuale di file e testi, opzioni (bloccate con il profilo
+PA). Di base l'accesso è libero; con la gestione utenti (Impostazioni › Modalità e rete › Accesso dalla rete) servono
+utente e password. Alla prima attivazione macOS può
 chiedere di consentire le connessioni in entrata a Python: rispondi **Consenti**.
 
 ## Dati e privacy
@@ -28,8 +36,10 @@ chiedere di consentire le connessioni in entrata a Python: rispondi **Consenti**
 - Il **Vault** è `extracted/deanonymize_vault.json`: file locale **non cifrato**, da proteggere come i documenti
   originali.
 - File tecnici in `~/Library/Application Support/Germano AI`.
-- Aggiornamenti: dalla Dashboard; il nuovo `germano-<versione>.pkg` si scarica da https://download.germano.ai/ e si
-  apre con un doppio clic (cartelle di lavoro, Vault e impostazioni restano intatti).
+- Aggiornamenti silenziosi (attivi di default): solo quando il sistema segnala la connessione a Internet, Germano
+  controlla https://download.germano.ai/ e scarica in background il nuovo `germano-<versione>.pkg`; quando vuoi lo apri
+  con il pulsante in alto o in Impostazioni › Aggiornamenti (Installer di macOS). Cartelle di lavoro, Vault e
+  impostazioni restano intatti.
 
 ## Disinstallazione
 Trascina `Germano.app` nel Cestino; le cartelle di lavoro restano dove sono.

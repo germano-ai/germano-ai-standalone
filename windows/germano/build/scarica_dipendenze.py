@@ -1,4 +1,4 @@
-"""Scarica le dipendenze OFFLINE per Linux e macOS in germano.ai-0.60/dipendenze/<os>/:
+"""Scarica le dipendenze OFFLINE per Linux e macOS in germano.ai-0.70/dipendenze/<os>/:
 - l'interprete Python portabile (python-build-standalone, CPython 3.11 come il runtime Windows), verificato con
   l'impronta SHA256SUMS pubblicata nella release;
 - tutte le librerie (wheel binari) nelle STESSE versioni del runtime Windows collaudato, piu' quelle della finestra
@@ -27,7 +27,7 @@ import zipfile
 sys.dont_write_bytecode = True
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BUILD = os.path.dirname(os.path.abspath(__file__))
-RELEASE = os.path.abspath(os.path.join(BUILD, "..", "..", "..", ".."))           # germano.ai-0.60
+RELEASE = os.path.abspath(os.path.join(BUILD, "..", "..", "..", ".."))           # germano.ai-0.70
 WIN_RUNTIME = os.path.join(RELEASE, "dipendenze", "windows", "runtime-germano")
 WIN_CLIENT_RUNTIME = os.path.join(RELEASE, "dipendenze", "windows", "runtime-germano-client")
 PYTHON = os.path.join(WIN_RUNTIME, "python.exe")

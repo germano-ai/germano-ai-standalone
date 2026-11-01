@@ -45,8 +45,10 @@ class Ctx:
     def child(self):
         if self.depth + 1 > MAX_DEPTH:
             raise ProcessingError("Troppi livelli di file annidati (archivi/allegati).")
-        return Ctx(self.mode, self.settings, self.engine, self.vault, self.tag_map, self.cancel, self.progress,
-                   self.depth + 1, self.audit, self.notes, self.propagator)
+        c = Ctx(self.mode, self.settings, self.engine, self.vault, self.tag_map, self.cancel, self.progress,
+                self.depth + 1, self.audit, self.notes, self.propagator)
+        c.label_override = getattr(self, "label_override", None)   # es. ████ anche negli allegati annidati
+        return c
 
     # -------------------------------------------------------------- analisi
     def analyze(self, units, batch_context=True):

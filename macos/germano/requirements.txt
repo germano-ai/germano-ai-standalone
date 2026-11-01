@@ -1,5 +1,5 @@
-# Germano AI 0.60 - librerie Python del programma, per chi lo esegue dai sorgenti (Python 3.11, Apple Silicon).
-# Il pacchetto germano-0.60.pkg le include gia' tutte con il proprio Python: per usare Germano non serve installarle.
+# Germano AI 0.70 - librerie Python del programma, per chi lo esegue dai sorgenti (Python 3.11, Apple Silicon).
+# Il pacchetto germano-0.70.pkg le include gia' tutte con il proprio Python: per usare Germano non serve installarle.
 # Stesse versioni collaudate nel pacchetto (pip install -r requirements.txt). PyTorch non pubblica piu' torch per
 # i Mac Intel: la suite richiede Apple Silicon (M1 o successivo) e macOS 14 o successivo.
 Flask==3.1.3

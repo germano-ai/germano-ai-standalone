@@ -1,4 +1,4 @@
-"""Germano AI v0.60 - launcher come APPLICAZIONE DESKTOP (niente finestra nera di console, niente browser con barra URL).
+"""Germano AI v0.70 - launcher come APPLICAZIONE DESKTOP (niente finestra nera di console, niente browser con barra URL).
 
 NON cambia l'architettura: avvia lo stesso server Flask (server.py) o il pannello del client (client_ui.py) in un
 sottoprocesso, attende che sia pronto e apre l'interfaccia in una FINESTRA DEDICATA, con la X rossa e titolo/icona
@@ -756,18 +756,19 @@ def main():
     else:
         run_kwargs["start_new_session"] = True
 
-    # Aggiornamento già scaricato (installer di download.germano.ai): si installa prima di avviare; l'installer
-    # chiude e riapre Germano da solo a installazione finita (stessa posizione usata da germano/updater.py).
+    # Aggiornamenti silenziosi, come Chrome (germano/updater.py, client_updater.py): la nuova versione già preparata
+    # prende il posto di quella in uso prima di avviare, senza finestre; l'installer riapre Germano da solo dopo pochi
+    # secondi. Se non è ancora pronta Germano si apre normalmente e la preparazione prosegue in background.
     # Senza finestra no: la riapertura avverrebbe con la finestra e senza le opzioni di questo avvio.
     update_ready = os.path.join(APP_DIR if PORTABLE else TECH_DIR, "update", "ready.json")
-    if HEADLESS and not IS_CLIENT and os.path.isfile(update_ready):
-        log("aggiornamento pronto: si installa al prossimo avvio con la finestra (o dalla Dashboard).")
-    elif not IS_CLIENT and os.path.isfile(update_ready):
-        log("aggiornamento pronto: avvio dell'installazione prima di aprire Germano.")
-        rc = subprocess.run([_interpreter(), "-B", os.path.join(APP_DIR, "server.py"), "--install-update"],
-                            **run_kwargs).returncode
+    updater_script = os.path.join(APP_DIR, "client_updater.py" if IS_CLIENT else "server.py")
+    if HEADLESS and os.path.isfile(update_ready):
+        log("aggiornamento pronto: si installa al prossimo avvio con la finestra (o dalle Impostazioni).")
+    elif os.path.isfile(update_ready) and os.path.isfile(updater_script):
+        log("aggiornamento pronto: controllo se si può applicare in silenzio prima di aprire Germano.")
+        rc = subprocess.run([_interpreter(), "-B", updater_script, "--install-update"], **run_kwargs).returncode
         if rc == UPDATE_EXIT_CODE:
-            log("installazione dell'aggiornamento avviata: Germano si riaprirà da solo.")
+            log("aggiornamento silenzioso avviato: Germano si riaprirà da solo tra pochi secondi.")
             return 0
 
     port = _free_port(default_port)

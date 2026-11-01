@@ -1,5 +1,5 @@
 #!/bin/bash
-# Germano AI v0.60 - avvio su Linux (finestra dedicata, nessun terminale). Un solo lanciatore per tutti i pacchetti:
+# Germano AI v0.70 - avvio su Linux (finestra dedicata, nessun terminale). Un solo lanciatore per tutti i pacchetti:
 # la suite completa apre la Dashboard unificata, il pacchetto client il pannello. Installato con il pacchetto .deb il
 # programma usa sempre il proprio Python (runtime/); solo la copia di sviluppo ripiega sul python3 del sistema.
 DIR="$(cd "$(dirname "$0")" && pwd)"

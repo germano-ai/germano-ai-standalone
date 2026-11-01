@@ -39,6 +39,10 @@ _MEDIA_EXT = {
     "application/rtf": ".rtf", "text/xml": ".xml", "application/xml": ".xml",
 }
 _DATA_URL_RE = re.compile(r"^data:([\w.+\-]+/[\w.+\-]+)?((?:;[\w\-]+=[^;,]*)*)(;base64)?,(.*)$", re.S)
+# Riga tecnica di attribuzione che Claude Code mette nel prompt di sistema (versione, punto d'ingresso, impronta): non
+# contiene dati personali e non va alterata (il servizio la usa per riconoscere il client). Solo la forma esatta,
+# valori fatti di lettere, cifre, punti e trattini: qualsiasi altro testo viene anonimizzato come sempre.
+_ATTRIBUTION_RE = re.compile(r"^x-anthropic-billing-header:(?: ?[a-z_]{1,40}=[\w.\-]{0,80};?){1,12}\s*$")
 
 
 class Job:
@@ -109,6 +113,9 @@ def _walk(node, job):
     t = node.get("type")
     if t in _SKIP_BLOCK_TYPES:
         return  # testo generato dal modello (gia' con etichette) e firmato: non va modificato
+    if t == "text" and isinstance(node.get("text"), str) and len(node["text"]) < 600 \
+            and _ATTRIBUTION_RE.match(node["text"]):
+        return  # riga di attribuzione di Claude Code (nessun dato personale)
     if t in ("input_audio", "audio"):
         raise ProxyBlock("Contenuti audio non anonimizzabili (voce = dato biometrico): richiesta bloccata.", 415)
     handled = set()

@@ -1,4 +1,4 @@
-"""Installer di Germano AI 0.60 per Windows, senza console.
+"""Installer di Germano AI 0.70 per Windows, senza console.
 
 Si distribuisce come UN SOLO FILE, germano-<versione>.exe (germano-client-<versione>.exe per il client): un piccolo
 avviatore che estrae in una cartella temporanea l'interprete Python minimo e questo script, che a sua volta legge
@@ -32,13 +32,23 @@ mostra subito una schermata di avvio (richiesta UAC, estrazione), che poi si chi
 un piccolo avviatore (pochi KB), così Windows non deve prima verificare l'intero file da 3 GB.
 Nessuna nota sul firewall: la regola si crea in silenzio e l'esito resta nel registro.
 
-Uso:  germano-0.60.exe [opzioni]           (installer in un solo file)
+Aggiornamenti silenziosi (0.70, come Google Chrome), avviati da Germano senza alcuna finestra:
+- --update --silent --stage: copia la nuova versione accanto a quella in uso («Germano AI.nuovo») con la priorita'
+  minima, mentre Germano resta aperto; non tocca nient'altro (programma, collegamenti, registro);
+- --update --silent --apply-staged: al riavvio di Germano controlla che la copia preparata sia completa (ogni file
+  con la sua dimensione), chiude Germano, la mette al posto di quella in uso in pochi secondi e riapre Germano; se
+  la copia manca o e' incompleta installa per intero dall'archivio.
+
+Uso:  germano-0.70.exe [opzioni]           (installer in un solo file)
       Germano.exe --uninstall [opzioni]    (disinstallazione del programma installato)
 Opzioni: --silent (nessuna finestra)  --update (aggiornamento avviato da Germano: niente conferma, Germano si chiude
-         e si riapre da solo)  --result FILE (esito in JSON)  --data-dir CARTELLA  --no-desktop  --remove-data
+         e si riapre da solo)  --stage / --apply-staged (aggiornamento silenzioso in due tempi, vedi sopra)
+         --result FILE (esito in JSON)  --data-dir CARTELLA  --no-desktop  --remove-data
          --lang it|en; passate dall'avviatore: --launch-file=FILE (dove scrivere il programma da aprire alla fine)
          --user-context=FILE (cartelle e SID dell'utente)  --elevated (copia con i permessi di amministratore)
-Collaudo senza richiesta UAC: variabile GERMANO_SETUP_NO_ELEVATION=1 (la regola del firewall non viene creata).
+Collaudo senza richiesta UAC: variabile GERMANO_SETUP_NO_ELEVATION=1 (la regola del firewall non viene creata);
+collaudo in cartelle temporanee anche per gli aggiornamenti: GERMANO_SETUP_USER_CONTEXT=FILE (stesso formato di
+--user-context). Negli aggiornamenti il collegamento sul Desktop tolto dall'utente non viene ricreato.
 Codici di uscita: 0 riuscito, 1 errore, 2 annullato, 3 Germano è aperto (solo con --silent).
 """
 import ctypes
@@ -113,7 +123,10 @@ def _arg_value(name):
 
 
 LAUNCH_FILE = _arg_value("--launch-file")      # l'avviatore apre il programma scritto qui (con i permessi normali)
-USER_CTX = _read_json(_arg_value("--user-context")) if _arg_value("--user-context") else {}
+# Solo collaudi: GERMANO_SETUP_USER_CONTEXT indica un file di contesto (cartelle temporanee) anche agli installer
+# avviati da Germano per gli aggiornamenti silenziosi, che non ricevono --user-context: il profilo reale non si tocca.
+_CTX_FILE = _arg_value("--user-context") or os.environ.get("GERMANO_SETUP_USER_CONTEXT")
+USER_CTX = _read_json(_CTX_FILE) if _CTX_FILE else {}
 
 
 def _language():
@@ -159,9 +172,9 @@ def version():
         return str(SETUP["version"])
     try:
         with open(os.path.join(HERE, "VERSION"), encoding="utf-8-sig") as f:
-            return f.read().strip() or "0.60"
+            return f.read().strip() or "0.70"
     except OSError:
-        return "0.60"
+        return "0.70"
 
 
 def icon_file():
@@ -738,13 +751,14 @@ def write_data_readme(data):
         f.write(text)
 
 
-def write_result(path, status, plan, error=None):
-    """Esito per Germano (modalità aggiornamento): letto all'avvio successivo e mostrato nella Dashboard."""
+def write_result(path, status, plan, error=None, **extra):
+    """Esito per Germano (modalità aggiornamento): letto all'avvio successivo e mostrato nelle Impostazioni
+    (con --stage: «staged» e la cartella della copia preparata)."""
     if not path:
         return
     data = {"status": status, "from": plan.get("previous") or "", "target": plan["version"],
             "to": plan["version"] if status == "ok" else (plan.get("previous") or ""), "error": error,
-            "time": time.time()}
+            "time": time.time(), **{k: v for k, v in extra.items() if v is not None}}
     try:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path + ".tmp", "w", encoding="utf-8") as f:
@@ -930,11 +944,15 @@ def make_plan(opts, source):
     else:
         data = os.path.join(docs, DATA_FOLDER)
     installed = bool(previous) or os.path.isfile(os.path.join(app, "Germano.exe"))
+    no_desktop = bool(opts.get("no_desktop"))
+    if not no_desktop and opts.get("update") and installed:
+        # aggiornamento (anche silenzioso): come Chrome, non si ricrea il collegamento sul Desktop tolto dall'utente
+        no_desktop = not os.path.exists(os.path.join(known_folder("Desktop"), SHORTCUT))
     return {"version": ver, "previous": (previous.get("DisplayVersion") or info.get("version") or "?") if installed
             else None, "app": app, "staging": app + ".nuovo", "old": app + ".vecchio", "tech": tech,
             "data": os.path.normpath(data), "cloud": cloud, "source": source, "files": source.files,
             "total": source.total, "longest": source.longest, "firewall_before": bool(info.get("firewall")),
-            "suite_installed": not SUITE and bool(read_registry(SUITE_REG_KEY)), "no_desktop": opts.get("no_desktop")}
+            "suite_installed": not SUITE and bool(read_registry(SUITE_REG_KEY)), "no_desktop": no_desktop}
 
 
 def plan_problem(plan):
@@ -965,9 +983,14 @@ def plan_problem(plan):
     return None
 
 
+STAGED_MARKER = "germano_staged.json"
+
+
 class InstallJob:
     """L'installazione vera e propria (in un thread quando c'è la finestra): file in una cartella nuova, poi
-    sostituzione istantanea della versione precedente, dati, collegamenti, registro e, se richiesto, firewall."""
+    sostituzione istantanea della versione precedente, dati, collegamenti, registro e, se richiesto, firewall.
+    Aggiornamenti silenziosi (0.70, come Chrome): stage_only copia la nuova versione nella cartella nuova e si ferma
+    (Germano resta aperto e intatto); use_staged riusa quella copia, se completa, e fa solo la sostituzione."""
 
     def __init__(self, plan):
         self.plan = plan
@@ -981,6 +1004,27 @@ class InstallJob:
         self.changed = False
         self.error = ""
         self.hwnd = None
+        self.stage_only = False       # --stage: prepara la nuova versione accanto a quella in uso, nient'altro
+        self.use_staged = False       # --apply-staged: usa la copia preparata (se completa) e sostituisci
+
+    def staged_copy_valid(self):
+        """La copia preparata in background è della stessa edizione e versione e contiene TUTTI i file del
+        programma con la dimensione giusta? (Altrimenti si installa per intero dall'archivio.)"""
+        p = self.plan
+        marker = _read_json(os.path.join(p["staging"], STAGED_MARKER))
+        if (marker.get("edition") != EDITION or marker.get("version") != p["version"]
+                or marker.get("files") != len(p["files"]) or marker.get("bytes") != p["total"]):
+            log(f"copia preparata assente o diversa ({marker or 'nessun contrassegno'}): installazione completa")
+            return False
+        for item in p["files"]:
+            dst = os.path.join(p["staging"], item[1])
+            try:
+                if os.path.getsize(dst) != item[2]:
+                    raise OSError("dimensione diversa")
+            except OSError as e:
+                log(f"copia preparata incompleta ({item[1]}: {e}): installazione completa")
+                return False
+        return True
 
     def start(self):
         threading.Thread(target=self.run, daemon=True).start()
@@ -1003,7 +1047,8 @@ class InstallJob:
             self.error = str(e) if isinstance(e, SetupError) else f"{type(e).__name__}: {e}"
             self.phase = "error"
         finally:
-            if os.path.isdir(self.plan["staging"]):
+            keep = self.stage_only and self.phase == "done"     # copia preparata: resta per il riavvio
+            if os.path.isdir(self.plan["staging"]) and not keep:
                 remove_tree(self.plan["staging"])
             if com:
                 ole32_void.CoUninitialize()
@@ -1012,8 +1057,11 @@ class InstallJob:
         p = self.plan
         log(f"installazione {PRODUCT} {p['version']} (precedente: {p['previous']}): origine="
             f"{getattr(p['source'], 'exe', None) or getattr(p['source'], 'folder', '')} programma={p['app']} "
-            f"dati={p['data']} tecnici={p['tech']} file={len(p['files'])} byte={p['total']}")
-        if self.close_first:
+            f"dati={p['data']} tecnici={p['tech']} file={len(p['files'])} byte={p['total']}"
+            + (" [preparazione in background]" if self.stage_only else "")
+            + (" [sostituzione con la copia preparata]" if self.use_staged else ""))
+        staged = self.use_staged and not self.stage_only and self.staged_copy_valid()
+        if self.close_first and not self.stage_only and not staged:
             self.phase = "closing"
             if not close_germano(p["app"], p["tech"]):
                 raise SetupError(T("Non è stato possibile chiudere Germano AI. Chiudilo e riprova.",
@@ -1021,19 +1069,35 @@ class InstallJob:
         if self.cancel:
             raise Cancelled
         self.phase = "copy"
-        for leftover in (p["staging"], p["old"]):
+        for leftover in ((p["old"],) if staged else (p["staging"], p["old"])):
             if os.path.isdir(leftover) and not remove_tree(leftover):
                 raise SetupError(T(f"Impossibile eliminare la cartella {leftover} rimasta da un'installazione "
                                    "precedente.", f"Cannot delete the folder {leftover} left by a previous setup."))
-        for item in p["files"]:
+        if staged:
+            self.files_done, self.bytes_done = len(p["files"]), p["total"]
+            log(f"uso la copia preparata in background: {p['staging']}")
+        else:
+            for item in p["files"]:
+                if self.cancel:
+                    raise Cancelled
+                p["source"].install(item, os.path.join(p["staging"], item[1]))
+                self.files_done += 1
+                self.bytes_done += item[2]
             if self.cancel:
                 raise Cancelled
-            p["source"].install(item, os.path.join(p["staging"], item[1]))
-            self.files_done += 1
-            self.bytes_done += item[2]
-        if self.cancel:
-            raise Cancelled
-        log(f"installati {self.files_done} file ({self.bytes_done} byte) nella cartella provvisoria")
+            log(f"installati {self.files_done} file ({self.bytes_done} byte) nella cartella provvisoria")
+        if self.stage_only:
+            with open(os.path.join(p["staging"], STAGED_MARKER), "w", encoding="utf-8") as f:
+                json.dump({"edition": EDITION, "version": p["version"], "previous": p["previous"],
+                           "files": len(p["files"]), "bytes": p["total"], "staged_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                           "source": getattr(p["source"], "exe", None) or ""}, f, ensure_ascii=False, indent=2)
+            log("nuova versione preparata: si applichera' al prossimo avvio di Germano (o con «Riavvia per aggiornare»)")
+            return
+        if staged and self.close_first:
+            self.phase = "closing"        # solo ora, a copia gia' pronta: Germano resta chiuso per pochi secondi
+            if not close_germano(p["app"], p["tech"]):
+                raise SetupError(T("Non è stato possibile chiudere Germano AI. Chiudilo e riprova.",
+                                   "Germano AI could not be closed. Close it and try again."))
 
         self.phase = "final"
         if os.path.isdir(p["app"]):
@@ -1053,6 +1117,10 @@ class InstallJob:
                 rename_retry(p["old"], p["app"])
             raise
         self.changed = True
+        try:
+            os.remove(os.path.join(p["app"], STAGED_MARKER))   # contrassegno della copia preparata: non serve piu'
+        except OSError:
+            pass
         if os.path.isdir(p["old"]) and not remove_tree(p["old"]):
             schedule_removal(p["old"])
 
@@ -1215,6 +1283,9 @@ class UninstallJob:
             self.phase = "remove"
         if os.path.normcase(self.tech) != os.path.normcase(self.app) and not remove_tree(self.tech):
             schedule_removal(self.tech)
+        for extra in (self.app + ".nuovo", self.app + ".vecchio"):   # aggiornamento preparato o resti di uno precedente
+            if os.path.isdir(extra) and not remove_tree(extra):
+                schedule_removal(extra)
         if SUITE and self.data and os.path.isdir(self.data):
             if self.remove_data:
                 self.phase = "data"
@@ -1679,6 +1750,16 @@ def install_ui(plan, opts):
 
 
 def install_silent(plan, opts):
+    if opts.get("stage"):
+        # preparazione in background (aggiornamenti silenziosi): Germano resta aperto, nulla dell'installazione in
+        # uso viene toccato; la nuova versione si applica al riavvio con --apply-staged
+        job = InstallJob(plan)
+        job.stage_only = True
+        job.run()
+        status = "staged" if job.phase == "done" else ("cancelled" if job.phase == "cancelled" else "error")
+        write_result(opts.get("result"), status, plan, job.error or None,
+                     staging=plan["staging"] if status == "staged" else None)
+        return 0 if status == "staged" else 1
     if germano_running(plan["app"], plan["tech"]) and not opts.get("update"):
         log("Germano AI è aperto: installazione silenziosa non eseguita")
         write_result(opts.get("result"), "error", plan, "Germano AI è aperto")
@@ -1686,6 +1767,7 @@ def install_silent(plan, opts):
     job = InstallJob(plan)
     job.firewall = SUITE
     job.close_first = bool(opts.get("update"))
+    job.use_staged = bool(opts.get("apply_staged"))
     job.run()
     status = {"done": "ok", "cancelled": "cancelled"}.get(job.phase, "error")
     write_result(opts.get("result"), status, plan, job.error or None)
@@ -1876,7 +1958,20 @@ def main():
     action = args[0] if args and args[0] in ("install", "uninstall") else "install"
     SILENT = "--silent" in args
     opts = {"no_desktop": "--no-desktop" in args, "remove_data": "--remove-data" in args, "update": "--update" in args,
-            "data_dir": _arg_value("--data-dir"), "payload": _arg_value("--payload"), "result": _arg_value("--result")}
+            "data_dir": _arg_value("--data-dir"), "payload": _arg_value("--payload"), "result": _arg_value("--result"),
+            "stage": "--stage" in args, "apply_staged": "--apply-staged" in args}
+    if opts["stage"]:
+        SILENT = True        # la preparazione in background non mostra mai finestre
+        try:                 # priorita' minima: processore, disco e memoria restano prima a Germano e all'utente
+            k32 = ctypes.WinDLL("kernel32")
+            k32.GetCurrentProcess.restype = wintypes.HANDLE
+            k32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            # disco e memoria a priorita' di background (entrando in questa modalita' la classe torna NORMALE) ...
+            k32.SetPriorityClass(k32.GetCurrentProcess(), 0x00100000)     # PROCESS_MODE_BACKGROUND_BEGIN
+            # ... poi processore al minimo per la decompressione (la classe IDLE dell'avviatore non passa qui)
+            k32.SetPriorityClass(k32.GetCurrentProcess(), 0x00000040)     # IDLE_PRIORITY_CLASS
+        except Exception:
+            pass
     log(f"===== {action} {' '.join(args[1:])} (lingua {LANG}, script {HERE}, amministratore: {is_admin()})")
     try:
         ole32.CoInitializeEx(None, 0x2 | 0x4)

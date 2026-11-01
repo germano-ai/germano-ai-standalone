@@ -3,27 +3,52 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#102a4c">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0f19">
 <meta name="referrer" content="no-referrer">
 <title>Germano AI · Remote Control</title>
 <link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="stylesheet" href="/static/harness.css?v={{ version }}">
 <link rel="stylesheet" href="/static/remote.css?v={{ version }}">
 </head>
-<body>
+<body data-tab="harness">
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-vault" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M12 8v1M12 15v1M8 12h1M15 12h1"/></symbol>
+    <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/><circle cx="9" cy="13" r="1.2"/><circle cx="15" cy="13" r="1.2"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+</svg>
 <header class="rc-top">
     <div class="rc-brand">
         <img src="/favicon.ico" alt="" width="28" height="28">
-        <div>
+        <div class="rc-brand-text">
             <strong>Germano AI</strong>
             <span class="rc-sub" id="rcSub">Remote Control</span>
         </div>
     </div>
-    <div class="rc-server" id="rcServer" aria-live="polite">
-        <span class="rc-dot" id="rcDot"></span><span id="rcServerText">…</span>
-    </div>
+    <nav class="rc-tabs" role="tablist" id="rcTabs" hidden>
+        <button type="button" role="tab" data-tab="harness" aria-selected="true" title="Chatbot e Agenti AI"><svg class="icon tab-svg" aria-hidden="true" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><use href="#i-bot"/></svg><span data-en="AI Chatbot &amp; Agents">Chatbot e Agenti AI</span></button>
+        <button type="button" role="tab" data-tab="sanitize" aria-selected="false" title="Sanitizzazione Manuale &amp; Vault"><svg class="icon tab-svg" aria-hidden="true" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><use href="#i-vault"/></svg><span data-en="Manual Sanitization &amp; Vault">Sanitizzazione Manuale &amp; Vault</span></button>
+        <button type="button" role="tab" data-tab="settings" aria-selected="false" title="Impostazioni"><svg class="icon tab-svg" aria-hidden="true" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><use href="#i-gear"/></svg><span data-en="Settings">Impostazioni</span><span class="rc-tab-dot" id="rcSettingsDot" hidden></span></button>
+        <button type="button" role="tab" data-tab="guide" aria-selected="false" title="Guida"><svg class="icon tab-svg" aria-hidden="true" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;"><use href="#i-book"/></svg><span data-en="Guide">Guida</span></button>
+    </nav>
     <div class="rc-actions">
+        <div class="rc-update-wrap" id="rcUpdateWrap" hidden>
+            <button type="button" class="rc-update-pill" id="rcUpdatePill"><span aria-hidden="true">⟳</span><span id="rcUpdatePillText" data-en="Restart to update">Riavvia per aggiornare</span></button>
+            <div class="rc-update-pop" id="rcUpdatePop" hidden>
+                <strong id="rcUpdatePopTitle"></strong>
+                <p id="rcUpdatePopText"></p>
+                <div class="rc-row"><button type="button" class="rc-btn" id="rcUpdateRestart" data-en="Restart now">Riavvia ora</button>
+                    <button type="button" class="rc-btn rc-btn-sec" id="rcUpdateLater" data-en="Later">Più tardi</button></div>
+            </div>
+        </div>
+        <div class="rc-server" id="rcServer" aria-live="polite">
+            <span class="rc-dot" id="rcDot"></span><span id="rcServerText">…</span>
+        </div>
         <span class="rc-badge" id="rcProfile" hidden></span>
-        <button type="button" class="rc-chip" id="rcConnectBtn" hidden data-en="Server">Server</button>
         <div class="rc-lang" role="group" aria-label="Lingua">
             <button type="button" id="rcIt" aria-pressed="true">IT</button>
             <button type="button" id="rcEn" aria-pressed="false">EN</button>
@@ -35,163 +60,210 @@
 <div class="rc-banner" id="rcBanner" role="status" hidden></div>
 
 <main class="rc-main">
-    <!-- Germano Client: collegamento al server (solo nel client installato) -->
-    <section class="rc-card rc-connect" id="rcClientServer" hidden>
-        <h2 data-en="Germano Server">Germano Server</h2>
-        <p class="rc-muted" data-en="Address of the Germano Server on your local network (empty = automatic search).">Indirizzo del Germano Server della tua rete locale (vuoto = ricerca automatica).</p>
-        <div class="rc-row">
-            <input type="text" id="rcServerAddr" class="rc-input" spellcheck="false" placeholder="192.168.1.10:8181">
-            <button type="button" class="rc-btn" id="rcServerSave" data-en="Save">Salva</button>
-            <button type="button" class="rc-btn rc-btn-sec" id="rcServerFind" data-en="Search the network">Cerca in rete</button>
+    <!-- Germano Client: collegamento al server (solo nel client installato, quando il server non risponde) -->
+    <section class="rc-center" id="rcClientServerGate" hidden>
+        <div class="rc-card rc-gate">
+            <h1 data-en="Connect to the Germano Server">Collegati al Germano Server</h1>
+            <p class="rc-muted" data-en="Germano Client uses the AI Chatbot &amp; Agents and the engine of a Germano Server on your local network. Enter its address (or leave it empty for the automatic search).">Germano Client usa i Chatbot e Agenti AI e il motore di un Germano Server della tua rete locale. Scrivi il suo indirizzo (oppure lascialo vuoto per la ricerca automatica).</p>
+            <div class="rc-row">
+                <input type="text" id="rcGateAddr" class="rc-input" spellcheck="false" placeholder="192.168.1.10:8181">
+                <button type="button" class="rc-btn" id="rcGateSave" data-en="Connect">Collega</button>
+                <button type="button" class="rc-btn rc-btn-sec" id="rcGateFind" data-en="Search the network">Cerca in rete</button>
+            </div>
+            <div id="rcGateList" class="rc-list"></div>
         </div>
-        <div id="rcServerList" class="rc-list"></div>
     </section>
 
     <!-- Accesso (gestione utenti attiva sul server) -->
-    <section class="rc-card rc-login" id="rcLogin" hidden>
-        <h1 data-en="Sign in">Accedi</h1>
-        <p class="rc-muted" data-en="User management is enabled on this Germano Server: sign in with the user name and password set by the administrator.">Su questo Germano Server la gestione utenti è attiva: accedi con l'utente e la password impostati dall'amministratore.</p>
-        <form id="rcLoginForm" autocomplete="on">
-            <label class="rc-field"><span data-en="User name">Utente</span>
-                <input type="text" id="rcLoginUser" class="rc-input" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
-            <label class="rc-field"><span>Password</span>
-                <input type="password" id="rcLoginPass" class="rc-input" autocomplete="current-password" required></label>
-            <button type="submit" class="rc-btn rc-btn-wide" id="rcLoginBtn" data-en="Sign in">Accedi</button>
-            <p class="rc-error" id="rcLoginError" role="alert"></p>
-        </form>
-        <p class="rc-note" data-en="On the local network the connection is not encrypted (HTTP): use Germano on trusted networks only.">In rete locale il collegamento non è cifrato (HTTP): usa Germano solo su reti fidate.</p>
+    <section class="rc-center" id="rcLogin" hidden>
+        <div class="rc-card rc-login">
+            <div class="rc-login-logo" aria-hidden="true"><svg class="icon" aria-hidden="true" style="width:36px;height:36px;stroke:var(--accent);fill:none;stroke-width:2;"><use href="#i-shield"/></svg></div>
+            <h1 data-en="Sign in">Accedi</h1>
+            <p class="rc-muted" data-en="User management is enabled on this Germano Server: sign in with the user name and password set by the administrator.">Su questo Germano Server la gestione utenti è attiva: accedi con l'utente e la password impostati dall'amministratore.</p>
+            <form id="rcLoginForm" autocomplete="on">
+                <label class="rc-field"><span data-en="User name">Utente</span>
+                    <input type="text" id="rcLoginUser" class="rc-input" autocomplete="username" autocapitalize="off" spellcheck="false" required></label>
+                <label class="rc-field"><span>Password</span>
+                    <input type="password" id="rcLoginPass" class="rc-input" autocomplete="current-password" required></label>
+                <button type="submit" class="rc-btn rc-btn-wide" id="rcLoginBtn" data-en="Sign in">Accedi</button>
+                <p class="rc-error" id="rcLoginError" role="alert"></p>
+            </form>
+            <p class="rc-note" data-en="On the local network the connection is not encrypted (HTTP): use Germano on trusted networks only.">In rete locale il collegamento non è cifrato (HTTP): usa Germano solo su reti fidate.</p>
+        </div>
     </section>
 
     <div class="rc-app" id="rcApp" hidden>
-        <nav class="rc-tabs" role="tablist">
-            <button type="button" role="tab" data-tab="ai" aria-selected="true"><span aria-hidden="true">🧠</span><span data-en="AI">AI</span></button>
-            <button type="button" role="tab" data-tab="chat"><span aria-hidden="true">💬</span><span data-en="Chat">Chat</span></button>
-            <button type="button" role="tab" data-tab="protect"><span aria-hidden="true">🛡️</span><span data-en="Protect">Proteggi</span></button>
-            <button type="button" role="tab" data-tab="options"><span aria-hidden="true">⚙️</span><span data-en="Options">Opzioni</span></button>
-            <button type="button" role="tab" data-tab="connect"><span aria-hidden="true">🔌</span><span data-en="Connect">Collega</span></button>
-        </nav>
+        <!-- ======================================================== HARNESS AI -->
+        <section class="rc-view rc-view-harness" data-view="harness">
+            <div id="harnessRoot" class="harness-root"></div>
+        </section>
 
-        <!-- AI del server -->
-        <section class="rc-tab" data-panel="ai">
+        <!-- ======================================================== SANITIZZAZIONE MANUALE -->
+        <section class="rc-view rc-scroll" data-view="sanitize" hidden>
+          <div class="rc-page">
             <div class="rc-head">
                 <div>
-                    <h2 data-en="AIs of the server">AI del server</h2>
-                    <p class="rc-muted" id="rcAiSummary"></p>
+                    <h2 data-en="Manual sanitization">Sanitizzazione manuale</h2>
+                    <p class="rc-muted" data-en="Drag files or paste a text: the Germano Server masks the personal data and gives you back the protected version, to use with any AI. The mappings stay only on this device and serve to put your data back in the answers.">Trascina dei file o incolla un testo: il Germano Server oscura i dati personali e ti restituisce la versione protetta, da usare con qualsiasi AI. Le corrispondenze restano solo su questo dispositivo e servono a rimettere i tuoi dati nelle risposte.</p>
                 </div>
-                <button type="button" class="rc-btn rc-btn-sec" id="rcAiRefresh" data-en="Refresh">Aggiorna</button>
             </div>
-            <h3 class="rc-h3" data-en="Run by the server for you">Eseguite dal server per te</h3>
-            <div class="rc-list" id="rcTools"></div>
-            <h3 class="rc-h3" data-en="AI services through Germano (API)">Servizi di AI attraverso Germano (API)</h3>
-            <p class="rc-muted" data-en="Text and attachments are anonymized by the server before leaving; the answer comes back with your data restored.">Testo e allegati vengono anonimizzati dal server prima di uscire; la risposta torna con i tuoi dati ripristinati.</p>
-            <div class="rc-list rc-grid" id="rcServices"></div>
-            <details class="rc-details" id="rcOthersBox">
-                <summary data-en="Installed on the server, not usable from here">Installate sul server, non utilizzabili da qui</summary>
-                <div class="rc-list" id="rcOthers"></div>
-            </details>
+            <div class="rc-grid-2">
+                <div class="rc-card">
+                    <h3 class="rc-h3" data-en="📄 Files">📄 File</h3>
+                    <div class="rc-drop" id="rcFileDrop" tabindex="0" role="button" aria-label="Trascina qui i file da anonimizzare">
+                        <span class="rc-drop-ico" aria-hidden="true">⬆</span>
+                        <strong data-en="Drag files here to anonymize them">Trascina qui i file da anonimizzare</strong>
+                        <span class="rc-muted" data-en="PDF, Word, Excel, PowerPoint, images, emails, text… The anonymized file keeps its format.">PDF, Word, Excel, PowerPoint, immagini, email, testo… Il file anonimizzato mantiene il suo formato.</span>
+                        <label class="rc-btn rc-btn-sec"><input type="file" id="rcFilePick" multiple hidden><span data-en="Choose files">Scegli i file</span></label>
+                    </div>
+                    <div class="rc-list" id="rcFileResults"></div>
+                    <h3 class="rc-h3" data-en="Restore a file returned by an AI">Ripristina un file restituito da un'AI</h3>
+                    <div class="rc-row">
+                        <label class="rc-btn rc-btn-sec"><input type="file" id="rcRestoreFilePick" hidden><span data-en="📎 Choose the file">📎 Scegli il file</span></label>
+                        <span class="rc-muted" id="rcRestoreFileInfo" data-en="Uses only the mappings of the data protected from this device.">Usa solo le corrispondenze dei dati protetti da questo dispositivo.</span>
+                    </div>
+                </div>
+                <div class="rc-card">
+                    <h3 class="rc-h3" data-en="✍️ Text">✍️ Testo</h3>
+                    <form id="rcProtectForm" class="rc-stack">
+                        <textarea id="rcProtText" class="rc-input" rows="5" placeholder="Testo da proteggere…" data-en-placeholder="Text to protect…"></textarea>
+                        <div class="rc-files" id="rcProtFiles"></div>
+                        <div class="rc-row">
+                            <label class="rc-btn rc-btn-sec rc-attach"><input type="file" id="rcProtAttach" multiple hidden><span data-en="📎 Attach">📎 Allega</span></label>
+                            <button type="submit" class="rc-btn" id="rcProtBtn" data-en="🛡️ Protect">🛡️ Proteggi</button>
+                        </div>
+                    </form>
+                    <div class="rc-out" id="rcProtOut" hidden>
+                        <div class="rc-meta" id="rcProtMeta"></div>
+                        <pre class="rc-pre" id="rcProtText2"></pre>
+                        <button type="button" class="rc-btn rc-btn-sec" id="rcProtCopy" data-en="Copy protected text">Copia il testo protetto</button>
+                    </div>
+                    <h3 class="rc-h3" data-en="Restore an AI answer">Ripristina la risposta di un'AI</h3>
+                    <textarea id="rcRestoreIn" class="rc-input" rows="4" placeholder="Incolla la risposta con le etichette, es. [PERSONA_1]…" data-en-placeholder="Paste the answer with the tags, e.g. [PERSONA_1]…"></textarea>
+                    <div class="rc-row"><button type="button" class="rc-btn" id="rcRestoreBtn" data-en="Restore my data">Ripristina i miei dati</button>
+                        <span class="rc-muted" id="rcRestoreInfo"></span></div>
+                    <pre class="rc-pre" id="rcRestoreOut" hidden></pre>
+                </div>
+            </div>
+          </div>
         </section>
 
-        <!-- Chat protetta -->
-        <section class="rc-tab" data-panel="chat" hidden>
-            <div class="rc-chatbar">
-                <label class="rc-field rc-grow"><span data-en="AI">AI</span>
-                    <select id="rcTarget" class="rc-input"></select></label>
-                <label class="rc-field rc-grow" id="rcModelBox"><span data-en="Model">Modello</span>
-                    <span class="rc-row rc-tight"><input type="text" id="rcModel" class="rc-input" list="rcModelList" spellcheck="false" autocapitalize="off">
-                    <button type="button" class="rc-btn rc-btn-sec" id="rcModelLoad" data-en="List">Elenca</button></span>
-                    <datalist id="rcModelList"></datalist></label>
-                <label class="rc-field rc-grow" id="rcKeyBox" hidden><span data-en="Your API key">La tua chiave API</span>
-                    <input type="password" id="rcKey" class="rc-input" autocomplete="off" spellcheck="false"></label>
-            </div>
-            <label class="rc-check" id="rcKeyRemember" hidden><input type="checkbox" id="rcKeyRememberBox">
-                <span data-en="Remember the key on this device (otherwise it is forgotten when the page is closed)">Ricorda la chiave su questo dispositivo (altrimenti si dimentica chiudendo la pagina)</span></label>
-            <div class="rc-conv" id="rcConv" aria-live="polite"></div>
-            <form class="rc-composer" id="rcComposer">
-                <div class="rc-files" id="rcFiles"></div>
-                <textarea id="rcPrompt" class="rc-input" rows="3" placeholder="Scrivi la richiesta… (i dati personali vengono oscurati dal server prima di uscire)" data-en-placeholder="Write your request… (personal data is masked by the server before leaving)"></textarea>
+        <!-- ======================================================== IMPOSTAZIONI -->
+        <section class="rc-view rc-scroll" data-view="settings" hidden>
+          <div class="rc-page">
+            <nav class="rc-subnav" id="rcSubnav">
+                <a href="#rcSecAi" data-en="AIs &amp; keys">AI e chiavi</a>
+                <a href="#rcSecOptions" data-en="Processing options">Opzioni di elaborazione</a>
+                <a href="#rcSecConnect" data-en="Connect your tools">Collega i tuoi strumenti</a>
+                <a href="#rcSecServer" class="rc-client-only" data-en="Server">Server</a>
+                <a href="#rcSecUpdates" class="rc-client-only" data-en="Updates">Aggiornamenti</a>
+            </nav>
+
+            <section class="rc-card" id="rcSecAi">
+                <div class="rc-head">
+                    <div>
+                        <h2 data-en="AIs of the server &amp; keys">AI del server e chiavi</h2>
+                        <p class="rc-muted" id="rcAiSummary"></p>
+                    </div>
+                    <button type="button" class="rc-btn rc-btn-sec" id="rcAiRefresh" data-en="Refresh">Aggiorna</button>
+                </div>
+                <h3 class="rc-h3" data-en="Run by the server for you">Eseguite dal server per te</h3>
+                <div class="rc-list" id="rcTools"></div>
+                <h3 class="rc-h3" data-en="AI services through Germano (API)">Servizi di AI attraverso Germano (API)</h3>
+                <p class="rc-muted" data-en="A service is selectable in the Harness only with a key: the server's (if shared) or yours, which stays on this device.">Un servizio si sceglie nell'Harness solo con una chiave: quella del server (se condivisa) oppure la tua, che resta su questo dispositivo.</p>
+                <div class="rc-list rc-grid" id="rcServices"></div>
+                <details class="rc-details" id="rcOthersBox">
+                    <summary data-en="Installed on the server, not usable from here">Installate sul server, non utilizzabili da qui</summary>
+                    <div class="rc-list" id="rcOthers"></div>
+                </details>
+            </section>
+
+            <section class="rc-card" id="rcSecOptions">
+                <div class="rc-head">
+                    <div>
+                        <h2 data-en="Processing options">Opzioni di elaborazione</h2>
+                        <p class="rc-muted" data-en="They apply only to your requests from this device; the server settings do not change.">Valgono solo per le tue richieste da questo dispositivo; le impostazioni del server non cambiano.</p>
+                    </div>
+                </div>
+                <div class="rc-lock" id="rcLock" hidden></div>
+                <fieldset class="rc-fieldset" id="rcOptions">
+                    <div class="rc-opt-block">
+                        <label class="rc-field"><span data-en="AI confidence threshold">Soglia di confidenza dell'IA</span>
+                            <span class="rc-row rc-tight"><input type="range" id="optThreshold" min="0" max="0.95" step="0.05">
+                            <output id="optThresholdOut">0.00</output></span></label>
+                        <p class="rc-muted" data-en="0 = maximum protection: everything the models flag is masked. Higher values mask only the most certain detections.">0 = protezione massima: si oscura tutto ciò che i modelli segnalano. Valori più alti oscurano solo i rilevamenti più sicuri.</p>
+                    </div>
+                    <div class="rc-opt-block">
+                        <h3 class="rc-h3" data-en="Active models">Modelli attivi</h3>
+                        <div class="rc-checks" id="optModels"></div>
+                    </div>
+                    <div class="rc-opt-block">
+                        <h3 class="rc-h3" data-en="Personal data categories (18)">Categorie di dati personali (18)</h3>
+                        <div class="rc-checks rc-checks-grid" id="optCategories"></div>
+                    </div>
+                    <div class="rc-opt-block">
+                        <h3 class="rc-h3" data-en="Masking mode">Modalità di mascheramento</h3>
+                        <div class="rc-checks" id="optMasking"></div>
+                    </div>
+                    <div class="rc-row">
+                        <button type="button" class="rc-btn" id="optSave" data-en="Save options">Salva le opzioni</button>
+                        <button type="button" class="rc-btn rc-btn-sec" id="optReset" data-en="Server values">Valori del server</button>
+                        <span class="rc-muted" id="optMsg" role="status"></span>
+                    </div>
+                </fieldset>
+            </section>
+
+            <section class="rc-card" id="rcSecConnect">
+                <h2 data-en="Connect the AI tools of this device">Collega gli strumenti di AI di questo dispositivo</h2>
+                <p class="rc-muted" data-en="CLIs and SDKs on this computer can go through Germano: set these addresses as the Base URL of the service. Germano anonymizes the requests and restores the data in the answers.">Le CLI e gli SDK di questo computer possono passare da Germano: imposta questi indirizzi come Base URL del servizio. Germano anonimizza le richieste e ripristina i dati nelle risposte.</p>
+                <div class="rc-token" id="rcTokenBox" hidden>
+                    <p data-en="User management is enabled: the tools need a personal token in the address.">La gestione utenti è attiva: gli strumenti hanno bisogno di un token personale nell'indirizzo.</p>
+                    <button type="button" class="rc-btn" id="rcTokenBtn" data-en="Create a token for my tools">Crea un token per i miei strumenti</button>
+                    <p class="rc-muted" id="rcTokenInfo"></p>
+                </div>
+                <table class="rc-table" id="rcUrls"></table>
+                <p class="rc-muted" data-en="For the whole PC (AIs of the server, protected launch of the local CLIs) you can also install Germano Client.">Per tutto il PC (AI del server, avvio protetto delle CLI locali) puoi anche installare Germano Client.</p>
+            </section>
+
+            <!-- Germano Client: collegamento al server -->
+            <section class="rc-card rc-client-only" id="rcSecServer">
+                <h2 data-en="Germano Server">Germano Server</h2>
+                <p class="rc-muted" data-en="Address of the Germano Server on your local network (empty = automatic search).">Indirizzo del Germano Server della tua rete locale (vuoto = ricerca automatica).</p>
                 <div class="rc-row">
-                    <label class="rc-btn rc-btn-sec rc-attach"><input type="file" id="rcAttach" multiple hidden><span data-en="📎 Attach">📎 Allega</span></label>
-                    <button type="button" class="rc-btn rc-btn-sec" id="rcNewChat" data-en="New conversation">Nuova conversazione</button>
-                    <button type="submit" class="rc-btn" id="rcSend" data-en="Send protected">Invia protetto</button>
+                    <input type="text" id="rcServerAddr" class="rc-input" spellcheck="false" placeholder="192.168.1.10:8181">
+                    <button type="button" class="rc-btn" id="rcServerSave" data-en="Save">Salva</button>
+                    <button type="button" class="rc-btn rc-btn-sec" id="rcServerFind" data-en="Search the network">Cerca in rete</button>
                 </div>
-            </form>
+                <div id="rcServerList" class="rc-list"></div>
+            </section>
+
+            <!-- Germano Client: aggiornamenti silenziosi (come Google Chrome) -->
+            <section class="rc-card rc-client-only" id="rcSecUpdates">
+                <h2 data-en="Updates">Aggiornamenti</h2>
+                <p class="rc-muted" data-en="Like Google Chrome, Germano Client updates itself silently: it downloads the new version in the background and applies it at the next start, in a few seconds.">Come Google Chrome, Germano Client si aggiorna da solo in silenzio: scarica la nuova versione in background e la applica al successivo avvio, in pochi secondi.</p>
+                <div class="rc-upd" id="rcUpd">
+                    <span class="rc-upd-ico" id="rcUpdIco">ⓘ</span>
+                    <div class="rc-upd-text"><strong id="rcUpdTitle">…</strong><span class="rc-muted" id="rcUpdSub"></span>
+                        <div class="rc-progress" id="rcUpdProgress" hidden><div id="rcUpdBar"></div></div></div>
+                    <div class="rc-row">
+                        <button type="button" class="rc-btn" id="rcUpdInstall" hidden data-en="Restart to apply the update">Riavvia per applicare l'aggiornamento</button>
+                        <button type="button" class="rc-btn rc-btn-sec" id="rcUpdCheck" data-en="Check now">Controlla ora</button>
+                    </div>
+                </div>
+                <label class="rc-check"><input type="checkbox" id="rcUpdAuto"><span data-en="Update automatically in the background (recommended)">Aggiorna automaticamente in background (consigliato)</span></label>
+                <label class="rc-check"><input type="checkbox" id="rcUpdCheckBox"><span data-en="Check for new versions when the system reports an Internet connection">Controlla le nuove versioni quando il sistema segnala una connessione a Internet</span></label>
+            </section>
+          </div>
         </section>
 
-        <!-- Proteggi e ripristina (qualsiasi AI) -->
-        <section class="rc-tab" data-panel="protect" hidden>
-            <h2 data-en="Protect for any AI">Proteggi per qualsiasi AI</h2>
-            <p class="rc-muted" data-en="Germano masks the personal data: copy the protected text into the AI you prefer, then paste its answer below to put your data back. Restoration happens on this device, only with the data protected here.">Germano oscura i dati personali: copia il testo protetto nell'AI che preferisci, poi incolla qui sotto la sua risposta per rimettere i tuoi dati. Il ripristino avviene su questo dispositivo, solo con i dati protetti qui.</p>
-            <form id="rcProtectForm" class="rc-stack">
-                <textarea id="rcProtText" class="rc-input" rows="5" placeholder="Testo da proteggere…" data-en-placeholder="Text to protect…"></textarea>
-                <div class="rc-files" id="rcProtFiles"></div>
-                <div class="rc-row">
-                    <label class="rc-btn rc-btn-sec rc-attach"><input type="file" id="rcProtAttach" multiple hidden><span data-en="📎 Attach">📎 Allega</span></label>
-                    <button type="submit" class="rc-btn" id="rcProtBtn" data-en="🛡️ Protect">🛡️ Proteggi</button>
-                </div>
-            </form>
-            <div class="rc-out" id="rcProtOut" hidden>
-                <div class="rc-meta" id="rcProtMeta"></div>
-                <pre class="rc-pre" id="rcProtText2"></pre>
-                <button type="button" class="rc-btn rc-btn-sec" id="rcProtCopy" data-en="Copy protected text">Copia il testo protetto</button>
-            </div>
-            <h3 class="rc-h3" data-en="Restore an AI answer">Ripristina la risposta di un'AI</h3>
-            <textarea id="rcRestoreIn" class="rc-input" rows="4" placeholder="Incolla la risposta con le etichette, es. [PERSONA_1]…" data-en-placeholder="Paste the answer with the tags, e.g. [PERSONA_1]…"></textarea>
-            <div class="rc-row"><button type="button" class="rc-btn" id="rcRestoreBtn" data-en="Restore my data">Ripristina i miei dati</button>
-                <span class="rc-muted" id="rcRestoreInfo"></span></div>
-            <pre class="rc-pre" id="rcRestoreOut" hidden></pre>
-        </section>
-
-        <!-- Opzioni di elaborazione -->
-        <section class="rc-tab" data-panel="options" hidden>
-            <div class="rc-head">
-                <div>
-                    <h2 data-en="Processing options">Opzioni di elaborazione</h2>
-                    <p class="rc-muted" data-en="They apply only to your requests from this device; the server settings do not change.">Valgono solo per le tue richieste da questo dispositivo; le impostazioni del server non cambiano.</p>
-                </div>
-            </div>
-            <div class="rc-lock" id="rcLock" hidden></div>
-            <fieldset class="rc-fieldset" id="rcOptions">
-                <div class="rc-opt-block">
-                    <label class="rc-field"><span data-en="AI confidence threshold">Soglia di confidenza dell'IA</span>
-                        <span class="rc-row rc-tight"><input type="range" id="optThreshold" min="0" max="0.95" step="0.05">
-                        <output id="optThresholdOut">0.00</output></span></label>
-                    <p class="rc-muted" data-en="0 = maximum protection: everything the models flag is masked. Higher values mask only the most certain detections.">0 = protezione massima: si oscura tutto ciò che i modelli segnalano. Valori più alti oscurano solo i rilevamenti più sicuri.</p>
-                </div>
-                <div class="rc-opt-block">
-                    <h3 class="rc-h3" data-en="Active models">Modelli attivi</h3>
-                    <div class="rc-checks" id="optModels"></div>
-                </div>
-                <div class="rc-opt-block">
-                    <h3 class="rc-h3" data-en="Personal data categories (18)">Categorie di dati personali (18)</h3>
-                    <div class="rc-checks rc-checks-grid" id="optCategories"></div>
-                </div>
-                <div class="rc-opt-block">
-                    <h3 class="rc-h3" data-en="Masking mode">Modalità di mascheramento</h3>
-                    <div class="rc-checks" id="optMasking"></div>
-                </div>
-                <div class="rc-row">
-                    <button type="button" class="rc-btn" id="optSave" data-en="Save options">Salva le opzioni</button>
-                    <button type="button" class="rc-btn rc-btn-sec" id="optReset" data-en="Server values">Valori del server</button>
-                    <span class="rc-muted" id="optMsg" role="status"></span>
-                </div>
-            </fieldset>
-        </section>
-
-        <!-- Collega gli strumenti di questo dispositivo -->
-        <section class="rc-tab" data-panel="connect" hidden>
-            <h2 data-en="Connect the AI tools of this device">Collega gli strumenti di AI di questo dispositivo</h2>
-            <p class="rc-muted" data-en="CLIs and SDKs on this computer can go through Germano: set these addresses as the Base URL of the service. Germano anonymizes the requests and restores the data in the answers.">Le CLI e gli SDK di questo computer possono passare da Germano: imposta questi indirizzi come Base URL del servizio. Germano anonimizza le richieste e ripristina i dati nelle risposte.</p>
-            <div class="rc-token" id="rcTokenBox" hidden>
-                <p data-en="User management is enabled: the tools need a personal token in the address.">La gestione utenti è attiva: gli strumenti hanno bisogno di un token personale nell'indirizzo.</p>
-                <button type="button" class="rc-btn" id="rcTokenBtn" data-en="Create a token for my tools">Crea un token per i miei strumenti</button>
-                <p class="rc-muted" id="rcTokenInfo"></p>
-            </div>
-            <table class="rc-table" id="rcUrls"></table>
-            <p class="rc-muted" data-en="For the whole PC (AIs of the server, protected launch of the local CLIs) you can also install Germano Client.">Per tutto il PC (AI del server, avvio protetto delle CLI locali) puoi anche installare Germano Client.</p>
+        <!-- ======================================================== GUIDA -->
+        <section class="rc-view rc-view-guide" data-view="guide" hidden>
+            <iframe id="rcGuideFrame" class="rc-guide-frame" title="Guida di Germano AI"></iframe>
         </section>
     </div>
 </main>
-<footer class="rc-foot"><span id="rcFoot">Germano AI v{{ version }}</span></footer>
+<div class="rc-toasts" id="rcToasts" aria-live="polite"></div>
+<script src="/static/harness.js?v={{ version }}"></script>
 <script src="/static/remote.js?v={{ version }}"></script>
 </body>
 </html>

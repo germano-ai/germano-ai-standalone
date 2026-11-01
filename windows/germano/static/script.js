@@ -1,8 +1,9 @@
 'use strict';
-/* Germano AI - Dashboard: stato del motore, lavoro in batch, documenti, agenti AI, impostazioni. */
+/* Germano AI 0.70 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
+   (cartelle di lavoro, documenti, testo), Impostazioni (modalita' e rete, protezione, AI e chiavi, Proxy e API, sistema,
+   aggiornamenti silenziosi) e Guida offline. */
 
-let currentUiMode = 'simple';
-let currentView = 'work';
+let currentUiMode = 'advanced';   // dalla 0.70 tutte le funzioni sono sempre visibili (valore conservato in config.json)
 let currentComplianceMode = 'PA';
 let currentStatus = 'stopped';
 let settingsLocked = false;
@@ -16,17 +17,20 @@ let foldersLoaded = false;
 let batch = { active: false, baseDone: 0, baseFailed: 0, done: 0, failed: 0, summary: null, startedAt: 0 };
 let updateInstalling = false;
 let pageVersion = null;
-let currentApp = 'batch';         // 'batch' (Anonimizza file) | 'studio' (Studio AI)
-let studioFiles = [];             // allegati in attesa di invio nello Studio
-let studioDetected = null;        // ultimo risultato di /api/ai/detect
-let configReturn = null;          // dove rimettere i pannelli di configurazione quando il cassetto si chiude
 let tooltipsEnabled = true;       // preferenza salvata (enable_tooltips): suggerimenti attivi di default
 let initialConfig = null;         // configurazione letta all'apertura (serve a riconoscere la prima apertura)
 let modeState = null;             // ultimo stato di /api/mode (modalita' operativa, rete, motore)
-let settingsWelcome = false;      // la finestra Impostazioni fa da benvenuto alla prima apertura
-let settingsDone = false;         // dopo il salvataggio in modalita' Server la finestra resta aperta per il token
+let settingsWelcome = false;      // la sezione «Modalita'» e' nella finestra di benvenuto (prima apertura)
+let settingsDone = false;         // benvenuto in modalita' Server: la finestra resta aperta per mostrare gli indirizzi
+let harness = null;               // Harness AI (static/harness.js)
+let lastUpdate = null;            // ultimo stato degli aggiornamenti (germano/updater.py)
+let lastEngineKey = '';
 
-const VIEWS = ['work', 'agents', 'filters', 'system'];
+const TABS = ['harness', 'sanitize', 'settings', 'guide'];
+const PANES = ['general', 'protection', 'ai', 'proxy', 'system', 'updates', 'about'];
+let currentTab = 'harness';
+let currentPane = 'general';
+
 const ALL_MODEL_IDS = [
     'enable_model_velvet', 'enable_model_italian_ner', 'enable_ocr',
     'enable_faces', 'enable_signatures', 'enable_plate_vision', 'enable_regex'
@@ -103,26 +107,6 @@ const FOLDER_INFO = [
     ['extracted', 'Report e archivio', 'report di audit, registri del proxy, corrispondenze']
 ];
 
-// Studio: «Invia a» propone solo le AI rilevate su questo computer (CLI, applicazioni, modelli locali in esecuzione con
-// i modelli installati); le altre restano visibili in grigio e non si possono scegliere. La copia del testo protetto e'
-// sempre disponibile. Rilevamento automatico: all'apertura dello Studio, ogni 12 secondi mentre e' aperto e quando la
-// finestra torna in primo piano (solo disco e porte locali, nessun programma avviato).
-const STUDIO_DETECT_MS = 12000;
-const STUDIO_TARGET_KEY = 'germano_studio_target';
-let studioDetectSig = '';         // impronta dell'ultimo rilevamento: se non cambia, la pagina non si tocca
-let studioDetectBusy = false;
-let studioRenderPending = false;  // rilevamento cambiato mentre l'utente ha aperto l'elenco: si aggiorna all'uscita
-// Come si comporta Germano con il testo protetto, per tipo di destinazione.
-const STUDIO_TARGET_MODE = {
-    cli: ['harness locale', 'local harness'], app: ['harness locale', 'local harness'],
-    service: ['modello locale', 'local model'], clipboard: ['copia manuale', 'manual copy']
-};
-const STUDIO_GROUPS = [
-    ['cli', 'CLI', 'CLIs'], ['app', 'Applicazioni', 'Apps'],
-    ['service', 'Modelli locali (rilevati in automatico)', 'Local models (detected automatically)'],
-    ['clipboard', 'Qualsiasi AI', 'Any AI']
-];
-
 // ------------------------------------------------------------------ UTILITÀ
 const $ = (id) => document.getElementById(id);
 
@@ -149,9 +133,9 @@ const UI_STRINGS = {
     'Pronti': 'Ready',
     'Errori': 'Failed',
     'Originali': 'Originals',
-    'Vault ed estratti': 'Vault & extracted',
     'Attivo': 'Active',
     'Disattivo': 'Inactive',
+    'Disattivato': 'Off',
     'Elaborazione in corso...': 'Processing in progress...',
     'Completato': 'Completed',
     'Nessun documento in attesa': 'No pending documents',
@@ -160,7 +144,15 @@ const UI_STRINGS = {
     'Client': 'Client',
     'Server + Client': 'Server + Client',
     'Profilo PA': 'PA Profile',
-    'Profilo PD': 'PD Profile'
+    'Profilo PD': 'PD Profile',
+    'Mostra': 'Show',
+    'Nascondi': 'Hide',
+    'Applica': 'Apply',
+    'Conferma e inizia': 'Confirm and start',
+    'Fatto': 'Done',
+    'Motore fermo per errore': 'Engine stopped by an error',
+    'Arresto in corso...': 'Stopping...',
+    'Arresto...': 'Stopping...'
 };
 
 function setText(id, value) {
@@ -243,7 +235,7 @@ async function copyText(text) {
         document.execCommand('copy');
         ta.remove();
     }
-    showToast('Copiato negli appunti.', 'success', 2200);
+    showToast(updText('Copiato negli appunti.', 'Copied to the clipboard.'), 'success', 2200);
 }
 
 function proxyBase() {
@@ -267,341 +259,154 @@ function engineActive() {
     return currentStatus === 'running' || currentStatus === 'loading_models';
 }
 
-// ------------------------------------------------------------------ MODALITÀ E SEZIONI
-function applyUiMode(mode, save = true) {
-    currentUiMode = mode === 'advanced' ? 'advanced' : 'simple';
-    document.body.classList.toggle('mode-simple', currentUiMode === 'simple');
-    document.body.classList.toggle('mode-advanced', currentUiMode === 'advanced');
-    $('btnModeSimple').classList.toggle('active', currentUiMode === 'simple');
-    $('btnModeAdvanced').classList.toggle('active', currentUiMode === 'advanced');
-    if (currentUiMode === 'simple' && activeFileTab === 'processed') setFileTab('output');
-    let view = 'work';
-    if (currentUiMode === 'advanced') {
-        try { view = localStorage.getItem('germano_view') || 'work'; } catch (e) { view = 'work'; }
-    }
-    applyView(view, false);
-    if (save) persistSettings(false);
+function updText(it, en) {
+    return currentLang === 'en' ? en : it;
 }
 
-function applyView(view, remember = true) {
-    if (currentUiMode !== 'advanced' || !VIEWS.includes(view)) view = 'work';
-    currentView = view;
-    document.body.dataset.view = view;
-    document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+// ------------------------------------------------------------------ SCHEDE PRINCIPALI E SEZIONI DELLE IMPOSTAZIONI
+function applyTab(tab, remember = true) {
+    if (!TABS.includes(tab)) tab = 'harness';
+    currentTab = tab;
+    document.body.dataset.tab = tab;
+    document.querySelectorAll('.main-tab').forEach(b => {
+        const on = b.dataset.tab === tab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
     if (remember) {
-        try { localStorage.setItem('germano_view', view); } catch (e) { /* archivio del browser non disponibile */ }
-        window.scrollTo(0, 0);
+        try { sessionStorage.setItem('germano_tab', tab); } catch (e) { /* archivio del browser non disponibile */ }
     }
-    if (view === 'system') {
-        loadFolders();
-        pollLogs();
-        renderNetSummary();
+    if (tab === 'guide') loadGuide();
+    if (tab === 'settings') applyPane(currentPane, false);
+    if (tab === 'sanitize') { fetchFiles(); if (!fmPaths) loadFmPaths(); }
+    if (tab === 'harness' && harness) harness.refreshTargets(false);
+    Tips.hide();
+}
+
+function applyPane(pane, remember = true) {
+    if (!PANES.includes(pane)) pane = 'general';
+    currentPane = pane;
+    document.querySelectorAll('.settings-link').forEach(b => b.classList.toggle('active', b.dataset.pane === pane));
+    document.querySelectorAll('.settings-pane').forEach(p => p.classList.toggle('active', p.dataset.pane === pane));
+    if (remember) {
+        try { sessionStorage.setItem('germano_pane', pane); } catch (e) { /* archivio non disponibile */ }
+        const body = document.querySelector('.view-settings');
+        if (body) body.scrollTop = 0;
+    }
+    if (pane === 'general') { if (!settingsWelcome) refreshModeSection(); renderNetSummary(); }
+    if (pane === 'system') { loadFolders(); pollLogs(); }
+    if (pane === 'ai') { renderAiSettings(); if (harness) harness.refreshTargets(false).then(renderAiSettings); }
+    if (pane === 'updates') { renderUpdatePanel(lastUpdate); acknowledgeInstallResult(); }
+}
+
+function loadGuide(hash) {
+    const frame = $('guideFrame');
+    if (!frame) return;
+    const url = `/guide?lang=${currentLang}` + (hash ? `#${hash}` : '');
+    if (frame.dataset.loaded !== url) {
+        frame.src = url;
+        frame.dataset.loaded = url;
     }
 }
 
-// ------------------------------------------------------------------ MODALITÀ APP (Batch / Studio)
-function applyAppMode(app, save = true) {
-    currentApp = app === 'studio' ? 'studio' : 'batch';
-    document.body.dataset.app = currentApp;
-    $('btnAppBatch')?.classList.toggle('active', currentApp === 'batch');
-    $('btnAppStudio')?.classList.toggle('active', currentApp === 'studio');
+// ------------------------------------------------------------------ HARNESS AI
+function engineSnapshot() {
+    return { ready: currentStatus === 'running', running: engineActive() };
+}
+
+function mountHarness() {
+    if (!window.GermanoHarness || !$('harnessRoot')) return;
+    harness = window.GermanoHarness.mount($('harnessRoot'), {
+        host: 'suite',
+        lang: () => currentLang,
+        keysKey: 'germano_keys',
+        convKey: 'germano_harness_v1',
+        persistDefault: true,
+        canStartEngine: true,
+        engine: engineSnapshot,
+        startEngine: async () => { await startEngine(); await pollStatus(); },
+        engineState: async () => {
+            await pollStatus();
+            return { ready: currentStatus === 'running', running: engineActive(), failed: currentStatus === 'error' };
+        },
+        toast: (msg, type) => showToast(msg, type === 'success' ? 'success' : type),
+        onKeysChanged: () => renderAiSettings(),
+    });
+}
+
+const KIND_LABEL = { cli: ['CLI', 'CLI'], local: ['modelli locali', 'local models'], other: ['non utilizzabile', 'not usable'] };
+
+function renderAiSettings() {
+    const list = $('aiDetectedList');
+    const keys = $('keyList');
+    if (!list || !keys) return;
+    const targets = harness && harness.targets;
+    if (!targets) {
+        list.innerHTML = `<span class="muted">${escapeHtml(updText('Rilevamento in corso…', 'Detecting…'))}</span>`;
+        return;
+    }
+    const shown = targets.filter(t => t.kind === 'cli' || t.kind === 'local' || (t.kind === 'other' && t.detected));
+    list.innerHTML = shown.length ? shown.map(t => {
+        const kind = KIND_LABEL[t.kind] ? updText(KIND_LABEL[t.kind][0], KIND_LABEL[t.kind][1]) : t.kind;
+        const sub = t.enabled ? `${kind}${t.version ? ' · v' + t.version : ''}${t.vendor && t.kind !== 'local' ? ' · ' + t.vendor : ''}` : (t.reason || '');
+        return `<div class="ai-item${t.enabled ? ' on' : ''}" title="${escapeHtml(t.reason || t.name)}"><span class="hx-dot${t.enabled ? ' ok' : ''}"></span>
+            <span class="ai-item-main"><span class="ai-item-name">${escapeHtml(t.name)}</span><span class="ai-item-sub">${escapeHtml(sub)}</span></span></div>`;
+    }).join('') : `<span class="muted">${escapeHtml(updText('Nessuna AI o CLI rilevata su questo computer: quando ne installi una (o avvii Ollama, LM Studio o Jan) compare qui da sola.',
+                                                              'No AI or CLI detected on this computer: when you install one (or start Ollama, LM Studio or Jan) it shows up here by itself.'))}</span>`;
+    const clouds = targets.filter(t => t.kind === 'cloud');
+    const remembered = (() => { try { return JSON.parse(localStorage.getItem('germano_keys') || '{}'); } catch (e) { return {}; } })();
+    keys.innerHTML = clouds.map(t => {
+        const own = harness.key(t.service);
+        let state;
+        if (t.key === 'server') state = `<span class="badge badge-ok">${escapeHtml(updText('chiave di questo computer', 'this computer\'s key'))}</span><code>${escapeHtml((t.key_vars || []).join(', '))}</code>`;
+        else if (own) state = `<span class="badge badge-info">${escapeHtml(updText('chiave su questo dispositivo', 'key on this device'))}</span>${remembered[t.service] ? '' : `<span class="muted">${escapeHtml(updText('(solo per questa sessione)', '(this session only)'))}</span>`}`;
+        else state = `<span class="badge badge-off">${escapeHtml(updText('nessuna chiave: in grigio nei Chatbot', 'no key: greyed out in Chatbot'))}</span>`;
+        const actions = t.key === 'server' ? '' : `<input type="password" class="input" data-key-input="${escapeHtml(t.service)}" placeholder="${escapeHtml(updText('incolla la chiave API', 'paste the API key'))}" autocomplete="off" spellcheck="false">
+            <label><input type="checkbox" data-key-remember="${escapeHtml(t.service)}"${remembered[t.service] ? ' checked' : ''}>${escapeHtml(updText('ricorda', 'remember'))}</label>
+            <button type="button" class="btn btn-secondary btn-sm" data-key-save="${escapeHtml(t.service)}">${escapeHtml(updText('Salva', 'Save'))}</button>
+            ${own ? `<button type="button" class="btn btn-danger-outline btn-sm" data-key-remove="${escapeHtml(t.service)}">${escapeHtml(updText('Togli', 'Remove'))}</button>` : ''}`;
+        return `<div class="key-row"><span class="key-row-name">${escapeHtml(t.name)}</span><span class="key-row-state">${state}</span><span class="key-row-actions">${actions}</span></div>`;
+    }).join('');
+    document.querySelectorAll('#harnessPrefs [data-hpref]').forEach(box => { box.checked = Boolean(harness.prefs[box.dataset.hpref]); });
+}
+
+function onKeyListClick(e) {
+    const save = e.target.closest('[data-key-save]');
+    const remove = e.target.closest('[data-key-remove]');
     if (save) {
-        try { localStorage.setItem('germano_app', currentApp); } catch (e) { /* archivio non disponibile */ }
-    }
-    if (currentApp === 'studio') {
-        window.scrollTo(0, 0);
-        if (!$('studioTarget').options.length) populateStudioTargets();
-        detectAI(false);          // AI aggiornate a ogni apertura dello Studio
-    }
-}
-
-// ------------------------------------------------------------------ RILEVAMENTO AI (Studio)
-function studioServiceState(t) {
-    // modelli locali con porta (Ollama, LM Studio, Jan): in esecuzione e con modelli installati
-    if (t.kind !== 'service' || t.listening === null || t.listening === undefined) return null;
-    if (!t.detected) return 'missing';
-    if (!t.listening) return 'stopped';
-    if (Array.isArray(t.models)) return t.models.length ? 'models' : 'empty';
-    return 'up';
-}
-
-function aiChip(t) {
-    const ver = t.version ? ` <span class="ai-ver">${escapeHtml(t.version)}</span>` : '';
-    const st = studioServiceState(t);
-    const on = t.detected && st !== 'stopped' && st !== 'empty';
-    const extra = st === 'stopped' ? updText('spento', 'stopped')
-        : st === 'empty' ? updText('nessun modello', 'no models')
-        : st === 'models' ? updText(plural(t.models.length, 'modello', 'modelli'), plural(t.models.length, 'model', 'models')) : '';
-    const models = st === 'models' ? ` data-models="${escapeHtml(t.models.join(', '))}"` : '';
-    // dalla rete il server non comunica i percorsi
-    return `<span class="ai-chip ${on ? 'on' : ''}" title="${escapeHtml(t.path || '')}" data-state="${st || ''}"${models}>` +
-        `<span class="dot"></span>${escapeHtml(t.name)}${ver}${extra ? ` <span class="ai-state">${escapeHtml(extra)}</span>` : ''}${on ? ' ✓' : ''}</span>`;
-}
-
-// Tutte le destinazioni, rilevate o no (enabled = si puo' scegliere). Un'opzione per ogni modello locale installato.
-function studioTargets(tools) {
-    const out = [];
-    (tools || []).forEach(t => {
-        const st = studioServiceState(t);
-        const base = { kind: t.kind === 'cli' || t.kind === 'app' ? t.kind : 'service', value: t.id, label: t.name };
-        if (st === 'models') {
-            t.models.forEach(m => out.push({ ...base, value: `${t.id}|${m}`, label: `${t.name} · ${m}`, enabled: true }));
-        } else if (st === 'up') {
-            out.push({ ...base, enabled: true });
-        } else {
-            const why = st === 'stopped' ? updText('non in esecuzione', 'not running')
-                : st === 'empty' ? updText('nessun modello installato', 'no model installed') : updText('non rilevato', 'not detected');
-            out.push({ ...base, enabled: Boolean(t.detected) && !st, why });
-        }
-    });
-    out.push({ kind: 'clipboard', value: 'clipboard', enabled: true,
-               label: updText('Copia testo protetto (qualsiasi AI)', 'Copy protected text (any AI)') });
-    return out;
-}
-
-function studioSavedTarget() {
-    try { return localStorage.getItem(STUDIO_TARGET_KEY) || ''; } catch (e) { return ''; }
-}
-
-function populateStudioTargets(notify = false) {
-    const sel = $('studioTarget');
-    if (!sel) return;
-    const before = sel.value;                       // '' = nessuna scelta ancora (primo rilevamento in corso)
-    const beforeLabel = sel.selectedOptions[0]?.textContent || '';
-    const list = studioTargets(studioDetected);
-    sel.replaceChildren();
-    if (!studioDetected) {
-        const wait = document.createElement('option');
-        wait.value = '';
-        wait.textContent = updText('Rilevamento delle AI in corso…', 'Detecting AIs…');
-        sel.append(wait);
-    }
-    const ordered = [];                             // ordine dell'elenco: per gruppo, prima le AI rilevate
-    STUDIO_GROUPS.forEach(([kind, it, en]) => {
-        const items = list.filter(t => t.kind === kind);
-        if (!items.length) return;
-        const group = document.createElement('optgroup');
-        group.label = updText(it, en);
-        [...items.filter(t => t.enabled), ...items.filter(t => !t.enabled)].forEach(t => {
-            ordered.push(t);
-            const o = document.createElement('option');
-            o.value = t.value;
-            o.dataset.kind = t.kind;
-            o.textContent = t.enabled ? t.label : `${t.label} (${t.why})`;
-            if (!t.enabled) { o.disabled = true; o.className = 'opt-off'; }   // visibile, in grigio, non selezionabile
-            group.append(o);
-        });
-        sel.append(group);
-    });
-    if (studioDetected) {
-        const usable = ordered.filter(t => t.enabled);
-        const keep = [before, studioSavedTarget()].find(v => v && usable.some(t => t.value === v));
-        if (keep) {
-            sel.value = keep;
-        } else {
-            // destinazione predefinita: la prima AI rilevata, altrimenti la copia del testo protetto
-            const def = usable.find(t => t.kind !== 'clipboard') || usable[usable.length - 1];
-            sel.value = def.value;
-            if (notify && before) showToast(updText(`«${beforeLabel}» non è più disponibile: ora la destinazione è «${def.label}».`,
-                                                    `«${beforeLabel}» is no longer available: the destination is now «${def.label}».`), 'warn', 5000);
-        }
-    }
-    updateStudioTargetBadge();
-}
-
-function updateStudioTargetBadge() {
-    const sel = $('studioTarget');
-    const badge = $('studioTargetBadge');
-    if (!sel || !badge) return;
-    const opt = sel.selectedOptions[0];
-    const mode = opt && opt.value ? STUDIO_TARGET_MODE[opt.dataset.kind] : null;
-    const label = mode ? updText(mode[0], mode[1]) : '';
-    badge.textContent = label;
-    badge.hidden = !label;
-}
-
-function renderAiStrip() {
-    const strip = $('aiStrip');
-    if (!strip || !studioDetected) return;
-    const found = studioDetected.filter(t => t.detected);
-    strip.innerHTML = found.length
-        ? found.map(aiChip).join('')
-        : `<span class="ai-strip-empty">${escapeHtml(updText('Nessuna AI o CLI rilevata su questo computer: quando ne installi una (o avvii Ollama o LM Studio) compare qui da sola.',
-            'No AI or CLI detected on this computer: when you install one (or start Ollama or LM Studio) it shows up here by itself.'))}</span>`;
-}
-
-function renderStudioDetection(notify = false) {
-    const sel = $('studioTarget');
-    if (sel && document.activeElement === sel) { studioRenderPending = true; return; }   // elenco aperto: si aspetta
-    studioRenderPending = false;
-    renderAiStrip();
-    populateStudioTargets(notify);
-}
-
-function studioSignature(tools) {
-    return JSON.stringify((tools || []).map(t => [t.id, t.detected, t.listening, t.models || null, t.version || null]));
-}
-
-async function detectAI(force) {
-    if (studioDetectBusy) return;
-    studioDetectBusy = true;
-    const strip = $('aiStrip');
-    if (strip && force) strip.innerHTML = `<span class="ai-strip-empty">${escapeHtml(updText('Ricerca in corso…', 'Searching…'))}</span>`;
-    try {
-        const { ok, data } = await fetchJson('/api/ai/detect' + (force ? '?refresh=1' : ''));
-        if (!ok || !data.tools) throw new Error('detect');
-        const previous = studioDetected;
-        studioDetected = data.tools;
-        const sig = studioSignature(data.tools);
-        if (force || sig !== studioDetectSig) {
-            studioDetectSig = sig;
-            renderStudioDetection(Boolean(previous));
-            if (previous && !force) {
-                // rilevamento automatico: si segnala cio' che e' appena diventato disponibile
-                const was = new Set(studioTargets(previous).filter(t => t.enabled).map(t => t.value));
-                const fresh = studioTargets(data.tools).filter(t => t.enabled && t.kind !== 'clipboard' && !was.has(t.value));
-                if (fresh.length) showToast(updText('Rilevata in automatico: ', 'Detected automatically: ') +
-                                            fresh.slice(0, 4).map(t => t.label).join(', ') + (fresh.length > 4 ? '…' : ''), 'success', 4000);
-            }
-        }
-        const found = data.tools.filter(t => t.detected);
-        if (force) showToast(updText(`Rilevate ${plural(found.length, 'AI', 'AI')} su questo computer.`,
-                                     `${plural(found.length, 'AI', 'AIs')} detected on this computer.`), found.length ? 'success' : 'info', 3000);
-    } catch (e) {
-        // nel rilevamento periodico si tiene l'ultimo risultato; si avvisa solo se non c'e' ancora nulla
-        if (strip && (force || !studioDetected)) {
-            strip.innerHTML = `<span class="ai-strip-empty">${escapeHtml(updText('Rilevamento non riuscito.', 'Detection failed.'))}</span>`;
-        }
-    } finally {
-        studioDetectBusy = false;
-    }
-}
-
-// ------------------------------------------------------------------ STUDIO AI: allegati e invio
-function renderAttachChips() {
-    const box = $('attachChips');
-    if (!box) return;
-    box.hidden = studioFiles.length === 0;
-    box.innerHTML = studioFiles.map((f, i) =>
-        `<span class="attach-chip">${iconSvg('i-files')}${escapeHtml(f.name)} <small>(${formatBytes(f.size)})</small>` +
-        `<button type="button" data-remove-attach="${i}" title="Rimuovi" aria-label="Rimuovi allegato">✕</button></span>`
-    ).join('');
-}
-
-function addStudioFiles(fileList) {
-    for (const file of fileList) {
-        if (studioFiles.length >= 12) { showToast('Massimo 12 allegati per invio.', 'warn'); break; }
-        studioFiles.push(file);
-    }
-    renderAttachChips();
-}
-
-function appendStudioMessage(role, html) {
-    const chat = $('studioChat');
-    if (!chat) return null;
-    $('studioHint')?.remove();
-    const msg = document.createElement('div');
-    msg.className = `msg msg-${role}`;
-    msg.innerHTML = html;
-    chat.appendChild(msg);
-    chat.scrollTop = chat.scrollHeight;
-    return msg;
-}
-
-async function sendStudio() {
-    const promptEl = $('studioPrompt');
-    const prompt = (promptEl.value || '').trim();
-    if (!prompt && !studioFiles.length) { showToast('Scrivi un prompt o allega un file.', 'error'); return; }
-
-    const target = $('studioTarget').value || 'clipboard';
-    const targetName = $('studioTarget').selectedOptions[0]?.textContent || target;
-    const fileNames = studioFiles.map(f => f.name);
-    appendStudioMessage('user',
-        `<div class="msg-bubble">${escapeHtml(prompt) || '<em>(solo allegati)</em>'}</div>` +
-        (fileNames.length ? `<div class="msg-meta">${iconSvg('i-files')} ${fileNames.map(escapeHtml).join(', ')}</div>` : ''));
-
-    const fd = new FormData();
-    fd.append('prompt', prompt);
-    fd.append('target', target);
-    studioFiles.forEach(f => fd.append('files', f, f.name));
-
-    const btn = $('btnStudioSend');
-    btn.disabled = true;
-    const waiting = appendStudioMessage('germano', `<div class="msg-bubble"><span class="spinner"></span> Protezione in corso…</div>`);
-    promptEl.value = '';
-    promptEl.style.height = 'auto';
-    studioFiles = [];
-    renderAttachChips();
-
-    try {
-        const r = await fetch('/api/studio/send', { method: 'POST', body: fd });
-        const data = await r.json().catch(() => ({}));
-        waiting?.remove();
-        if (r.status === 503 || data.status === 'blocked') {
-            appendStudioMessage('germano',
-                `<div class="msg-bubble blocked">⛔ ${escapeHtml(data.message || 'Motore non attivo: nessun dato è uscito dal computer.')}</div>` +
-                `<div class="msg-actions"><button type="button" class="btn btn-primary btn-sm" data-studio-start>Avvia motore</button></div>`);
+        const sid = save.dataset.keySave;
+        const input = document.querySelector(`[data-key-input="${CSS.escape(sid)}"]`);
+        const remember = document.querySelector(`[data-key-remember="${CSS.escape(sid)}"]`);
+        const value = (input && input.value || '').trim();
+        if (!/^[\x21-\x7e]{8,512}$/.test(value)) {
+            showToast(updText('Chiave non valida (almeno 8 caratteri, senza spazi).', 'Invalid key (at least 8 characters, no spaces).'), 'error');
             return;
         }
-        if (!r.ok || data.status !== 'success') {
-            appendStudioMessage('germano', `<div class="msg-bubble blocked">⚠️ ${escapeHtml(data.message || 'Protezione non riuscita.')}</div>`);
-            return;
-        }
-        const labels = (data.labels || []).map(l => `<span class="msg-label">${escapeHtml(l)}</span>`).join('');
-        const nonTextual = (data.attachments || []).filter(a => !a.textual).map(a => a.name);
-        const note = nonTextual.length
-            ? `<div class="msg-meta">ℹ️ Allegati non testuali (es. immagini): ${nonTextual.map(escapeHtml).join(', ')} — usa «Anonimizza file» per oscurarli.</div>` : '';
-        const m = appendStudioMessage('germano',
-            `<div class="msg-meta">🛡️ Protetto da Germano · ${plural(data.entity_count || 0, 'dato oscurato', 'dati oscurati')} · pronto per <strong>${escapeHtml(targetName)}</strong></div>` +
-            (labels ? `<div class="msg-labels">${labels}</div>` : '') +
-            `<div class="msg-bubble protected">${escapeHtml(data.composed || '')}</div>` +
-            note +
-            `<div class="msg-actions">` +
-            `<button type="button" class="btn btn-secondary btn-sm" data-copy-protected>${iconSvg('i-copy')}Copia testo protetto</button>` +
-            `</div>`);
-        if (m) m._protected = data.composed || '';
-    } catch (e) {
-        waiting?.remove();
-        appendStudioMessage('germano', `<div class="msg-bubble blocked">⚠️ Errore di comunicazione con Germano.</div>`);
-    } finally {
-        btn.disabled = false;
+        harness.setKey(sid, value, Boolean(remember && remember.checked));
+        harness.renderPicker();
+        renderAiSettings();
+        showToast(updText('Chiave salvata: il servizio ora si può scegliere nell\'Harness.', 'Key saved: the service can now be chosen in the Harness.'), 'success');
+    } else if (remove) {
+        harness.setKey(remove.dataset.keyRemove, '');
+        harness.renderPicker();
+        renderAiSettings();
     }
 }
 
-// ------------------------------------------------------------------ CASSETTO CONFIGURAZIONE GRANULARE
-function openConfigDrawer() {
-    const body = $('configDrawerBody');
-    const filters = document.querySelector('.view-filters');
-    if (!body || !filters) return;
-    configReturn = { parent: filters, nodes: Array.from(filters.children) };
-    configReturn.nodes.forEach(n => body.appendChild(n));   // sposta i pannelli reali: stesse id, stessi eventi
-    $('configScrim').hidden = false;
-    $('configDrawer').hidden = false;
-}
-
-function closeConfigDrawer() {
-    if (configReturn) {
-        configReturn.nodes.forEach(n => configReturn.parent.appendChild(n));
-        configReturn = null;
-    }
-    $('configScrim').hidden = true;
-    $('configDrawer').hidden = true;
-}
-
-// ------------------------------------------------------------------ IMPOSTAZIONI
+// ------------------------------------------------------------------ IMPOSTAZIONI (motore, filtri, modelli)
 function updateThresholdBadge(val) {
     const pct = Math.round(parseFloat(val || 0) * 100);
-    setText('thresholdValue', pct === 0 ? 'Massima (soglia 0%)' : `Soglia ${pct}%`);
+    setText('thresholdValue', pct === 0 ? updText('Massima (soglia 0%)', 'Maximum (0% threshold)') : updText(`Soglia ${pct}%`, `Threshold ${pct}%`));
 }
 
 function updateProfilePill() {
     const pill = $('profilePill');
     const pa = currentComplianceMode === 'PA';
-    pill.innerHTML = (settingsLocked ? iconSvg('i-lock') : '') + (pa ? 'Profilo PA' : 'Profilo PD');
+    pill.innerHTML = (settingsLocked ? iconSvg('i-lock') : '') + escapeHtml(pa ? updText('Profilo PA', 'PA Profile') : updText('Profilo PD', 'PD Profile'));
     pill.title = pa
-        ? 'Profilo PA: tutti i modelli e tutte le categorie attivi, sensibilità massima.'
-        : 'Profilo PD: configurazione personalizzata di modelli, categorie o sensibilità.';
-    if (settingsLocked) pill.title += ' Impostazioni bloccate dall\'amministratore.';
+        ? updText('Profilo PA: tutti i modelli e tutte le categorie attivi, sensibilità massima.', 'PA profile: all models and categories on, maximum sensitivity.')
+        : updText('Profilo PD: configurazione personalizzata di modelli, categorie o sensibilità.', 'PD profile: custom configuration of models, categories or sensitivity.');
+    if (settingsLocked) pill.title += updText(' Impostazioni bloccate dall\'amministratore.', ' Settings locked by the administrator.');
     document.body.classList.toggle('settings-locked', settingsLocked);
     $('lockedBanner').hidden = !settingsLocked;
     document.querySelectorAll('.model-check, .cat-check, .btn-preset, #ai_threshold, #check_updates, #auto_update').forEach(el => {
@@ -632,7 +437,7 @@ function updatePresetButtons() {
 
 function applyDeanonState(enabled) {
     const badge = $('deanonStateBadge');
-    badge.textContent = enabled ? 'Attivo' : 'Disattivato';
+    badge.textContent = enabled ? updText('Attivo', 'Active') : updText('Disattivato', 'Off');
     badge.className = 'badge ' + (enabled ? 'badge-info' : 'badge-off');
 }
 
@@ -661,6 +466,7 @@ function gatherSettings() {
 function applySettingsToUi(cfg) {
     currentComplianceMode = cfg.compliance_mode || 'PA';
     settingsLocked = Boolean(cfg.lock_settings);
+    currentUiMode = cfg.ui_mode || currentUiMode;
     const deanon = cfg.enable_deanonymize !== false;
     $('enable_deanonymize').checked = deanon;
     applyDeanonState(deanon);
@@ -692,15 +498,15 @@ async function persistSettings(notify = true) {
         const { ok, data } = await postJson('/api/settings', { settings: gatherSettings() });
         if (!ok || !data.settings) return;
         if (data.status === 'locked') {
-            showToast(data.message || 'Impostazioni bloccate dall\'amministratore.', 'error', 6000);
+            showToast(data.message || updText('Impostazioni bloccate dall\'amministratore.', 'Settings locked by the administrator.'), 'error', 6000);
             applySettingsToUi(data.settings);
             return;
         }
         currentComplianceMode = data.settings.compliance_mode || currentComplianceMode;
         updatePresetButtons();
-        if (notify) showToast('Impostazioni salvate.', 'success', 2200);
+        if (notify) showToast(updText('Impostazioni salvate.', 'Settings saved.'), 'success', 2200);
     } catch (e) {
-        showToast('Impossibile salvare le impostazioni: Germano non risponde.', 'error');
+        showToast(updText('Impossibile salvare le impostazioni: Germano non risponde.', 'Cannot save the settings: Germano is not responding.'), 'error');
     }
 }
 
@@ -710,7 +516,6 @@ async function loadInitialSettings() {
         if (!ok) return;
         initialConfig = data;
         applySettingsToUi(data);
-        applyUiMode(data.ui_mode || 'simple', false);
     } catch (e) { /* server non raggiungibile: gestito da pollStatus */ }
 }
 
@@ -721,7 +526,7 @@ async function startEngine() {
 
 async function ensureEngineRunning() {
     if (engineActive()) return true;
-    showToast('Avvio del motore in corso...', 'info');
+    showToast(updText('Avvio del motore in corso...', 'Starting the engine...'), 'info');
     try {
         await startEngine();
         await pollStatus();
@@ -745,9 +550,9 @@ async function waitForEngineReady(maxSeconds = 300) {
 async function openLocalFolder(folder) {
     try {
         const { ok, data } = await postJson('/api/open_folder', { folder });
-        if (!ok) showToast(data.message || 'Impossibile aprire la cartella.', 'error');
+        if (!ok) showToast(data.message || updText('Impossibile aprire la cartella.', 'Cannot open the folder.'), 'error');
     } catch (e) {
-        showToast('Impossibile aprire la cartella: Germano non risponde.', 'error');
+        showToast(updText('Impossibile aprire la cartella: Germano non risponde.', 'Cannot open the folder: Germano is not responding.'), 'error');
     }
 }
 
@@ -764,95 +569,147 @@ function setServerDown(down) {
     }
 }
 
-// ------------------------------------------------------------------ AGGIORNAMENTI
-// Fonte unica: download.germano.ai (version.json + installer in un solo file). L'installer scaricato si avvia con
-// «Installa ora» o al successivo avvio di Germano: chiude Germano, lo aggiorna e lo riapre.
-function updText(it, en) {
-    return currentLang === 'en' ? en : it;
+// ------------------------------------------------------------------ AGGIORNAMENTI SILENZIOSI (come Google Chrome)
+// Nessun avviso che interrompe: controllo, download e preparazione avvengono in background; quando la nuova versione
+// e' pronta compare solo un indicatore discreto «Riavvia per aggiornare» e la sezione Impostazioni › Aggiornamenti la
+// descrive come chrome://settings/help. Al successivo avvio di Germano si applica da sola, in pochi secondi.
+function updFmtTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    const time = d.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === new Date().toDateString()) return updText(`oggi alle ${time}`, `today at ${time}`);
+    return `${d.toLocaleDateString(uiLocale(), { day: '2-digit', month: '2-digit', year: 'numeric' })} ${time}`;
 }
 
 function renderUpdate(u) {
     if (!u) return;
+    lastUpdate = u;
+    const ready = u.state === 'ready';
+    const pill = $('updatePill');
+    pill.hidden = !ready;
+    if (ready) {
+        const days = u.ready_since ? (Date.now() / 1000 - u.ready_since) / 86400 : 0;
+        pill.classList.toggle('is-old', days > 3);
+        setText('updatePillText', u.manual ? updText('Aggiornamento pronto', 'Update ready') : updText('Riavvia per aggiornare', 'Restart to update'));
+    } else {
+        $('updatePop').hidden = true;
+    }
+    $('settingsDot').hidden = !ready;
+    $('updatesDot').hidden = !(ready || u.state === 'error');
+    if (u.state === 'installing') updateInstalling = true;
+    if (currentTab === 'settings' && currentPane === 'updates') renderUpdatePanel(u);
+}
+
+function renderUpdatePanel(u) {
+    if (!u) return;
+    const box = $('updStatus');
     const pct = u.progress && u.progress.total ? Math.min(100, Math.round((100 * u.progress.done) / u.progress.total)) : 0;
-    const li = u.last_install;
-    let text = '', cls = 'banner-info', progress = false, download = false, install = false, ack = false;
+    let cls = 'upd-status', icon = iconSvg('i-info'), title = '', sub = '', progress = false, install = false, check = true;
+    const latest = u.latest || '';
+    const checked = u.checked_at ? updText(`Ultimo controllo silenzioso: ${updFmtTime(u.checked_at)}`, `Last silent check: ${updFmtTime(u.checked_at)}`) : '';
     switch (u.state) {
+        case 'checking':
+            cls += ' is-busy'; icon = '<span class="spinner"></span>';
+            title = updText('Controllo degli aggiornamenti…', 'Checking for updates…');
+            check = false;
+            break;
+        case 'uptodate':
+            cls += ' is-ok'; icon = iconSvg('i-check-circle');
+            title = updText(`Germano AI è aggiornato (v${u.current})`, `Germano AI is up to date (v${u.current})`);
+            sub = checked;
+            break;
         case 'available':
-            if (u.manual) {   // macOS e Linux: il nuovo installer si scarica e si avvia a mano
-                text = updText(`È disponibile la nuova versione ${u.latest} di Germano AI: scarica il nuovo installer da ${u.url || 'https://download.germano.ai/'} e aprilo con un doppio clic. Cartelle di lavoro, Vault e impostazioni restano intatti.`,
-                               `Germano AI version ${u.latest} is available: download the new installer from ${u.url || 'https://download.germano.ai/'} and open it with a double click. Work folders, Vault and settings are kept.`);
-            } else {
-                text = updText(`È disponibile la nuova versione ${u.latest} di Germano AI.`,
-                               `Germano AI version ${u.latest} is available.`);
-                download = true;
-            }
+            cls += ' is-busy';
+            title = updText(`È disponibile la versione ${latest}`, `Version ${latest} is available`);
+            sub = updText('L\'aggiornamento automatico è disattivato: attivalo qui sotto, oppure usa «Controlla ora» per scaricarla subito.',
+                          'Automatic updating is off: turn it on below, or use «Check now» to download it right away.');
             break;
         case 'downloading':
-            text = u.progress && u.progress.total
-                ? updText(`Download dell'aggiornamento ${u.latest}: ${pct}% (${formatBytes(u.progress.done)} di ${formatBytes(u.progress.total)}).`,
-                          `Downloading update ${u.latest}: ${pct}% (${formatBytes(u.progress.done)} of ${formatBytes(u.progress.total)}).`)
-                : updText(`Download dell'aggiornamento ${u.latest}: ${formatBytes((u.progress || {}).done || 0)} scaricati.`,
-                          `Downloading update ${u.latest}: ${formatBytes((u.progress || {}).done || 0)} downloaded.`);
+            cls += ' is-busy'; icon = '<span class="spinner"></span>';
+            title = updText('Download dell\'aggiornamento in background…', 'Downloading the update in the background…');
+            sub = u.progress && u.progress.total
+                ? updText(`Versione ${latest}: ${pct}% (${formatBytes(u.progress.done)} di ${formatBytes(u.progress.total)}) · bassa priorità, puoi continuare a lavorare`,
+                          `Version ${latest}: ${pct}% (${formatBytes(u.progress.done)} of ${formatBytes(u.progress.total)}) · low priority, you can keep working`)
+                : updText(`Versione ${latest}: ${formatBytes((u.progress || {}).done || 0)} scaricati`, `Version ${latest}: ${formatBytes((u.progress || {}).done || 0)} downloaded`);
             progress = true;
+            check = false;
+            break;
+        case 'staging':
+            cls += ' is-busy'; icon = '<span class="spinner"></span>';
+            title = updText('Preparazione dell\'aggiornamento in background…', 'Preparing the update in the background…');
+            sub = updText(`La versione ${latest} viene copiata accanto a quella in uso, con la priorità minima: al riavvio basteranno pochi secondi.`,
+                          `Version ${latest} is being copied next to the one in use, at the lowest priority: restarting will take just a few seconds.`);
+            check = false;
             break;
         case 'ready':
-            if (li && li.status !== 'ok' && li.target === u.latest) {
-                text = updText(`L'aggiornamento alla versione ${u.latest} non è stato completato (${li.error || 'interrotto'}): la versione in uso non è cambiata. Puoi riprovare con «Installa ora».`,
-                               `The update to version ${u.latest} was not completed (${li.error || 'interrupted'}): the version in use has not changed. You can retry with “Install now”.`);
-                cls = 'banner-danger';
+            cls += ' is-ready'; icon = iconSvg('i-refresh');
+            if (u.manual) {
+                title = updText(`La versione ${latest} è pronta da installare`, `Version ${latest} is ready to install`);
+                sub = (u.platform === 'linux'
+                    ? updText(`Pacchetto scaricato: ${u.package || ''}. Si installa con il gestore dei pacchetti (serve la password di amministratore)`, `Package downloaded: ${u.package || ''}. It installs with the package manager (administrator password needed)`)
+                      + (u.install_command ? ` — ${u.install_command}` : '')
+                    : updText(`Pacchetto scaricato: ${u.package || ''}. Si apre con il programma di installazione di macOS.`, `Package downloaded: ${u.package || ''}. It opens with the macOS installer.`));
+                setText('btnUpdateInstall', updText('Apri il pacchetto', 'Open the package'));
             } else {
-                text = updText(`La versione ${u.latest} è stata scaricata: verrà installata al prossimo avvio di Germano.`,
-                               `Version ${u.latest} has been downloaded: it will be installed the next time Germano starts.`);
+                title = updText(`Quasi aggiornato! Riavvia Germano per completare l'aggiornamento alla versione ${latest}`,
+                                `Nearly up to date! Restart Germano to finish updating to version ${latest}`);
+                sub = u.staged
+                    ? updText('La nuova versione è già pronta: si applica in pochi secondi al prossimo avvio, oppure subito con il pulsante.',
+                              'The new version is already prepared: it is applied in a few seconds at the next start, or right away with the button.')
+                    : updText('Scaricata: la preparazione si completa in background; con il pulsante l\'installazione mostra il suo avanzamento.',
+                              'Downloaded: preparation completes in the background; with the button the installation shows its progress.');
+                setText('btnUpdateInstall', updText('Riavvia Germano per applicare l\'aggiornamento', 'Restart Germano to apply the update'));
             }
             install = true;
             break;
         case 'installing':
-            text = updText('Installazione dell\'aggiornamento in corso: Germano si chiude e si riaprirà da solo.',
-                           'Installing the update: Germano closes and will reopen by itself.');
-            updateInstalling = true;
+            cls += ' is-busy'; icon = '<span class="spinner"></span>';
+            title = updText('Installazione dell\'aggiornamento…', 'Installing the update…');
+            sub = updText('Germano si chiude e si riapre da solo tra pochi secondi.', 'Germano closes and reopens by itself in a few seconds.');
+            check = false;
             break;
         case 'error':
-            text = updText(`Aggiornamento non riuscito: ${u.error || 'errore sconosciuto'}`,
-                           `Update failed: ${u.error || 'unknown error'}`);
-            cls = 'banner-danger';
-            download = Boolean(u.latest);
+            cls += ' is-error'; icon = iconSvg('i-alert');
+            title = updText('Ultimo tentativo di aggiornamento non riuscito', 'Last update attempt failed');
+            sub = (u.error || '') + updText(' Germano riproverà da solo al prossimo controllo.', ' Germano will try again by itself at the next check.');
             break;
         default:
-            if (li && li.status === 'ok' && li.to === u.current) {
-                text = updText(`Germano AI è stato aggiornato alla versione ${li.to}.`,
-                               `Germano AI has been updated to version ${li.to}.`);
-                cls = 'banner-ok';
-                ack = true;
-            } else if (li && li.status !== 'ok') {
-                text = updText(`L'aggiornamento alla versione ${li.target} non è stato completato (${li.error || 'interrotto'}): la versione precedente è stata mantenuta.`,
-                               `The update to version ${li.target} was not completed (${li.error || 'interrupted'}): the previous version was kept.`);
-                cls = 'banner-danger';
-                ack = true;
+            if (u.online === false) {
+                title = updText('Nessuna connessione a Internet segnalata dal sistema', 'No Internet connection reported by the system');
+                sub = updText('Il controllo silenzioso riprenderà da solo appena il computer è in linea.', 'The silent check resumes by itself as soon as the computer is online.');
+            } else {
+                title = updText(`Germano AI v${u.current}`, `Germano AI v${u.current}`);
+                sub = updText('Il primo controllo silenzioso avviene pochi secondi dopo l\'avvio, poi ogni 6 ore.', 'The first silent check happens a few seconds after start, then every 6 hours.');
             }
     }
-    const banner = $('updateBanner');
-    banner.hidden = !text;
-    banner.className = `banner ${cls}`;
-    setText('updateBannerText', text);
-    $('updateProgress').hidden = !progress;
-    $('updateProgressBar').style.width = `${pct}%`;
-    $('btnUpdateDownload').hidden = !download;
-    setText('btnUpdateDownload', u.state === 'error' ? updText('Riprova', 'Retry') : updText('Scarica aggiornamento', 'Download update'));
+    box.className = cls;
+    $('updIcon').innerHTML = icon;
+    $('updTitle').textContent = title;
+    $('updSub').textContent = sub;
+    $('updProgress').hidden = !progress;
+    $('updProgressBar').style.width = `${pct}%`;
     $('btnUpdateInstall').hidden = !install;
-    $('btnUpdateAck').hidden = !ack;
-
-    let info = updText(`Versione installata ${u.current}`, `Installed version ${u.current}`);
-    if (u.checked_at) {
-        info += updText(' · ultimo controllo ', ' · last check ') +
-            new Date(u.checked_at * 1000).toLocaleString(currentLang === 'en' ? 'en-GB' : 'it-IT');
+    $('btnUpdateCheck').hidden = !check;
+    setText('updCurrent', u.current || '');
+    setText('updPlatform', { windows: 'Windows', macos: 'macOS', linux: 'Linux' }[u.platform] || '');
+    let info = updText('Fonte unica: ', 'Only source: ') + (u.source || 'https://download.germano.ai/') +
+        updText(' · controllo automatico ogni 6 ore, solo con la connessione a Internet · download a bassa priorità',
+                ' · automatic check every 6 hours, only with an Internet connection · low-priority download');
+    const li = u.last_install;
+    if (li && li.status === 'ok' && li.to === u.current) {
+        info = updText(`✓ Aggiornato alla versione ${li.to} ${updFmtTime(li.time)}. `, `✓ Updated to version ${li.to} ${updFmtTime(li.time)}. `) + info;
+    } else if (li && li.status !== 'ok' && li.target) {
+        info = updText(`L'aggiornamento alla versione ${li.target} non è stato completato (${li.error || 'interrotto'}): la versione in uso non è cambiata. `,
+                       `The update to version ${li.target} was not completed (${li.error || 'interrupted'}): the version in use has not changed. `) + info;
     }
-    if (u.state === 'uptodate') info += updText(' · nessun aggiornamento disponibile', ' · no update available');
-    if (u.online === false) {
-        info += updText(' · Windows non segnala una connessione a Internet: nessun controllo eseguito',
-                        ' · Windows reports no Internet connection: no check performed');
-    }
-    info += updText(' · fonte: ', ' · source: ') + (u.source || 'https://download.germano.ai/');
     setText('updateInfo', info);
+}
+
+async function acknowledgeInstallResult() {
+    const li = lastUpdate && lastUpdate.last_install;
+    if (li && li.status === 'ok' && lastUpdate && li.to === lastUpdate.current) {
+        setTimeout(() => postJson('/api/update/ack', {}).catch(() => {}), 8000);
+    }
 }
 
 async function updateAction(path, okMessage) {
@@ -866,19 +723,46 @@ async function updateAction(path, okMessage) {
     pollStatus();
 }
 
-async function installUpdate() {
+function openUpdatePop() {
+    const u = lastUpdate;
+    if (!u || u.state !== 'ready') return;
     const p = (lastStatus && lastStatus.progress) || {};
     const pending = lastStatus && lastStatus.stats ? lastStatus.stats.pending : 0;
-    let msg = updText('Installare ora l\'aggiornamento?\nGermano si chiude, l\'installer sostituisce il programma e lo riapre da solo (qualche minuto).\nCartelle di lavoro, archivio delle corrispondenze (Vault) e impostazioni non vengono toccati.',
-                      'Install the update now?\nGermano closes, the installer replaces the program and reopens it by itself (a few minutes).\nWork folders, the mapping archive (Vault) and settings are not touched.');
-    if (p.state === 'working' || pending > 0) {
-        msg += updText('\n\nL\'elaborazione in corso verrà interrotta e ripresa automaticamente dopo l\'aggiornamento.',
-                       '\n\nThe processing in progress will be interrupted and resumed automatically after the update.');
+    $('updatePopTitle').textContent = u.manual
+        ? updText(`Germano AI ${u.latest} è pronto da installare`, `Germano AI ${u.latest} is ready to install`)
+        : updText(`Germano AI ${u.latest} è pronto`, `Germano AI ${u.latest} is ready`);
+    let text = u.manual
+        ? updText('Il pacchetto è stato scaricato in background: aprilo quando vuoi con il programma di installazione del sistema.',
+                  'The package was downloaded in the background: open it whenever you want with the system installer.')
+        : updText('Riavvia Germano per applicarlo: richiede pochi secondi e Germano si riapre da solo. Cartelle, Vault e impostazioni restano intatti. Se non lo fai ora, si applica da solo al prossimo avvio.',
+                  'Restart Germano to apply it: it takes a few seconds and Germano reopens by itself. Folders, Vault and settings are kept. If you do not do it now, it is applied by itself at the next start.');
+    if (!u.manual && (p.state === 'working' || pending > 0)) {
+        text += updText(' L\'elaborazione in corso verrà ripresa automaticamente dopo il riavvio.', ' The processing in progress will resume automatically after the restart.');
     }
-    if (!confirm(msg)) return;
-    updateInstalling = true;
-    await updateAction('/api/update/install', updText('Installazione dell\'aggiornamento avviata: Germano si riaprirà da solo.',
-                                                      'Update installation started: Germano will reopen by itself.'));
+    $('updatePopText').textContent = text;
+    setText('btnUpdateRestart', u.manual ? updText('Apri il pacchetto', 'Open the package') : updText('Riavvia ora', 'Restart now'));
+    $('updatePop').hidden = false;
+}
+
+async function installUpdate() {
+    $('updatePop').hidden = true;
+    const manual = lastUpdate && lastUpdate.manual;
+    if (!manual) updateInstalling = true;
+    try {
+        const { ok, data } = await postJson('/api/update/install', {});
+        if (!ok) {
+            updateInstalling = false;
+            showToast(data.message || updText('Operazione non riuscita.', 'Operation failed.'), 'error', 6000);
+            return;
+        }
+        if (data.how === 'opened') showToast(updText('Pacchetto aperto con il programma di installazione del sistema.', 'Package opened with the system installer.'), 'info', 6000);
+        else if (data.how === 'staged') showToast(updText('Germano si riavvia per aggiornarsi: tornerà tra pochi secondi.', 'Germano is restarting to update: it will be back in a few seconds.'), 'info', 8000);
+        else showToast(updText('Installazione dell\'aggiornamento avviata: compare l\'avanzamento e Germano si riapre da solo.', 'Update installation started: the progress appears and Germano reopens by itself.'), 'info', 8000);
+    } catch (e) {
+        updateInstalling = false;
+        showToast(updText('Germano non risponde.', 'Germano is not responding.'), 'error');
+    }
+    pollStatus();
 }
 
 function renderEngine(data) {
@@ -896,7 +780,7 @@ function renderEngine(data) {
     $('statusDot').className = 'status-dot ' + dot;
     setText('statusText', text);
     setText('mainToggleLabel', label);
-    btn.className = 'btn ' + (active ? 'btn-stop' : 'btn-start');
+    btn.className = 'btn btn-sm ' + (active ? 'btn-stop' : 'btn-start');
     if (!btn.dataset.busy) btn.disabled = disabled;
 
     $('engineErrorBanner').hidden = data.status !== 'error';
@@ -905,13 +789,18 @@ function renderEngine(data) {
     const proxy = $('proxyStatus');
     if (data.status === 'running') {
         proxy.className = 'badge badge-ok';
-        proxy.textContent = 'Proxy attivo';
+        proxy.textContent = updText('Proxy attivo', 'Proxy active');
     } else if (data.status === 'loading_models') {
         proxy.className = 'badge badge-warn';
-        proxy.textContent = 'Proxy in avvio';
+        proxy.textContent = updText('Proxy in avvio', 'Proxy starting');
     } else {
         proxy.className = 'badge badge-off';
-        proxy.textContent = 'Proxy non attivo: avvia il motore';
+        proxy.textContent = updText('Proxy non attivo: avvia il motore', 'Proxy not active: start the engine');
+    }
+    const key = `${data.status}`;
+    if (key !== lastEngineKey) {
+        lastEngineKey = key;
+        if (harness) harness.onEngineChange();
     }
 }
 
@@ -1025,7 +914,7 @@ function renderJob(data) {
     } else {
         progress.hidden = true;
     }
-    $('currentJob').className = 'job' + (cls ? ' ' + cls : '');
+    $('currentJob').className = 'job fm-status' + (cls ? ' ' + cls : '');
     $('jobSpinner').hidden = !spin;
     setText('jobTitle', title);
     setText('jobFile', file);
@@ -1035,7 +924,7 @@ function renderJob(data) {
 function renderSystem(data) {
     if (!data.system) return;
     let t = `CPU ${data.system.cpu_percent}% · RAM ${data.system.ram_used_gb} / ${data.system.ram_total_gb} GB`;
-    if (data.engine && data.engine.precision) t += ` · modello ${String(data.engine.precision).toUpperCase()}`;
+    if (data.engine && data.engine.precision) t += ` · ${updText('modello', 'model')} ${String(data.engine.precision).toUpperCase()}`;
     setText('sysUsagePill', t);
 }
 
@@ -1094,14 +983,16 @@ async function pollStatus() {
         renderCounts(data.stats);
         const sig = [data.stats.pending, data.stats.outputs, data.stats.failed, data.stats.processed,
             (data.progress || {}).current || ''].join('|');
-        if (sig !== filesSignature || Date.now() - lastFilesFetch > 10000) {
+        if (currentTab === 'sanitize' && (sig !== filesSignature || Date.now() - lastFilesFetch > 10000)) {
             filesSignature = sig;
             fetchFiles();
         }
     }
     renderJob(data);
-    renderFileManager();
-    if (!fmPaths) loadFmPaths();
+    if (currentTab === 'sanitize') {
+        renderFileManager();
+        if (!fmPaths) loadFmPaths();
+    }
     renderSystem(data);
     renderLiveStats(data);
     renderModeChip(data);
@@ -1162,15 +1053,7 @@ function setPathText(el, path) {
 }
 
 function fileIcon(name) {
-    const ext = (String(name).split('.').pop() || '').toLowerCase();
-    if (ext === 'pdf') return '📕';
-    if (['doc', 'docx', 'docm', 'dotx', 'odt', 'rtf', 'txt', 'md'].includes(ext)) return '📝';
-    if (['xls', 'xlsx', 'xlsm', 'xltx', 'ods', 'csv', 'tsv'].includes(ext)) return '📊';
-    if (['ppt', 'pptx', 'pptm', 'potx', 'ppsx', 'odp'].includes(ext)) return '📽️';
-    if (['png', 'jpg', 'jpeg', 'jfif', 'bmp', 'tif', 'tiff', 'webp', 'gif'].includes(ext)) return '🖼️';
-    if (['eml', 'msg'].includes(ext)) return '✉️';
-    if (['zip', 'p7m'].includes(ext)) return '🗜️';
-    return '📄';
+    return iconSvg('i-files');
 }
 
 function fmRow(folder, it, current, isNew) {
@@ -1261,35 +1144,36 @@ function setFileTab(folder) {
 function statusCell(folder, it, base, current) {
     if (folder === 'output') {
         if (it.mode === 'restore' || base.startsWith('ripristinato_')) {
-            return '<span class="badge badge-info">Dati ripristinati</span>';
+            return `<span class="badge badge-info">${escapeHtml(updText('Dati ripristinati', 'Data restored'))}</span>`;
         }
-        let html = '<span class="badge badge-ok">Anonimizzato</span>';
+        let html = `<span class="badge badge-ok">${escapeHtml(updText('Anonimizzato', 'Anonymized'))}</span>`;
         if (typeof it.entities === 'number') {
-            html += `<span class="status-sub">${plural(it.entities, 'dato oscurato', 'dati oscurati')}</span>`;
+            html += `<span class="status-sub">${escapeHtml(updText(plural(it.entities, 'dato oscurato', 'dati oscurati'), plural(it.entities, 'item masked', 'items masked')))}</span>`;
         }
-        if (it.notes) html += `<span class="status-sub">${plural(it.notes, 'avviso', 'avvisi')} nel report</span>`;
+        if (it.notes) html += `<span class="status-sub">${escapeHtml(updText(`${plural(it.notes, 'avviso', 'avvisi')} nel report`, `${plural(it.notes, 'note', 'notes')} in the report`))}</span>`;
         return html;
     }
     if (folder === 'input') {
         return it.name === current
-            ? '<span class="badge badge-warn"><span class="spinner"></span>In lavorazione</span>'
-            : '<span class="badge">In attesa</span>';
+            ? `<span class="badge badge-warn"><span class="spinner"></span>${escapeHtml(updText('In lavorazione', 'Processing'))}</span>`
+            : `<span class="badge">${escapeHtml(updText('In attesa', 'Pending'))}</span>`;
     }
-    if (folder === 'failed') return '<span class="badge badge-danger">Non riuscito</span>';
-    return '<span class="badge badge-off">Originale</span>';
+    if (folder === 'failed') return `<span class="badge badge-danger">${escapeHtml(updText('Non riuscito', 'Failed'))}</span>`;
+    return `<span class="badge badge-off">${escapeHtml(updText('Originale', 'Original'))}</span>`;
 }
 
 function actionsCell(folder, it) {
     const btn = (action, icon, title) =>
         `<button type="button" class="btn-icon" data-action="${action}" title="${title}" aria-label="${title}">${iconSvg(icon)}</button>`;
     const href = '/api/download/' + folder + '/' + it.name.split('/').map(encodeURIComponent).join('/');
-    const download = `<a class="btn-icon" href="${escapeHtml(href)}" download title="Scarica una copia" aria-label="Scarica una copia">${iconSvg('i-download')}</a>`;
-    const reveal = btn('reveal', 'i-locate', 'Mostra nella cartella');
+    const dl = escapeHtml(updText('Scarica una copia', 'Download a copy'));
+    const download = `<a class="btn-icon" href="${escapeHtml(href)}" download title="${dl}" aria-label="${dl}">${iconSvg('i-download')}</a>`;
+    const reveal = btn('reveal', 'i-locate', escapeHtml(updText('Mostra nella cartella', 'Show in folder')));
     if (folder === 'input') return reveal;
     if (folder === 'failed') {
-        return `<button type="button" class="btn btn-secondary btn-sm" data-action="retry">${iconSvg('i-retry')}Rimetti in coda</button>${reveal}${download}`;
+        return `<button type="button" class="btn btn-secondary btn-sm" data-action="retry">${iconSvg('i-retry')}${escapeHtml(updText('Rimetti in coda', 'Queue again'))}</button>${reveal}${download}`;
     }
-    return btn('open', 'i-external', 'Apri') + reveal + download;
+    return btn('open', 'i-external', escapeHtml(updText('Apri', 'Open'))) + reveal + download;
 }
 
 function renderFiles() {
@@ -1305,7 +1189,7 @@ function renderFiles() {
         const name = String(it.name || '');
         const [dir, base] = splitPath(name);
         const reason = folder === 'failed'
-            ? `<div class="file-reason">${escapeHtml(it.reason || 'Motivo non disponibile: vedi il registro attività.')}</div>`
+            ? `<div class="file-reason">${escapeHtml(it.reason || updText('Motivo non disponibile: vedi il registro attività.', 'Reason not available: see the activity log.'))}</div>`
             : '';
         return `<tr data-name="${escapeHtml(name)}">
             <td class="col-name"><div class="file-name">${escapeHtml(base)}</div>${dir ? `<div class="file-dir">${escapeHtml(dir)}/</div>` : ''}${reason}</td>
@@ -1318,45 +1202,42 @@ function renderFiles() {
 
     const empty = $('fileEmpty');
     empty.hidden = items.length > 0;
-    empty.textContent = q ? 'Nessun documento corrisponde al filtro.' : EMPTY_MESSAGES[folder];
+    empty.textContent = q ? updText('Nessun documento corrisponde al filtro.', 'No document matches the filter.') : updText(EMPTY_MESSAGES[folder], {
+        output: 'No ready documents. Add documents above or copy them into the input folder.', input: 'No pending documents.',
+        failed: 'No failed documents.', processed: 'No archived originals.' }[folder]);
 
     let info = '';
-    if (q) info = `${items.length} di ${all.length} documenti`;
-    else if (total > all.length) info = `Mostrati i ${all.length} più recenti su ${total}`;
-    else if (total) info = plural(total, 'documento', 'documenti');
+    if (q) info = updText(`${items.length} di ${all.length} documenti`, `${items.length} of ${all.length} documents`);
+    else if (total > all.length) info = updText(`Mostrati i ${all.length} più recenti su ${total}`, `Showing the ${all.length} most recent of ${total}`);
+    else if (total) info = updText(plural(total, 'documento', 'documenti'), plural(total, 'document', 'documents'));
     setText('fileListInfo', info);
     $('btnRetryAll').hidden = !(folder === 'failed' && all.length > 0);
-    setText('btnOpenCurrentFolderLabel', `Apri cartella ${folder}`);
+    setText('btnOpenCurrentFolderLabel', updText(`Apri cartella ${folder}`, `Open ${folder} folder`));
     $('btnExportCsv').disabled = all.length === 0;
 }
 
 async function fileAction(action, name) {
     const folder = activeFileTab;
     if (action === 'retry') {
-        const { ok, data } = await postJson('/api/retry_failed', { names: [name] });
-        if (ok && (data.moved || []).length) {
-            showToast(engineActive() ? 'Documento rimesso in coda.' : 'Documento rimesso in coda: avvia il motore per elaborarlo.', 'success');
-        } else {
-            showToast((data.errors || [])[0] || data.message || 'Impossibile rimettere in coda il documento.', 'error');
-        }
-        await fetchFiles();
-        pollStatus();
+        await retryFailedDocument(name);
         return;
     }
     const { ok, data } = await postJson('/api/file_action', { folder, name, action });
-    if (!ok) showToast(data.message || 'Operazione non riuscita.', 'error', 6000);
+    if (!ok) showToast(data.message || updText('Operazione non riuscita.', 'Operation failed.'), 'error', 6000);
 }
 
 async function retryAllFailed() {
     const n = (cachedFiles.totals || {}).failed || (cachedFiles.failed || []).length;
-    if (!n || !confirm(`Rimettere in coda ${plural(n, 'documento non riuscito', 'documenti non riusciti')}?\nVerranno spostati di nuovo nella cartella input.`)) return;
+    if (!n || !confirm(updText(`Rimettere in coda ${plural(n, 'documento non riuscito', 'documenti non riusciti')}?\nVerranno spostati di nuovo nella cartella input.`,
+                               `Queue again ${plural(n, 'failed document', 'failed documents')}?\nThey will be moved back to the input folder.`))) return;
     const { ok, data } = await postJson('/api/retry_failed', { all: true });
     if (ok) {
         const moved = (data.moved || []).length;
-        showToast(`${plural(moved, 'documento rimesso', 'documenti rimessi')} in coda.` + (engineActive() ? '' : ' Avvia il motore per elaborarli.'), 'success');
+        showToast(updText(`${plural(moved, 'documento rimesso', 'documenti rimessi')} in coda.`, `${plural(moved, 'document', 'documents')} queued again.`)
+                  + (engineActive() ? '' : updText(' Avvia il motore per elaborarli.', ' Start the engine to process them.')), 'success');
         (data.errors || []).slice(0, 3).forEach(err => showToast(err, 'error', 6000));
     } else {
-        showToast(data.message || 'Operazione non riuscita.', 'error');
+        showToast(data.message || updText('Operazione non riuscita.', 'Operation failed.'), 'error');
     }
     await fetchFiles();
     pollStatus();
@@ -1461,7 +1342,7 @@ async function uploadFiles(list) {
     }
 }
 
-// ------------------------------------------------------------------ AGENTI AI E API
+// ------------------------------------------------------------------ PROXY E API
 function renderAgents() {
     const base = proxyBase();
     const openai = `${base}/v1`;
@@ -1502,14 +1383,14 @@ async function loadFolders() {
                 <div class="folder-path">${escapeHtml(data[key] || '')}</div>
                 <div class="btn-group">
                     ${copyButton(data[key] || '', 'Copia percorso')}
-                    <button type="button" class="btn btn-secondary btn-sm" data-open-folder="${key}">${iconSvg('i-folder')}Apri</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-open-folder="${key}">${iconSvg('i-folder')}${escapeHtml(updText('Apri', 'Open'))}</button>
                 </div>
             </div>`).join('');
     } catch (e) { /* riprova alla prossima apertura della sezione */ }
 }
 
 async function pollLogs() {
-    if (currentUiMode !== 'advanced' || currentView !== 'system') return;
+    if (currentTab !== 'settings' || currentPane !== 'system') return;
     try {
         const { ok, data } = await fetchJson('/api/logs', { cache: 'no-store' });
         const term = $('logTerminal');
@@ -1526,20 +1407,32 @@ async function pollLogs() {
     } catch (e) { /* ignora */ }
 }
 
+let vaultItems = [];
+
+function renderVaultRows() {
+    const box = $('vaultPreviewBox');
+    const q = ($('vaultFilter').value || '').trim().toLowerCase();
+    const items = q ? vaultItems.filter(it => `${it.tag} ${it.value}`.toLowerCase().includes(q)) : vaultItems;
+    box.innerHTML = items.length
+        ? items.slice(0, 2000).map(it => `<div class="vault-row"><code>${escapeHtml(it.tag)}</code><span>${escapeHtml(it.value)}</span></div>`).join('')
+        : `<div class="vault-empty">${escapeHtml(vaultItems.length ? updText('Nessuna corrispondenza trovata.', 'No mapping found.') : updText('Nessuna corrispondenza in archivio.', 'No mapping in the archive.'))}</div>`;
+}
+
 async function toggleVault() {
     const box = $('vaultPreviewBox');
     if (!box.hidden) {
         box.hidden = true;
+        $('vaultSearchRow').hidden = true;
+        vaultItems = [];
         setText('btnShowVault', 'Mostra');
         return;
     }
     try {
         const { data } = await fetchJson('/api/vault', { cache: 'no-store' });
-        const items = data.items || [];
-        box.innerHTML = items.length
-            ? items.map(it => `<div class="vault-row"><code>${escapeHtml(it.tag)}</code><span>${escapeHtml(it.value)}</span></div>`).join('')
-            : '<div class="vault-empty">Nessuna corrispondenza in archivio.</div>';
+        vaultItems = data.items || [];
+        renderVaultRows();
         box.hidden = false;
+        $('vaultSearchRow').hidden = vaultItems.length < 8;
         setText('btnShowVault', 'Nascondi');
     } catch (e) { /* ignora */ }
 }
@@ -1558,8 +1451,8 @@ async function restoreTextIfTagged(text) {
         const { ok, data } = await postJson('/api/v1/deanonymize_text', { text });
         if (ok && data.restored && data.restored !== text) {
             $('manualOutputText').value = data.restored;
-            setTextBadge('Dati originali ripristinati');
-            showToast('Risposta dell\'AI riconosciuta: dati originali ripristinati.', 'success');
+            setTextBadge(updText('Dati originali ripristinati', 'Original data restored'));
+            showToast(updText('Risposta dell\'AI riconosciuta: dati originali ripristinati.', 'AI answer recognized: original data restored.'), 'success');
             return true;
         }
     } catch (e) { /* ignora */ }
@@ -1571,7 +1464,7 @@ async function anonymizeText() {
     const label = btn.querySelector('span');
     const text = ($('manualInputText').value || '').trim();
     if (!text) {
-        showToast('Scrivi o incolla prima un testo.', 'error');
+        showToast(updText('Scrivi o incolla prima un testo.', 'Type or paste a text first.'), 'error');
         return;
     }
     if (await restoreTextIfTagged(text)) return;
@@ -1579,30 +1472,30 @@ async function anonymizeText() {
     const original = label.textContent;
     try {
         if (currentStatus !== 'running') {
-            label.textContent = 'Avvio del motore...';
+            label.textContent = updText('Avvio del motore...', 'Starting the engine...');
             await ensureEngineRunning();
             if (!(await waitForEngineReady())) {
-                showToast('Il motore non si è avviato: controlla il messaggio in alto.', 'error', 6000);
+                showToast(updText('Il motore non si è avviato: controlla il messaggio in alto.', 'The engine did not start: check the message at the top.'), 'error', 6000);
                 return;
             }
         }
-        label.textContent = 'Elaborazione...';
+        label.textContent = updText('Elaborazione...', 'Processing...');
         const { ok, data } = await postJson('/api/v1/anonymize_text', { text });
         if (ok && data.anonymized !== undefined) {
             $('manualOutputText').value = data.anonymized;
             if (data.auto_restored) {
-                setTextBadge('Dati originali ripristinati');
+                setTextBadge(updText('Dati originali ripristinati', 'Original data restored'));
             } else {
                 const n = (data.extracted_data || []).length;
-                setTextBadge(plural(n, 'dato oscurato', 'dati oscurati'));
-                showToast(`Testo anonimizzato: ${plural(n, 'dato oscurato', 'dati oscurati')}.`, 'success');
+                setTextBadge(updText(plural(n, 'dato oscurato', 'dati oscurati'), plural(n, 'item masked', 'items masked')));
+                showToast(updText(`Testo anonimizzato: ${plural(n, 'dato oscurato', 'dati oscurati')}.`, `Text anonymized: ${plural(n, 'item masked', 'items masked')}.`), 'success');
             }
             pollStatus();
         } else {
-            showToast(data.error || 'Errore durante l\'elaborazione del testo.', 'error');
+            showToast(data.error || updText('Errore durante l\'elaborazione del testo.', 'Error while processing the text.'), 'error');
         }
     } catch (e) {
-        showToast('Errore di comunicazione con il motore locale.', 'error');
+        showToast(updText('Errore di comunicazione con il motore locale.', 'Communication error with the local engine.'), 'error');
     } finally {
         btn.disabled = false;
         label.textContent = original;
@@ -1618,11 +1511,12 @@ const NOTE_CINA = ' Server in Cina: i dati, anche se pseudonimizzati, escono dal
 const optTitle = (el) => (el.querySelector('.option-title')?.childNodes[0]?.textContent || '').trim();
 const TIPS = [
     // --- intestazione
-    ['.brand', 'Germano AI', 'Torna alla pagina iniziale della Dashboard.'],
-    ['#btnAppBatch', '📂 Anonimizza file', 'Elaborazione in blocco di documenti (PDF, Word, Excel, immagini, e-mail): i risultati vanno nella cartella output.'],
-    ['#btnAppStudio', '🧠 Studio AI', 'Scrivi un prompt e allega file: Germano li anonimizza prima dell\'invio a un\'AI e ti mostra esattamente cosa viene inviato.'],
-    ['#btnModeSimple', 'Modalità Semplice', 'Solo le funzioni essenziali: aggiungi documenti, segui l\'avanzamento, scarica i risultati.'],
-    ['#btnModeAdvanced', 'Modalità Avanzata', 'Aggiunge le schede Agenti AI e API, Filtri e modelli, Sistema e registro.'],
+    ['.brand', 'Germano AI', 'Torna alla pagina iniziale.'],
+    ['#tabHarness', '🧠 Harness AI', 'Conversazione con l\'AI che scegli in basso a destra (CLI, modelli locali o servizi via API): Germano oscura i dati personali prima dell\'invio e li rimette nella risposta. La Glass Window mostra tutto in tempo reale.'],
+    ['#tabSanitize', '📂 Sanitizzazione manuale e Vault', 'Cartelle di lavoro con trascinamento dei file, documenti elaborati, testo da anonimizzare o ripristinare e archivio delle corrispondenze (Vault).'],
+    ['#tabSettings', '⚙️ Impostazioni', 'Modalità operativa e rete, profilo e modelli, AI e chiavi, Proxy e API, sistema e registro, aggiornamenti.'],
+    ['#tabGuide', '📖 Guida', 'Manuale d\'uso completo e documentazione tecnica, consultabili offline.'],
+    ['#updatePill', 'Aggiornamento pronto', 'La nuova versione è stata scaricata e preparata in background: riavvia Germano quando vuoi (pochi secondi), altrimenti si applica da sola al prossimo avvio.'],
     ['#profilePill', 'Profilo di protezione', (el, n) => n || 'PA: tutti i modelli e tutte le categorie con sensibilità massima. PD: configurazione personalizzata.'],
     ['#engineStatusPill', 'Stato del motore', () => {
         let t = 'Il motore esegue i modelli di anonimizzazione. Verde = attivo, giallo = in avvio, grigio = in pausa, rosso = fermo per errore.';
@@ -1632,19 +1526,10 @@ const TIPS = [
         return t;
     }],
     ['#modeChip', 'Modalità operativa', (el) => `Questo computer è in modalità «${(el.textContent || '').trim()}». Clicca per scegliere Standalone, Server, Client o Server + Client.`],
-    ['#mainToggleBtn', 'Avvia / arresta il motore', 'Avvia il motore per elaborare i documenti e proteggere le richieste del Proxy. A motore fermo il Proxy blocca ogni richiesta: nessun dato esce in chiaro.'],
-    ['#btnSettings', 'Impostazioni', 'Modalità operativa (Standalone, Server, Client) e preferenze dell\'interfaccia, compresi questi suggerimenti.'],
-    ['#btnOpenGuide', 'Guida', 'Manuale d\'uso e documentazione tecnica, consultabili offline in una nuova scheda.'],
-    ['.view-tab[data-view="work"]', 'Elaborazione', 'Cartelle di lavoro, aggiunta di documenti, avanzamento e risultati.'],
-    ['.view-tab[data-view="agents"]', 'Agenti AI e API', 'Indirizzi del Proxy per Claude Code, Codex, Cursor e altri strumenti, servizi di destinazione ed esempi delle API REST.'],
-    ['.view-tab[data-view="filters"]', 'Filtri e modelli', 'Profilo di protezione, sensibilità, modelli di analisi attivi e categorie di dati da oscurare.'],
-    ['.view-tab[data-view="system"]', 'Sistema e registro', 'Rete e modalità operativa, esecuzione, cartelle, aggiornamenti, archivio delle corrispondenze e registro attività.'],
+    ['#mainToggleBtn', 'Avvia / arresta il motore', 'Avvia il motore per proteggere le richieste dell\'Harness e del Proxy ed elaborare i documenti. A motore fermo nessun dato esce in chiaro: le richieste vengono bloccate (l\'Harness lo avvia da solo al primo invio).'],
     // --- avvisi
     ['#retryEngineBtn', 'Riprova', 'Riavvia il motore dopo l\'errore indicato.'],
     ['#killOrphansBtn', 'Chiudi processi secondari', 'Chiude i processi del motore rimasti aperti da una sessione precedente e libera memoria.'],
-    ['#btnUpdateDownload', 'Scarica aggiornamento', 'Scarica il nuovo installer da download.germano.ai, la fonte ufficiale degli aggiornamenti.'],
-    ['#btnUpdateInstall', 'Installa ora', 'Chiude Germano, installa l\'aggiornamento e lo riapre. Cartelle, archivio e impostazioni non vengono toccati.'],
-    ['#btnUpdateAck', 'Chiudi avviso', 'Nasconde questo messaggio.'],
     // --- cartelle e statistiche
     ['.fm-box[data-fm-box="input"]', '📥 input — documenti da elaborare', 'Trascina qui file o intere cartelle (oppure copiali con il file manager): il motore li anonimizza uno alla volta. Clicca il riquadro per aprire la cartella.'],
     ['.fm-box[data-fm-box="output"]', '📤 output — documenti anonimizzati', 'I risultati, con la stessa struttura di sottocartelle degli originali. Clicca il riquadro per aprire la cartella.'],
@@ -1670,18 +1555,26 @@ const TIPS = [
     ['.tab[data-folder="processed"]', 'Originali', 'Documenti originali archiviati dopo l\'elaborazione.'],
     ['#fileFilter', 'Filtro', 'Mostra solo i documenti il cui nome, cartella o motivo contiene il testo scritto.'],
     ['#btnRetryAll', 'Rimetti tutti in coda', 'Sposta di nuovo nella cartella input tutti i documenti non riusciti.'],
-    ['#btnOpenCurrentFolder', 'Apri cartella', 'Apre in Esplora file la cartella della scheda selezionata.'],
+    ['#btnOpenCurrentFolder', 'Apri cartella', 'Apre nel file manager la cartella della scheda selezionata.'],
     ['#btnExportCsv', 'Esporta elenco', 'Scarica l\'elenco in formato CSV (si apre con Excel; separatore «;»).'],
-    ['[data-action="open"]', 'Apri', 'Apre il documento con il programma predefinito di Windows.'],
-    ['[data-action="reveal"]', 'Mostra nella cartella', 'Apre Esplora file con il documento selezionato.'],
+    ['[data-action="open"]', 'Apri', 'Apre il documento con il programma predefinito del sistema.'],
+    ['[data-action="reveal"]', 'Mostra nella cartella', 'Apre il file manager con il documento selezionato.'],
     ['[data-action="retry"]', 'Rimetti in coda', 'Sposta il documento di nuovo nella cartella input per elaborarlo un\'altra volta.'],
-    ['.row-actions a[download]', 'Scarica una copia', 'Scarica una copia del documento tramite il browser.'],
-    // --- testo
+    ['.row-actions a[download]', 'Scarica una copia', 'Scarica una copia del documento.'],
+    // --- testo e Vault
     ['#manualInputText', 'Testo', 'Incolla un testo da anonimizzare, oppure la risposta di un\'AI con etichette come [PERSONA_1] da ripristinare.'],
     ['#anonymizeTextBtn', 'Anonimizza testo', 'Sostituisce i dati personali con etichette numerate, pronte da inviare a un servizio di AI.'],
     ['#manualOutputText', 'Risultato', 'Testo anonimizzato oppure ripristinato con i dati originali.'],
     ['#copyTextBtn', 'Copia risultato', 'Copia il risultato negli appunti.'],
-    // --- agenti AI e API
+    ['#btnShowVault', 'Mostra archivio', 'Mostra le corrispondenze tra etichette e dati originali (dati in chiaro), con la ricerca.'],
+    ['#btnClearVault', 'Svuota archivio', 'Cancella tutte le corrispondenze: i documenti già anonimizzati non potranno più essere ripristinati.'],
+    // --- impostazioni
+    ['.settings-link[data-pane="general"]', 'Modalità e rete', 'Standalone, Server, Client o Server + Client; accesso dalla rete e utenti; suggerimenti.'],
+    ['.settings-link[data-pane="protection"]', 'Protezione e modelli', 'Profilo PA/PD, sensibilità, modelli di analisi attivi e categorie di dati da oscurare.'],
+    ['.settings-link[data-pane="ai"]', 'AI, chiavi e Harness', 'AI rilevate, chiavi API dei servizi e preferenze dell\'Harness (revisione prima dell\'invio, anteprima, cronologia).'],
+    ['.settings-link[data-pane="proxy"]', 'Proxy e API', 'Indirizzi del Proxy per Claude Code, Codex, Cursor e altri strumenti, servizi di destinazione ed esempi delle API REST.'],
+    ['.settings-link[data-pane="system"]', 'Sistema e registro', 'Esecuzione del motore, cartelle di lavoro e registro attività.'],
+    ['.settings-link[data-pane="updates"]', 'Aggiornamenti', 'Aggiornamenti silenziosi come Google Chrome: stato, ultimo controllo e riavvio per applicare.'],
     ['#proxyStatus', 'Stato del Proxy', 'Il Proxy protegge le richieste solo con il motore attivo; altrimenti le blocca e nessun dato esce in chiaro.'],
     ['.endpoint:has(#openaiBase)', 'Indirizzo formato OpenAI', 'Base URL da impostare negli strumenti compatibili OpenAI (Chat Completions e Responses).'],
     ['.endpoint:has(#anthropicBase)', 'Indirizzo formato Anthropic', 'Base URL per Claude Code e gli SDK Anthropic (variabile ANTHROPIC_BASE_URL).'],
@@ -1694,7 +1587,6 @@ const TIPS = [
         if (/127\.0\.0\.1|localhost/i.test(url)) t += ' Modelli eseguiti su questo computer con Ollama: nessun dato esce in rete.';
         return t;
     }],
-    // --- filtri e modelli
     ['#btnPresetPA', 'Tutto attivo (profilo PA)', 'Attiva tutti i modelli e tutte le categorie con sensibilità massima.'],
     ['#btnPresetEssential', 'Solo dati essenziali', 'Oscura soltanto nomi, indirizzi, codici fiscali e partite IVA, email e telefoni.'],
     ['#btnPresetNone', 'Nessuna categoria', 'Disattiva tutte le categorie: non viene oscurato alcun dato.'],
@@ -1703,45 +1595,23 @@ const TIPS = [
     ['#btnModelsAllOff', 'Disattiva tutti i modelli', 'Nessun modello di analisi: verrebbe oscurato poco o nulla.'],
     ['.option:has(.model-check)', optTitle, (el) => `${(el.querySelector('.option-desc')?.textContent || '').trim()} Clicca per attivare o disattivare il modello.`],
     ['.option:has(.cat-check)', optTitle, (el) => `Etichetta usata nei documenti: ${(el.querySelector('.option-desc')?.textContent || '').trim()}. Clicca per oscurare o lasciare in chiaro questa categoria.`],
-    // --- sistema
-    ['#btnNetChange', 'Cambia modalità', 'Apre le Impostazioni per scegliere Standalone, Server, Client o Server + Client.'],
-    ['#netSummary', 'Rete e modalità operativa', 'Stato attuale: ascolto sulla rete, collegamento al Germano Server e accesso dalla rete (libero o con utente e password).'],
+    ['#netSummary', 'Modalità e rete', 'Stato attuale: ascolto sulla rete, collegamento al Germano Server e accesso dalla rete (libero o con utente e password).'],
     ['.field:has(#hardware_mode)', 'Calcolo', 'Automatico usa una scheda video NVIDIA se presente, altrimenti il processore.'],
     ['.field:has(#precision)', 'Precisione del modello', 'FP32 è più veloce ma usa più memoria; BF16 la dimezza ed è più lento sui processori meno recenti. Vale dal prossimo avvio del motore.'],
     ['.field:has(#file_timeout_minutes)', 'Tempo massimo per documento', 'Oltre questo tempo il documento viene interrotto e spostato tra i non riusciti.'],
     ['.check-row:has(#anonymize_filenames)', 'Anonimizza i nomi dei file', 'Anche i nomi di file e cartelle in uscita vengono anonimizzati (es. CV_[PERSONA_1].pdf).'],
-    ['.check-row:has(#check_updates)', 'Controllo aggiornamenti', 'Solo quando Windows segnala una connessione a Internet, Germano controlla se esiste una nuova versione.'],
-    ['.check-row:has(#auto_update)', 'Aggiornamento automatico', 'Scarica gli aggiornamenti e li installa al successivo avvio di Germano.'],
-    ['#btnUpdateCheck', 'Controlla ora', 'Controlla subito se è disponibile una nuova versione.'],
-    ['#btnShowVault', 'Mostra archivio', 'Mostra le corrispondenze tra etichette e dati originali (dati in chiaro).'],
-    ['#btnClearVault', 'Svuota archivio', 'Cancella tutte le corrispondenze: i documenti già anonimizzati non potranno più essere ripristinati.'],
+    ['.check-row:has(#check_updates)', 'Controllo aggiornamenti', 'Solo quando il sistema segnala una connessione a Internet, Germano controlla in silenzio se esiste una nuova versione.'],
+    ['.check-row:has(#auto_update)', 'Aggiornamento automatico', 'Scarica e prepara gli aggiornamenti in background, a bassa priorità, e li applica al successivo avvio di Germano in pochi secondi.'],
+    ['#btnUpdateCheck', 'Controlla ora', 'Controlla subito se è disponibile una nuova versione (anche se il sistema non segnala la rete).'],
+    ['#btnUpdateInstall', 'Riavvia per aggiornare', 'Chiude Germano, applica la nuova versione già preparata e lo riapre: pochi secondi. Cartelle, archivio e impostazioni non vengono toccati.'],
     ['#sysUsagePill', 'Risorse del computer', 'Uso del processore e della memoria; a seguire la precisione del modello principale.'],
     ['#clearLogsBtn', 'Pulisci registro', 'Svuota il registro attività visualizzato.'],
     ['#logTerminal', 'Registro attività', 'Messaggi del motore in tempo reale: elaborazioni, avvisi ed errori.'],
-    ['.folder-row [data-open-folder]', 'Apri', 'Apre la cartella in Esplora file di Windows.'],
-    // --- Studio AI
-    ['#studioTarget', 'Destinazione', 'Dove preparare il testo protetto: si scelgono solo le AI rilevate su questo computer (CLI, applicazioni e i modelli installati di Ollama o LM Studio in esecuzione); le altre restano in grigio. La copia negli appunti è sempre disponibile.'],
-    ['#aiStrip', 'AI rilevate', 'AI, CLI e modelli locali trovati su questo computer leggendo il disco e le porte locali, senza avviare programmi né usare Internet. Si aggiorna da solo ogni 12 secondi con lo Studio aperto.'],
-    ['.ai-chip', (el) => (el.textContent || '').replace('✓', '').trim(), (el, n) => {
-        const st = el.dataset.state;
-        if (st === 'stopped') return updText('Installato ma non in esecuzione: avvialo e Germano lo rileva da solo.', 'Installed but not running: start it and Germano detects it by itself.');
-        if (st === 'empty') return updText('In esecuzione ma senza modelli installati: scaricane uno e compare da solo.', 'Running but with no model installed: download one and it shows up by itself.');
-        if (!el.classList.contains('on')) return updText('Non trovata su questo computer.', 'Not found on this computer.');
-        const where = n ? updText(`Installata in: ${n}`, `Installed in: ${n}`) : updText('Installata sul computer che esegue Germano.', 'Installed on the computer running Germano.');
-        return el.dataset.models ? `${where} · ${updText('Modelli installati', 'Installed models')}: ${el.dataset.models}` : where;
-    }],
-    ['#btnStudioAttach', 'Allega file', 'Il testo degli allegati viene estratto e anonimizzato insieme al prompt (le immagini vanno elaborate con «Anonimizza file»).'],
-    ['#studioPrompt', 'Prompt', 'Scrivi la richiesta. Invio = invia, Maiusc+Invio = a capo. Il testo viene protetto prima dell\'invio.'],
-    ['#btnStudioSend', 'Proteggi e invia', 'Anonimizza prompt e allegati con il motore e mostra esattamente cosa riceverà l\'AI.'],
-    ['#btnDetectAI', 'Rileva AI', 'Il rilevamento è automatico: questo pulsante cerca subito di nuovo le AI, le CLI e i modelli installati su questo computer.'],
-    ['#btnGranularConfig', 'Configurazione granulare', 'Apre in un pannello laterale profilo di protezione, modelli e categorie di dati.'],
-    ['[data-copy-protected]', 'Copia testo protetto', 'Copia negli appunti il testo anonimizzato, pronto da incollare nell\'AI.'],
-    ['[data-studio-start]', 'Avvia motore', 'Avvia il motore: senza motore nessun dato viene inviato.'],
-    ['.attach-chip button', 'Rimuovi allegato', 'Toglie questo file dall\'invio.'],
-    ['#btnCloseConfig', 'Chiudi', 'Chiude il pannello di configurazione.'],
-    // --- Impostazioni e modalità operativa
+    ['.folder-row [data-open-folder]', 'Apri', 'Apre la cartella nel file manager.'],
+    ['#btnRedetectAi', 'Rileva di nuovo', 'Il rilevamento è automatico (ogni 12 secondi): questo pulsante cerca subito di nuovo le AI, le CLI e i modelli installati.'],
+    // --- modalità operativa
     ['#cardStandalone', 'Standalone', 'Disattiva Server e Client: Germano lavora solo su questo computer, senza alcuna attività di rete.'],
-    ['#cardServer', 'Server', 'Al primo avvio Windows può chiedere di consentire Python sulle reti private: rispondi Consenti, altrimenti gli altri computer non raggiungono il server.'],
+    ['#cardServer', 'Server', 'Con l\'installer la regola del firewall (reti private e di dominio) è già pronta: gli altri computer raggiungono il server e il suo Remote Control.'],
     ['#cardClient', 'Client', 'Affida il calcolo a un Germano Server della rete. Se il server ha la gestione utenti attiva, inserisci utente e password che ti ha dato l\'amministratore.'],
     ['.field:has(#remoteServer)', 'Indirizzo del server', 'Lascia vuoto per la ricerca automatica in rete, oppure scrivi ad esempio http://192.168.1.10:8181.'],
     ['.field:has(#remoteUser)', 'Utente del server', 'Solo se il Germano Server ha la gestione utenti attiva: Germano accede con utente e password e conserva solo la sessione (mai la password).'],
@@ -1753,19 +1623,18 @@ const TIPS = [
     ['[data-auth-pass]', 'Nuova password', 'Imposta una nuova password: le sessioni aperte di questo utente vengono chiuse.'],
     ['[data-auth-del]', 'Elimina utente', 'Elimina l\'utente e chiude le sue sessioni. Senza utenti l\'accesso dalla rete torna libero.'],
     ['.toggle-row .switch', 'Suggerimenti', 'Attiva o disattiva queste spiegazioni al passaggio del mouse.'],
-    ['#btnSaveSettings', 'Salva', 'Applica subito la modalità scelta: l\'ascolto sulla rete si accende o si spegne senza riavviare Germano.'],
-    ['#btnCancelSettings', 'Annulla', 'Chiude senza modificare nulla.'],
-    ['#btnCloseSettings', 'Chiudi', 'Chiude le Impostazioni.'],
+    ['#btnSaveSettings', 'Applica', 'Applica subito la modalità scelta: l\'ascolto sulla rete si accende o si spegne senza riavviare Germano.'],
+    ['#btnCancelSettings', 'Annulla modifiche', 'Rimette i valori attualmente in vigore.'],
+    ['#btnCloseSettings', 'Chiudi', 'Conferma la modalità predefinita (Standalone) e chiude il benvenuto.'],
 ];
 
-
 const TIPS_EN = {
-    // --- header
-    '.brand': ['Germano AI', 'Return to the Dashboard home page.'],
-    '#btnAppBatch': ['📂 Anonymize files', 'Batch processing of documents (PDF, Word, Excel, images, email): results are placed in the output folder.'],
-    '#btnAppStudio': ['🧠 AI Studio', 'Write a prompt and attach files: Germano anonymizes them before sending to an AI and shows you exactly what is sent.'],
-    '#btnModeSimple': ['Simple Mode', 'Only essential features: add documents, monitor progress, download ready files.'],
-    '#btnModeAdvanced': ['Advanced Mode', 'Adds AI Agents & APIs, Filters & Models, System & Log tabs.'],
+    '.brand': ['Germano AI', 'Back to the start page.'],
+    '#tabHarness': ['🧠 AI Harness', 'Conversation with the AI you pick at the bottom right (CLIs, local models or API services): Germano masks personal data before sending and puts it back in the answer. The Glass Window shows everything in real time.'],
+    '#tabSanitize': ['📂 Manual Sanitization & Vault', 'Work folders with drag & drop, processed documents, text to anonymize or restore and the mapping archive (Vault).'],
+    '#tabSettings': ['⚙️ Settings', 'Operating mode and network, profile and models, AI and keys, Proxy and APIs, system and log, updates.'],
+    '#tabGuide': ['📖 Guide', 'Complete user manual and technical documentation, available offline.'],
+    '#updatePill': ['Update ready', 'The new version was downloaded and prepared in the background: restart Germano whenever you want (a few seconds), otherwise it is applied by itself at the next start.'],
     '#profilePill': ['Protection profile', (el, n) => n || 'PA: all models and categories with maximum sensitivity. PD: custom configuration.'],
     '#engineStatusPill': ['Engine status', () => {
         let t = 'The engine runs anonymization models. Green = active, yellow = starting, gray = paused, red = error.';
@@ -1775,20 +1644,9 @@ const TIPS_EN = {
         return t;
     }],
     '#modeChip': ['Operating mode', (el) => `This computer is in «${(el.textContent || '').trim()}» mode. Click to choose Standalone, Server, Client, or Server + Client.`],
-    '#mainToggleBtn': ['Start / stop engine', 'Starts the engine to process documents and protect Proxy requests. While stopped, the Proxy blocks all requests: zero data leaves in the clear.'],
-    '#btnSettings': ['Settings', 'Operating mode (Standalone, Server, Client) and interface preferences, including these tooltips.'],
-    '#btnOpenGuide': ['Guide', 'User manual and technical documentation, accessible offline in a new tab.'],
-    '.view-tab[data-view="work"]': ['Processing', 'Work folders, document ingestion, live progress and results.'],
-    '.view-tab[data-view="agents"]': ['AI Agents & APIs', 'Proxy endpoints for Claude Code, Codex, Cursor and other tools, upstream targets and REST API examples.'],
-    '.view-tab[data-view="filters"]': ['Filters & models', 'Protection profile, sensitivity threshold, active analysis models and masked categories.'],
-    '.view-tab[data-view="system"]': ['System & log', 'Network and operating mode, execution runtime, folders, updates, mappings vault and activity log.'],
-    // --- banners
+    '#mainToggleBtn': ['Start / stop engine', 'Starts the engine to protect Harness and Proxy requests and process documents. While stopped, no data leaves in the clear: requests are blocked (the Harness starts it by itself on the first send).'],
     '#retryEngineBtn': ['Retry', 'Restarts the engine after the indicated error.'],
     '#killOrphansBtn': ['Close leftover processes', 'Closes leftover engine processes from previous sessions and frees RAM.'],
-    '#btnUpdateDownload': ['Download update', 'Downloads the new installer from download.germano.ai, the official update source.'],
-    '#btnUpdateInstall': ['Install now', 'Closes Germano, installs the update and reopens. Folders, vault and settings remain intact.'],
-    '#btnUpdateAck': ['Dismiss alert', 'Hides this notification.'],
-    // --- folders & stats
     '.fm-box[data-fm-box="input"]': ['📥 input — documents to process', 'Drag files or whole folders here (or copy them with the file manager): the engine anonymizes them one at a time. Click the box to open the folder.'],
     '.fm-box[data-fm-box="output"]': ['📤 output — anonymized documents', 'The results, with the same subfolder structure as the originals. Click the box to open the folder.'],
     '.fm-box[data-fm-box="processed"]': ['🗂️ processed — originals', 'The originals, moved here after processing: they contain personal data in clear text. Click the box to open the folder.'],
@@ -1806,33 +1664,52 @@ const TIPS_EN = {
     '#currentJob': ['Active job', 'Engine status, document being processed, current stage and batch progress.'],
     '#btnStartFromCta': ['Start processing', 'Starts the engine to process pending documents.'],
     '.restore-row .switch': ['Automatic de-anonymization', 'Tags are numbered and mappings saved locally: when an AI response contains them, real data is restored. If disabled: irreversible anonymization.'],
-    // --- documents table
     '.tab[data-folder="output"]': ['Ready', 'Anonymized (or restored) documents available in output folder.'],
     '.tab[data-folder="input"]': ['Pending', 'Documents in input folder, queued or currently processing.'],
     '.tab[data-folder="failed"]': ['Failed', 'Unprocessed documents with reason and retry button.'],
     '.tab[data-folder="processed"]': ['Originals', 'Archived original documents after processing.'],
     '#fileFilter': ['Filter', 'Filter documents by name, path or failure reason.'],
     '#btnRetryAll': ['Retry all', 'Moves all failed documents back to input folder.'],
-    '#btnOpenCurrentFolder': ['Open folder', 'Opens File Explorer for the currently selected tab.'],
+    '#btnOpenCurrentFolder': ['Open folder', 'Opens the file manager for the currently selected tab.'],
     '#btnExportCsv': ['Export list', 'Downloads document list as CSV (Excel compatible).'],
-    '[data-action="open"]': ['Open', 'Opens document with Windows default application.'],
-    '[data-action="reveal"]': ['Show in folder', 'Opens File Explorer with document highlighted.'],
+    '[data-action="open"]': ['Open', 'Opens the document with the default application.'],
+    '[data-action="reveal"]': ['Show in folder', 'Opens the file manager with the document highlighted.'],
     '[data-action="retry"]': ['Retry', 'Moves document back to input folder for re-processing.'],
-    '.row-actions a[download]': ['Download copy', 'Downloads a copy of the document via browser.'],
-    // --- text tab
-    '#manualInputText': ['Text', 'Paste text to anonymize, or AI response with tags like [PERSON_1] to restore.'],
+    '.row-actions a[download]': ['Download copy', 'Downloads a copy of the document.'],
+    '#manualInputText': ['Text', 'Paste text to anonymize, or AI response with tags like [PERSONA_1] to restore.'],
     '#anonymizeTextBtn': ['Anonymize text', 'Replaces personal data with numbered tags, ready for AI services.'],
-    '#deanonymizeTextBtn': ['Restore text', 'Restores real data into AI responses containing numbered tags.'],
-    '#copyManualOutputBtn': ['Copy text', 'Copies result to clipboard.'],
-    // --- AI agents & API
-    '.preset-chip': ['AI Preset', (el) => `Configures Proxy port and model settings for ${(el.textContent || '').trim()}.`],
-    '#proxyPort': ['Proxy port', 'Local port for HTTP proxy (default 8181).'],
-    '#customUpstreamUrl': ['Custom upstream URL', 'Base URL of target AI service if not using default.'],
-    '#saveProxyBtn': ['Save proxy settings', 'Applies proxy configuration changes.'],
-    '#copyApiKeyBtn': ['Copy API key', 'Copies dummy API key for local proxy auth.'],
-    // --- settings & operational mode
+    '#manualOutputText': ['Result', 'Anonymized text or text restored with the original data.'],
+    '#copyTextBtn': ['Copy result', 'Copies the result to the clipboard.'],
+    '#btnShowVault': ['Show archive', 'Shows the mappings between tags and original data (data in clear), with search.'],
+    '#btnClearVault': ['Clear archive', 'Deletes all mappings: documents already anonymized can no longer be restored.'],
+    '.settings-link[data-pane="general"]': ['Mode & network', 'Standalone, Server, Client or Server + Client; network access and users; tooltips.'],
+    '.settings-link[data-pane="protection"]': ['Protection & models', 'PA/PD profile, sensitivity, active analysis models and data categories to mask.'],
+    '.settings-link[data-pane="ai"]': ['AI, keys & Harness', 'Detected AIs, API keys of the services and Harness preferences (review before sending, preview, history).'],
+    '.settings-link[data-pane="proxy"]': ['Proxy & APIs', 'Proxy addresses for Claude Code, Codex, Cursor and other tools, destination services and REST API examples.'],
+    '.settings-link[data-pane="system"]': ['System & log', 'Engine execution, work folders and activity log.'],
+    '.settings-link[data-pane="updates"]': ['Updates', 'Silent updates like Google Chrome: status, last check and restart to apply.'],
+    '#proxyStatus': ['Proxy status', 'The Proxy protects requests only with the engine running; otherwise it blocks them and no data leaves in clear.'],
+    '.endpoint:has(#openaiBase)': ['OpenAI-format address', 'Base URL for OpenAI-compatible tools (Chat Completions and Responses).'],
+    '.endpoint:has(#anthropicBase)': ['Anthropic-format address', 'Base URL for Claude Code and the Anthropic SDKs (ANTHROPIC_BASE_URL variable).'],
+    '#target_api_url': ['OpenAI or compatible service', 'Address to which the Proxy forwards OpenAI-format requests after anonymizing them.'],
+    '#target_anthropic_url': ['Anthropic service (Claude)', 'Address to which the Proxy forwards Anthropic-format requests after anonymizing them.'],
+    '#btnPresetPA': ['All on (PA profile)', 'Turns on all models and all categories with maximum sensitivity.'],
+    '#btnPresetEssential': ['Essential data only', 'Masks only names, addresses, tax codes and VAT numbers, emails and phone numbers.'],
+    '#btnPresetNone': ['No categories', 'Turns off all categories: no data is masked.'],
+    '.field-range:has(#ai_threshold)': ['Model sensitivity', '0% threshold = every possible personal data item is masked. Raising it reduces false positives, but some uncertain data may stay in clear.'],
+    '#btnModelsAllOn': ['Enable all models', 'Uses all local models and the deterministic rules.'],
+    '#btnModelsAllOff': ['Disable all models', 'No analysis model: little or nothing would be masked.'],
+    '#netSummary': ['Mode & network', 'Current state: network listening, connection to the Germano Server and network access (open or with user and password).'],
+    '.check-row:has(#check_updates)': ['Update check', 'Only when the system reports an Internet connection, Germano silently checks whether a new version exists.'],
+    '.check-row:has(#auto_update)': ['Automatic update', 'Downloads and prepares updates in the background, at low priority, and applies them at the next start of Germano in a few seconds.'],
+    '#btnUpdateCheck': ['Check now', 'Checks right away whether a new version is available (even if the system reports no network).'],
+    '#btnUpdateInstall': ['Restart to update', 'Closes Germano, applies the already prepared version and reopens it: a few seconds. Folders, archive and settings are not touched.'],
+    '#sysUsagePill': ['Computer resources', 'Processor and memory usage; then the precision of the main model.'],
+    '#clearLogsBtn': ['Clear log', 'Clears the activity log shown.'],
+    '#logTerminal': ['Activity log', 'Engine messages in real time: processing, warnings and errors.'],
+    '#btnRedetectAi': ['Detect again', 'Detection is automatic (every 12 seconds): this button scans again right away for the installed AIs, CLIs and models.'],
     '#cardStandalone': ['Standalone', 'Disables Server and Client: Germano runs strictly locally with zero network activity.'],
-    '#cardServer': ['Server', 'Listens on the local network and offers the anonymization engine, the Proxy and the Remote Control to other computers and devices (open access, or user name and password).'],
+    '#cardServer': ['Server', 'With the installer the firewall rule (private and domain networks) is already in place: the other computers reach the server and its Remote Control.'],
     '#cardClient': ['Client', 'Delegates compute to a remote Germano Server while keeping Vault and files locally.'],
     '.field:has(#remoteServer)': ['Server address', 'Leave blank for automatic LAN discovery, or enter IP (e.g. http://192.168.1.10:8181).'],
     '.field:has(#remoteUser)': ['Server user', 'Only if the Germano Server has user management enabled: Germano signs in and keeps only the session (never the password).'],
@@ -1844,21 +1721,9 @@ const TIPS_EN = {
     '[data-auth-pass]': ['New password', 'Sets a new password: the open sessions of this user are closed.'],
     '[data-auth-del]': ['Delete user', 'Deletes the user and closes their sessions. Without users, network access is open again.'],
     '.toggle-row .switch': ['Tooltips', 'Toggle hover tooltips across the entire interface.'],
-    '#btnSaveSettings': ['Save', 'Immediately applies mode settings without restarting Germano.'],
-    '#btnCancelSettings': ['Cancel', 'Closes without making changes.'],
-    '#btnCloseSettings': ['Close', 'Closes Settings modal.'],
-    // --- Studio AI
-    '#studioTarget': ['Destination', 'Where to prepare the protected text: only the AIs detected on this computer can be chosen (CLIs, apps and the installed models of a running Ollama or LM Studio); the others stay greyed out. Copy to clipboard is always available.'],
-    '#aiStrip': ['Detected AIs', 'AIs, CLIs and local models found on this computer from the disk and local ports, without starting programs or using the Internet. Refreshes by itself every 12 seconds while the Studio is open.'],
-    '#btnStudioAttach': ['Attach file', 'Extracts and anonymizes attachments alongside the prompt.'],
-    '#studioPrompt': ['Prompt', 'Type request. Enter = send, Shift+Enter = newline. Protected before sending.'],
-    '#btnStudioSend': ['Protect & send', 'Anonymizes prompt and attachments with local engine.'],
-    '#btnDetectAI': ['Detect AI', 'Detection is automatic: this button scans again right away for the AIs, CLIs and models installed on this PC.'],
-    '#btnGranularConfig': ['Granular Settings', 'Opens sidebar for models, threshold and PII categories.'],
-    '[data-copy-protected]': ['Copy protected text', 'Copies anonymized text to clipboard ready for AI.'],
-    '[data-studio-start]': ['Start engine', 'Starts engine: required before sending prompts.'],
-    '.attach-chip button': ['Remove attachment', 'Removes this file from submission.'],
-    '#btnCloseConfig': ['Close', 'Closes configuration panel.']
+    '#btnSaveSettings': ['Apply', 'Immediately applies the chosen mode without restarting Germano.'],
+    '#btnCancelSettings': ['Discard changes', 'Puts back the values currently in force.'],
+    '#btnCloseSettings': ['Close', 'Confirms the default mode (Standalone) and closes the welcome.'],
 };
 
 const Tips = (() => {
@@ -2061,11 +1926,11 @@ function renderServerInfo() {
     const s = (modeState && modeState.server) || {};
     if (!s.enabled || !s.listening) {
         box.innerHTML = `<span class="muted">${escapeHtml(updText(
-            'Dopo il salvataggio Germano si mette in ascolto sulla rete e qui compaiono gli indirizzi del Remote Control, da ' +
+            'Dopo «Applica» Germano si mette in ascolto sulla rete e qui compaiono gli indirizzi del Remote Control, da ' +
             'aprire nel browser dei computer, dei tablet e degli smartphone della rete. Con l\'installer la regola del firewall ' +
             'di Windows (reti private e di dominio) è già pronta; eseguendo Germano dai sorgenti Windows può chiedere di ' +
             'consentire Python: rispondi «Consenti».',
-            'After saving, Germano listens on the network and the Remote Control addresses appear here, to open in the ' +
+            'After «Apply», Germano listens on the network and the Remote Control addresses appear here, to open in the ' +
             'browser of the network computers, tablets and smartphones. With the installer the Windows Firewall rule (private ' +
             'and domain networks) is already in place; when running Germano from source Windows may ask to allow Python: ' +
             'answer «Allow».'))}</span>`;
@@ -2090,8 +1955,8 @@ function renderServerInfo() {
         }, 3500);
     }
     box.innerHTML = `
-        <div><strong>${escapeHtml(updText('In ascolto sulla rete · Remote Control, da qualsiasi browser senza installare nulla:',
-                                          'Listening on the network · Remote Control, from any browser without installing anything:'))}</strong></div>
+        <div><strong>${escapeHtml(updText('In ascolto sulla rete · Remote Control (Harness AI e Glass Window), da qualsiasi browser senza installare nulla:',
+                                          'Listening on the network · Remote Control (AI Harness and Glass Window), from any browser without installing anything:'))}</strong></div>
         ${list}
         ${warns}
         <div class="muted">${escapeHtml(updText(
@@ -2212,25 +2077,15 @@ async function onAuthAdminChange(e) {
     if (!done) e.target.checked = !enabled;
 }
 
-async function openSettings(opts = {}) {
-    settingsWelcome = Boolean(opts.welcome);
-    settingsDone = false;
-    const modal = $('settingsModal');
-    modal.classList.toggle('is-welcome', settingsWelcome);
-    setText('settingsTitle', settingsWelcome ? '👋 Benvenuto in Germano AI' : 'Impostazioni');
-    setText('settingsSub', settingsWelcome
-        ? 'Prima di iniziare scegli come usare Germano su questo computer. Nel dubbio lascia Standalone: tutto resta su questo PC.'
-        : 'Modalità operativa di questo computer e preferenze dell\'interfaccia.');
-    setText('btnSaveSettings', settingsWelcome ? 'Conferma e inizia' : 'Salva');
-    $('btnCancelSettings').hidden = settingsWelcome;
-    setSettingsMsg('');
+// Sezione «Modalita'»: di norma nelle Impostazioni; alla prima apertura si sposta nella finestra di benvenuto.
+async function refreshModeSection() {
     $('enable_tooltips').checked = tooltipsEnabled;
     $('serverList').innerHTML = '';
     let remoteViewer = '';   // Dashboard aperta da un altro computer: la modalità si sceglie solo sul server
     try {
         const { ok, status, data } = await fetchJson('/api/mode', { cache: 'no-store' });
         if (ok) modeState = data;
-        else if (status === 403) remoteViewer = data.error || 'Le Impostazioni si cambiano solo dal computer su cui è installato Germano.';
+        else if (status === 403) remoteViewer = data.error || updText('Le Impostazioni si cambiano solo dal computer su cui è installato Germano.', 'Settings can be changed only from the computer where Germano is installed.');
     } catch (e) { /* si usa l'ultimo stato noto */ }
     const st = modeState || {};
     const cl = st.client || {};
@@ -2249,25 +2104,47 @@ async function openSettings(opts = {}) {
     $('enable_tooltips').disabled = Boolean(remoteViewer);
     $('btnSaveSettings').disabled = Boolean(remoteViewer);
     document.querySelectorAll('.mode-card').forEach(c => c.classList.toggle('is-disabled', locked));
+    setSettingsMsg('');
     if (remoteViewer) {
         setSettingsMsg(remoteViewer, true);
     } else if (st.locked) {
-        setSettingsMsg('Modalità bloccata dall\'amministratore (lock_settings): si possono cambiare solo le preferenze dell\'interfaccia.');
+        setSettingsMsg(updText('Modalità bloccata dall\'amministratore (lock_settings): si possono cambiare solo le preferenze dell\'interfaccia.',
+                               'Mode locked by the administrator (lock_settings): only the interface preferences can be changed.'));
     } else if (st.forced_by) {
-        setSettingsMsg(`Per questo avvio la modalità è «${MODE_TEXT[st.effective] || st.effective}», impostata da ` +
-            `${FORCED_TEXT[st.forced_by] || st.forced_by}: la scelta salvata qui vale dai prossimi avvii senza quella variabile.`);
+        setSettingsMsg(updText(`Per questo avvio la modalità è «${MODE_TEXT[st.effective] || st.effective}», impostata da ` +
+            `${FORCED_TEXT[st.forced_by] || st.forced_by}: la scelta salvata qui vale dai prossimi avvii senza quella variabile.`,
+            `For this start the mode is «${MODE_TEXT[st.effective] || st.effective}», set by ${st.forced_by}: the choice saved here applies from the next starts without that variable.`));
     }
+}
+
+async function openSettings(opts = {}) {
+    settingsWelcome = Boolean(opts.welcome);
+    settingsDone = false;
+    if (!settingsWelcome) {           // dalla 0.70 le Impostazioni sono una scheda
+        applyTab('settings');
+        applyPane('general');
+        return;
+    }
+    $('modalBodyHost').appendChild($('modeSection'));
+    setText('btnSaveSettings', 'Conferma e inizia');
+    $('btnCancelSettings').hidden = true;
     Tips.hide();
     $('settingsScrim').hidden = false;
-    modal.hidden = false;
-    setTimeout(() => (settingsWelcome ? $('btnSaveSettings') : $('btnCloseSettings')).focus(), 30);
+    $('settingsModal').hidden = false;
+    await refreshModeSection();
+    setTimeout(() => $('btnSaveSettings').focus(), 30);
 }
 
 function hideSettings() {
-    $('settingsModal').hidden = true;
-    $('settingsScrim').hidden = true;
+    if (!$('settingsModal').hidden) {
+        $('modeSectionHome').appendChild($('modeSection'));
+        $('settingsModal').hidden = true;
+        $('settingsScrim').hidden = true;
+    }
     settingsWelcome = false;
     settingsDone = false;
+    setText('btnSaveSettings', 'Applica');
+    $('btnCancelSettings').hidden = false;
 }
 
 function dismissSettings() {
@@ -2299,6 +2176,7 @@ async function saveSettings({ keepMode = false } = {}) {
     if (!keepMode && mode.includes('server')) body.share_ai_tools = $('shareAiTools').checked;
     const btn = $('btnSaveSettings');
     btn.disabled = true;
+    const welcome = settingsWelcome;
     try {
         const { ok, status, data } = await postJson('/api/mode', body);
         if (status === 403 && data.status === 'locked') {
@@ -2307,41 +2185,45 @@ async function saveSettings({ keepMode = false } = {}) {
             return;
         }
         if (!ok) {
-            setSettingsMsg(data.message || data.error || 'Impossibile salvare le impostazioni.', true);
+            setSettingsMsg(data.message || data.error || updText('Impossibile salvare le impostazioni.', 'Cannot save the settings.'), true);
             return;
         }
         modeState = data;
         applyTooltipsPref(body.enable_tooltips);
         if (initialConfig) initialConfig.first_run_done = true;
         const label = MODE_TEXT[data.saved] || data.saved;
-        let msg = 'Impostazioni salvate.';
-        if (settingsWelcome) msg = `Modalità ${label} confermata.`;
-        else if (data.saved !== (st.saved || 'standalone')) msg = `Modalità ${label} attivata.`;
+        let msg = updText('Impostazioni salvate.', 'Settings saved.');
+        if (welcome) msg = updText(`Modalità ${label} confermata.`, `${label} mode confirmed.`);
+        else if (data.saved !== (st.saved || 'standalone')) msg = updText(`Modalità ${label} attivata.`, `${label} mode enabled.`);
         if (data.forced_by && data.effective !== data.saved) {
-            msg += ` Per questo avvio resta «${MODE_TEXT[data.effective] || data.effective}» (${FORCED_TEXT[data.forced_by] || data.forced_by}).`;
+            msg += updText(` Per questo avvio resta «${MODE_TEXT[data.effective] || data.effective}» (${FORCED_TEXT[data.forced_by] || data.forced_by}).`,
+                           ` For this start it stays «${MODE_TEXT[data.effective] || data.effective}» (${data.forced_by}).`);
         }
-        if (data.server && data.server.listening) msg += ' Germano è in ascolto sulla rete locale.';
-        if (data.engine_action === 'restart') msg += ' Il motore si riavvia per applicarla.';
-        if (data.engine_action === 'start') msg += ' Avvio del motore in corso.';
+        if (data.server && data.server.listening) msg += updText(' Germano è in ascolto sulla rete locale.', ' Germano is listening on the local network.');
+        if (data.engine_action === 'restart') msg += updText(' Il motore si riavvia per applicarla.', ' The engine restarts to apply it.');
+        if (data.engine_action === 'start') msg += updText(' Avvio del motore in corso.', ' Starting the engine.');
         (data.notes || []).forEach(n => showToast(n, 'warn', 9000));
         pollStatus();
         renderNetSummary();
-        if (!keepMode && String(data.saved).includes('server') && data.server && data.server.listening) {
-            // La finestra resta aperta: l'amministratore deve vedere indirizzi e token da dare ai client.
-            settingsWelcome = false;
+        syncModeDetails();
+        if (welcome && !keepMode && String(data.saved).includes('server') && data.server && data.server.listening) {
+            // Benvenuto in modalità Server: la finestra resta aperta perché l'amministratore veda gli indirizzi.
             settingsDone = true;
-            $('settingsModal').classList.remove('is-welcome');
-            $('btnCancelSettings').hidden = true;
             setText('btnSaveSettings', 'Fatto');
             renderServerInfo();
             setSettingsMsg(`✅ ${msg} ` + updText('Comunica ai client l\'indirizzo qui sopra (e, se la gestione utenti è attiva, utente e password).',
                                                    'Give the clients the address above (and, with user management on, user name and password).'));
             return;
         }
-        hideSettings();
-        showToast(msg, 'success', 5000);
+        if (welcome) {
+            hideSettings();
+            showToast(msg, 'success', 5000);
+            return;
+        }
+        setSettingsMsg(`✅ ${msg}`);
+        showToast(msg, 'success', 4000);
     } catch (e) {
-        setSettingsMsg('Germano non risponde: impossibile salvare.', true);
+        setSettingsMsg(updText('Germano non risponde: impossibile salvare.', 'Germano is not responding: cannot save.'), true);
     } finally {
         btn.disabled = false;
     }
@@ -2350,21 +2232,22 @@ async function saveSettings({ keepMode = false } = {}) {
 async function findServers() {
     const list = $('serverList');
     const btn = $('btnFindServers');
-    list.innerHTML = '<div class="server-empty">Ricerca in corso…</div>';
+    list.innerHTML = `<div class="server-empty">${escapeHtml(updText('Ricerca in corso…', 'Searching…'))}</div>`;
     btn.disabled = true;
     try {
         const { ok, data } = await fetchJson('/api/remote/servers', { cache: 'no-store' });
         const servers = (ok && data.servers) || [];
         list.innerHTML = servers.length ? servers.map(s => {
-            const engine = s.engine_shared ? (s.engine_ready ? '🟢 motore pronto' : '🟡 motore in avvio') : '⚪ motore non condiviso';
+            const engine = s.engine_shared ? (s.engine_ready ? updText('🟢 motore pronto', '🟢 engine ready') : updText('🟡 motore in avvio', '🟡 engine starting'))
+                                           : updText('⚪ motore non condiviso', '⚪ engine not shared');
             const dev = s.device ? ` · ${escapeHtml(String(s.device).toUpperCase())}` : '';
             return `<button type="button" class="server-row" data-server-url="${escapeHtml(s.url)}">
                 <span class="server-name">${escapeHtml(s.name || s.url)}</span><code>${escapeHtml(s.url)}</code>
                 <span class="server-meta">${engine}${dev} · v${escapeHtml(s.version || '?')}</span></button>`;
-        }).join('') : '<div class="server-empty">Nessun Germano Server trovato sulla rete locale. Sul server scegli la modalità ' +
-            'Server nelle Impostazioni e verifica che il firewall di Windows consenta le reti private.</div>';
+        }).join('') : `<div class="server-empty">${escapeHtml(updText('Nessun Germano Server trovato sulla rete locale. Sul server scegli la modalità Server nelle Impostazioni e verifica che il firewall consenta le reti private.',
+                                                                       'No Germano Server found on the local network. On the server choose Server mode in Settings and check that the firewall allows private networks.'))}</div>`;
     } catch (e) {
-        list.innerHTML = '<div class="server-empty">Ricerca non riuscita: Germano non risponde.</div>';
+        list.innerHTML = `<div class="server-empty">${escapeHtml(updText('Ricerca non riuscita: Germano non risponde.', 'Search failed: Germano is not responding.'))}</div>`;
     } finally {
         btn.disabled = Boolean(modeState && modeState.locked);
     }
@@ -2386,9 +2269,9 @@ function renderModeChip(data) {
     if (m.client && data.running) {
         if (eng.mode === 'remote') {
             text += ` · ${eng.server_name || 'server'}`;
-            if (eng.ok === false) { text += ' (non raggiungibile)'; cls.push('is-warn'); }
+            if (eng.ok === false) { text += updText(' (non raggiungibile)', ' (unreachable)'); cls.push('is-warn'); }
         } else if (eng.fallback) {
-            text += ' · motore locale';
+            text += updText(' · motore locale', ' · local engine');
             cls.push('is-warn');
         }
     }
@@ -2399,7 +2282,7 @@ function renderModeChip(data) {
 
 async function renderNetSummary() {
     const box = $('netSummary');
-    if (!box || currentUiMode !== 'advanced' || currentView !== 'system') return;
+    if (!box || currentTab !== 'settings' || currentPane !== 'general') return;
     try {
         const { ok, data } = await fetchJson('/api/mode', { cache: 'no-store' });
         if (!ok) return;
@@ -2407,41 +2290,39 @@ async function renderNetSummary() {
         const s = data.server || {};
         const c = data.client || {};
         const eng = data.engine || {};
-        let clientValue = 'disattivato';
-        let clientSub = 'il calcolo avviene su questo computer';
+        let clientValue = updText('disattivato', 'off');
+        let clientSub = updText('il calcolo avviene su questo computer', 'computing happens on this computer');
         if (c.enabled) {
             if (eng.mode === 'remote' && eng.ok === false) {
-                clientValue = `${eng.server_name || eng.server} non raggiungibile`;
-                clientSub = `${eng.server} · nessun dato inviato, i documenti restano in coda`;
+                clientValue = updText(`${eng.server_name || eng.server} non raggiungibile`, `${eng.server_name || eng.server} unreachable`);
+                clientSub = updText(`${eng.server} · nessun dato inviato, i documenti restano in coda`, `${eng.server} · no data sent, documents stay queued`);
             } else if (eng.mode === 'remote') {
-                clientValue = `collegato a ${eng.server_name || eng.server}`;
+                clientValue = updText(`collegato a ${eng.server_name || eng.server}`, `connected to ${eng.server_name || eng.server}`);
                 clientSub = `${eng.server} · ${eng.latency_ms ?? '?'} ms`;
             } else if (data.engine_running && eng.fallback) {
-                clientValue = 'motore locale (nessun server)';
+                clientValue = updText('motore locale (nessun server)', 'local engine (no server)');
                 clientSub = eng.fallback;
             } else {
-                clientValue = data.engine_running ? 'collegamento in corso…' : 'motore non avviato';
-                clientSub = c.remote_server || 'ricerca automatica in rete';
+                clientValue = data.engine_running ? updText('collegamento in corso…', 'connecting…') : updText('motore non avviato', 'engine not started');
+                clientSub = c.remote_server || updText('ricerca automatica in rete', 'automatic network search');
             }
         }
         const items = [
-            ['Modalità', MODE_TEXT[data.effective] || data.effective,
-                data.forced_by ? `impostata da ${FORCED_TEXT[data.forced_by] || data.forced_by} per questo avvio` : 'modificabile in qualsiasi momento'],
-            ['Server', s.enabled ? (s.listening ? 'in ascolto sulla rete' : 'non in ascolto') : 'disattivato',
-                s.enabled && s.listening ? (s.ips || []).map(ip => `${ip}:${s.port}`).join(', ') || 'nessun IPv4' : 'nessuna porta aperta verso la rete'],
+            [updText('Modalità', 'Mode'), MODE_TEXT[data.effective] || data.effective,
+                data.forced_by ? updText(`impostata da ${FORCED_TEXT[data.forced_by] || data.forced_by} per questo avvio`, `set by ${data.forced_by} for this start`)
+                               : updText('modificabile in qualsiasi momento', 'can be changed at any time')],
+            ['Server', s.enabled ? (s.listening ? updText('in ascolto sulla rete', 'listening on the network') : updText('non in ascolto', 'not listening')) : updText('disattivato', 'off'),
+                s.enabled && s.listening ? (s.ips || []).map(ip => `${ip}:${s.port}`).join(', ') || updText('nessun IPv4', 'no IPv4') : updText('nessuna porta aperta verso la rete', 'no port open to the network')],
             ['Client', clientValue, clientSub],
             [updText('Accesso dalla rete', 'Network access'),
                 s.enabled ? (s.auth_enabled ? updText(`utente e password (${s.users})`, `user and password (${s.users})`)
                                             : updText('libero (senza credenziali)', 'open (no credentials)')) : '—',
-                s.enabled ? updText('Remote Control: http://<IP>:' + s.port + '/remote', 'Remote Control: http://<IP>:' + s.port + '/remote')
-                          : updText('serve solo in modalità Server', 'only in Server mode')],
+                s.enabled ? 'Remote Control: http://<IP>:' + s.port + '/remote' : updText('serve solo in modalità Server', 'only in Server mode')],
         ];
         box.innerHTML = items.map(([l, v, sub]) => `<div class="net-item"><div class="net-item-label">${escapeHtml(l)}</div>` +
             `<div class="net-item-value">${escapeHtml(v)}</div><div class="net-item-sub">${escapeHtml(sub)}</div></div>`).join('');
     } catch (e) { /* Germano non risponde: gestito da pollStatus */ }
 }
-
-// ------------------------------------------------------------------ AVVIO PAGINA
 
 // ------------------------------------------------------------------ INTERNAZIONALIZZAZIONE (i18n)
 let currentLang = 'it';
@@ -2450,11 +2331,9 @@ function getLang() { return currentLang; }
 function setLanguage(lang) {
     currentLang = (lang === 'en') ? 'en' : 'it';
     try { localStorage.setItem('germano_lang', currentLang); } catch (e) {}
-    
-    // Aggiorna attributo documento
+    document.cookie = `germano_lang=${currentLang}; path=/; SameSite=Strict; max-age=31536000`;
     document.documentElement.lang = currentLang;
 
-    // Aggiorna stato pulsanti bandierina
     const btnIt = $('btn-it');
     const btnEn = $('btn-en');
     if (btnIt && btnEn) {
@@ -2498,20 +2377,18 @@ function setLanguage(lang) {
         el.setAttribute('aria-label', (currentLang === 'en') ? el.getAttribute('data-en-aria-label') : el.getAttribute('data-it-aria-label'));
     });
 
-    // I collegamenti alla Guida aprono la stessa lingua (la Guida legge ?lang e condivide germano_lang)
-    document.querySelectorAll('a[href^="/guide"]').forEach(a => {
-        const raw = (a.getAttribute('href') || '/guide').split('?')[0];
-        const [path, hash] = raw.split('#');
-        a.setAttribute('href', `${path}?lang=${currentLang}` + (hash ? `#${hash}` : ''));
-    });
-
-    // Aggiorna elementi dinamici
+    // Elementi dinamici
     if (typeof lastStatus !== 'undefined' && lastStatus) {
-        try { renderStatus(lastStatus); } catch (e) {}
+        try { renderEngine(lastStatus); } catch (e) {}
         try { renderJob(lastStatus); } catch (e) {}
     }
-    try { renderFileManager(true); } catch (e) {}
-    try { if (studioDetected) renderStudioDetection(false); else populateStudioTargets(); } catch (e) {}
+    try { updatePresetButtons(); applyDeanonState($('enable_deanonymize').checked); updateThresholdBadge($('ai_threshold').value); } catch (e) {}
+    try { renderFileManager(true); renderFiles(); } catch (e) {}
+    try { if (harness) harness.setLang(); } catch (e) {}
+    try { renderAiSettings(); } catch (e) {}
+    try { if (lastUpdate) { renderUpdate(lastUpdate); renderUpdatePanel(lastUpdate); } } catch (e) {}
+    try { if (currentTab === 'guide') loadGuide(); else { const f = $('guideFrame'); if (f) f.dataset.loaded = ''; } } catch (e) {}
+    try { if (currentTab === 'settings' && currentPane === 'general') renderNetSummary(); } catch (e) {}
 }
 
 function initLanguage() {
@@ -2533,39 +2410,49 @@ function initLanguage() {
                          navigator.userLanguage || 'it').toLowerCase();
         initialLang = navLang.startsWith('it') ? 'it' : 'en';
     }
-
     const btnIt = $('btn-it');
     const btnEn = $('btn-en');
     if (btnIt) btnIt.addEventListener('click', () => setLanguage('it'));
     if (btnEn) btnEn.addEventListener('click', () => setLanguage('en'));
-
     setLanguage(initialLang);
 }
 
+// ------------------------------------------------------------------ AVVIO PAGINA
 document.addEventListener('DOMContentLoaded', async () => {
     initLanguage();
     Tips.init();
     await loadInitialSettings();
     Tips.setEnabled(tooltipsEnabled);
-    let savedApp = 'batch';
-    try { savedApp = localStorage.getItem('germano_app') || 'batch'; } catch (e) { /* archivio non disponibile */ }
-    applyAppMode(savedApp, false);
+    mountHarness();
+    // all'apertura si parte sempre dall'Harness AI (la scheda scelta resta solo durante la sessione, es. dopo un ricaricamento)
+    let tab = 'harness';
+    let pane = 'general';
+    try { tab = sessionStorage.getItem('germano_tab') || 'harness'; pane = sessionStorage.getItem('germano_pane') || 'general'; } catch (e) { /* archivio non disponibile */ }
+    currentPane = PANES.includes(pane) ? pane : 'general';
+    applyTab(tab, false);
     renderAgents();
     await pollStatus();
-    await fetchFiles();
 
-    // Impostazioni: modalità operativa (Standalone / Server / Client) e preferenze dell'interfaccia
+    // Schede principali e sezioni delle Impostazioni
+    document.querySelectorAll('.main-tab').forEach(b => b.addEventListener('click', () => applyTab(b.dataset.tab)));
+    document.querySelectorAll('.settings-link').forEach(b => b.addEventListener('click', () => applyPane(b.dataset.pane)));
+    document.addEventListener('click', (e) => {
+        const g = e.target.closest('[data-goto-guide]');
+        if (g) { applyTab('guide'); loadGuide(g.dataset.gotoGuide); }
+    });
+
+    // Modalità operativa (Standalone / Server / Client) e preferenze dell'interfaccia
     $('optStandalone').addEventListener('change', () => onModeCheck('standalone'));
     $('optServer').addEventListener('change', () => onModeCheck('server'));
     $('optClient').addEventListener('change', () => onModeCheck('client'));
     $('btnFindServers').addEventListener('click', findServers);
-    ['input', 'change'].forEach(ev => $('settingsModal').addEventListener(ev, () => {
-        if (!settingsDone) return;   // modificata di nuovo dopo il salvataggio: «Fatto» torna «Salva»
+    ['input', 'change'].forEach(ev => $('modeSection').addEventListener(ev, () => {
+        if (!settingsDone) return;   // modificata di nuovo dopo il salvataggio: «Fatto» torna «Conferma»
         settingsDone = false;
-        setText('btnSaveSettings', 'Salva');
+        setText('btnSaveSettings', settingsWelcome ? 'Conferma e inizia' : 'Applica');
     }));
     $('btnSaveSettings').addEventListener('click', () => (settingsDone ? hideSettings() : saveSettings()));
-    $('btnCancelSettings').addEventListener('click', hideSettings);
+    $('btnCancelSettings').addEventListener('click', () => { refreshModeSection(); showToast(updText('Valori in vigore ripristinati.', 'Current values restored.'), 'info', 2500); });
     $('btnCloseSettings').addEventListener('click', dismissSettings);
     $('settingsScrim').addEventListener('click', dismissSettings);
     $('serverList').addEventListener('click', (e) => {
@@ -2574,8 +2461,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         $('remoteServer').value = row.dataset.serverUrl;
         $('serverList').querySelectorAll('.server-row').forEach(r => r.classList.toggle('is-selected', r === row));
         $('remoteUser').focus();
-        setSettingsMsg(updText(`Server selezionato: ${row.dataset.serverUrl}. Se richiede l'accesso inserisci utente e password, poi salva.`,
-                               `Server selected: ${row.dataset.serverUrl}. If it requires sign-in enter user name and password, then save.`));
+        setSettingsMsg(updText(`Server selezionato: ${row.dataset.serverUrl}. Se richiede l'accesso inserisci utente e password, poi applica.`,
+                               `Server selected: ${row.dataset.serverUrl}. If it requires sign-in enter user name and password, then apply.`));
     });
     $('authAdmin').addEventListener('click', onAuthAdminClick);
     $('authAdmin').addEventListener('change', onAuthAdminChange);
@@ -2599,45 +2486,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             first.focus();
         }
     });
+    $('enable_tooltips').addEventListener('change', () => applyTooltipsPref($('enable_tooltips').checked));
     // Prima apertura: la finestra fa da benvenuto e chiede la modalità operativa (predefinita Standalone)
     if (initialConfig && initialConfig.first_run_done !== true) openSettings({ welcome: true });
 
-    $('btnModeSimple').addEventListener('click', () => applyUiMode('simple', true));
-    $('btnModeAdvanced').addEventListener('click', () => applyUiMode('advanced', true));
-    document.querySelectorAll('.view-tab').forEach(t => t.addEventListener('click', () => applyView(t.dataset.view)));
-
-    // Commutatore Anonimizza file / Studio AI
-    $('btnAppBatch').addEventListener('click', () => applyAppMode('batch', true));
-    $('btnAppStudio').addEventListener('click', () => applyAppMode('studio', true));
-
-    // Studio AI: rilevamento, destinazione, allegati, invio
-    $('btnDetectAI').addEventListener('click', () => detectAI(true));
-    $('studioTarget').addEventListener('change', () => {
-        try { localStorage.setItem(STUDIO_TARGET_KEY, $('studioTarget').value); } catch (e) { /* archivio non disponibile */ }
-        updateStudioTargetBadge();
-    });
-    $('studioTarget').addEventListener('blur', () => { if (studioRenderPending) renderStudioDetection(true); });
-    // rilevamento automatico delle AI installate: con lo Studio aperto, ogni 12 secondi e al ritorno sulla finestra
-    setInterval(() => { if (currentApp === 'studio' && !document.hidden) detectAI(false); }, STUDIO_DETECT_MS);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && currentApp === 'studio') detectAI(false); });
-    window.addEventListener('focus', () => { if (currentApp === 'studio') detectAI(false); });
-    $('btnStudioAttach').addEventListener('click', () => $('studioFileInput').click());
-    $('studioFileInput').addEventListener('change', (e) => { addStudioFiles(e.target.files); e.target.value = ''; });
-    $('attachChips').addEventListener('click', (e) => {
-        const rm = e.target.closest('[data-remove-attach]');
-        if (rm) { studioFiles.splice(parseInt(rm.dataset.removeAttach, 10), 1); renderAttachChips(); }
-    });
-    $('studioComposer').addEventListener('submit', (e) => { e.preventDefault(); sendStudio(); });
-    const promptBox = $('studioPrompt');
-    promptBox.addEventListener('input', () => { promptBox.style.height = 'auto'; promptBox.style.height = Math.min(200, promptBox.scrollHeight) + 'px'; });
-    promptBox.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendStudio(); }
-    });
-    $('studioChat').addEventListener('click', (e) => {
-        const copyBtn = e.target.closest('[data-copy-protected]');
-        if (copyBtn) { const m = copyBtn.closest('.msg'); if (m && m._protected) copyText(m._protected); return; }
-        if (e.target.closest('[data-studio-start]')) { startEngine().then(pollStatus); showToast('Avvio del motore in corso…', 'info'); }
-    });
+    // AI, chiavi e Harness
+    $('btnRedetectAi').addEventListener('click', async () => { if (harness) { await harness.refreshTargets(true); renderAiSettings(); } });
+    $('keyList').addEventListener('click', onKeyListClick);
+    document.querySelectorAll('#harnessPrefs [data-hpref]').forEach(box => box.addEventListener('change', () => {
+        if (harness) harness.setPref(box.dataset.hpref, box.checked);
+    }));
 
     // Preset rapidi per target_api_url (OpenAI, DeepSeek, Kimi, Qwen, Ollama)
     document.querySelectorAll('.preset-target').forEach(btn => {
@@ -2646,16 +2504,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (input && btn.dataset.url) {
                 input.value = btn.dataset.url;
                 input.dispatchEvent(new Event('change', { bubbles: true }));
-                showToast(`Servizio impostato su ${btn.textContent}`, 'success', 2500);
+                showToast(updText(`Servizio impostato su ${btn.textContent}`, `Service set to ${btn.textContent}`), 'success', 2500);
             }
         });
     });
-
-    // Cassetto «Configurazione Granulare»
-    $('btnGranularConfig').addEventListener('click', openConfigDrawer);
-    $('btnCloseConfig').addEventListener('click', closeConfigDrawer);
-    $('configScrim').addEventListener('click', closeConfigDrawer);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('configDrawer').hidden) closeConfigDrawer(); });
 
     // Avvio / arresto del motore
     $('mainToggleBtn').addEventListener('click', async () => {
@@ -2669,7 +2521,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await fetch('/api/stop', { method: 'POST' });
             }
         } catch (e) {
-            showToast('Germano non risponde: la finestra del programma è aperta?', 'error');
+            showToast(updText('Germano non risponde: la finestra del programma è aperta?', 'Germano is not responding: is the program window open?'), 'error');
         } finally {
             delete btn.dataset.busy;
             btn.disabled = false;
@@ -2685,7 +2537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         pollStatus();
     });
 
-    // Pulsanti generici: Impostazioni, apertura cartelle, nuovo token e copia negli appunti
+    // Pulsanti generici: Impostazioni, apertura cartelle e copia negli appunti
     document.addEventListener('click', (e) => {
         if (e.target.closest('[data-open-settings]')) {
             openSettings();
@@ -2745,7 +2597,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
     }));
-    // un file lasciato fuori dal riquadro non deve essere aperto dal browser
+    // un file lasciato fuori da un'area di rilascio non deve essere aperto dal browser
     window.addEventListener('dragover', e => e.preventDefault());
     window.addEventListener('drop', e => e.preventDefault());
     // riquadri delle cartelle: Invio o barra spaziatrice aprono la cartella come il clic
@@ -2759,7 +2611,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const btn = e.target.closest('[data-fm-retry]');
         if (btn) retryFailedDocument(btn.dataset.fmRetry);
     });
-    loadFmPaths();
 
     // Documenti
     document.querySelectorAll('.tab[data-folder]').forEach(t => t.addEventListener('click', () => setFileTab(t.dataset.folder)));
@@ -2783,7 +2634,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('copyTextBtn').addEventListener('click', () => {
         const value = $('manualOutputText').value;
         if (value) copyText(value);
-        else showToast('Nessun risultato da copiare.', 'error');
+        else showToast(updText('Nessun risultato da copiare.', 'No result to copy.'), 'error');
     });
 
     // Filtri e modelli
@@ -2834,26 +2685,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         'check_updates', 'auto_update']
         .forEach(id => $(id).addEventListener('change', () => persistSettings(true)));
 
-    // Aggiornamenti
-    $('btnUpdateCheck').addEventListener('click', () => updateAction('/api/update/check', 'Controllo degli aggiornamenti in corso...'));
-    $('btnUpdateDownload').addEventListener('click', () => updateAction('/api/update/download', updText('Download dell\'aggiornamento avviato.', 'Update download started.')));
+    // Aggiornamenti silenziosi
+    $('btnUpdateCheck').addEventListener('click', () => updateAction(lastUpdate && lastUpdate.state === 'available' ? '/api/update/download' : '/api/update/check',
+                                                                     updText('Controllo degli aggiornamenti in corso…', 'Checking for updates…')));
     $('btnUpdateInstall').addEventListener('click', installUpdate);
-    $('btnUpdateAck').addEventListener('click', () => updateAction('/api/update/ack'));
+    $('updatePill').addEventListener('click', (e) => { e.stopPropagation(); if ($('updatePop').hidden) openUpdatePop(); else $('updatePop').hidden = true; });
+    $('btnUpdateRestart').addEventListener('click', installUpdate);
+    $('btnUpdateLater').addEventListener('click', () => { $('updatePop').hidden = true; });
+    document.addEventListener('mousedown', (e) => { if (!$('updatePop').hidden && !e.target.closest('.update-wrap')) $('updatePop').hidden = true; });
 
     // Archivio delle corrispondenze e registro
     $('btnShowVault').addEventListener('click', toggleVault);
+    $('vaultFilter').addEventListener('input', renderVaultRows);
     $('btnClearVault').addEventListener('click', async () => {
-        if (!confirm('Svuotare l\'archivio delle corrispondenze?\nI documenti già anonimizzati non potranno più essere ripristinati con i dati originali.')) return;
+        if (!confirm(updText('Svuotare l\'archivio delle corrispondenze?\nI documenti già anonimizzati non potranno più essere ripristinati con i dati originali.',
+                             'Clear the mapping archive?\nDocuments already anonymized can no longer be restored with the original data.'))) return;
         const { ok, data } = await postJson('/api/clear_vault', {});
         $('vaultPreviewBox').hidden = true;
+        $('vaultSearchRow').hidden = true;
         setText('btnShowVault', 'Mostra');
-        showToast(ok ? 'Archivio delle corrispondenze svuotato.' : (data.message || 'Operazione non riuscita.'), ok ? 'info' : 'error');
+        showToast(ok ? updText('Archivio delle corrispondenze svuotato.', 'Mapping archive cleared.') : (data.message || updText('Operazione non riuscita.', 'Operation failed.')), ok ? 'info' : 'error');
         pollStatus();
     });
     $('clearLogsBtn').addEventListener('click', async () => {
         await fetch('/api/clear_logs', { method: 'POST' });
         pollLogs();
-        showToast('Registro attività pulito.', 'info', 2200);
+        showToast(updText('Registro attività pulito.', 'Activity log cleared.'), 'info', 2200);
     });
 
     // Processi rimasti da una sessione precedente
@@ -2866,9 +2723,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('killOrphansBtn').addEventListener('click', async () => {
         await fetch('/api/kill_orphans', { method: 'POST' });
         $('orphanWarning').hidden = true;
-        showToast('Processi secondari chiusi.', 'success');
+        showToast(updText('Processi secondari chiusi.', 'Leftover processes closed.'), 'success');
     });
     setInterval(pollStatus, 1500);
     setInterval(pollLogs, 2000);
-    setInterval(renderNetSummary, 5000);   // aggiorna solo se è aperta la scheda Sistema
+    setInterval(renderNetSummary, 5000);   // aggiorna solo se è aperta la sezione Modalità e rete
 });

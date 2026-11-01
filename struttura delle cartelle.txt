@@ -9,7 +9,7 @@ e per tutte le release future di Germano AI.
 ALBERATURA DELLE CARTELLE
 --------------------------------------------------------------------------------
 
-germano.ai-0.60/
+germano.ai-0.70/
 ├── sorgenti/
 │   ├── macos/
 │   │   ├── germano/
@@ -27,14 +27,14 @@ germano.ai-0.60/
 │   └── windows/
 └── releases/
     ├── macos/
-    │   ├── germano-0.60.pkg
-    │   └── germano-client-0.60.pkg
+    │   ├── germano-0.70.pkg
+    │   └── germano-client-0.70.pkg
     ├── linux/
-    │   ├── germano-0.60.deb
-    │   └── germano-client-0.60.deb
+    │   ├── germano-0.70.deb
+    │   └── germano-client-0.70.deb
     └── windows/
-        ├── germano-0.60.exe
-        └── germano-client-0.60.exe
+        ├── germano-0.70.exe
+        └── germano-client-0.70.exe
 
 
 --------------------------------------------------------------------------------
@@ -91,26 +91,26 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
    - Regola fondamentale: Zero dipendenze da Internet all'installazione. L'applicazione
      deve funzionare al primo colpo anche su sistemi operativi appena installati ("vanilla"):
      * Windows (Windows 11 Vanilla):
-       - releases/windows/germano-0.60.exe
+       - releases/windows/germano-0.70.exe
          Installer unico autoestraente della suite completa. Si installa nello
          spazio utente (%LOCALAPPDATA%\Programs\Germano AI) senza privilegi di
          amministratore (Zero UAC), crea il collegamento Desktop e imposta le
          cartelle di lavoro protette in Documenti\Germano AI.
-       - releases/windows/germano-client-0.60.exe
+       - releases/windows/germano-client-0.70.exe
          Installer unico del client leggero (~22-26 MB, senza modelli pesanti).
      * Linux (Ubuntu 26 / Debian Vanilla):
-       - releases/linux/germano-0.60.deb
+       - releases/linux/germano-0.70.deb
          Pacchetto nativo Debian/Ubuntu autosufficiente. Si installa pulito,
          configura la voce di menu desktop Germano.desktop e la cartella in
          ~/Documents/Germano AI.
-       - releases/linux/germano-client-0.60.deb
+       - releases/linux/germano-client-0.70.deb
          Pacchetto nativo Debian/Ubuntu per il client leggero.
      * macOS (macOS Sonoma/Sequoia Vanilla - Apple Silicon & Intel):
-       - releases/macos/germano-0.60.pkg
+       - releases/macos/germano-0.70.pkg
          Pacchetto guidato nativo macOS (.pkg). Installa Germano.app in
          ~/Applications o /Applications e predispone ~/Documents/Germano AI
          senza richiedere permessi root o sudo.
-       - releases/macos/germano-client-0.60.pkg
+       - releases/macos/germano-client-0.70.pkg
          Pacchetto nativo macOS per il client leggero.
 
 --------------------------------------------------------------------------------

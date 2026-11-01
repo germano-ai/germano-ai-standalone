@@ -1,6 +1,6 @@
 """Costruisce gli installer Windows IN UN SOLO FILE della release:
-  germano.ai-0.60/releases/windows/germano-0.60.exe          suite completa (runtime, 6 modelli IA, interfaccia)
-  germano.ai-0.60/releases/windows/germano-client-0.60.exe   client leggero
+  germano.ai-0.70/releases/windows/germano-0.70.exe          suite completa (runtime, 6 modelli IA, interfaccia)
+  germano.ai-0.70/releases/windows/germano-client-0.70.exe   client leggero
 partendo da sorgenti/windows/<edizione> (programma), dipendenze/windows/runtime-<edizione> (Python 3.11 con tutte
 le librerie e le DLL di Visual C++ accanto all'interprete: nessun ridistribuibile da installare) e modelli/ (suite).
 Germano.exe (l'unico programma) viene creato qui da build_exe.py e messo solo nell'installer: i sorgenti restano
@@ -38,7 +38,7 @@ TOOLS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TOOLS)
 import build_exe  # noqa: E402
 
-RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-0.60
+RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-0.70
 SOURCES = os.path.join(RELEASE, "sorgenti", "windows")
 DEPS = os.path.join(RELEASE, "dipendenze", "windows")
 MODELS = os.path.join(RELEASE, "modelli")

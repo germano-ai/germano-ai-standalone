@@ -150,6 +150,8 @@ def handle_file(daemon, body):
         raise ValueError("contenuto del file non valido (base64)")
     name = common.safe_filename(body.get("filename") or "file.bin")
     mode = body.get("mode", "auto")
+    # opzioni di un client della rete (Remote Control, Germano Client): valgono solo per questo file
+    settings, label = _client_settings(daemon, body.get("options"))
     daemon.vault.refresh()
     tm = daemon.vault.tag_map()
     ctx0 = _ctx(daemon, "anonymize")
@@ -169,7 +171,8 @@ def handle_file(daemon, body):
                         mode = "restore"
                 except Exception:
                     pass
-        ctx = _ctx(daemon, mode, tm)
+        ctx = _ctx(daemon, mode, tm, settings=settings if mode == "anonymize" else None)
+        ctx.label_override = label if mode == "anonymize" else None
         out = formats.process_file(src, os.path.join(out_dir, name), ctx)
         with open(out, "rb") as f:
             new_data = f.read()

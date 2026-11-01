@@ -1,11 +1,11 @@
-# Germano AI 0.60 — Suite completa per Linux
+# Germano AI 0.70 — Suite completa per Linux
 
 ## Installazione
-Scarica **`germano-0.60.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-0.70.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure da terminale:
 
 ```bash
-sudo apt install ./germano-0.60.deb
+sudo apt install ./germano-0.70.deb
 ```
 
 Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, i 6 modelli IA) e
@@ -14,16 +14,23 @@ amministratore. Installa il programma in `/opt/germano`, la voce **Germano AI** 
 l'azione «Cartelle di lavoro») e il comando `germano-ai`.
 
 ## Come si usa
-Apri **Germano AI** dal menu delle applicazioni: si apre una **finestra dedicata** (niente terminale né browser) con la
-**Dashboard unificata** (Standalone, Server LAN, Client). La **X rossa** chiude tutto: finestra, server e motore IA
-(nessun processo orfano). Nella sezione **Cartelle di lavoro** quattro riquadri (`input`, `output`, `processed`,
-`failed`) mostrano in tempo reale i file di ogni cartella, con il percorso completo sopra: trascina i documenti sul
-riquadro **input**; un clic su un riquadro apre la cartella nel file manager.
+Apri **Germano AI** dal menu delle applicazioni: si apre una **finestra dedicata** (niente terminale né browser) che si
+presenta come un **harness AI**. La **X rossa** chiude tutto: finestra, server e motore IA (nessun processo orfano).
+
+- **🧠 Harness AI** (scheda predefinita): scrivi alla tua AI e scegli il modello **in basso a destra** (solo le AI
+  rilevate: Claude Code, i modelli di Ollama, LM Studio e Jan, i servizi via API con una chiave); Germano oscura i dati
+  personali prima dell'invio e li rimette nella risposta. La **Glass Window** mostra in tempo reale tutto ciò che viene
+  comunicato al modello e **Interrompi operazione** ferma tutto.
+- **📂 Sanitizzazione Manuale & Vault**: quattro riquadri (`input`, `output`, `processed`, `failed`) mostrano in tempo
+  reale i file di ogni cartella, con il percorso completo sopra: trascina i documenti sul riquadro **input**; un clic su
+  un riquadro apre la cartella nel file manager.
+- **⚙️ Impostazioni** (modalità Standalone, Server LAN, Client e tutte le opzioni) e **📖 Guida**.
 
 In modalità **Server** gli altri PC, tablet e smartphone della rete usano dal browser, senza installare nulla, il
-**Remote Control** (`http://<IP-di-questo-PC>:8181/`): le AI di questo computer filtrate da Germano, la chat protetta
-con allegati, proteggi e ripristina, le opzioni (bloccate con il profilo PA). Di base l'accesso è libero; con la
-gestione utenti (Impostazioni › Accesso dalla rete) servono utente e password. Se il PC usa un firewall (es. `ufw`),
+**Remote Control** (`http://<IP-di-questo-PC>:8181/`) con la stessa interfaccia: Harness AI con le AI di questo computer
+filtrate da Germano e la Glass Window, sanitizzazione manuale di file e testi, opzioni (bloccate con il profilo PA). Di
+base l'accesso è libero; con la gestione utenti (Impostazioni › Modalità e rete › Accesso dalla rete) servono utente e
+password. Se il PC usa un firewall (es. `ufw`),
 consenti la porta 8181/tcp e, per la ricerca automatica, 8182/udp solo dalla rete locale.
 
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
@@ -43,8 +50,10 @@ servizio systemd con `User=<utente>`, `ExecStart=/usr/bin/germano-ai --no-browse
 - Il **Vault** è `extracted/deanonymize_vault.json`: file locale **non cifrato**, da proteggere come i documenti
   originali.
 - File tecnici in `~/.local/state/germano`.
-- Aggiornamenti: dalla Dashboard; il nuovo `germano-<versione>.deb` si scarica da https://download.germano.ai/ e si
-  installa come sopra (cartelle di lavoro, Vault e impostazioni restano intatti).
+- Aggiornamenti silenziosi (attivi di default): solo quando il sistema segnala la connessione a Internet, Germano
+  controlla https://download.germano.ai/ e scarica in background il nuovo `germano-<versione>.deb`; quando vuoi lo apri
+  con il pulsante in alto o in Impostazioni › Aggiornamenti (si installa con il Centro app, che chiede la password di
+  amministratore). Cartelle di lavoro, Vault e impostazioni restano intatti.
 
 ## Disinstallazione
 

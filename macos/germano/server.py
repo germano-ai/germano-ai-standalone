@@ -1,13 +1,19 @@
-"""Germano AI - server locale: Dashboard web, API REST e Proxy API per IDE/agenti IA.
+"""Germano AI - server locale: Dashboard web (Harness AI, Sanitizzazione manuale e Vault, Impostazioni, Guida),
+API REST e Proxy API per IDE/agenti IA.
 
 Ascolta sempre su 127.0.0.1; solo con la parte Server della modalita' operativa si aggiunge un secondo ascolto
-sulla rete locale: Remote Control nel browser (/remote), Proxy, Studio, AI condivise e motore condiviso. Di base dalla
-rete si accede senza credenziali; con la gestione utenti attiva servono utente e password (germano/auth.py). Dalla
-rete il ripristino dei dati riguarda solo le etichette della richiesta stessa, mai l'intero Vault. Avvia il demone IA
-(daemon.py) su richiesta e lo controlla tramite i file in state/ e un'API interna protetta da token.
+sulla rete locale: Remote Control nel browser (/remote), Proxy, Harness AI, AI condivise e motore condiviso. Di base
+dalla rete si accede senza credenziali; con la gestione utenti attiva servono utente e password (germano/auth.py).
+Dalla rete il ripristino dei dati riguarda solo le etichette della richiesta stessa, mai l'intero Vault. Avvia il
+demone IA (daemon.py) su richiesta e lo controlla tramite i file in state/ e un'API interna protetta da token.
+
+Harness AI (0.70): /api/harness/v2/* esegue la richiesta in streaming (NDJSON) e pubblica ogni passo per la Glass
+Window: testo originale, dati rilevati e corrispondenze del Vault, testo inviato, payload esatto, risposta grezza;
+l'utente puo' rivedere il payload prima dell'invio e interrompere in qualsiasi momento (germano/glass.py).
 """
 import io
 import os
+import queue
 import re
 import socket
 import subprocess
@@ -35,8 +41,9 @@ import requests  # noqa: E402
 from flask import (Flask, Response, g, jsonify, redirect, render_template, request, send_file,  # noqa: E402
                    stream_with_context)
 
-from germano.vault import VaultReader, contains_tags, normalize_tag, restore_text  # noqa: E402
+from germano.vault import TAG_RE, VaultReader, contains_tags, normalize_tag, restore_text  # noqa: E402
 from germano import auth as gauth  # noqa: E402
+from germano import glass as gglass  # noqa: E402
 from germano import providers as gproviders  # noqa: E402
 from germano import updater as gupdater  # noqa: E402
 
@@ -83,7 +90,7 @@ _LAN_OPEN = ("/remote", "/guide", "/guide.html", "/static/", "/favicon.ico",
 # Proxy verso le AI, Studio, Remote Control, AI condivise, motore condiviso ed elenco delle AI del server.
 _LAN_PROTECTED = ("/v1/messages", "/messages", "/v1/chat/completions", "/chat/completions",
                   "/v1/responses", "/responses", "/v1/models", "/models", "/api/studio/send",
-                  "/api/engine/v1/", "/api/harness/v1/", "/api/ai/detect", "/api/remote/v1/")
+                  "/api/engine/v1/", "/api/harness/v1/", "/api/harness/v2/", "/api/ai/detect", "/api/remote/v1/")
 # Tutto il resto (Dashboard, controllo motore, impostazioni, utenti, Vault, de-anonimizzazione, file) resta SOLO locale.
 
 
@@ -371,14 +378,27 @@ def _guard():
     return None
 
 
+# Pagine: nessuna risorsa esterna. connect-src/img-src 'self' impediscono che un testo restituito da un'AI (mostrato
+# nell'Harness) possa far partire richieste verso altri siti (es. immagini con dati nell'indirizzo).
+_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'none'; "
+        "form-action 'self'; frame-src 'self'; frame-ancestors {fa}")
+
+
 @app.after_request
 def _headers(resp):
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
-    if request.path.startswith("/api/remote/") or request.path.startswith("/api/auth/"):
+    if request.path.startswith(("/api/remote/", "/api/auth/", "/api/harness/")):
         resp.headers["Cache-Control"] = "no-store"
-    if request.path in ("/", "/remote", "/guide", "/guide.html"):
+    if request.path in ("/", "/remote"):
         resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Content-Security-Policy", _CSP.format(fa="'none'"))
+        resp.headers["Cache-Control"] = "no-store"
+    elif request.path in ("/guide", "/guide.html"):
+        # la Guida si apre anche dentro la scheda «Guida» della Dashboard e del Remote Control (stessa origine)
+        resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        resp.headers.setdefault("Content-Security-Policy", _CSP.format(fa="'self'"))
         resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -1039,6 +1059,7 @@ def api_update_download():
         return jsonify({"status": "busy"})
 
     def run():
+        gupdater.background_priority()
         try:
             UPDATER.check(manual=True, auto_download=True)
         except gupdater.UpdateError as e:
@@ -1051,25 +1072,29 @@ def api_update_download():
 
 @app.route("/api/update/install", methods=["POST"])
 def api_update_install():
-    """Avvia l'installer scaricato (germano-<versione>.exe --update) e chiude Germano: l'installer sostituisce il
-    programma e lo riapre da solo."""
+    """«Riavvia per aggiornare». Windows: con la versione gia' preparata in background la sostituzione e' silenziosa
+    (pochi secondi, poi Germano si riapre); altrimenti l'installer completo con la sua finestra di avanzamento.
+    macOS e Linux: si apre il pacchetto scaricato con il programma di installazione del sistema."""
     if not gupdater.read_ready():
         return jsonify({"status": "error", "message": _L("Nessun aggiornamento pronto da installare.",
                                                          "No update ready to install.")}), 400
     try:
-        UPDATER.launch_install()
+        how = UPDATER.launch_install(user_initiated=True)
     except Exception as e:
         return jsonify({"status": "error", "message": _L(f"Impossibile avviare l'installazione: {e}",
                                                          f"Cannot start the installation: {e}")}), 500
+    if how == "opened":
+        return jsonify({"status": "success", "how": how})
 
     def shutdown():
         time.sleep(1.0)
         try:
+            gglass.RUNS.abort_all()
             stop_daemon(wait=4.0)
         finally:
             os._exit(10)  # codice 10 = aggiornamento in corso: il launcher chiude la finestra senza errori
     threading.Thread(target=shutdown, daemon=True).start()
-    return jsonify({"status": "success"})
+    return jsonify({"status": "success", "how": how})
 
 
 @app.route("/api/update/ack", methods=["POST"])
@@ -1352,6 +1377,7 @@ def api_clear_vault():
             from germano.vault import Vault
             Vault().clear()
         _cache.pop("stats", None)
+        gglass.CACHE.clear()      # le etichette ripartono da 1: i testi protetti in cache non valgono piu'
         return jsonify({"status": "success", "message": _L("Archivio corrispondenze azzerato.", "Mapping archive cleared.")})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -1548,7 +1574,7 @@ class _Refused(Exception):
 
 
 def _engine_blocked():
-    return _Refused(503, {"status": "blocked", "message": _L(
+    return _Refused(503, {"status": "blocked", "code": "engine_not_ready", "message": _L(
         "Il motore IA non e' pronto: avvialo dalla Dashboard. Nessun dato lascia il computer.",
         "The AI engine is not ready: start it from the Dashboard. No data leaves the computer.")})
 
@@ -2145,6 +2171,756 @@ def api_remote_token():
 
 
 # ------------------------------------------------------------------------------------------------
+# Harness AI (0.70): conversazione in streaming con una CLI, un modello locale o un servizio via API, sempre dopo la
+# protezione di Germano, con ogni passo pubblicato per la Glass Window e interrompibile. Stesse regole del Remote
+# Control per chi arriva dalla rete: CLI del server solo se condivise (profilo --bare con la chiave del server), chiavi
+# del server solo con la condivisione, ripristino limitato alle etichette della richiesta. Da questo computer: le CLI
+# installate con l'accesso dell'utente (profilo --restricted) e le chiavi impostate qui.
+# ------------------------------------------------------------------------------------------------
+HARNESS_HISTORY_TURNS = 40          # turni precedenti inviati (dopo la protezione) a ogni richiesta
+HARNESS_HISTORY_CHARS = 200_000
+HARNESS_SYSTEM_CHARS = 20_000
+HARNESS_PREVIEW_CHARS = 12_000      # anteprima della Glass Window mentre si scrive
+HARNESS_ATTACH_HISTORY = 20_000     # caratteri di ogni allegato conservati nella cronologia della conversazione
+# Istruzione aggiunta (visibile nella Glass Window) quando il testo contiene etichette. L'esempio [CATEGORIA_N] non e'
+# un'etichetta ripristinabile: un esempio numerato vero potrebbe essere ripetuto dal modello e «ripristinato».
+_LABEL_HINT = {
+    "it": ("Nel testo alcuni dati personali sono stati sostituiti da Germano con etichette tra parentesi quadre, "
+           "formate da una categoria e da un numero (come [CATEGORIA_N]). Trattale come segnaposto: quando servono "
+           "nella risposta riportale esattamente come sono, senza modificarle, tradurle o inventarne di nuove."),
+    "en": ("In the text some personal data has been replaced by Germano with tags in square brackets, made of a "
+           "category and a number (like [CATEGORY_N]). Treat them as placeholders: when they are needed in the "
+           "answer, repeat them exactly as they are, without changing, translating or inventing new ones."),
+}
+_CLAUDE_ALIASES = ("sonnet", "opus", "haiku")
+
+
+def _requester():
+    return (request.remote_addr or "", g.get("remote_user"))
+
+
+def _short_name(name):
+    return re.sub(r"\s*\(.*\)$", "", name or "")
+
+
+def _harness_targets(local, sharing, lang="it"):
+    """Tutte le destinazioni dell'Harness, utilizzabili o no: le prime si scelgono, le altre restano in grigio con il
+    motivo (stessa regola dei selettori del turno 21). Mai percorsi o chiavi."""
+    from germano import ai_detect, harness
+
+    def L(it, en):
+        return en if lang == "en" else it
+    det = cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)
+    tools = {t.get("id"): t for t in det.get("tools") or []}
+    catalog = {s["id"]: s for s in ai_detect.CATALOG}
+    out = [{"id": "protect", "kind": "protect", "enabled": True,
+            "name": L("Solo protezione · copia il testo protetto", "Protection only · copy the protected text"),
+            "vendor": "Germano"}]
+    runnable = set(harness.LOCAL_PROFILES) | set(harness.PROFILES)
+    for tid in sorted(runnable):
+        t = tools.get(tid) or {}
+        spec = catalog.get(tid, {})
+        detected = bool(t.get("detected") and t.get("path"))
+        prof = harness.profile(tid, local)
+        why = None
+        if not detected:
+            why = L("non rilevata su questo computer", "not detected on this computer") if local else \
+                L("non rilevata sul server", "not detected on the server")
+        elif not prof:
+            why = L("non eseguibile dall'Harness", "not runnable by the Harness")
+        elif not local and not sharing:
+            why = L("condivisione delle AI disattivata sul server", "sharing of the server AIs disabled")
+        elif not local and prof.get("needs") and not os.environ.get(prof["needs"]):
+            why = L(f"il server non ha la chiave {prof['needs']}", f"the server has no {prof['needs']} key")
+        out.append({"id": f"cli:{tid}", "kind": "cli", "tool": tid, "name": t.get("name") or spec.get("name") or tid,
+                    "vendor": spec.get("vendor"), "version": t.get("version"), "enabled": why is None, "reason": why,
+                    "models": list(_CLAUDE_ALIASES) if tid == "claude-code" else [], "model_optional": True,
+                    "where": L("questo computer", "this computer") if local else L("server", "server")})
+    ports = _listening_ports(det)
+    installed = _local_models(det)
+    for sid, spec in gproviders.SERVICES.items():
+        if not spec.get("local"):
+            continue
+        port = spec.get("port")
+        name = _short_name(spec["name"])
+        models = installed.get(port)
+        if ports.get(port) and models:
+            for m in models:
+                if gproviders.MODEL_RE.match(m):
+                    out.append({"id": f"local:{sid}|{m}", "kind": "local", "service": sid, "model": m,
+                                "name": f"{name} · {m}", "vendor": name, "enabled": True})
+        elif ports.get(port) and models is None:
+            out.append({"id": f"local:{sid}", "kind": "local", "service": sid, "model": None, "name": name,
+                        "vendor": name, "enabled": True, "model_required": True})
+        else:
+            out.append({"id": f"local:{sid}", "kind": "local", "service": sid, "name": name, "vendor": name,
+                        "enabled": False, "reason": (L("nessun modello installato", "no model installed")
+                                                     if ports.get(port) else L("non in esecuzione", "not running"))})
+    for sid, spec in gproviders.SERVICES.items():
+        if spec.get("local"):
+            continue
+        server_key = bool(gproviders.server_key(sid)) and (local or sharing)
+        item = {"id": f"cloud:{sid}", "kind": "cloud", "service": sid, "name": spec["name"], "vendor": _short_name(spec["name"]),
+                "enabled": True, "key": "server" if server_key else "user", "models": list(spec.get("models", ())),
+                "model_required": True, "formats": [f for f in ("openai", "anthropic") if spec.get(f)]}
+        if local and server_key:
+            item["key_vars"] = list(spec.get("keys", ()))
+        out.append(item)
+    for tid, spec in catalog.items():
+        if tid in runnable or spec.get("kind") == "service" and tid in ("ollama", "lm-studio", "jan"):
+            continue
+        t = tools.get(tid) or {}
+        detected = bool(t.get("detected"))
+        alt = gproviders.get(spec.get("service"))
+        if not detected:
+            why = L("non rilevata", "not detected")
+        elif spec.get("kind") == "app":
+            why = L("applicazione grafica: non passa da Germano", "desktop app: it does not go through Germano")
+        elif spec.get("kind") == "service":
+            why = L("modelli locali: collegali al Proxy come servizio compatibile OpenAI",
+                    "local models: connect them to the Proxy as an OpenAI-compatible service")
+        else:
+            why = L("agente che eseguirebbe comandi: Germano non lo avvia nell'Harness (usalo con il Proxy)",
+                    "agent that would run commands: Germano does not start it in the Harness (use it with the Proxy)")
+        if detected and alt and not alt.get("local"):
+            why += L(f"; per gli stessi modelli usa «{_short_name(alt['name'])}»",
+                     f"; for the same models use «{_short_name(alt['name'])}»")
+        out.append({"id": f"other:{tid}", "kind": "other", "tool": tid, "name": t.get("name") or spec.get("name") or tid,
+                    "vendor": spec.get("vendor"), "enabled": False, "reason": why, "detected": detected,
+                    "alt": f"cloud:{spec['service']}" if detected and alt and not alt.get("local") else None})
+    return out, det.get("checked_at")
+
+
+@app.route("/api/harness/v2/targets")
+def api_harness_targets():
+    """Destinazioni dell'Harness AI (rilevamento automatico: le pagine lo chiedono ogni 12 secondi)."""
+    if request.args.get("refresh") in ("1", "true", "yes"):
+        _cache.pop("ai_detect", None)
+    cfg = common.load_config()
+    local = _remote_is_local()
+    sharing = bool(cfg.get("share_ai_tools"))
+    targets, checked = _harness_targets(local, sharing, _lang())
+    return jsonify({"api": 2, "local": local, "sharing": sharing, "targets": targets, "detected_at": checked,
+                    "engine": {"ready": daemon_ready(), "running": is_daemon_running()},
+                    "profile": cfg.get("compliance_mode"), "locked": common.options_locked(cfg),
+                    "masking": common.server_options(cfg)["masking"], "label_hint": True,
+                    "limits": {"attachments": STUDIO_MAX_ATTACH, "prompt_chars": STUDIO_MAX_PROMPT,
+                               "history_turns": HARNESS_HISTORY_TURNS, "preview_chars": HARNESS_PREVIEW_CHARS}})
+
+
+def _harness_history(raw):
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except ValueError:
+        items = None
+    if not isinstance(items, list):
+        raise _Refused(400, {"status": "error", "message": _L("Cronologia non valida.", "Invalid history.")})
+    out = []
+    for it in items[-HARNESS_HISTORY_TURNS * 2:]:
+        if (isinstance(it, dict) and it.get("role") in ("user", "assistant") and isinstance(it.get("text"), str)
+                and it["text"].strip()):
+            out.append({"role": it["role"], "text": it["text"][:HARNESS_HISTORY_CHARS]})
+    total = sum(len(h["text"]) for h in out)
+    while out and total > HARNESS_HISTORY_CHARS:
+        total -= len(out.pop(0)["text"])
+    return out
+
+
+def _anonymize_cached(texts, options, cfg):
+    """Come _anonymize_many, ma i testi gia' protetti con le stesse impostazioni (turni precedenti della
+    conversazione, anteprima della Glass Window) non tornano al motore."""
+    sig = gglass.settings_signature(cfg, options)
+    keys = [gglass.CACHE.key(t, sig) for t in texts]
+    results = [gglass.CACHE.get(k) for k in keys]
+    missing = [i for i, r in enumerate(results) if r is None]
+    if missing:
+        fresh = _anonymize_many([texts[i] for i in missing], options)
+        for i, r in zip(missing, fresh):
+            results[i] = r
+            gglass.CACHE.put(keys[i], r)
+    return results, len(texts) - len(missing)
+
+
+def _attachments_from_bytes(items):
+    """[(nome, bytes)] -> (descrizione degli allegati, [(nome, testo)] di quelli con testo)."""
+    attachments, parts = [], []
+    for name, data in items:
+        safe = common.safe_filename(name)
+        text = _studio_attachment_text(name, data)
+        textual = bool(text.strip())
+        attachments.append({"name": safe, "size": len(data), "chars": len(text), "textual": textual})
+        if textual:
+            parts.append((safe, text))
+    return attachments, parts
+
+
+def _validate_harness_target(target, model, local, sharing, cfg):
+    """(tipo, dettagli) della destinazione; _Refused se non utilizzabile da chi chiede."""
+    from germano import ai_detect, harness
+    kind, _, ident = target.partition(":")
+    if target == "protect":
+        return "protect", {"name": _L("Solo protezione", "Protection only")}
+    if kind == "cli":
+        prof = harness.profile(ident, local)
+        if not prof:
+            reason = harness.NOT_REMOTE.get(ident)
+            raise _Refused(404, {"status": "error", "message": _L(f"«{ident[:40]}» non e' eseguibile dall'Harness",
+                                                                    f"«{ident[:40]}» cannot be run by the Harness")
+                                 + (f": {reason}." if reason and not local else ".")})
+        if not local and not sharing:
+            raise _Refused(403, {"status": "error", "message": _L(
+                "Questo server non condivide le sue AI: l'amministratore puo' attivarle in Impostazioni > Modalita' e "
+                "rete («Condividi le AI di questo computer»).",
+                "This server does not share its AIs: the administrator can enable them in Settings > Mode and "
+                "network («Share this computer's AIs»).")})
+        info = next((t for t in cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)["tools"] if t.get("id") == ident),
+                    None)
+        if not info or not info.get("detected") or not info.get("path"):
+            raise _Refused(404, {"status": "error", "code": "not_detected", "message": _L(
+                f"{ident} non e' installata su questo computer." if local else f"{ident} non e' installata sul server.",
+                f"{ident} is not installed on this computer." if local else f"{ident} is not installed on the server.")})
+        if not harness.valid_model(model):
+            raise _Refused(400, {"status": "error", "message": _L("Nome del modello non valido.", "Invalid model name.")})
+        return "cli", {"tool": ident, "info": info, "profile": prof, "name": info.get("name") or ident}
+    if kind in ("local", "cloud"):
+        sid, _, fixed = ident.partition("|")
+        spec = gproviders.get(sid)
+        if not spec or bool(spec.get("local")) != (kind == "local"):
+            raise _Refused(404, {"status": "error", "message": _L("Servizio sconosciuto.", "Unknown service.")})
+        model = fixed or model
+        if not model or not gproviders.MODEL_RE.match(model):
+            raise _Refused(400, {"status": "error", "code": "model_needed", "message": _L(
+                "Indica il modello da usare.", "Enter the model to use.")})
+        key = ""
+        if kind == "local":
+            det = cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)
+            port = spec.get("port")
+            if not _listening_ports(det).get(port):
+                raise _Refused(409, {"status": "error", "code": "not_detected", "message": _L(
+                    f"{_short_name(spec['name'])} non e' in esecuzione.", f"{_short_name(spec['name'])} is not running.")})
+            installed = _local_models(det).get(port)
+            if isinstance(installed, list) and model not in installed:
+                raise _Refused(409, {"status": "error", "code": "not_detected", "message": _L(
+                    f"Il modello «{model}» non e' installato in {_short_name(spec['name'])}.",
+                    f"The model «{model}» is not installed in {_short_name(spec['name'])}.")})
+        else:
+            key = (request.headers.get("X-Germano-Provider-Key") or "").strip()
+            if key and not gproviders.KEY_RE.match(key):
+                raise _Refused(400, {"status": "error", "message": _L("Chiave API non valida.", "Invalid API key.")})
+            if not key and (local or sharing):
+                key = gproviders.server_key(sid)
+            if not key:
+                raise _Refused(400, {"status": "error", "code": "key_needed", "message": _L(
+                    f"Serve la chiave API di {spec['name']}: inseriscila nelle Impostazioni (resta su questo dispositivo).",
+                    f"The {spec['name']} API key is needed: enter it in Settings (it stays on this device).")})
+        return kind, {"service": sid, "spec": spec, "model": model, "key": key, "name": _short_name(spec["name"])}
+    raise _Refused(400, {"status": "error", "message": _L("Scegli un'AI.", "Choose an AI.")})
+
+
+@app.route("/api/harness/v2/run", methods=["POST"])
+def api_harness_run_v2():
+    """Esegue una richiesta dell'Harness e restituisce un flusso NDJSON di eventi per la pagina e la Glass Window:
+    start, original, phase, entities, sanitized, payload, gate (revisione), delta, thinking, usage, frame, cli,
+    ping, done | aborted | error. Gli errori di validazione arrivano prima del flusso, come JSON con lo stato HTTP."""
+    cfg = common.load_config()
+    local = _remote_is_local()
+    sharing = bool(cfg.get("share_ai_tools"))
+    lang = _lang()
+    target = (request.form.get("target") or "").strip()[:200]
+    model = (request.form.get("model") or "").strip()[:128]
+    prompt = (request.form.get("prompt") or "").strip()
+    system = (request.form.get("system") or "").strip()[:HARNESS_SYSTEM_CHARS]
+    review = request.form.get("review") in ("1", "true")
+    raw_frames = request.form.get("raw_frames") in ("1", "true")
+    label_hint = request.form.get("label_hint", "1") not in ("0", "false")
+    try:
+        options = None if local else _client_options(request.form.get("options"), cfg)
+        history = _harness_history(request.form.get("history"))
+        files = _remote_files()
+        if not prompt and not files:
+            raise _Refused(400, {"status": "error", "message": _L("Scrivi la richiesta.", "Write your request.")})
+        if len(prompt) > STUDIO_MAX_PROMPT:
+            raise _Refused(413, {"status": "error", "message": _L("Il testo e' troppo lungo.", "The text is too long.")})
+        kind, dest = _validate_harness_target(target, model, local, sharing, cfg)
+        if not daemon_ready():
+            raise _engine_blocked()
+        run = gglass.RUNS.register(_requester(), local, target, dest.get("model") or model)
+        if run is None:
+            raise _Refused(429, {"status": "error", "message": _L(
+                "Hai gia' altre richieste in corso: attendi che finiscano o interrompile.",
+                "You already have other requests in progress: wait for them to finish or stop them.")})
+        file_items = [(f.filename, f.read()) for f in files]
+    except _Refused as e:
+        return e.response()
+    ctx = {"kind": kind, "dest": dest, "target": target, "model": dest.get("model") or model, "prompt": prompt,
+           "system": system, "history": history, "files": file_items, "options": options, "review": review,
+           "raw_frames": raw_frames, "label_hint": label_hint, "lang": lang, "cfg": cfg, "local": local,
+           "who": g.get("remote_user") or request.remote_addr}
+    return Response(_harness_stream(run, ctx), mimetype="application/x-ndjson",
+                    headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no", "X-Germano-Run": run.id})
+
+
+def _harness_stream(run, ctx):
+    from germano import harness
+    lang = ctx["lang"]
+
+    def L(it, en):
+        return en if lang == "en" else it
+
+    def ev(etype, **data):
+        data["type"] = etype
+        data.setdefault("t", run.elapsed_ms())
+        return gglass.ndjson(data)
+
+    def aborted_event():
+        run.phase = "aborted"
+        msg = gglass.ABORT_EN if lang == "en" else gglass.ABORT_IT
+        detail = (L(f"Interrotta durante la risposta: {run.received} caratteri ricevuti prima dell'interruzione.",
+                    f"Stopped while answering: {run.received} characters received before the stop.")
+                  if run.transmitted else
+                  L("Interrotta prima dell'invio: nessun dato e' stato trasmesso al servizio di AI.",
+                    "Stopped before sending: no data was transmitted to the AI service."))
+        when = "dopo l'invio" if run.transmitted else "prima dell'invio"
+        common.log(f"Harness: richiesta interrotta dall'utente ({when}, {run.target}).")
+        return ev("aborted", message=msg, detail=detail, transmitted=run.transmitted, received=run.received,
+                  reason=run.reason or "user")
+
+    kind, dest, cfg = ctx["kind"], ctx["dest"], ctx["cfg"]
+    scrub = not ctx["local"]
+    t0 = time.time()
+    try:
+        yield ev("start", run_id=run.id, target=ctx["target"], target_name=dest.get("name"), kind=kind,
+                 model=ctx["model"] or None, local=ctx["local"], review=ctx["review"], version=APP_VERSION)
+        yield ev("original", prompt=gglass.cap(ctx["prompt"]), system=gglass.cap(ctx["system"]),
+                 history=[{"role": h["role"], "chars": len(h["text"])} for h in ctx["history"]],
+                 attachments=[{"name": common.safe_filename(n), "size": len(b)} for n, b in ctx["files"]])
+        # ---------------------------------------------------------------- protezione con il motore di Germano
+        run.phase = "protecting"
+        yield ev("phase", phase="protecting")
+        box = {}
+
+        def protect():
+            try:
+                attachments, parts = _attachments_from_bytes(ctx["files"])
+                system_text = ctx["system"]
+                texts = ([system_text] if system_text else []) + [h["text"] for h in ctx["history"]] + \
+                        [ctx["prompt"] or " "] + [t for _, t in parts]
+                results, cached_n = _anonymize_cached(texts, ctx["options"], cfg)
+                box.update(attachments=attachments, parts=parts, results=results, cached=cached_n,
+                           has_system=bool(system_text))
+            except _Refused as e:
+                box["refused"] = e.payload
+            except Exception as e:   # mai inviare nulla se la protezione non e' riuscita
+                box["refused"] = {"status": "error", "message": L(f"Protezione non riuscita: {e}",
+                                                                  f"Protection failed: {e}")}
+        worker = threading.Thread(target=protect, name="germano-harness-protect", daemon=True)
+        worker.start()
+        last_ping = time.time()
+        while worker.is_alive():
+            worker.join(0.25)
+            if run.cancelled:
+                yield aborted_event()
+                return
+            if time.time() - last_ping > 5:
+                last_ping = time.time()
+                yield ev("ping", phase="protecting")
+        if "refused" in box:
+            run.phase = "error"
+            payload = box["refused"]
+            yield ev("error", status=payload.get("status") or "error", code=payload.get("code"),
+                     message=payload.get("message") or payload.get("error") or "", transmitted=False)
+            return
+        protect_ms = round((time.time() - t0) * 1000)
+        results = box["results"]
+        idx = 0
+        p_system = ""
+        if box["has_system"]:
+            p_system = results[0]["anonymized"]
+            idx = 1
+        n = len(ctx["history"])
+        p_history = [{"role": h["role"], "text": results[idx + i]["anonymized"]} for i, h in enumerate(ctx["history"])]
+        p_prompt = results[idx + n]["anonymized"].strip() if ctx["prompt"] else ""
+        p_attach = [{"name": nm, "anonymized": r["anonymized"]}
+                    for (nm, _), r in zip(box["parts"], results[idx + n + 1:])]
+        current = _studio_compose(p_prompt, p_attach)
+        entities = [e for r in results for e in (r.get("extracted_data") or [])]
+        masking = (ctx["options"] or common.server_options(cfg))["masking"]
+        tag_map = _entity_map(entities) if masking == "numbered" else {}
+        hint = _LABEL_HINT["en" if lang == "en" else "it"] if ctx["label_hint"] and tag_map else ""
+        sys_out = "\n\n".join(x for x in (hint, p_system) if x)
+        _session_log(entities)
+        cur_entities = [e for r in results[idx + n:] for e in (r.get("extracted_data") or [])]
+        yield ev("entities", items=gglass.public_entities(cur_entities, "request"),
+                 history_items=gglass.public_entities([e for r in results[:idx + n] for e in (r.get("extracted_data") or [])],
+                                                      "history"),
+                 count=len(cur_entities), total=len(entities), masking=masking, protect_ms=protect_ms,
+                 cached=box["cached"], map=tag_map)
+        messages = ([{"role": "system", "content": sys_out}] if sys_out else []) + \
+            [{"role": h["role"], "content": h["text"]} for h in p_history] + [{"role": "user", "content": current}]
+        yield ev("sanitized", system=gglass.cap(sys_out), hint=bool(hint),
+                 messages=gglass.cap_obj(messages), current=gglass.cap(current),
+                 attachments=[{"name": a["name"], "text": gglass.cap(a["anonymized"], 60_000)} for a in p_attach],
+                 skipped=[a["name"] for a in box["attachments"] if not a["textual"]])
+        user_text = ctx["prompt"]
+        for nm, text in box["parts"]:
+            user_text += f"\n\n----- {nm} -----\n{text[:HARNESS_ATTACH_HISTORY]}"
+        if kind == "protect":
+            run.phase = "done"
+            common.log(f"Harness: testo protetto per {ctx['who']} ({len(current)} caratteri, {len(cur_entities)} dati "
+                       "oscurati, nessun invio).")
+            yield ev("done", protect_only=True, protected=gglass.cap(current), answer="", answer_protected="",
+                     elapsed_ms=run.elapsed_ms(), protect_ms=protect_ms, entity_count=len(cur_entities),
+                     user_text=user_text.strip(), masking=masking)
+            return
+        # ---------------------------------------------------------------- payload esatto
+        scope = "run-" + run.id
+        if kind == "cli":
+            # Le CLI non conservano la conversazione: istruzioni, turni precedenti e richiesta in un solo testo, che
+            # passa dallo standard input (mai tra gli argomenti, vedi germano/harness.py).
+            lines = []
+            if sys_out:
+                lines += [L("Istruzioni per l'assistente:", "Instructions for the assistant:"), sys_out, ""]
+            if p_history:
+                lines.append(L("Conversazione precedente (per contesto):", "Previous conversation (for context):"))
+                for h in p_history:
+                    who = L("Utente", "User") if h["role"] == "user" else L("Assistente", "Assistant")
+                    lines.append(f"{who}: {h['text']}")
+                lines += ["", L("Nuova richiesta dell'utente:", "New user request:")]
+            transcript = "\n".join(lines + [current]) if lines else current
+            if len(transcript) > harness.MAX_PROMPT:
+                yield ev("error", status="error", transmitted=False, message=L(
+                    f"Conversazione troppo lunga per {dest['name']} (massimo {harness.MAX_PROMPT} caratteri): "
+                    "iniziane una nuova.", f"Conversation too long for {dest['name']} (at most {harness.MAX_PROMPT} "
+                    "characters): start a new one."))
+                return
+            prof, argv = harness.command_line(dest["tool"], dest["info"]["path"], ctx["model"] or None, ctx["local"])
+            if not prof:
+                yield ev("error", status="error", transmitted=False,
+                         message=L("Modello non valido per la CLI.", "Invalid model for the CLI."))
+                return
+            shown = [os.path.basename(argv[0])] + [gglass.cap(a, 2000) for a in argv[1:]]
+            yield ev("payload", transport="cli", via="germano", tool=dest["tool"], argv=shown,
+                     env=harness.germano_env(prof, PORT, scope), stdin=gglass.cap(transcript),
+                     profile="restricted" if ctx["local"] else "bare",
+                     note=L("La CLI invia la richiesta al Proxy di Germano, che la anonimizza di nuovo e la inoltra: il "
+                            "payload HTTP esatto compare qui appena parte.",
+                            "The CLI sends the request to the Germano Proxy, which anonymizes it again and forwards it: "
+                            "the exact HTTP payload appears here as soon as it leaves."))
+        else:
+            url, headers, body, fmt = gproviders.build_request(dest["service"], dest["model"], messages, dest["key"])
+            yield ev("payload", transport="http", via="germano", format=fmt, method="POST", url=url,
+                     headers=gglass.redact_headers(headers), body=gglass.cap_obj(body),
+                     local_only=bool(dest["spec"].get("local")))
+        # ---------------------------------------------------------------- revisione manuale (facoltativa)
+        if ctx["review"]:
+            run.phase = "review"
+            yield ev("gate", phase="review", message=L(
+                "In attesa della tua conferma nella Glass Window: nulla e' ancora stato inviato.",
+                "Waiting for your confirmation in the Glass Window: nothing has been sent yet."))
+            end = time.time() + gglass.REVIEW_TIMEOUT
+            approved = False
+            while time.time() < end:
+                if run._approve.wait(5.0):
+                    approved = not run.cancelled
+                    break
+                yield ev("ping", phase="review")
+            if not approved:
+                if not run.cancelled:
+                    run.abort("timeout")
+                yield aborted_event()
+                return
+            yield ev("phase", phase="approved")
+        if run.cancelled:
+            yield aborted_event()
+            return
+        # ---------------------------------------------------------------- invio e risposta in streaming
+        run.phase = "transmitting"
+        yield ev("phase", phase="transmitting")
+        q = run.queue
+
+        def push(kind_, data):
+            if kind_ == "delta":
+                q.put({"type": "delta", "text": data})
+            elif kind_ == "thinking":
+                q.put({"type": "thinking", "text": data})
+            elif kind_ == "usage":
+                q.put({"type": "usage", "usage": data})
+            elif kind_ == "frame":
+                q.put({"type": "frame", "text": data[:4000]})
+            elif kind_ == "cli":
+                q.put({"type": "cli", "line": gglass.scrub_server_paths(data, scrub)})
+
+        def transmit():
+            try:
+                if run.cancelled:
+                    raise gproviders.Interrupted()
+                run.transmitted = True
+                if kind == "cli":
+                    res = harness.stream_run(dest["tool"], dest["info"]["path"], transcript, PORT, push,
+                                             model=ctx["model"] or None, scope=scope, local=ctx["local"], cancel=run)
+                else:
+                    res = gproviders.stream_chat(dest["service"], dest["model"], messages, dest["key"], push,
+                                                 cancel=run, raw_frames=ctx["raw_frames"],
+                                                 request=(url, headers, body, fmt))
+                q.put({"type": "_end", "result": res})
+            except (harness.HarnessInterrupted, gproviders.Interrupted):
+                q.put({"type": "_end", "interrupted": True})
+            except harness.HarnessError as e:
+                q.put({"type": "_fail", "status": "blocked" if e.status == 503 else "error", "message": str(e)})
+            except gproviders.ServiceError as e:
+                q.put({"type": "_fail", "status": "error", "message": gglass.redact_text(str(e))})
+            except Exception as e:
+                q.put({"type": "_fail", "status": "error", "message": L(f"Errore imprevisto: {e}",
+                                                                         f"Unexpected error: {e}")})
+        sender = threading.Thread(target=transmit, name="germano-harness-send", daemon=True)
+        sender.start()
+        parts, first_ms, result, failure, usage = [], None, None, None, {}
+        last_ping = time.time()
+        while True:
+            try:
+                item = q.get(timeout=5)
+            except queue.Empty:
+                yield ev("ping", phase=run.phase)
+                last_ping = time.time()
+                continue
+            typ = item.get("type")
+            if typ == "_wake":
+                continue
+            if typ == "_end":
+                result = item
+                break
+            if typ == "_fail":
+                failure = item
+                break
+            if typ == "delta":
+                if first_ms is None:
+                    first_ms = run.elapsed_ms()
+                    run.phase = "streaming"
+                    yield ev("phase", phase="streaming", first_token_ms=first_ms)
+                parts.append(item["text"])
+                run.received += len(item["text"])
+            elif typ == "usage":
+                usage = item.get("usage") or usage
+            elif typ == "payload":
+                item = gglass.scrub_server_paths(item, scrub)
+            item.setdefault("t", run.elapsed_ms())
+            yield gglass.ndjson(item)
+            if time.time() - last_ping > 15:
+                last_ping = time.time()
+        if run.cancelled or (result and result.get("interrupted")):
+            yield aborted_event()
+            return
+        if failure:
+            run.phase = "error"
+            yield ev("error", status=failure.get("status"), message=failure.get("message"), transmitted=True,
+                     received=run.received, partial=gglass.cap("".join(parts)))
+            return
+        res = result.get("result") or {}
+        answer_protected = res.get("answer") if isinstance(res.get("answer"), str) else "".join(parts)
+        usage = res.get("usage") or usage
+        restored_n = sum(1 for m in TAG_RE.finditer(answer_protected) if normalize_tag(m.group(0)) in tag_map)
+        answer = restore_text(answer_protected, tag_map) if tag_map else answer_protected
+        run.phase = "done"
+        seconds = round(time.time() - t0, 1)
+        common.log(f"Harness: {ctx['target']} per {ctx['who']} ({len(current)} caratteri protetti, "
+                   f"{len(cur_entities)} dati oscurati, {seconds} s).")
+        yield ev("done", answer=gglass.cap(answer), answer_protected=gglass.cap(answer_protected),
+                 elapsed_ms=run.elapsed_ms(), protect_ms=protect_ms, first_token_ms=first_ms, usage=usage,
+                 entity_count=len(cur_entities), restored=restored_n, chars=len(answer_protected),
+                 words=len(answer_protected.split()), user_text=user_text.strip(), masking=masking,
+                 target_name=dest.get("name"), model=ctx["model"] or None)
+    except GeneratorExit:
+        run.abort("client")        # la pagina si e' chiusa o ha interrotto la lettura: si ferma tutto
+        raise
+    finally:
+        gglass.RUNS.finish(run)
+
+
+def _run_for_requester(rid):
+    run = gglass.RUNS.get(rid)
+    if run is None:
+        return None, (jsonify({"status": "error", "message": _L("Richiesta non trovata (gia' conclusa?).",
+                                                                 "Request not found (already finished?).")}), 404)
+    if not _remote_is_local() and run.owner != _requester():
+        return None, (jsonify({"status": "error", "message": _L("Richiesta di un altro utente.",
+                                                                 "Request of another user.")}), 403)
+    return run, None
+
+
+@app.route("/api/harness/v2/runs/<rid>/abort", methods=["POST"])
+def api_harness_abort(rid):
+    """Interrompe subito una richiesta dell'Harness (Glass Window): prima dell'invio non parte nulla; durante la
+    risposta si chiude la connessione con il servizio o si termina la CLI."""
+    run, err = _run_for_requester(rid)
+    if err:
+        return err
+    done = run.abort("user")
+    return jsonify({"status": "success", "aborted": done, "transmitted": run.transmitted, "phase": run.phase,
+                    "received": run.received})
+
+
+@app.route("/api/harness/v2/runs/<rid>/approve", methods=["POST"])
+def api_harness_approve(rid):
+    """Conferma l'invio dopo la revisione del payload nella Glass Window."""
+    run, err = _run_for_requester(rid)
+    if err:
+        return err
+    if run.phase != "review":
+        return jsonify({"status": "error", "message": _L("Nessuna revisione in attesa.", "No review pending.")}), 409
+    run.approve()
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/harness/v2/preview", methods=["POST"])
+def api_harness_preview():
+    """Anteprima della protezione mentre si scrive (Glass Window aperta): cosa verrebbe oscurato, senza inviare nulla.
+    Il risultato resta in cache, cosi' all'invio quel testo non torna al motore."""
+    cfg = common.load_config()
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "")
+    if not text.strip():
+        return jsonify({"status": "success", "anonymized": "", "entities": [], "elapsed_ms": 0})
+    if len(text) > HARNESS_PREVIEW_CHARS:
+        return jsonify({"status": "skipped", "message": _L(
+            f"Anteprima disponibile fino a {HARNESS_PREVIEW_CHARS} caratteri: il testo completo viene protetto all'invio.",
+            f"Preview available up to {HARNESS_PREVIEW_CHARS} characters: the full text is protected when sent.")})
+    if not daemon_ready():
+        return _engine_blocked().response()
+    t0 = time.time()
+    try:
+        options = None if _remote_is_local() else _client_options(data.get("options"), cfg)
+        results, cached_n = _anonymize_cached([text], options, cfg)
+    except _Refused as e:
+        return e.response()
+    r = results[0]
+    return jsonify({"status": "success", "anonymized": r["anonymized"], "cached": bool(cached_n),
+                    "entities": gglass.public_entities(r.get("extracted_data") or [], "preview"),
+                    "elapsed_ms": round((time.time() - t0) * 1000)})
+
+
+@app.route("/api/harness/v2/models")
+def api_harness_models():
+    """Modelli offerti da un servizio (elenco del servizio: nessun dato personale), con le regole delle chiavi
+    dell'Harness (da questo computer anche le chiavi impostate qui)."""
+    sid = (request.args.get("service") or "").strip().lower()
+    spec = gproviders.get(sid)
+    if not spec:
+        return jsonify({"status": "error", "message": _L("Servizio sconosciuto.", "Unknown service.")}), 404
+    local = _remote_is_local()
+    key = (request.headers.get("X-Germano-Provider-Key") or "").strip()
+    if key and not gproviders.KEY_RE.match(key):
+        return jsonify({"status": "error", "message": _L("Chiave API non valida.", "Invalid API key.")}), 400
+    if not key and (local or common.load_config().get("share_ai_tools")):
+        key = gproviders.server_key(sid)
+    try:
+        models = gproviders.list_models(sid, key)
+    except gproviders.ServiceError as e:
+        return jsonify({"status": "error", "message": gglass.redact_text(str(e))}), e.status
+    return jsonify({"status": "success", "service": sid, "models": models})
+
+
+# ------------------------------------------------------------------------------------------------
+# Remote Control e Germano Client: sanitizzazione manuale di interi file (scheda «Sanitizzazione manuale»).
+# Il file anonimizzato torna a chi l'ha inviato con le SOLE corrispondenze dei suoi dati (mai il Vault del server);
+# il ripristino di un file restituito da un'AI usa solo le corrispondenze che il dispositivo stesso conserva.
+# ------------------------------------------------------------------------------------------------
+REMOTE_FILE_MAX = 150 * 1024 * 1024
+
+
+@app.route("/api/remote/v1/anonymize_file", methods=["POST"])
+def api_remote_anonymize_file():
+    import base64
+    cfg = common.load_config()
+    f = request.files.get("file")
+    if f is None or not f.filename:
+        return jsonify({"status": "error", "message": _L("Nessun file.", "No file.")}), 400
+    try:
+        options = _client_options(request.form.get("options"), cfg) if not _remote_is_local() else None
+    except _Refused as e:
+        return e.response()
+    data = f.read(REMOTE_FILE_MAX + 1)
+    if len(data) > REMOTE_FILE_MAX:
+        return jsonify({"status": "error", "message": _L("File troppo grande (massimo 150 MB).",
+                                                         "File too large (at most 150 MB).")}), 413
+    if not daemon_ready():
+        return _engine_blocked().response()
+    name = common.safe_filename(f.filename)
+    payload = {"filename": name, "mode": "anonymize", "data_b64": base64.b64encode(data).decode("ascii")}
+    if options is not None:
+        payload["options"] = options
+    try:
+        r = daemon_call("/internal/process_file", payload, timeout=6 * 3600)
+    except Exception as e:
+        return jsonify({"status": "error", "message": _L(f"Motore IA non raggiungibile: {e}",
+                                                         f"AI engine unreachable: {e}")}), 502
+    if r.status_code != 200:
+        return jsonify({"status": "error", "message": _L(f"Elaborazione non riuscita: {_daemon_error(r)}",
+                                                         f"Processing failed: {_daemon_error(r)}")}), \
+            r.status_code if r.status_code in (415, 503) else 500
+    res = r.json()
+    entities = res.get("extracted_data") or []
+    masking = (options or common.server_options(cfg))["masking"]
+    _session_log(entities)
+    common.log(f"Sanitizzazione manuale: «{name}» per {g.remote_user or request.remote_addr} "
+               f"({len(entities)} dati oscurati).")
+    body = {"status": "success", "filename": res.get("filename") or name, "data_b64": res.get("data_b64"),
+            "entity_count": len(entities), "labels": sorted({e["label"] for e in entities if e.get("label")}),
+            "notes": res.get("notes") or [], "masking": masking}
+    if masking == "numbered":
+        body["map"] = _entity_map(entities)
+    return jsonify(body)
+
+
+@app.route("/api/remote/v1/restore_file", methods=["POST"])
+def api_remote_restore_file():
+    """Ripristina un file restituito da un'AI con le corrispondenze inviate dal dispositivo (le sue): nessun accesso
+    al Vault del server. Non richiede il motore."""
+    f = request.files.get("file")
+    if f is None or not f.filename:
+        return jsonify({"status": "error", "message": _L("Nessun file.", "No file.")}), 400
+    try:
+        raw = json.loads(request.form.get("map") or "{}")
+    except ValueError:
+        raw = None
+    if not isinstance(raw, dict) or not raw:
+        return jsonify({"status": "error", "message": _L(
+            "Nessuna corrispondenza da ripristinare: proteggi prima i dati da questo dispositivo.",
+            "No mappings to restore: protect the data from this device first.")}), 400
+    tag_map = {}
+    for k, v in list(raw.items())[:20000]:
+        nk = normalize_tag(k)
+        if nk and isinstance(v, str) and v:
+            tag_map[nk] = v[:2000]
+    data = f.read(REMOTE_FILE_MAX + 1)
+    if len(data) > REMOTE_FILE_MAX:
+        return jsonify({"status": "error", "message": _L("File troppo grande (massimo 150 MB).",
+                                                         "File too large (at most 150 MB).")}), 413
+    name = common.safe_filename(f.filename)
+    os.makedirs(common.UPLOAD_DIR, exist_ok=True)
+    staged = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + name)
+    out_name = name if name.startswith("ripristinato_") else "ripristinato_" + name
+    tmp_out = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + out_name)
+    real = None
+    try:
+        with open(staged, "wb") as fh:
+            fh.write(data)
+        real = _restore_file_locally(staged, tmp_out, tag_map)
+        with open(real, "rb") as fh:
+            out = fh.read()
+    except Exception as e:
+        return jsonify({"status": "error", "message": _L(f"Impossibile ripristinare {name}: {e}",
+                                                         f"Cannot restore {name}: {e}")}), 400
+    finally:
+        common.remove_quietly(staged)
+        common.remove_quietly(tmp_out)
+        if real:
+            common.remove_quietly(real)
+    return send_file(io.BytesIO(out), as_attachment=True, download_name=out_name)
+
+
+# ------------------------------------------------------------------------------------------------
 # Proxy API per IDE e agenti IA
 # ------------------------------------------------------------------------------------------------
 from germano import proxy as gproxy  # noqa: E402
@@ -2297,6 +3073,17 @@ def _proxy(kind, sub=""):
     except Exception as e:
         return _proxy_error(kind, 500, f"Blocco di sicurezza: anonimizzazione non riuscita ({e}).")
     _session_log(extracted)
+    scope = request.environ.get("germano.scoped") or ""
+    if scope.startswith("run-") and _remote_is_local():
+        # CLI eseguita dall'Harness AI: la Glass Window mostra il payload HTTP esatto che esce verso il fornitore
+        run = gglass.RUNS.get(scope[4:])
+        if run is not None:
+            if run.cancelled:
+                return _proxy_error(kind, 409, "Richiesta interrotta dall'utente tramite Glass Window: nessun dato "
+                                               "inviato.")
+            run.emit("payload", transport="http", via="proxy", format="anthropic" if kind == "anthropic" else "openai",
+                     method="POST", url=url, headers=gglass.redact_headers(_forward_headers()),
+                     body=gglass.cap_obj(payload), extracted=len(extracted))
     try:
         r = _http_for(url).post(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                                 headers=_forward_headers(), stream=True, timeout=(20, 900))
@@ -2326,7 +3113,7 @@ def _proxy(kind, sub=""):
         parser = gproxy.SSEParser()
         rewriter = gproxy.StreamRewriter(tag_map) if deanon else None
         try:
-            for chunk in r.iter_content(chunk_size=None):
+            for chunk in gproviders.iter_stream(r):   # subito, anche con stream non «chunked»
                 if not chunk:
                     continue
                 if rewriter is None:
@@ -2444,9 +3231,11 @@ def _shutdown():
 
 def _install_pending_update():
     """Chiamata all'avvio dal launcher (germano_desktop.py: server.py --install-update) se c'è un aggiornamento già
-    scaricato. Restituisce 10 se l'installer è partito (il launcher si chiude e l'installer riapre Germano a
-    installazione finita); 0 se Germano deve avviarsi normalmente (nessun aggiornamento, oppure un tentativo
-    precedente non è andato a buon fine: si riprova dalla Dashboard)."""
+    scaricato. Come Chrome si applica da solo, in silenzio, solo quello gia' preparato in background (la nuova versione
+    copiata accanto a quella in uso): l'installer sostituisce il programma in pochi secondi e riapre Germano.
+    Restituisce 10 se l'installer è partito (il launcher si chiude); 0 se Germano deve avviarsi normalmente (nessun
+    aggiornamento pronto, preparazione non ancora finita: riprende in background; tentativo precedente non riuscito:
+    si riprova dalle Impostazioni)."""
     if not gupdater.should_auto_install():
         return 0
     if not _port_free(PORT):

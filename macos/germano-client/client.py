@@ -9,6 +9,8 @@ oppure con utente e password se sul server e' attiva la gestione utenti: «clien
   grigio, cioe' non modificabili, se il server e' nel profilo PA);
 - avvia le CLI di questo PC con le variabili d'ambiente che le fanno passare dal Proxy del Server («client launch»).
 Le CLI che non si possono proteggere in modo affidabile non vengono avviate come «protette»: il Client lo dice.
+Dalla 0.70 il pannello del Client (client_ui.py) e' l'Harness AI del Server con la Glass Window, la sanitizzazione
+manuale dei file e gli aggiornamenti silenziosi (client_updater.py); questa riga di comando resta invariata.
 
 Codici di uscita: 0 tutto bene, 1 server non raggiungibile o non valido, 2 uso errato dei comandi,
 3 accesso richiesto o non valido, 4 motore del server non pronto, 5 CLI non installata o non proteggibile,
@@ -213,9 +215,9 @@ def _setup_output():
 def get_version():
     try:
         with open(os.path.join(BASE_DIR, "VERSION"), "r", encoding="utf-8-sig") as f:
-            return f.read().strip() or "0.52-alpha"
+            return f.read().strip() or "0.70"
     except OSError:
-        return "0.52-alpha"
+        return "0.70"
 
 
 def _clean(value, limit=60):

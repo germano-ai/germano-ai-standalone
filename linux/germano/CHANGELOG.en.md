@@ -6,6 +6,99 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [0.70] - 2026-11-01
+Germano AI v0.70 - New **AI Harness** architecture, real-time transparent **Glass Window**, integrated manual
+sanitization and **silent updates like Google Chrome**. The interface has been reworked and simplified: it looks and
+works in every respect like a modern AI harness, with the manual file sanitization tab next to it. The same interface is
+in the Dashboard, the Remote Control and Germano Client. Engine, models, Proxy, formats and working folders do not
+change.
+
+### Added - AI Harness (new default tab)
+- Four tabs at the top: **🧠 AI Harness** (default), **📂 Manual Sanitization & Vault**, **⚙️ Settings**, **📖 Guide**;
+  dark theme (`#0b0f19`, `#0f172a`, `#1e293b`, `#334155`, accents `#38bdf8` and `#818cf8`).
+- Conversations in the sidebar (new, search, grouped by date, rename, delete; kept in the window profile, never in the
+  cloud, or only for the session), instructions for the assistant, export to Markdown.
+- **Streamed** answers with Markdown (headings, lists, tables, quotes), **syntax highlighting** and a **Copy code**
+  button; restored data highlighted with the source tag, «Show tags»; indicators for total time, first token, input and
+  output tokens, masked and restored data; Copy, Regenerate, Edit actions.
+- A composer that grows with the text (**Enter** sends, **Shift+Enter** adds a new line), attachments with the
+  paperclip or by **dragging them** (up to 12), protection and profile indicator.
+- **Model picker at the bottom right**, with search: only the detected, usable AIs can be selected (turn 21 rule), the
+  others stay greyed out with the reason and, when available, the protected alternative. Destinations: *Protection only*
+  (copy of the protected text), local models of **Ollama, LM Studio and Jan** (one option per installed model),
+  **Claude Code** run without tools, services via API (OpenAI, Anthropic, Meta Muse, Kimi, DeepSeek, Qwen, Mistral, Grok,
+  Perplexity, Gemini, OpenRouter, Groq) with the computer's key or one entered in the picker. Automatic detection every
+  12 seconds and when the window comes back to the foreground.
+- The engine starts by itself on the first send; until it is ready the request is blocked (no data leaves).
+
+### Added - Glass Window (Transparent Inspection)
+- A **Glass Window** button (also Ctrl+Shift+G) that opens a frosted-glass side panel (`backdrop-filter: blur(16px)`)
+  with the request status, a timer, the selector of the session's requests and the five phases in real time: **original
+  text entered**, **Germano privacy filter and Vault mappings** (categories, highlighted text, original → tag →
+  confidence table, timings and cache), **actual text sent to the model**, **raw HTTP / CLI payload** (address, headers
+  with keys always masked, JSON body; for Claude Code command, variables, standard input and the HTTP payload captured by
+  the Proxy) and the **real-time answer stream** before restoration (with raw SSE frames on request).
+- **Stop operation**: immediately closes the connection to the AI service (socket shutdown) or terminates the CLI with
+  all its processes; message «Operation stopped by the user via Glass Window: no further data was transmitted or
+  received.». Closing the page or the connection also stops the execution on the server.
+- **Review before sending** (optional): Germano stops after the protection and shows the exact payload; it leaves only
+  with **Send now**, or **Block sending**. **Preview while typing** with the Glass Window open, without sending anything.
+
+### Added - Manual sanitization, Remote Control and Germano Client
+- The **📂 Manual Sanitization & Vault** tab gathers the batch work of 0.60 (four `input`, `output`, `processed`,
+  `failed` boxes like a file manager, documents table, requeue, CSV), manual text sanitization and the mapping archive.
+- **Remote Control and Germano Client** have the same interface: AI Harness with picker and Glass Window (server AIs),
+  **Manual Sanitization** with files dragged in and returned anonymized in their format and restoration of a file
+  returned by an AI (only with the device's mappings), Settings (AIs and keys, processing options locked by the PA
+  profile, tool connection; in the Client also server and updates), Guide. The Client relays the Harness events as a
+  stream and stopping also closes the connection to the server. Clear notice when the server is an older version.
+
+### Added - Silent updates, like Google Chrome
+- **On by default**, with no banners or windows: only when the system reports an Internet connection, Germano reads
+  `https://download.germano.ai/version.json`, **downloads in the background at low priority** (background-mode thread),
+  checks the installer's size and structure and on Windows **prepares the new version** next to the one in use
+  (`Germano AI.nuovo`, installer `--update --silent --stage` at minimum priority) while Germano stays open.
+- At the **next start** the launcher applies the prepared update in a few seconds (`--apply-staged`: marker and per-file
+  size check, then a quick folder swap) and Germano opens already updated; if anything goes wrong the version in use
+  stays. Whoever wants it right away only finds a discreet **«Restart to update»** at the top (and a dot on the Settings
+  tab).
+- **Settings › Updates** like `chrome://settings/help`: «Germano AI is up to date (v0.70)» with the time of the last
+  check, «Downloading the update in the background…» with the bar, «Restart Germano to apply the update», «Check now» and
+  the options. On macOS and Linux the package is downloaded the same way and opened when the user decides.
+- **Germano Client** updates itself the same way (`client_updater.py`, standard library only): silent download and
+  update at the next start, with the server address and the session unchanged.
+
+### Added - APIs
+- `GET /api/harness/v2/targets`, `POST /api/harness/v2/run` (NDJSON stream: `start`, `original`, `phase`, `entities`,
+  `sanitized`, `payload`, `gate`, `delta`, `thinking`, `usage`, `frame`, `cli`, `ping`, `done` / `aborted` / `error`),
+  `POST /api/harness/v2/runs/<id>/abort`, `POST /api/harness/v2/runs/<id>/approve`, `POST /api/harness/v2/preview`,
+  `GET /api/harness/v2/models`; from the network the Remote Control rules apply.
+- `POST /api/remote/v1/anonymize_file` and `POST /api/remote/v1/restore_file` for file sanitization from the network
+  devices (device options respected, PA lock included).
+
+### Security
+- Claude Code from the Harness: **no text among the arguments** (CLIs installed with npm are `.cmd` files run by
+  `cmd.exe`, where a free argument could become a command): request and instructions go only through standard input.
+  Local profile `--restricted --tools "" --strict-mcp-config --disable-slash-commands --no-session-persistence`, profile
+  for the clients `--bare`; the CLI traffic goes through the Germano Proxy, which captures its payload for the Glass
+  Window (from this computer only).
+- Pages with CSP headers (`connect-src 'self'`, `img-src 'self'`); the Markdown renderer starts from already escaped
+  text, never loads external images (an AI could use them to leak data in the address) and opens links separately.
+- Keys always masked in the Glass Window; a key entered on a device travels only with its requests and the server never
+  stores it.
+- The tag instruction to the model uses a non-restorable example (`[CATEGORIA_N]`) and appears only when the request
+  contains tags; restoration stays limited to the request's mappings.
+- The anonymization cache (fingerprint of settings and text) is cleared together with the Vault. From the network each
+  device or user can have at most 3 Harness requests in progress (429 beyond the limit) and only whoever started a
+  request can stop or confirm it.
+
+### Changed
+- No more Simple / Advanced selector and no more AI Studio: the Harness replaces it, the detailed controls are in the
+  Settings sections (Mode & network, Protection & models, AI keys & Harness, Proxy & APIs, System & log, Updates, About).
+- The Proxy reads SSE streams incrementally even when the service does not use chunked encoding: fragments reach the
+  editor right away (before, it waited for the end).
+- Guide, README, LEGGIMI and CHANGELOG updated; `VERSION` → `0.70`.
+
 ## [0.60] - 2026-10-25
 Germano becomes a **real desktop application**, distributed as **single-file installers** for Windows, macOS and
 Linux that contain everything needed and **download nothing from the Internet**. One program, **`Germano`**

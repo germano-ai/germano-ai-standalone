@@ -1,4 +1,4 @@
-"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-0.60/releases/: versione, note e,
+"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-0.70/releases/: versione, note e,
 per ogni piattaforma, nome del file e dimensione esatta (l'updater controlla che il download sia completo; nessuna
 impronta SHA, come richiesto). Le chiavi «windows», «macos», «linux» sono quelle lette dall'updater della suite; le
 voci «-client» descrivono i client leggeri.

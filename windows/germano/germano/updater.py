@@ -1,27 +1,31 @@
-"""Aggiornamento automatico di Germano AI.
+"""Aggiornamenti silenziosi di Germano AI, come Google Chrome.
 
 Unica fonte: https://download.germano.ai/ (nessun servizio di terzi). Il server pubblica gli installer in un solo
 file e un piccolo indice:
 - https://download.germano.ai/version.json
-      {"version": "0.61", "notes": "...", "files": {"windows": "germano-0.61.exe", "macos": "germano-0.61.pkg",
-       "linux": "germano-0.61.deb", "windows-client": "germano-client-0.61.exe", ...}}
-  (i nomi dei file sono relativi a download.germano.ai; sono accettati anche indirizzi completi e, per ogni voce,
-  {"url": ..., "size": ...});
+      {"version": "0.71", "notes": "...", "files": {"windows": {"file": "germano-0.71.exe", "size": 123},
+       "macos": {...}, "linux": {...}, "windows-client": {...}, ...}}
+  (i nomi dei file sono relativi a download.germano.ai; sono accettati anche indirizzi completi);
 - https://download.germano.ai/germano-<versione>.exe (.pkg per macOS, .deb per Linux).
 Se version.json mancasse, si legge l'elenco dei file della pagina https://download.germano.ai/ e si sceglie
 l'installer con la versione più alta.
 
-Il controllo avviene solo se Windows segnala che il PC è connesso a Internet (Network List Manager: lo stato già noto
-al sistema, nessuna connessione aperta da Germano per scoprirlo), 20 secondi dopo l'avvio e poi ogni 6 ore, oppure
-quando l'utente lo chiede. Se c'è una versione più recente l'installer viene scaricato nella cartella tecnica
-dell'utente (fuori dalla cartella del programma, che l'installer sostituisce) e ne viene controllata solo la
-completezza: dimensione dichiarata dal server e struttura dell'installer in un solo file. Nessuna impronta SHA-256:
-i file di download.germano.ai sono considerati attendibili.
-
-Installazione: l'installer scaricato viene avviato in modalità aggiornamento (--update) con «Installa ora» oppure al
-successivo avvio di Germano. Chiude Germano, sostituisce il programma (cartelle di lavoro, Vault e impostazioni
-restano intatti), lo riapre e scrive l'esito in install_result.json, che la Dashboard mostra. Se un aggiornamento
-automatico non va a buon fine non viene ripetuto a ogni avvio: si può riprovare dalla Dashboard.
+Comportamento predefinito (check_updates e auto_update attivi), senza finestre né avvisi che interrompono:
+1. controllo in background, solo se il sistema segnala una connessione a Internet (Windows: Network List Manager, lo
+   stato già noto al sistema, nessuna connessione aperta per scoprirlo), 20 secondi dopo l'avvio e poi ogni 6 ore;
+2. download a bassa priorità (il thread lavora in «modalità background» di Windows: processore, disco e memoria
+   lasciati prima a tutto il resto), nella cartella tecnica dell'utente, con il controllo di completezza
+   (dimensione dichiarata da version.json e struttura dell'installer). Nessuna impronta SHA-256: i file di
+   download.germano.ai sono considerati attendibili;
+3. Windows: preparazione in background. L'installer scaricato copia la nuova versione accanto a quella in uso
+   (germano-<v>.exe --update --silent --stage: cartella «Germano AI.nuovo», priorità minima, Germano resta aperto);
+4. al successivo avvio di Germano (o con «Riavvia per aggiornare») la versione preparata prende il posto di quella in
+   uso in pochi secondi, senza finestre (--apply-staged), e Germano si riapre da solo. Cartelle di lavoro, Vault e
+   impostazioni restano intatti; l'esito (install_result.json) compare solo nelle Impostazioni › Aggiornamenti.
+macOS e Linux: il pacchetto nuovo viene scaricato allo stesso modo, in silenzio; l'installazione richiede il sistema
+(Installer di macOS, gestore dei pacchetti di Linux con la password di amministratore), quindi la Dashboard mostra
+solo un indicatore discreto «Aggiornamento pronto» che apre il pacchetto quando lo decide l'utente.
+Se un aggiornamento automatico non va a buon fine non viene ripetuto a ogni avvio: si può riprovare dalle Impostazioni.
 """
 import json
 import os
@@ -43,11 +47,16 @@ MAX_REDIRECTS = 5
 FIRST_CHECK_DELAY = 20          # secondi dopo l'avvio
 CHECK_INTERVAL = 6 * 3600       # controllo periodico
 SIZE_ESTIMATE = 3 * 1024 ** 3   # se il server non indica la dimensione: stima prudente per lo spazio su disco
-INSTALL_SPACE = 5 * 1024 ** 3   # spazio che serve all'installer per la nuova copia del programma
+INSTALL_SPACE = 8 * 1024 ** 3   # spazio per la nuova copia del programma preparata accanto a quella in uso
+STAGE_TIMEOUT = 90 * 60         # preparazione in background: oltre si rinuncia (si riprova al controllo successivo)
 SFX_MAGIC = b"GERMANO.SFX.0001"
 SFX_TRAILER = struct.Struct("<16sQQQQ")
 INSTALLER_RE = re.compile(r"^germano-(\d+(?:\.\d+)+(?:-[A-Za-z]+\d*)?)\.(exe|pkg|deb)$", re.IGNORECASE)
 NLM_CLSID = "{DCB00C01-570F-4A9B-8D69-199FDBA5723B}"  # Network List Manager di Windows
+IDLE_PRIORITY_CLASS = 0x00000040
+DETACHED_PROCESS = 0x00000008
+CREATE_NEW_PROCESS_GROUP = 0x00000200
+CREATE_NO_WINDOW = 0x08000000
 
 
 def _update_dir():
@@ -64,7 +73,8 @@ def _update_dir():
 UPDATE_DIR = _update_dir()
 READY_FILE = os.path.join(UPDATE_DIR, "ready.json")
 RESULT_FILE = os.path.join(UPDATE_DIR, "install_result.json")
-REJECTED_FILE = os.path.join(UPDATE_DIR, "rejected.json")   # versione annunciata ma con un installer diverso
+STAGE_FILE = os.path.join(UPDATE_DIR, "stage_result.json")   # esito della preparazione in background (Windows)
+REJECTED_FILE = os.path.join(UPDATE_DIR, "rejected.json")    # versione annunciata ma con un installer diverso
 LOG_FILE = os.path.join(UPDATE_DIR, "update.log")
 # Resti del meccanismo precedente alla 0.60 (ZIP estratto e sostituzione file per file).
 LEGACY_DIRS = [os.path.join(common.BASE_DIR, "update", d) for d in ("download", "new", "old", "installer")]
@@ -81,6 +91,22 @@ def ulog(msg):
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
     except OSError:
+        pass
+
+
+def background_priority():
+    """Il thread che chiama lavora a bassa priorità: su Windows «modalità background» (processore, disco e memoria);
+    su Linux un valore nice alto per il solo thread. Mai un errore se non è possibile."""
+    try:
+        if os.name == "nt":
+            import ctypes
+            k32 = ctypes.windll.kernel32
+            k32.GetCurrentThread.restype = ctypes.c_void_p
+            k32.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            k32.SetThreadPriority(k32.GetCurrentThread(), 0x00010000)   # THREAD_MODE_BACKGROUND_BEGIN
+        elif sys.platform.startswith("linux") and hasattr(os, "setpriority"):
+            os.setpriority(os.PRIO_PROCESS, threading.get_native_id(), 15)
+    except Exception:
         pass
 
 
@@ -111,9 +137,13 @@ PLATFORM_EXT = {"windows": "exe", "macos": "pkg", "linux": "deb"}
 
 
 def windows_reports_online():
-    """True solo se Windows indica una connessione a Internet attiva. Non apre connessioni."""
+    """True solo se il sistema indica una connessione a Internet attiva. Non apre connessioni.
+    Windows: Network List Manager. macOS e Linux: si considera in linea (il controllo resta silenzioso e fallisce
+    senza conseguenze se la rete non c'è)."""
     if os.environ.get("GERMANO_OFFLINE") == "1":
         return False
+    if os.name != "nt":
+        return True
     try:
         import pythoncom
         import win32com.client
@@ -200,8 +230,8 @@ def parse_listing(page, base):
 
 
 def check_installer(path):
-    """Completezza dell'installer scaricato (non è un controllo crittografico): eseguibile Windows con la coda
-    dell'installer in un solo file e l'archivio per intero."""
+    """Completezza dell'installer Windows scaricato (non è un controllo crittografico): eseguibile Windows con la
+    coda dell'installer in un solo file e l'archivio per intero."""
     try:
         with open(path, "rb") as f:
             if f.read(2) != b"MZ":
@@ -216,6 +246,20 @@ def check_installer(path):
         return False
 
 
+def check_package(path, platform=None):
+    """Completezza del pacchetto scaricato: installer Windows in un solo file, pacchetto macOS (archivio xar) o
+    pacchetto Debian (archivio ar)."""
+    platform = platform or platform_key()
+    if platform == "windows":
+        return check_installer(path)
+    magic = {"macos": b"xar!", "linux": b"!<arch>\n"}[platform]
+    try:
+        with open(path, "rb") as f:
+            return f.read(len(magic)) == magic and os.path.getsize(path) > 1024
+    except OSError:
+        return False
+
+
 def read_ready():
     """Aggiornamento scaricato e pronto da installare (più recente della versione in uso), oppure None."""
     data = common.read_json(READY_FILE, None)
@@ -224,6 +268,14 @@ def read_ready():
     if not is_newer(data.get("version"), common.get_version()) or not os.path.isfile(data["installer"]):
         return None
     return data
+
+
+def staged_ok(ready):
+    """La nuova versione è già stata copiata accanto a quella in uso (preparazione in background riuscita)?"""
+    if not ready or not ready.get("staged") or not ready.get("staged_dir"):
+        return False
+    marker = common.read_json(os.path.join(ready["staged_dir"], "germano_staged.json"), None)
+    return isinstance(marker, dict) and marker.get("version") == ready.get("version")
 
 
 def last_result():
@@ -245,24 +297,55 @@ def rejected_message(rejected):
             "automatico. Va corretto su download.germano.ai; puoi riprovare con «Controlla ora».")
 
 
+def _kill_tree(proc):
+    """Ferma l'avviatore dell'installer e l'installer Python avviato da lui (che tiene il blocco «installazione in
+    corso»)."""
+    try:
+        import psutil
+        parent = psutil.Process(proc.pid)
+        for child in parent.children(recursive=True):
+            try:
+                child.kill()
+            except Exception:
+                pass
+        parent.kill()
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def open_package(path):
+    """macOS e Linux: apre il pacchetto scaricato con il programma di installazione del sistema."""
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", path], close_fds=True)
+    else:
+        subprocess.Popen(["xdg-open", path], close_fds=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+
+
 # ------------------------------------------------------------------------------------------------ servizio
 class Updater:
-    """Controllo, download e avvio degli aggiornamenti (vive nel processo del server)."""
+    """Controllo, download, preparazione e avvio degli aggiornamenti (vive nel processo del server)."""
 
     def __init__(self):
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
         self.check_now = threading.Event()
         self.worker = None
+        self._stage_proc = None
         self.state = {"state": "idle", "current": common.get_version(), "latest": None, "available": False,
                       "online": None, "checked_at": None, "error": None, "progress": None, "notes": None,
-                      "url": None, "source": source()[0]}
+                      "url": None, "source": source()[0], "platform": platform_key(), "staged": False,
+                      "manual": platform_key() != "windows", "silent": True}
         cleanup_after_install()
         ready = read_ready()
         rejected = read_rejected()
         if ready:
             self.state.update(state="ready", latest=ready.get("version"), available=True,
-                              attempts=int(ready.get("attempts") or 0))
+                              attempts=int(ready.get("attempts") or 0), staged=staged_ok(ready),
+                              ready_since=ready.get("downloaded"))
         elif rejected:
             self.state.update(state="error", latest=rejected["version"], error=rejected_message(rejected))
 
@@ -276,6 +359,11 @@ class Updater:
         result = last_result()
         if result:
             snap["last_install"] = result
+        if snap.get("state") == "ready" and snap.get("manual"):
+            ready = read_ready() or {}
+            snap["package"] = os.path.basename(ready.get("installer") or "")
+            if platform_key() == "linux" and snap["package"]:
+                snap["install_command"] = f"sudo apt install ./{snap['package']}"
         return snap
 
     # -------------------------------------------------------------- controllo periodico
@@ -284,6 +372,7 @@ class Updater:
             return
 
         def loop():
+            background_priority()          # tutto il lavoro degli aggiornamenti a bassa priorità
             timeout = FIRST_CHECK_DELAY
             while not self.stop_event.is_set():
                 self.check_now.wait(timeout)
@@ -296,7 +385,7 @@ class Updater:
                 if not (manual or cfg.get("check_updates", True)):
                     continue
                 try:
-                    self.check(manual=manual, auto_download=bool(cfg.get("auto_update", True)))
+                    self.check(manual=manual, auto_download=bool(cfg.get("auto_update", True)) or manual)
                 except UpdateError as e:
                     self._set(state="error", error=str(e), progress=None)
                     ulog(f"Aggiornamento non riuscito: {e}")
@@ -311,12 +400,17 @@ class Updater:
         self.check_now.set()
 
     def busy(self):
-        return self.state.get("state") in ("checking", "downloading", "installing")
+        return self.state.get("state") in ("checking", "downloading", "staging", "installing")
 
     def check(self, manual=False, auto_download=True):
         if self.busy():
             return self.snapshot()
-        if self.state.get("state") == "ready" and read_ready():
+        ready = read_ready()
+        if ready:
+            # già scaricato: su Windows si completa la preparazione in background se manca (es. Germano chiuso
+            # mentre si preparava), poi si aspetta il riavvio
+            if platform_key() == "windows" and not staged_ok(ready) and auto_download:
+                self.stage(ready)
             return self.snapshot()
         online = True if manual else windows_reports_online()
         self._set(online=online)
@@ -327,7 +421,7 @@ class Updater:
         latest = self.find_latest()
         current = common.get_version()
         self._set(checked_at=time.time(), latest=latest["version"] if latest else current,
-                  notes=(latest or {}).get("notes"), url=(latest or {}).get("url"))
+                  notes=(latest or {}).get("notes"), url=(latest or {}).get("url"), checked_manual=manual)
         if not latest or not is_newer(latest["version"], current):
             self._set(state="uptodate", available=False)
             return self.snapshot()
@@ -335,11 +429,12 @@ class Updater:
         if rejected and rejected["version"] == latest["version"] and not manual:
             self._set(state="error", available=True, error=rejected_message(rejected))
             return self.snapshot()   # stesso installer sbagliato: niente nuovo download automatico (si riprova a mano)
-        by_hand = platform_key() != "windows"   # macOS/Linux: il nuovo installer si scarica e si avvia a mano
-        self._set(state="available", available=True, manual=by_hand)
+        self._set(state="available", available=True)
         ulog(f"Disponibile la versione {latest['version']} (installata {current}): {latest['url']}")
-        if auto_download and not by_hand:
+        if auto_download:
             self.download(latest)
+            if platform_key() == "windows":
+                self.stage(read_ready())
         return self.snapshot()
 
     @staticmethod
@@ -386,14 +481,10 @@ class Updater:
             raise UpdateError(f"download.germano.ai ha risposto con il codice {r.status_code}.")
         return parse_listing(r.text, base)
 
-    # -------------------------------------------------------------- download
+    # -------------------------------------------------------------- download (in background, bassa priorità)
     def download(self, release):
         version = release["version"]
-        if platform_key() != "windows":
-            how = ("aprilo con un doppio clic" if platform_key() == "macos" else
-                   f"installalo con un doppio clic oppure con: sudo apt install ./{release['name']}")
-            raise UpdateError(f"È disponibile la versione {version}: scarica {release['name']} da {source()[0]} e "
-                              f"{how}. Cartelle di lavoro, Vault e impostazioni restano intatti.")
+        background_priority()
         s = self._session()
         try:
             os.makedirs(UPDATE_DIR, exist_ok=True)
@@ -409,10 +500,11 @@ class Updater:
             r.close()
             raise UpdateError(f"Download non riuscito (codice {r.status_code}).")
         size = int(r.headers.get("Content-Length") or 0) or (release.get("size") or 0)
-        if free < (size or SIZE_ESTIMATE) + INSTALL_SPACE:
+        space = (size or SIZE_ESTIMATE) + (INSTALL_SPACE if platform_key() == "windows" else 0)
+        if free < space:
             r.close()
-            raise UpdateError(f"Spazio insufficiente: servono circa {((size or SIZE_ESTIMATE) + INSTALL_SPACE) / 1024 ** 3:.1f}"
-                              " GB liberi per scaricare e installare l'aggiornamento.")
+            raise UpdateError(f"Spazio insufficiente: servono circa {space / 1024 ** 3:.1f} GB liberi per scaricare e "
+                              "preparare l'aggiornamento.")
         done, last = 0, 0.0
         try:
             with open(part, "wb") as f:
@@ -434,39 +526,104 @@ class Updater:
         if expected and done != expected:
             common.remove_quietly(part)
             raise UpdateError(f"Download incompleto ({done} byte su {expected}): riprova più tardi.")
-        if not check_installer(part):
+        if not check_package(part):
             common.remove_quietly(part)
             raise UpdateError("Il file scaricato non è un installer di Germano AI completo: riprova più tardi.")
         os.replace(part, path)
         common.atomic_write_json(READY_FILE, {"version": version, "installer": path, "downloaded": time.time(),
-                                              "attempts": 0})
+                                              "attempts": 0, "staged": False})
         common.remove_quietly(RESULT_FILE)   # l'esito di un tentativo precedente non vale per il nuovo download
-        self._set(state="ready", progress=None, latest=version, available=True, attempts=0)
-        ulog(f"Installer {release['name']} scaricato ({done} byte): pronto per l'installazione.")
+        self._set(state="ready", progress=None, latest=version, available=True, attempts=0, staged=False,
+                  ready_since=time.time())
+        ulog(f"Installer {release['name']} scaricato ({done} byte).")
+
+    # -------------------------------------------------------------- preparazione accanto alla versione in uso
+    def stage(self, ready):
+        """Windows: l'installer copia la nuova versione in «<programma>.nuovo» con la priorità minima, mentre Germano
+        resta aperto. Al riavvio la sostituzione richiede pochi secondi e nessuna finestra."""
+        if platform_key() != "windows" or not ready:
+            return False
+        if staged_ok(ready):
+            self._set(state="ready", staged=True)
+            return True
+        if not os.path.isfile(os.path.join(common.BASE_DIR, "germano_install.json")):
+            ulog("Copia portatile (non installata): la preparazione in background non si usa.")
+            return False
+        self._set(state="staging", progress=None, error=None)
+        common.remove_quietly(STAGE_FILE)
+        args = [ready["installer"], "--update", "--silent", "--stage", "--result", STAGE_FILE]
+        ulog(f"Preparazione in background della versione {ready['version']}...")
+        t0 = time.time()
+        try:
+            proc = subprocess.Popen(args, cwd=UPDATE_DIR, close_fds=True,
+                                    creationflags=IDLE_PRIORITY_CLASS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
+        except OSError as e:
+            self._set(state="ready", staged=False, error=f"Preparazione non avviata: {e}")
+            ulog(f"Preparazione non avviata: {e}")
+            return False
+        self._stage_proc = proc
+        while proc.poll() is None:
+            if self.stop_event.wait(1.0):
+                return False
+            if time.time() - t0 > STAGE_TIMEOUT:
+                _kill_tree(proc)
+                break
+        if self._stage_proc is None:              # fermata per lasciare il posto all'installazione completa
+            return False
+        self._stage_proc = None
+        res = common.read_json(STAGE_FILE, None) or {}
+        if res.get("status") == "staged" and res.get("staging"):
+            ready = dict(read_ready() or ready)
+            ready.update(staged=True, staged_dir=res["staging"], staged_at=time.time())
+            common.atomic_write_json(READY_FILE, ready)
+            if staged_ok(ready):
+                self._set(state="ready", staged=True, error=None)
+                ulog(f"Versione {ready['version']} preparata in {round(time.time() - t0)} s: si applica al riavvio.")
+                return True
+        err = res.get("error") or f"codice {proc.returncode}"
+        self._set(state="ready", staged=False, error=None, stage_error=str(err))
+        ulog(f"Preparazione in background non riuscita ({err}): si installerà con la procedura completa.")
+        return False
 
     # -------------------------------------------------------------- installazione
-    def launch_install(self):
-        """Avvia l'installer scaricato in modalità aggiornamento e restituisce subito: l'installer chiude Germano,
-        lo aggiorna e lo riapre."""
+    def launch_install(self, user_initiated=False):
+        """Avvia l'installazione e restituisce subito. Windows: con la versione preparata la sostituzione è
+        silenziosa (pochi secondi, poi Germano si riapre); senza, solo se lo chiede l'utente, l'installer completo
+        con la sua finestra di avanzamento. macOS e Linux: si apre il pacchetto con il programma del sistema."""
         ready = read_ready()
         if not ready:
             raise UpdateError("Nessun aggiornamento pronto da installare.")
+        if platform_key() != "windows":
+            open_package(ready["installer"])
+            ulog(f"Pacchetto {os.path.basename(ready['installer'])} aperto con il programma di installazione.")
+            return "opened"
+        staged = staged_ok(ready)
+        if not staged and not user_initiated:
+            raise UpdateError("La nuova versione non è ancora stata preparata.")
+        if self._stage_proc is not None:          # preparazione ancora in corso: la si ferma, si installa per intero
+            proc, self._stage_proc = self._stage_proc, None
+            _kill_tree(proc)
+            time.sleep(1.0)                       # il blocco «installazione in corso» si libera con il processo
         ready["attempts"] = int(ready.get("attempts") or 0) + 1
         ready["launched"] = time.time()
         common.atomic_write_json(READY_FILE, ready)
         common.remove_quietly(RESULT_FILE)
         args = [ready["installer"], "--update", "--result", RESULT_FILE]
-        flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        subprocess.Popen(args, cwd=UPDATE_DIR, creationflags=flags, close_fds=True)
+        if staged:
+            args += ["--silent", "--apply-staged"]
+        subprocess.Popen(args, cwd=UPDATE_DIR, creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                         close_fds=True)
         self._set(state="installing", progress=None, attempts=ready["attempts"])
-        ulog(f"Installazione della versione {ready['version']} avviata (tentativo {ready['attempts']}).")
+        ulog(f"Installazione della versione {ready['version']} avviata ({'silenziosa, versione preparata' if staged else 'completa'}, "
+             f"tentativo {ready['attempts']}).")
+        return "staged" if staged else "full"
 
 
 def should_auto_install():
-    """All'avvio: l'aggiornamento pronto si installa da solo, ma solo al primo tentativo (se un tentativo non è
-    andato a buon fine si riprova dalla Dashboard, senza bloccare ogni avvio)."""
+    """All'avvio di Germano: si applica da sola solo la versione già preparata in background (Windows), al primo
+    tentativo. Altrimenti Germano si apre normalmente e la preparazione riprende in background."""
     ready = read_ready()
-    return bool(ready) and int(ready.get("attempts") or 0) == 0
+    return platform_key() == "windows" and staged_ok(ready) and int(ready.get("attempts") or 0) == 0
 
 
 def cleanup_after_install():
@@ -489,6 +646,7 @@ def cleanup_after_install():
         ulog(f"Scartato l'installer della versione {ready['version']}: conteneva la versione {result['target']}.")
     if not read_ready():
         common.remove_quietly(READY_FILE)
+        common.remove_quietly(STAGE_FILE)
     if not read_rejected():
         common.remove_quietly(REJECTED_FILE)
     if not os.path.isdir(UPDATE_DIR):

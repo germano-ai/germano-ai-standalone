@@ -1,6 +1,6 @@
 """Costruisce i pacchetti di installazione macOS (.pkg) AUTOSUFFICIENTI (nessun download all'installazione):
-  germano.ai-0.60/releases/macos/germano-0.60.pkg          suite completa (Apple Silicon)
-  germano.ai-0.60/releases/macos/germano-client-0.60.pkg   client leggero (Apple Silicon e Intel)
+  germano.ai-0.70/releases/macos/germano-0.70.pkg          suite completa (Apple Silicon)
+  germano.ai-0.70/releases/macos/germano-client-0.70.pkg   client leggero (Apple Silicon e Intel)
 partendo da sorgenti/macos/<edizione>, dipendenze/macos (Python portabile + librerie per macOS) e modelli/.
 
 Il .pkg e' un «product archive» scritto direttamente, senza gli strumenti di Apple (pkgbuild/productbuild), quindi
