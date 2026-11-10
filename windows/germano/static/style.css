@@ -1,4 +1,4 @@
-/* Germano AI 0.70 - Dashboard (tema scuro, nessuna risorsa esterna). Le variabili di base sono in harness.css. */
+/* Germano AI 0.80 - Dashboard (tema scuro, nessuna risorsa esterna). Le variabili di base sono in harness.css. */
 :root {
     --primary: #38bdf8;
     --primary-hover: #7dd3fc;
@@ -205,6 +205,7 @@ body[data-tab="guide"] .view-guide { display: block; }
 .panel-title { font: 650 16px var(--font-display); color: var(--text); display: flex; align-items: center; gap: 8px; }
 .panel-desc { margin-top: 4px; color: var(--muted); font-size: 13.5px; max-width: 900px; }
 .panel-desc strong { color: var(--text-2); }
+.fm-new { display: block; margin-top: 4px; }   /* formati aggiunti con la 0.80: audio e archivi compressi */
 .note { margin-top: 12px; color: var(--faint); font-size: 12.5px; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 
@@ -368,6 +369,7 @@ textarea:focus, .input:focus, .search input:focus { outline: none; border-color:
 .view-filters, .view-agents { display: flex; flex-direction: column; gap: 16px; }
 .option-grid { display: grid; gap: 8px 12px; }
 .option-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.option-wide { margin-top: 8px; }
 .option-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .option { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 10px; background: rgba(11, 15, 25, 0.45); cursor: pointer; min-width: 0; transition: border-color 0.15s, background 0.15s; }
 .option:hover { border-color: var(--primary-border); background: rgba(56, 189, 248, 0.05); }

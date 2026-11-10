@@ -1,4 +1,4 @@
-"""Scarica le dipendenze OFFLINE per Linux e macOS in germano.ai-0.70/dipendenze/<os>/:
+"""Scarica le dipendenze OFFLINE per Linux e macOS in germano.ai-0.80/dipendenze/<os>/:
 - l'interprete Python portabile (python-build-standalone, CPython 3.11 come il runtime Windows), verificato con
   l'impronta SHA256SUMS pubblicata nella release;
 - tutte le librerie (wheel binari) nelle STESSE versioni del runtime Windows collaudato, piu' quelle della finestra
@@ -12,7 +12,19 @@ Per Linux anche le poche librerie di sistema che Qt usa con X11 e che Ubuntu 26.
 (dipendenze/linux/librerie-xcb, dai pacchetti ufficiali dell'archivio Ubuntu): con Wayland, predefinito su Ubuntu
 26.04, non servono, ma cosi' la finestra funziona anche in una sessione X11 senza installare nulla.
 
-Uso: python scarica_dipendenze.py linux|macos|linux-xcb
+«llama»: il server di llama.cpp per il Sistema 2 (dipendenze/<os>/llama-server), dalla release ufficiale
+ggml-org/llama.cpp, verificato con l'impronta SHA256 pubblicata da GitHub per ogni file. Windows: solo llama-server
+e le sue DLL, piu' le DLL di Visual C++ del runtime (il PC puo' non avere il ridistribuibile). Linux e macOS:
+l'archivio originale, da cui i costruttori del .deb e del .pkg prendono solo il server e le sue librerie (con i
+collegamenti simbolici, che su Windows non si possono creare).
+
+«7zip»: la console ufficiale di 7-Zip per aprire gli archivi 7Z e RAR e ricomporre i 7Z (dipendenze/<os>/7zip), dalla
+release ufficiale ip7z/7zip, verificata con l'impronta SHA256 pubblicata da GitHub per ogni file. Windows: 7z.exe e
+7z.dll presi dall'installer ufficiale (aperto con 7zr.exe della stessa release, anch'esso verificato). Linux e macOS:
+l'archivio originale, da cui i costruttori del .deb e del .pkg prendono il programma (7zzs statico per Linux, 7zz
+universale per macOS) con i permessi di esecuzione.
+
+Uso: python scarica_dipendenze.py linux|macos|linux-xcb|llama|7zip
 """
 import hashlib
 import io
@@ -27,7 +39,7 @@ import zipfile
 sys.dont_write_bytecode = True
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BUILD = os.path.dirname(os.path.abspath(__file__))
-RELEASE = os.path.abspath(os.path.join(BUILD, "..", "..", "..", ".."))           # germano.ai-0.70
+RELEASE = os.path.abspath(os.path.join(BUILD, "..", "..", "..", ".."))           # germano.ai-0.80
 WIN_RUNTIME = os.path.join(RELEASE, "dipendenze", "windows", "runtime-germano")
 WIN_CLIENT_RUNTIME = os.path.join(RELEASE, "dipendenze", "windows", "runtime-germano-client")
 PYTHON = os.path.join(WIN_RUNTIME, "python.exe")
@@ -81,6 +93,23 @@ UBUNTU = {"mirror": "https://archive.ubuntu.com/ubuntu/", "dist": "jammy", "name
           "max_glibc": (2, 34),
           "packages": ("libxcb-cursor0", "libxcb-icccm4", "libxcb-image0", "libxcb-keysyms1", "libxcb-render-util0",
                        "libxcb-xkb1", "libxkbcommon-x11-0")}
+# llama.cpp per il Sistema 2 (stessa build su tutti i sistemi). Linux: richiede glibc 2.34, libstdc++ di GCC 12,
+# OpenSSL 3 e libgomp1, tutti presenti in Ubuntu 22.04+ Desktop. macOS: Apple Silicon, macOS 13.3+.
+LLAMA_TAG = "b12236"
+LLAMA_API = "https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/{tag}"
+LLAMA_ASSETS = {"windows": "llama-{tag}-bin-win-cpu-x64.zip", "linux": "llama-{tag}-bin-ubuntu-x64.tar.gz",
+                "macos": "llama-{tag}-bin-macos-arm64.tar.gz"}
+LLAMA_WIN_KEEP = re.compile(r"^(llama-server\.exe|llama-server-impl\.dll|llama-common\.dll|llama\.dll|mtmd\.dll|"
+                            r"ggml\.dll|ggml-base\.dll|ggml-cpu-[a-z0-9]+\.dll|libomp\.dll|LICENSE-LLVM-OpenMP)$")
+VC_RUNTIME_DLLS = ("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+# 7-Zip (console) per gli archivi 7Z e RAR: stessa versione su tutti i sistemi. Licenza GNU LGPL con la restrizione
+# unRAR (il codice RAR serve solo a estrarre): License.txt viene installato accanto al programma.
+SEVENZIP_TAG = "26.06"
+SEVENZIP_API = "https://api.github.com/repos/ip7z/7zip/releases/tags/{tag}"
+SEVENZIP_ASSETS = {"windows": "7z{n}-x64.exe", "linux": "7z{n}-linux-x64.tar.xz", "macos": "7z{n}-mac.tar.xz"}
+SEVENZIP_EXTRACTOR = "7zr.exe"               # console minima ufficiale: apre l'installer Windows (archivio 7z)
+SEVENZIP_WIN_FILES = ("7z.exe", "7z.dll", "License.txt")
+SEVENZIP_UNIX_PROGRAM = {"linux": "7zzs", "macos": "7zz"}
 
 
 def windows_lock(runtime):
@@ -326,10 +355,161 @@ def fetch_ubuntu_libs(base):
     print(f"  {len(os.listdir(dest))} file in {dest}")
 
 
+def fetch_llama():
+    """llama.cpp {LLAMA_TAG} per il Sistema 2 in dipendenze/<os>/llama-server (vedi la descrizione in testa)."""
+    import shutil
+    import tarfile
+    import tempfile
+    release = json.loads(urllib.request.urlopen(LLAMA_API.format(tag=LLAMA_TAG), timeout=60).read().decode("utf-8"))
+    assets = {a["name"]: a for a in release.get("assets", [])}
+    license_text = None
+    with tempfile.TemporaryDirectory() as tmp:
+        for os_name in ("linux", "macos", "windows"):
+            name = LLAMA_ASSETS[os_name].format(tag=LLAMA_TAG)
+            asset = assets.get(name)
+            digest = (asset or {}).get("digest") or ""
+            if not digest.startswith("sha256:"):
+                raise SystemExit(f"ERRORE: {name} non trovato nella release {LLAMA_TAG} o senza impronta SHA256")
+            expected = digest.split(":", 1)[1]
+            dest = os.path.join(RELEASE, "dipendenze", os_name, "llama-server")
+            keep_archive = os_name != "windows"
+            path = os.path.join(dest if keep_archive else tmp, name)
+            if not (os.path.isfile(path) and sha256(path) == expected):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                print(f"  scarico {name}...")
+                urllib.request.urlretrieve(asset["browser_download_url"], path + ".part")
+                if sha256(path + ".part") != expected:
+                    os.remove(path + ".part")
+                    raise SystemExit(f"ERRORE: impronta di {name} diversa da quella pubblicata da GitHub")
+                os.replace(path + ".part", path)
+            origin = [f"llama.cpp {LLAMA_TAG} (github.com/ggml-org/llama.cpp, licenza MIT) per il Sistema 2 di Germano.",
+                      f"Archivio: {name}", f"Fonte: {asset['browser_download_url']}",
+                      f"SHA256: {expected} (uguale all'impronta pubblicata da GitHub)"]
+            if keep_archive:
+                for f in os.listdir(dest):                       # versioni precedenti dell'archivio
+                    if f.startswith("llama-") and f != name:
+                        os.remove(os.path.join(dest, f))
+                if license_text is None:
+                    with tarfile.open(path, "r:gz") as tar:
+                        license_text = tar.extractfile(next(m for m in tar.getmembers()
+                                                            if m.name.endswith("/LICENSE"))).read()
+                origin.append("Il costruttore del pacchetto prende dall'archivio solo llama-server e le sue librerie "
+                              "(runtime/llama), con i collegamenti simbolici originali.")
+            else:
+                if os.path.isdir(dest):
+                    shutil.rmtree(dest)
+                os.makedirs(dest)
+                kept = []
+                with zipfile.ZipFile(path) as z:
+                    for info in z.infolist():
+                        base = info.filename.rsplit("/", 1)[-1]
+                        if LLAMA_WIN_KEEP.match(base):
+                            with open(os.path.join(dest, base), "wb") as f:
+                                f.write(z.read(info))
+                            kept.append(base)
+                assert "llama-server.exe" in kept and "llama-server-impl.dll" in kept, kept
+                with open(os.path.join(dest, "LICENSE-llama.cpp"), "wb") as f:
+                    f.write(license_text)
+                for dll in VC_RUNTIME_DLLS:
+                    shutil.copy2(os.path.join(WIN_RUNTIME, dll), os.path.join(dest, dll))
+                origin += [f"Presi dall'archivio solo llama-server e le sue librerie ({len(kept)} file); libomp.dll e' "
+                           "LLVM OpenMP (Apache-2.0 con eccezioni LLVM: LICENSE-LLVM-OpenMP).",
+                           f"{', '.join(VC_RUNTIME_DLLS)}: Visual C++, copiate dal runtime di Germano (il PC puo' non "
+                           "avere il ridistribuibile)."]
+            with open(os.path.join(dest, "ORIGINE.txt"), "w", encoding="utf-8", newline="\n") as f:
+                f.write("\n".join(origin) + "\n")
+            size = sum(os.path.getsize(os.path.join(dest, f)) for f in os.listdir(dest))
+            print(f"  {os_name}: {name} verificato ({expected[:16]}...), {len(os.listdir(dest))} file, "
+                  f"{size / 2**20:.1f} MB in {dest}")
+
+
+def fetch_7zip():
+    """7-Zip {SEVENZIP_TAG} in dipendenze/<os>/7zip (vedi la descrizione in testa)."""
+    import shutil
+    import tarfile
+    import tempfile
+    n = SEVENZIP_TAG.replace(".", "")
+    release = json.loads(urllib.request.urlopen(SEVENZIP_API.format(tag=SEVENZIP_TAG), timeout=60).read().decode("utf-8"))
+    assets = {a["name"]: a for a in release.get("assets", [])}
+
+    def verified(name, folder):
+        asset = assets.get(name)
+        digest = (asset or {}).get("digest") or ""
+        if not digest.startswith("sha256:"):
+            raise SystemExit(f"ERRORE: {name} non trovato nella release {SEVENZIP_TAG} di 7-Zip o senza impronta SHA256")
+        expected = digest.split(":", 1)[1]
+        path = os.path.join(folder, name)
+        if not (os.path.isfile(path) and sha256(path) == expected):
+            os.makedirs(folder, exist_ok=True)
+            print(f"  scarico {name}...")
+            urllib.request.urlretrieve(asset["browser_download_url"], path + ".part")
+            if sha256(path + ".part") != expected:
+                os.remove(path + ".part")
+                raise SystemExit(f"ERRORE: impronta di {name} diversa da quella pubblicata da GitHub")
+            os.replace(path + ".part", path)
+        return path, expected, asset["browser_download_url"]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for os_name in ("linux", "macos", "windows"):
+            name = SEVENZIP_ASSETS[os_name].format(n=n)
+            dest = os.path.join(RELEASE, "dipendenze", os_name, "7zip")
+            origin = [f"7-Zip {SEVENZIP_TAG} (github.com/ip7z/7zip, www.7-zip.org) per gli archivi 7Z e RAR di Germano.",
+                      "Licenza: GNU LGPL con la restrizione unRAR (License.txt, installato accanto al programma)."]
+            if os_name == "windows":
+                installer, expected, url = verified(name, os.path.join(tmp, "win"))
+                extractor, ex_sha, ex_url = verified(SEVENZIP_EXTRACTOR, os.path.join(tmp, "estrattore"))
+                out = os.path.join(tmp, "win-estratto")
+                r = subprocess.run([extractor, "x", "-y", "-bso0", "-bsp0", f"-o{out}", installer, *SEVENZIP_WIN_FILES],
+                                   capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                missing = [f for f in SEVENZIP_WIN_FILES if not os.path.isfile(os.path.join(out, f))]
+                if r.returncode != 0 or missing:
+                    raise SystemExit(f"ERRORE: estrazione di {name} non riuscita ({r.returncode}) {missing}\n{r.stderr}")
+                if os.path.isdir(dest):
+                    shutil.rmtree(dest)
+                os.makedirs(dest)
+                for f in SEVENZIP_WIN_FILES:
+                    shutil.copyfile(os.path.join(out, f), os.path.join(dest, f))
+                origin += [f"Installer ufficiale: {name}", f"Fonte: {url}",
+                           f"SHA256: {expected} (uguale all'impronta pubblicata da GitHub)",
+                           f"Presi dall'installer solo {', '.join(SEVENZIP_WIN_FILES)}, estratti con {SEVENZIP_EXTRACTOR} "
+                           f"della stessa release (SHA256 {ex_sha}, {ex_url})."]
+                origin += [f"{f}: SHA256 {sha256(os.path.join(dest, f))}" for f in SEVENZIP_WIN_FILES[:2]]
+            else:
+                path, expected, url = verified(name, dest)
+                for f in os.listdir(dest):                       # versioni precedenti dell'archivio
+                    if f.startswith("7z") and f.endswith(".tar.xz") and f != name:
+                        os.remove(os.path.join(dest, f))
+                program = SEVENZIP_UNIX_PROGRAM[os_name]
+                with tarfile.open(path, "r:xz") as tar:
+                    members = {m.name.lstrip("./"): m for m in tar.getmembers()}
+                    if program not in members or not members[program].isfile() or "License.txt" not in members:
+                        raise SystemExit(f"ERRORE: {program} o License.txt non trovati in {name}")
+                    head = tar.extractfile(members[program]).read(4)
+                    size = members[program].size
+                magic_ok = head == b"\x7fELF" if os_name == "linux" else head in (b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\xfe")
+                if not magic_ok:
+                    raise SystemExit(f"ERRORE: {program} in {name} non e' un programma {os_name}")
+                origin += [f"Archivio: {name}", f"Fonte: {url}",
+                           f"SHA256: {expected} (uguale all'impronta pubblicata da GitHub)",
+                           f"Il costruttore del pacchetto prende dall'archivio {program} ({size:,} byte) e License.txt "
+                           "(runtime/7zip), con i permessi di esecuzione."]
+            with open(os.path.join(dest, "ORIGINE.txt"), "w", encoding="utf-8", newline="\n") as f:
+                f.write("\n".join(origin) + "\n")
+            size = sum(os.path.getsize(os.path.join(dest, f)) for f in os.listdir(dest))
+            print(f"  {os_name}: {name} verificato ({expected[:16]}...), {len(os.listdir(dest))} file, "
+                  f"{size / 2**20:.1f} MB in {dest}")
+
+
 def main():
     which = sys.argv[1]
     if which == "linux-xcb":
         fetch_ubuntu_libs(os.path.join(RELEASE, "dipendenze", "linux"))
+        return
+    if which == "llama":
+        fetch_llama()
+        return
+    if which == "7zip":
+        fetch_7zip()
         return
     base = os.path.join(RELEASE, "dipendenze", which)
     locks = {"germano": windows_lock(WIN_RUNTIME), "germano-client": windows_lock(WIN_CLIENT_RUNTIME)}

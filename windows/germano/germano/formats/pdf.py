@@ -4,7 +4,7 @@ from array import array
 
 from .. import common
 from ..analyzer import Unit, apply_replacements
-from . import is_supported, process_bytes, ProcessingError
+from . import is_supported, process_bytes, ProcessingError, reraise_control
 
 ZOOM = 2.0
 _SEP = -1.0e9
@@ -598,6 +598,7 @@ def _process_attachments(doc, ctx, fitz):
                 common.log(f"PDF: allegato incorporato elaborato ({base}).")
                 continue
             except Exception as e:
+                reraise_control(e)
                 reason = str(e)
         else:
             reason = "formato non supportato"
@@ -627,6 +628,7 @@ def _process_attachments(doc, ctx, fitz):
                     page.delete_annot(a)
                     ctx.note(f"Allegato in annotazione rimosso per sicurezza ({base}: formato non supportato).")
             except Exception as e:
+                reraise_control(e)
                 if ctx.anonymize:
                     try:
                         page.delete_annot(a)

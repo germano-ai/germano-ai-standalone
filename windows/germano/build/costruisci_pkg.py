@@ -1,6 +1,6 @@
 """Costruisce i pacchetti di installazione macOS (.pkg) AUTOSUFFICIENTI (nessun download all'installazione):
-  germano.ai-0.70/releases/macos/germano-0.70.pkg          suite completa (Apple Silicon)
-  germano.ai-0.70/releases/macos/germano-client-0.70.pkg   client leggero (Apple Silicon e Intel)
+  germano.ai-0.80/releases/macos/germano-0.80.pkg          suite completa (Apple Silicon)
+  germano.ai-0.80/releases/macos/germano-client-0.80.pkg   client leggero (Apple Silicon e Intel)
 partendo da sorgenti/macos/<edizione>, dipendenze/macos (Python portabile + librerie per macOS) e modelli/.
 
 Il .pkg e' un «product archive» scritto direttamente, senza gli strumenti di Apple (pkgbuild/productbuild), quindi
@@ -12,7 +12,8 @@ si costruisce anche su Windows. Struttura identica a quella prodotta da pkgbuild
 - germano.pkg/PackageInfo, Bom (distinta dei file nel formato di mkbom/bomutils: albero di pagine da 256 voci,
   checksum POSIX cksum), Payload (cpio «odc» compresso gzip), Scripts (postinstall).
 Germano.app contiene tutto: Contents/MacOS/Germano (lanciatore), Contents/Resources/germano.icns e
-Contents/Resources/app (programma, runtime/ con Python 3.11 e le librerie, models/ per la suite). Il client si
+Contents/Resources/app (programma, runtime/ con Python 3.11 e le librerie, models/, runtime/llama - llama-server di
+llama.cpp per il Sistema 2 - e runtime/7zip - console di 7-Zip per gli archivi 7Z e RAR - per la suite). Il client si
 installa in «Germano AI Client/Germano.app» per non sovrascrivere la suite. Il postinstall compila la cache dei moduli
 Python e apre Germano per l'utente della sessione grafica (non nelle installazioni da riga di comando o da MDM).
 Il pacchetto non e' firmato da Apple (serve un Developer ID): al primo avvio macOS chiede conferma
@@ -39,6 +40,9 @@ from xml.sax.saxutils import escape
 sys.dont_write_bytecode = True
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BUILD = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BUILD)
+import crea_version_json  # noqa: E402
+
 RELEASE = os.path.abspath(os.path.join(BUILD, "..", "..", "..", ".."))
 DEPS = os.path.join(RELEASE, "dipendenze", "macos")
 MODELS = os.path.join(RELEASE, "modelli")
@@ -54,7 +58,12 @@ APP_EXCLUDE_TOP = {"germano.app", "build", "__pycache__", "runtime", "runtime-x8
                    "update", "input", "output", "processed", "failed", "extracted", "desktop.log", "server_stdout.log",
                    "daemon.log", "germano_install.json"}
 PBS_SKIP = re.compile(r"^python/lib/python3\.11/(test|idlelib|turtledemo|tkinter/test|lib2to3/tests|ensurepip/_bundled)/")
-UID, GID = 0, 80     # root:admin, come le app in /Applications; con «solo per me» i file sono dell'utente
+# llama.cpp (Sistema 2, solo suite Apple Silicon): dall'archivio ufficiale il server e le librerie che carica
+# (@rpath = @loader_path: nome con la versione maggiore + file reale), firmate ad-hoc come nella release.
+LLAMA_KEEP = re.compile(r"^(llama-server|libllama-server-impl\.dylib|"
+                        r"lib(llama|llama-common|mtmd|ggml|ggml-base|ggml-cpu|ggml-blas|ggml-metal|ggml-rpc)\.0(\.\d+)*\.dylib|"
+                        r"LICENSE)$")
+UID, GID = 0, 80    # root:admin, come le app in /Applications; con «solo per me» i file sono dell'utente
 S_IFDIR, S_IFREG, S_IFLNK = 0o040000, 0o100000, 0o120000
 CHUNK = 1 << 22
 
@@ -179,6 +188,55 @@ def from_python_tarball(nodes, tarball, dst):
                 put(nodes, path, (m.mode & 0o777) | 0o644, m.mtime, len(data), data)
                 count += 1
     return count
+
+
+def from_llama_tarball(nodes, dst):
+    """llama-server per il Sistema 2 (vedi scarica_dipendenze.py llama) in runtime/llama, con i collegamenti
+    simbolici dell'archivio (libllama.0.dylib -> libllama.0.9.0.dylib) e la licenza (MIT)."""
+    folder = os.path.join(DEPS, "llama-server")
+    tars = [f for f in os.listdir(folder) if re.match(r"^llama-b\d+-bin-macos-arm64\.tar\.gz$", f)]
+    assert len(tars) == 1, f"atteso un archivio di llama.cpp in {folder}: {tars} (scarica_dipendenze.py llama)"
+    n = 0
+    with tarfile.open(os.path.join(folder, tars[0]), "r:gz") as tar:
+        for m in tar:
+            base = m.name.rsplit("/", 1)[-1]
+            if m.isdir() or not LLAMA_KEEP.match(base):
+                continue
+            path = f"{dst}/{base}"
+            if m.issym():
+                add_dirs(nodes, path, m.mtime)
+                nodes[path] = Node("link", 0o755, m.mtime, len(m.linkname.encode("utf-8")), m.linkname)
+            elif m.isfile():
+                data = tar.extractfile(m).read()
+                put(nodes, path, 0o644 if base == "LICENSE" else 0o755, m.mtime, len(data), data)
+                n += 1
+    for path, node in list(nodes.items()):          # ogni collegamento deve puntare a un file incluso
+        if node.kind == "link" and path.startswith(dst + "/"):
+            target = nodes.get(f"{dst}/{node.link}")
+            assert target is not None and target.kind == "file", path
+    assert nodes[f"{dst}/llama-server"].mode == 0o755 and f"{dst}/libllama-server-impl.dylib" in nodes
+    return n
+
+
+def from_7zip_tarball(nodes, dst):
+    """Console di 7-Zip per gli archivi 7Z e RAR (vedi scarica_dipendenze.py 7zip): dall'archivio ufficiale per
+    macOS solo 7zz (binario universale Apple Silicon + Intel) in runtime/7zip, con la licenza."""
+    folder = os.path.join(DEPS, "7zip")
+    tars = [f for f in os.listdir(folder) if re.match(r"^7z\d+-mac\.tar\.xz$", f)]
+    assert len(tars) == 1, f"atteso un archivio di 7-Zip in {folder}: {tars} (scarica_dipendenze.py 7zip)"
+    n = 0
+    with tarfile.open(os.path.join(folder, tars[0]), "r:xz") as tar:
+        for m in tar:
+            base = m.name.lstrip("./")
+            if not m.isfile() or base not in ("7zz", "License.txt"):
+                continue
+            data = tar.extractfile(m).read()
+            if base == "7zz":
+                assert data[:4] in (b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\xfe"), "7zz non e' un programma macOS"
+            put(nodes, f"{dst}/{base}", 0o755 if base == "7zz" else 0o644, m.mtime, len(data), data)
+            n += 1
+    assert f"{dst}/7zz" in nodes and nodes[f"{dst}/7zz"].mode == 0o755 and f"{dst}/License.txt" in nodes
+    return n
 
 
 def from_wheel(nodes, wheel, site, runtime):
@@ -591,6 +649,15 @@ def build(edition):
         assert nodes[f"{rt}/bin/python3"].kind == "link"
     if edition == "germano":
         from_disk(nodes, MODELS, f"{res}/models")
+        assert ed["archs"] == ("arm64",), "llama.cpp incluso solo per Apple Silicon"
+        stats.append(f"{from_llama_tarball(nodes, f'{res}/runtime/llama')} file di llama.cpp (Sistema 2)")
+        stats.append(f"{from_7zip_tarball(nodes, f'{res}/runtime/7zip')} file di 7-Zip (archivi 7Z e RAR)")
+        site_arm = f"{res}/{RUNTIME_DIR['arm64']}/lib/python3.11/site-packages"
+        for need in (f"{res}/models/whisper-small/model.bin", f"{res}/models/qwen3.5-0.8b/germano.json",
+                     f"{res}/models/italian-ner-xxl/onnx/model.onnx", f"{res}/germano/speech_worker.py",
+                     f"{res}/germano/formats/archive.py", f"{site_arm}/faster_whisper/__init__.py",
+                     f"{site_arm}/ctranslate2/__init__.py", f"{site_arm}/av/__init__.py"):
+            assert need in nodes, f"manca {need} (modelli o librerie della 0.80 non pronti per macOS)"
     for need in ("germano_desktop.py", "germano_window.py", "VERSION"):
         assert f"{res}/{need}" in nodes, need
     order = sorted(nodes, key=lambda p: p.split("/"))
@@ -708,6 +775,10 @@ exit 0
            (nodes[p].kind != "dir" and (listed[p][2], listed[p][3]) != cpio[p][1:])]
     assert not bad, f"distinta e Payload non coincidono: {bad[:5]}"
     assert cpio[f"{app}/Contents/MacOS/Germano"][0] & 0o777 == 0o755
+    if edition == "germano":
+        assert cpio[f"{res}/runtime/llama/llama-server"][0] == S_IFREG | 0o755
+        assert cpio[f"{res}/runtime/llama/libllama.0.dylib"][0] & 0o170000 == S_IFLNK
+        assert cpio[f"{res}/runtime/7zip/7zz"][0] == S_IFREG | 0o755
     sc = gzip.decompress(x["germano.pkg/Scripts"])
     assert b"./postinstall" in sc and b"exit 0" in sc
     assert b'"${COMMAND_LINE_INSTALL:-0}" != 1' in sc and b"/usr/bin/open \"$APP\"" in sc
@@ -715,9 +786,11 @@ exit 0
         os.remove(os.path.join(work, p))
     os.rmdir(work)
     os.replace(part, out)
+    crea_version_json.scarta_se_superato(out)
     print(f"  verifica: indice xar e impronte SHA-1, Distribution e PackageInfo, distinta Bom ({len(listed):,} voci) "
           f"e Payload cpio ({len(cpio):,} voci): dimensioni, permessi e cksum di ogni file coincidenti")
-    print(f"  OK {os.path.basename(out)}: {os.path.getsize(out) / 2**30:.2f} GB in {time.time() - t0:.0f} s", flush=True)
+    print(f"  OK {os.path.basename(out)}: {os.path.getsize(out):,} byte ({os.path.getsize(out) / 2**30:.2f} GB) in "
+          f"{time.time() - t0:.0f} s", flush=True)
     return out
 
 

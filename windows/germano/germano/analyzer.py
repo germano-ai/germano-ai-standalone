@@ -1,7 +1,8 @@
 """Analisi a "unita'" di testo (paragrafi, celle, campi) e applicazione delle sostituzioni.
 
 - Anonimizzazione: le unita' vengono concatenate in blocchi (contesto + velocita'), analizzate con modelli
-  e RegEx, poi le entita' trovate vengono propagate a tutte le altre occorrenze del documento.
+  e RegEx (Sistema 1); i casi dubbi vengono decisi nel contesto dal Sistema 2; poi le entita' trovate vengono
+  propagate a tutte le altre occorrenze del documento.
 - Ripristino: le etichette del vault ([PERSONA_1]) vengono sostituite con i dati reali.
 Le sostituzioni sono (inizio, fine, testo) relative all'unita'.
 """
@@ -119,7 +120,8 @@ class Anonymizer:
                 texts = [units[i].text for i in grp]
                 raws = ctx.classify_many(texts)
                 for i, raw in zip(grp, raws):
-                    spans_per_unit[i] = detect.detect(units[i].text, raw, settings, ocr=units[i].ocr)
+                    spans = detect.detect(units[i].text, raw, settings, ocr=units[i].ocr)
+                    spans_per_unit[i] = self._system2(units[i].text, spans, [i], [0], [len(units[i].text)])
 
         # Propagazione delle entita' a tutte le occorrenze del documento (indice condiviso tra le chiamate
         # dello stesso documento: es. un nome letto nel testo digitale viene oscurato anche nelle scansioni).
@@ -158,9 +160,26 @@ class Anonymizer:
             for sp in spans_per_unit[i]:
                 word = u.text[sp.start:sp.end]
                 label = override or (vault.label_for(word, sp.label) if use_indexed else sp.label)
-                ctx.audit_add(word, label, sp.group, sp.score)
+                ctx.audit_add(word, label, sp.group, sp.score, getattr(sp, "status", "confirmed"))
                 results[i].append((sp.start, sp.end, label))
         return results
+
+    def _system2(self, text, spans, grp, starts, ends):
+        """Casi dubbi decisi nel contesto (Sistema 2), PRIMA della propagazione: un falso positivo rilasciato non
+        viene cercato nel resto del documento; un dubbio confermato si'. Ogni decisione registra l'unita' di testo a
+        cui appartiene, con la posizione relativa a quell'unita' (per la Glass Window e il report)."""
+        resolve = getattr(self.ctx, "resolve_doubts", None)
+        if resolve is None:
+            return spans
+        log = getattr(self.ctx, "system2", None)
+        before = len(log) if log is not None else 0
+        kept = resolve(text, spans)
+        for d in (log[before:] if log is not None else []):
+            k = max(0, bisect_right(starts, d.get("start", 0)) - 1)
+            d["unit"] = grp[k]
+            d["start"] = max(0, d.get("start", 0) - starts[k])
+            d["end"] = min(ends[k] - starts[k], d.get("end", 0) - starts[k])
+        return kept
 
     def _analyze_group(self, units, grp, spans_per_unit):
         ctx = self.ctx
@@ -182,7 +201,7 @@ class Anonymizer:
         combined = "".join(parts)
         raw = ctx.classify_many([combined])[0]
         ocr = any(units[i].ocr for i in grp)
-        spans = detect.detect(combined, raw, ctx.settings, ocr=ocr)
+        spans = self._system2(combined, detect.detect(combined, raw, ctx.settings, ocr=ocr), grp, starts, ends)
         for sp in spans:
             k = max(0, bisect_right(starts, sp.start) - 1)
             while k < len(grp) and starts[k] < sp.end:
@@ -192,7 +211,7 @@ class Anonymizer:
                     text = units[grp[k]].text
                     la, lb = detect.trim_span(text, a - starts[k], b - starts[k], sp.label)
                     if lb > la and (sp.source == "regex" or not detect.is_fragment(text, la, lb)):
-                        spans_per_unit[grp[k]].append(detect.Span(la, lb, sp.group, sp.label, sp.key, sp.score, sp.source))
+                        spans_per_unit[grp[k]].append(detect.Span(la, lb, sp.group, sp.label, sp.key, sp.score, sp.source, getattr(sp, "status", "confirmed")))
                 k += 1
         for i in grp:
             spans_per_unit[i].sort(key=lambda x: x.start)

@@ -1,7 +1,9 @@
 """Motore IA: caricamento modelli locali, classificazione a blocchi con cache, OCR e visione artificiale.
 
-Tutte le chiamate ai modelli sono serializzate da un lock: i tokenizer "fast" di HuggingFace e EasyOCR
-non sono thread-safe e il demone serve in parallelo la cartella input/ e il Proxy API.
+Le chiamate ai modelli PyTorch e a EasyOCR sono serializzate da un lock (i tokenizer "fast" di HuggingFace e EasyOCR
+non sono thread-safe e il demone serve in parallelo la cartella input/ e il Proxy API). L'Italian NER in ONNX Runtime
+(engine_onnx, stessi risultati del modello PyTorch) gira fuori dal lock: serializza solo la propria tokenizzazione.
+Il Privacy Filter si carica all'avvio se attivo nelle impostazioni, altrimenti alla prima richiesta che lo usa.
 """
 import hashlib
 import os
@@ -89,7 +91,11 @@ class Engine:
         self.device = "cpu"
         self.precision = "fp32"
         self.pf = None
+        self._pf_dtype = None           # precisione scelta all'avvio, per caricare il Privacy Filter piu' tardi
         self.ita = None
+        self.ita_onnx = None
+        self.system2 = None             # Sistema 2 (system2_resolver): si avvia solo alla prima analisi con dubbi
+        self.speech = None              # trascrizione vocale (speech): processo separato, avviato al primo file audio
         self.ocr_reader = None
         self._face = None
         self._sig = None
@@ -136,43 +142,82 @@ class Engine:
         self.log(f"RAM totale {total_gb:.1f} GB ({free_gb:.1f} GB liberi): Privacy Filter in "
                  f"{'BF16' if dt == torch.bfloat16 else 'FP32'} - {why}.")
 
-        pf_path = os.path.join(common.MODELS_DIR, "privacy-filter")
-        if not os.path.isdir(pf_path) or not os.listdir(pf_path):
-            raise FileNotFoundError(f"Modello locale non trovato in {pf_path}")
-        t = time.time()
-        self.log("Caricamento modello Privacy Filter 1.5B (100% offline)...")
-        try:
-            self.pf = self._load_pf(pipeline, pf_path, dt)
-            if dt == torch.bfloat16:
-                t2 = time.time()
-                self.pf(SELF_TEST_TEXT)       # alcune CPU o librerie non hanno tutte le operazioni in BF16
-                self.log(f"Prova del modello in BF16 riuscita ({time.time() - t2:.1f} s).")
-        except Exception as e:
-            if dt != torch.bfloat16:
-                raise
-            self.log(f"ATTENZIONE: BF16 non utilizzabile su questo processore ({type(e).__name__}: {e}): ripiego "
-                     "automatico su FP32.")
+        self._pf_dtype = dt
+        if bool(settings.get("enable_model_velvet", True)):
+            self._load_privacy_filter()
+        else:
             self.pf = None
-            import gc
-            gc.collect()
-            dt = torch.float32
-            self.pf = self._load_pf(pipeline, pf_path, dt)
-        self.precision = "bf16" if dt == torch.bfloat16 else "fp32"
-        self.log(f"Privacy Filter pronto in {time.time() - t:.0f}s.")
+            self.precision = "fp32"
+            self.log("Privacy Filter 1.5B disattivato nelle impostazioni: si carica alla prima richiesta che lo usa.")
 
         ita_path = os.path.join(common.MODELS_DIR, "italian-ner-xxl")
         if os.path.isdir(ita_path) and os.listdir(ita_path):
+            onnx_error = None
             try:
+                from . import engine_onnx
                 t = time.time()
-                self.log("Caricamento modello specialistico Italian_NER_XXL_v2 (58 categorie)...")
-                self.ita = pipeline(
-                    task="token-classification", model=ita_path, tokenizer=ita_path,
-                    aggregation_strategy="simple", device=self.device, model_kwargs={"dtype": torch.float32},
-                )
-                self.log(f"Italian NER pronto in {time.time() - t:.0f}s.")
+                self.log("Caricamento modello specialistico Italian_NER_XXL_v2 (ONNX Runtime, stessi risultati di "
+                         "PyTorch)...")
+                clf = engine_onnx.OnnxTokenClassifier(ita_path, threads=threads)
+                # prova all'avvio: un modello che si apre ma non riconosce un nome evidente non e' utilizzabile
+                found = [e for e in clf.predict([SELF_TEST_TEXT])[0] if e.get("score", 0) >= ITA_MIN_SCORE]
+                if not found:
+                    raise RuntimeError("la prova del modello non ha riconosciuto nessun dato nel testo di controllo")
+                self.ita_onnx = clf
+                self.log(f"Italian NER pronto in {time.time() - t:.1f}s ({os.path.basename(clf.onnx_path)}, prova "
+                         f"superata: {len(found)} dati nel testo di controllo).")
             except Exception as e:
-                self.log(f"Avviso: Italian_NER_XXL non caricato ({e}).")
-                self.ita = None
+                onnx_error = e
+                self.ita_onnx = None
+
+            # Dalla 0.80 i pacchetti contengono solo il modello ONNX (stessi pesi, 210 MB in meno); il modello
+            # PyTorch (model.safetensors) resta un ripiego per chi esegue dai sorgenti e lo ha nella cartella.
+            if self.ita_onnx is None and os.path.isfile(os.path.join(ita_path, "model.safetensors")):
+                self.log(f"Info: Italian NER in ONNX Runtime non disponibile ({onnx_error}): si usa PyTorch.")
+                try:
+                    t = time.time()
+                    self.log("Caricamento modello specialistico Italian_NER_XXL_v2 (58 categorie, PyTorch)...")
+                    self.ita = pipeline(
+                        task="token-classification", model=ita_path, tokenizer=ita_path,
+                        aggregation_strategy="simple", device=self.device, model_kwargs={"dtype": torch.float32},
+                    )
+                    self.log(f"Italian NER pronto in {time.time() - t:.0f}s.")
+                except Exception as e:
+                    onnx_error = e
+                    self.ita = None
+            if self.ita_onnx is None and self.ita is None:
+                # Un modello attivo nelle impostazioni non viene mai saltato in silenzio (come il Privacy Filter):
+                # senza Italian NER molti dati personali resterebbero in chiaro senza che nessuno se ne accorga.
+                if bool(settings.get("enable_model_italian_ner", True)):
+                    raise RuntimeError(f"il modello Italian NER non si carica ({type(onnx_error).__name__}: "
+                                       f"{onnx_error}). Reinstalla Germano oppure disattiva «Italian NER» nelle "
+                                       "Impostazioni (profilo PD) se vuoi proseguire senza.")
+                self.log(f"Avviso: Italian_NER_XXL non caricato ({onnx_error}); e' disattivato nelle impostazioni.")
+
+        try:
+            from . import system2_resolver
+            self.system2 = system2_resolver.System2Resolver(log=self.log, threads=threads)
+            s2 = self.system2.info()
+            if s2["available"]:
+                self.log(f"Sistema 2 disponibile su richiesta ({s2['model']}, llama.cpp solo su 127.0.0.1): decide "
+                         "nel contesto i casi dubbi del Sistema 1.")
+            else:
+                self.log("Sistema 2 non installato: i casi dubbi del Sistema 1 restano oscurati.")
+        except Exception as e:
+            self.log(f"Avviso: Sistema 2 non disponibile ({e}): i casi dubbi restano oscurati.")
+            self.system2 = None
+
+        try:
+            from . import speech
+            self.speech = speech.SpeechEngine(log=self.log, threads=threads)
+            if self.speech.available:
+                self.log(f"Trascrizione audio disponibile su richiesta ({self.speech.model_label()}, offline, in un "
+                         "processo separato): MP3, WAV, M4A, OGG, FLAC.")
+            else:
+                self.log(f"Trascrizione audio non disponibile: {self.speech.unavailable_reason()}.")
+        except Exception as e:
+            self.log(f"Avviso: trascrizione audio non disponibile ({e}).")
+            self.speech = None
 
         self.log("Caricamento motore OCR (EasyOCR locale)...")
         try:
@@ -197,9 +242,91 @@ class Engine:
             "bf16_native": bf16_native,
             "vm": vm,
             "privacy_filter": self.pf is not None,
-            "italian_ner": self.ita is not None,
+            "italian_ner_onnx": self.ita_onnx is not None,
+            "italian_ner": self.ita is not None or self.ita_onnx is not None,
             "ocr": self.ocr_reader is not None,
+            "system2": self.system2.info() if self.system2 is not None else {"available": False},
+            "speech": self.speech.info() if self.speech is not None else {"available": False},
         }
+
+    # ------------------------------------------------------------------ audio
+    def transcribe(self, path, settings=None, cancel=None, progress=None, extend=None):
+        """Trascrizione offline del parlato di un file audio, con metadati e formato (vedi speech.SpeechEngine)."""
+        from . import speech
+        if self.speech is None:
+            raise speech.SpeechError("Trascrizione audio non disponibile su questo motore.")
+        try:
+            return self.speech.transcribe(path, settings, cancel, progress, extend)
+        finally:
+            if self.info.get("speech") is not None:
+                self.info["speech"] = self.speech.info()
+
+    # ------------------------------------------------------------------ Sistema 2
+    def resolve_doubts(self, text, spans, settings, cancel=None):
+        """Casi dubbi del Sistema 1 decisi nel contesto dal Sistema 2. Restituisce (span da oscurare, decisioni).
+        Senza Sistema 2 (spento, non installato, errori) tutti gli span restano: i dubbi restano oscurati."""
+        if self.system2 is None:
+            return spans, []
+        try:
+            kept, decisions = self.system2.resolve(text, spans, settings, cancel)
+        except CancelledError:
+            raise
+        except Exception as e:
+            self.log(f"Avviso: Sistema 2 non riuscito ({type(e).__name__}: {e}): i casi dubbi restano oscurati.")
+            return spans, []
+        if self.info.get("system2") is not None:
+            self.info["system2"] = self.system2.info()
+        return kept, decisions
+
+    def close(self):
+        """Chiusura ordinata (fine del demone): ferma il server locale del Sistema 2 e il processo vocale."""
+        for part in (self.system2, self.speech):
+            if part is not None:
+                try:
+                    part.stop()
+                except Exception:
+                    pass
+
+    def _load_privacy_filter(self):
+        """Carica il Privacy Filter (all'avvio o alla prima richiesta che lo usa). Solleva un'eccezione se non riesce:
+        un modello attivo nelle impostazioni non viene mai saltato in silenzio."""
+        torch = self.torch
+        from transformers import pipeline
+        dt = self._pf_dtype or torch.float32
+        pf_path = os.path.join(common.MODELS_DIR, "privacy-filter")
+        if not os.path.isdir(pf_path) or not os.listdir(pf_path):
+            raise FileNotFoundError(f"Modello locale non trovato in {pf_path}")
+        t = time.time()
+        self.log("Caricamento modello Privacy Filter 1.5B (100% offline)...")
+        try:
+            pf = self._load_pf(pipeline, pf_path, dt)
+            if dt == torch.bfloat16:
+                t2 = time.time()
+                pf(SELF_TEST_TEXT)       # alcune CPU o librerie non hanno tutte le operazioni in BF16
+                self.log(f"Prova del modello in BF16 riuscita ({time.time() - t2:.1f} s).")
+        except Exception as e:
+            if dt != torch.bfloat16:
+                raise
+            self.log(f"ATTENZIONE: BF16 non utilizzabile su questo processore ({type(e).__name__}: {e}): ripiego "
+                     "automatico su FP32.")
+            import gc
+            gc.collect()
+            dt = torch.float32
+            pf = self._load_pf(pipeline, pf_path, dt)
+        self.pf = pf
+        self.precision = "bf16" if dt == torch.bfloat16 else "fp32"
+        if self.info:
+            self.info["privacy_filter"] = True
+            self.info["precision"] = self.precision
+        self.log(f"Privacy Filter pronto in {time.time() - t:.0f}s.")
+
+    def _ensure_privacy_filter(self, settings):
+        """Privacy Filter riattivato nelle impostazioni (o chiesto da un client) dopo un avvio senza: si carica ora."""
+        if self.pf is not None or self.torch is None or not bool(settings.get("enable_model_velvet", True)):
+            return
+        with self.lock:
+            if self.pf is None:
+                self._load_privacy_filter()
 
     # ------------------------------------------------------------------ processore e precisione
     @staticmethod
@@ -286,8 +413,9 @@ class Engine:
         """Per ogni testo restituisce gli span grezzi dei modelli: [(start, end, gruppo, score)]."""
         cancel = cancel or NO_CANCEL
         results = [[] for _ in texts]
+        self._ensure_privacy_filter(settings)
         use_pf = bool(settings.get("enable_model_velvet", True)) and self.pf is not None
-        use_ita = bool(settings.get("enable_model_italian_ner", True)) and self.ita is not None
+        use_ita = bool(settings.get("enable_model_italian_ner", True)) and (self.ita_onnx is not None or self.ita is not None)
         if not (use_pf or use_ita):
             return results
         thr = float(settings.get("ai_threshold", 0.0) or 0.0)
@@ -316,11 +444,20 @@ class Engine:
             cancel.check()
             group = pending[i:i + batch]
             chunks = [g[4] for g in group]
-            with self.lock:
-                pf_out = self._run_pipe(self.pf, chunks, batch_size=PF_BATCH) if use_pf else [[] for _ in chunks]
-                ita_out = (
-                    self._run_pipe(self.ita, chunks, batch_size=len(chunks), stride=64) if use_ita else [[] for _ in chunks]
-                )
+            if use_pf:
+                with self.lock:
+                    pf_out = self._run_pipe(self.pf, chunks, batch_size=PF_BATCH)
+            else:
+                pf_out = [[] for _ in chunks]
+
+            if use_ita and self.ita_onnx is not None:
+                # Esecuzione nativa C++ ONNX Runtime (thread-safe, senza lock)
+                ita_out = self.ita_onnx.predict(chunks)
+            elif use_ita and self.ita is not None:
+                with self.lock:
+                    ita_out = self._run_pipe(self.ita, chunks, batch_size=len(chunks), stride=64)
+            else:
+                ita_out = [[] for _ in chunks]
             for (ti, a, klo, khi, chunk, key), po, io in zip(group, pf_out, ita_out):
                 spans = []
                 for r in po or []:

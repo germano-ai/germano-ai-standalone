@@ -14,7 +14,7 @@ Germano AI è una potente suite open-source progettata per **l'anonimizzazione i
 
 ## ⚡ Quickstart (Come funziona)
 
-Dalla versione 0.70 Germano si presenta come un **harness AI** moderno: si apre sulla scheda **Chatbot e Agenti AI**, dove parli con l'AI che preferisci e Germano oscura i dati personali prima che escano. Accanto, la scheda **Sanitizzazione Manuale & Vault** conserva tutto il lavoro in blocco sui file.
+Dalla versione 0.80 Germano si presenta come un **harness AI** moderno: si apre sulla scheda **Chatbot e Agenti AI**, dove parli con l'AI che preferisci e Germano oscura i dati personali prima che escano. Accanto, la scheda **Sanitizzazione Manuale & Vault** conserva tutto il lavoro in blocco sui file.
 
 1. Apri **Germano AI** dal collegamento sul Desktop o dal menu Start (Windows), da Launchpad o dalla cartella Applicazioni (macOS) oppure dal menu delle applicazioni (Linux): si apre direttamente in una finestra dedicata (senza finestre nere di terminale né browser esterni; la **X rossa** in alto a destra chiude completamente l'intero programma e tutti i processi di calcolo in background). Alla prima apertura scegli la modalità operativa (nel dubbio lascia **Standalone**: tutto resta sul tuo computer).
 2. **Parla con un'AI, protetto:** scegli il modello **in basso a destra** (sono selezionabili solo le AI rilevate: Claude Code, i modelli locali di Ollama, LM Studio e Jan, i servizi via API con una chiave; le altre restano in grigio con il motivo), scrivi (**Invio** invia, **Maiusc+Invio** va a capo) e allega file con la graffetta o trascinandoli. All'AI arrivano solo le etichette (es. `[PERSONA_1]`); la risposta arriva in streaming, con Markdown e codice evidenziato, già con i tuoi dati veri.
@@ -33,12 +33,12 @@ Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.ge
 
 | Sistema | Suite completa | Client leggero |
 |---|---|---|
-| Windows 10/11 e Windows Server 2019/2022/2025 a 64 bit (anche in macchina virtuale) | `germano-0.70.exe` | `germano-client-0.70.exe` |
-| macOS | `germano-0.70.pkg` (Apple Silicon, macOS 14 o successivo) | `germano-client-0.70.pkg` (Apple Silicon e Intel, macOS 11 o successivo) |
-| Linux Ubuntu/Debian a 64 bit | `germano-0.70.deb` | `germano-client-0.70.deb` |
+| Windows 10/11 e Windows Server 2019/2022/2025 a 64 bit (anche in macchina virtuale) | `germano-0.80.exe` | `germano-client-0.80.exe` |
+| macOS | `germano-0.80.pkg` (Apple Silicon, macOS 14 o successivo) | `germano-client-0.80.pkg` (Apple Silicon e Intel, macOS 11 o successivo) |
+| Linux Ubuntu/Debian a 64 bit | `germano-0.80.deb` | `germano-client-0.80.deb` |
 
 ### 🪟 Windows (10 / 11 a 64 bit)
-1. **Download:** scarica `germano-0.70.exe`.
+1. **Download:** scarica `germano-0.80.exe`.
 2. **Installazione:** doppio clic sull'installer. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows valida solo per il Python di Germano e solo per le reti private e di dominio (modalità Server LAN). Il programma si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI`, con i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni > App e le cartelle di lavoro in `Documenti\Germano AI`; al termine la finestra dell'installer si chiude e **Germano AI si apre da solo**, con i permessi normali dell'utente. Le librerie Microsoft Visual C++ sono già incluse: non serve installare altro.
 3. **Avvio:** collegamento **Germano AI** sul Desktop o nel menu Start (finestra dedicata, senza finestre nere di terminale).
 4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI (chiede i permessi di amministratore per togliere la regola del firewall); puoi scegliere se conservare le cartelle di lavoro e il Vault.
@@ -51,7 +51,7 @@ Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.ge
 L'installer della suite pesa circa 3 GB: al primo doppio clic Microsoft Defender lo analizza e la finestra può comparire dopo qualche secondo. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC» scegli **Ulteriori informazioni > Esegui comunque**.
 
 ### 🍎 macOS
-1. **Download:** scarica `germano-0.70.pkg`. La suite completa richiede un Mac con **Apple Silicon** (M1 o successivo) e **macOS 14 Sonoma** o successivo, perché PyTorch non è più pubblicato per i Mac Intel; sui Mac Intel si usa il client leggero `germano-client-0.70.pkg`.
+1. **Download:** scarica `germano-0.80.pkg`. La suite completa richiede un Mac con **Apple Silicon** (M1 o successivo) e **macOS 14 Sonoma** o successivo, perché PyTorch non è più pubblicato per i Mac Intel; sui Mac Intel si usa il client leggero `germano-client-0.80.pkg`.
 2. **Installazione:** doppio clic sul pacchetto. Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza password di amministratore**. Con «Installa per tutti gli utenti» va in `/Applications` e macOS chiede la password. Al termine Germano si apre da solo.
 3. **Avvio:** apri **Germano** (`Germano.app`) da Launchpad o dalla cartella Applicazioni. Al primo avvio crea le cartelle di lavoro in `~/Documents/Germano AI` (in `~/Germano AI` se Documenti è sincronizzata con iCloud).
 4. **Disinstallazione:** trascina `Germano.app` nel Cestino; le cartelle di lavoro restano dove sono.
@@ -59,8 +59,8 @@ L'installer della suite pesa circa 3 GB: al primo doppio clic Microsoft Defender
 Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema > Privacy e sicurezza** e scegli **Apri comunque**.
 
 ### 🐧 Linux (Ubuntu / Debian a 64 bit)
-1. **Download:** scarica `germano-0.70.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva (Ubuntu 22.04 o successive, Debian 12 o successive).
-2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-0.70.deb`. Come per ogni pacchetto di sistema viene chiesta la password di amministratore. Il programma va in `/opt/germano`, con la voce **Germano AI** nel menu delle applicazioni e il comando `germano-ai`; non servono altri pacchetti.
+1. **Download:** scarica `germano-0.80.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva (Ubuntu 22.04 o successive, Debian 12 o successive).
+2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-0.80.deb`. Come per ogni pacchetto di sistema viene chiesta la password di amministratore. Il programma va in `/opt/germano`, con la voce **Germano AI** nel menu delle applicazioni e il comando `germano-ai`; non servono altri pacchetti.
 3. **Avvio:** dal menu delle applicazioni. Al primo avvio crea le cartelle di lavoro in `Documenti/Germano AI` (la cartella Documenti nella lingua del sistema).
 4. **Disinstallazione:** `sudo apt remove germano-ai`; le cartelle di lavoro restano dove sono.
 
@@ -91,7 +91,7 @@ Germano AI implementa un'architettura ibrida e modulare, configurabile al primo 
 *   **🌐 Client (Germano Client Leggero ~28 MB):** applicazione snella e portatile pensata per notebook o postazioni prive di GPU o con risorse limitate. All'avvio individua automaticamente il Germano Server in rete locale e gli delega il calcolo inferenziale dei modelli pesanti. **I documenti originali, i file anonimizzati e il Vault di de-anonimizzazione rimangono rigorosamente sul client**: se il server non è raggiungibile nessun dato lascia la postazione e i file restano in coda.
 *   **Server + Client insieme:** la macchina principale condivide il calcolo con la LAN e contemporaneamente elabora la propria coda locale.
 
-### Interfaccia (0.70): un harness AI, più la sanitizzazione manuale
+### Interfaccia (0.80): un harness AI, più la sanitizzazione manuale
 *   **Quattro schede in alto:** **Chatbot e Agenti AI** (predefinita), **Sanitizzazione Manuale & Vault**, **Impostazioni**, **Guida**. La stessa interfaccia è nel **Remote Control** (browser dei dispositivi della rete) e in **Germano Client**. Tema scuro (`#0b0f19`, `#0f172a`, `#1e293b`, accenti `#38bdf8` e `#818cf8`).
 *   **Chatbot e Agenti AI:** conversazioni nella barra laterale (ricerca, rinomina, elimina, esporta in Markdown), istruzioni per l'assistente, risposte in streaming con Markdown, evidenziazione della sintassi e **Copia codice**, indicatori di tempo, token, dati oscurati e ripristinati, riquadro di scrittura che cresce con il testo (Invio / Maiusc+Invio), allegati con graffetta o trascinamento, indicatore di protezione e **selettore del modello in basso a destra**: rilevamento automatico ogni 12 secondi delle AI installate (Claude Code, Ollama, LM Studio e Jan con ogni modello installato, servizi via API come OpenAI, Anthropic, Meta Muse, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, OpenRouter e Groq); si scelgono solo quelle utilizzabili, le altre (Cursor, Antigravity, Windsurf, agenti che eseguirebbero comandi…) restano in grigio con il motivo.
 *   **🔍 Glass Window (Ispezione Trasparente):** pannello in vetro smerigliato che mostra in tempo reale le cinque fasi di ogni richiesta (testo originale, filtro di privacy e corrispondenze del Vault, testo effettivo inviato, payload HTTP/CLI grezzo con le chiavi oscurate, stream della risposta prima del ripristino), con **Interrompi operazione** (chiude la connessione con il servizio o termina la CLI: «Operazione interrotta dall'utente tramite Glass Window: nessun dato ulteriore è stato trasmesso o ricevuto.»), revisione facoltativa prima dell'invio (**Invia ora** / **Blocca invio**) e anteprima della protezione mentre scrivi.
@@ -198,7 +198,7 @@ Di default Germano si aggiorna da solo **in silenzio**, senza finestre né avvis
 3. Su Windows l'installer prepara subito la nuova versione, in silenzio e a bassa priorità, in una cartella accanto a quella del programma (`Germano AI.nuovo`), mentre Germano resta aperto e la versione in uso non viene toccata.
 4. Al **successivo avvio** la nuova versione prende il posto della vecchia in pochi secondi e Germano si apre già aggiornato. Chi vuole applicarla subito trova soltanto un discreto **«Riavvia per aggiornare»** in alto. Cartelle di lavoro in `Documenti\Germano AI`, Vault `extracted\deanonymize_vault.json` e preferenze `config.json` restano intatti; se qualcosa non va, resta la versione in uso.
 
-In **Impostazioni › Aggiornamenti**, come nella pagina «Informazioni» di Chrome, si vede lo stato: «Germano AI è aggiornato (v0.70)» con l'ora dell'ultimo controllo, «Download dell'aggiornamento in background…» con la barra di avanzamento, «Riavvia Germano per applicare l'aggiornamento». Su macOS e Linux il pacchetto `.pkg` / `.deb` si scarica allo stesso modo e si apre con il programma di installazione del sistema quando lo decidi tu. Germano Client si aggiorna nello stesso modo.
+In **Impostazioni › Aggiornamenti**, come nella pagina «Informazioni» di Chrome, si vede lo stato: «Germano AI è aggiornato (v0.80)» con l'ora dell'ultimo controllo, «Download dell'aggiornamento in background…» con la barra di avanzamento, «Riavvia Germano per applicare l'aggiornamento». Su macOS e Linux il pacchetto `.pkg` / `.deb` si scarica allo stesso modo e si apre con il programma di installazione del sistema quando lo decidi tu. Germano Client si aggiorna nello stesso modo.
 
 Opzioni (in Impostazioni o in `config.json`): `"auto_update": false` si limita a segnalare la nuova versione, `"check_updates": false` disattiva il controllo. Durante il controllo non viene inviato alcun dato dei documenti né dei testi.
 

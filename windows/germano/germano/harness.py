@@ -360,7 +360,7 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                                      f"disponibile): nessun dato e' uscito. Dettaglio: {detail}")
             if re.search(r"unknown option|--include-partial-messages|--restricted|stream-json", detail, re.I):
                 raise HarnessError(f"La versione di {tool_id} installata non supporta l'esecuzione in streaming "
-                                   f"richiesta da Germano 0.70: aggiornala (es. «claude update»). Dettaglio: {detail}")
+                                   f"richiesta da Germano 0.80: aggiornala (es. «claude update»). Dettaglio: {detail}")
             raise HarnessError(f"{tool_id} ha terminato con errore (codice {proc.returncode}): {detail}")
         return {"answer": _clean(final if final is not None else text, MAX_ANSWER), "seconds": seconds,
                 "usage": usage}

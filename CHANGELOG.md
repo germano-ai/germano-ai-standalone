@@ -5,6 +5,29 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.80] - 2026-11-10
+Germano AI v0.80 - **Supporto nativo audio e trascrizione offline**, **apertura e bonifica ricorsiva di archivi compressi**, **correzione e allineamento atomico degli aggiornamenti silenziosi** e perfezionamento del triage Sistema 1 / Sistema 2.
+
+### Aggiunto - Modulo Audio & Trascrizione Vocale Offline
+- Supporto per file audio .mp3, .wav, .m4a, .ogg, .flac, .opus, .aac, .wma, .amr, .aiff.
+- Trascrizione locale automatica del parlato tramite modello integrato **Whisper Small INT8** (240 MB) eseguito con runtime CTranslate2 su worker dedicato: elaborazione 100% offline, nessun dato trasmesso al cloud.
+- Estrazione e bonifica dei metadati e dei tag ID3/Vorbis/MP4/WAV (titolo, artista, autore, commenti, coordinate geografiche) con memorizzazione nel Vault.
+- Generazione della trascrizione bonificata <nome>.trascrizione.txt nella cartella output con marcatura oraria dei segmenti [hh:mm:ss]; il file audio originale viene preservato intatto nella cartella processed.
+- Supporto diretto per allegati audio nell'Harness AI (drag & drop o icona graffetta) con trascrizione contestuale prima dell'invio.
+
+### Aggiunto - Modulo Archivi Compressi (ZIP, TAR, GZ, 7Z, RAR)
+- Apertura, ispezione e bonifica ricorsiva per archivi .zip, .tar, .tar.gz, .tgz, .gz, .bz2, .xz, .7z, .rar.
+- Riconoscimento del formato tramite magic bytes binari per la massima sicurezza.
+- Architettura di decompressione sicura con protezione anti Path Traversal (nessun file estratto con il percorso originale, rifiuto di percorsi con .. o assoluti) e anti Decompression Bomb (limite ratio 200x e tetto massimo 4 GB).
+- Integrazione di **7-Zip 26.06** in streaming protetto per i formati .7z e .rar.
+- Ricostruzione automatica dell'archivio bonificato nella cartella di destinazione con la medesima alberatura interna; gli archivi .rar vengono ricomposti ed esportati in formato aperto .rar.zip.
+
+### Migliorato - Glass Window e Interruzione Istantanea
+- Il pulsante «Interrompi» della Glass Window arresta all'istante (in meno di 0,2 secondi) sia i worker di trascrizione vocale sia le elaborazioni di grandi archivi, liberando subito la memoria e ripulendo l'area temporanea.
+
+### Risolto - Correzione Dimensioni e Verifica Atomica dell'Updater
+- Risolto il disallineamento byte in ersion.json: le dimensioni e gli hash SHA256 vengono ora calcolati direttamente dai binari su disco in modo atomico tramite crea_version_json.py, garantendo che l'updater automatico in background stile Chrome convalidi e applichi gli aggiornamenti senza rifiutarli.
+
 ## [0.70] - 2026-11-01
 Germano AI v0.70 - Nuova architettura **Harness AI**, **Glass Window** trasparente in tempo reale, sanitizzazione
 manuale integrata e **aggiornamenti silenziosi stile Google Chrome**. L'interfaccia è stata rivista e semplificata: si

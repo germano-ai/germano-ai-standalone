@@ -12,7 +12,7 @@ from lxml import etree
 
 from .. import common
 from ..analyzer import Segment, Unit, apply_replacements, apply_to_segments, segments_text
-from . import ProcessingError, is_supported, process_bytes
+from . import ProcessingError, is_supported, process_bytes, reraise_control
 
 W_NS = ("http://schemas.openxmlformats.org/wordprocessingml/2006/main",
         "http://purl.oclc.org/ooxml/wordprocessingml/main")
@@ -211,6 +211,7 @@ def process_ooxml(in_path, out_path, ctx):
                     if nb is not None:
                         new_data[n] = nb
                 except Exception as e:
+                    reraise_control(e)
                     ctx.note(f"immagine incorporata non elaborata ({os.path.basename(n)}): {e}")
             elif "/embeddings/" in low:
                 base = os.path.basename(n)
@@ -220,6 +221,7 @@ def process_ooxml(in_path, out_path, ctx):
                         new_data[n] = nb
                         common.log(f"Documento incorporato elaborato: {base}")
                     except Exception as e:
+                        reraise_control(e)
                         ctx.note(f"oggetto incorporato non elaborabile ({base}): {e}")
                 elif ctx.anonymize:
                     ctx.note(f"Oggetto OLE incorporato non analizzabile ({base}): verificarne il contenuto manualmente.")

@@ -1,12 +1,14 @@
 """Costruisce i pacchetti Debian/Ubuntu AUTOSUFFICIENTI (nessuna dipendenza, nessun download all'installazione):
-  germano.ai-0.70/releases/linux/germano-0.70.deb          suite completa  -> /opt/germano
-  germano.ai-0.70/releases/linux/germano-client-0.70.deb   client leggero  -> /opt/germano-client
+  germano.ai-0.80/releases/linux/germano-0.80.deb          suite completa  -> /opt/germano
+  germano.ai-0.80/releases/linux/germano-client-0.80.deb   client leggero  -> /opt/germano-client
 partendo da sorgenti/linux/<edizione>, dipendenze/linux (Python portabile + librerie in versione Linux) e modelli/.
 
 Il .deb e' scritto direttamente (archivio «ar» con debian-binary, control.tar.gz e data.tar.gz), quindi si
 costruisce anche su Windows, senza dpkg-deb. Permessi, proprietario (root) e collegamenti simbolici del runtime
 vengono impostati qui, non dipendono dal disco di Windows. Contenuto:
-  /opt/<cartella>/                  programma, runtime/ (CPython 3.11 + librerie), models/ (solo suite)
+  /opt/<cartella>/                  programma, runtime/ (CPython 3.11 + librerie), models/ (solo suite),
+                                    runtime/llama/ (solo suite: llama-server di llama.cpp per il Sistema 2),
+                                    runtime/7zip/ (solo suite: console di 7-Zip per gli archivi 7Z e RAR)
   /usr/bin/<comando>                germano-ai / germano-ai-client
   /usr/share/applications/          voce di menu (con l'azione «Cartelle di lavoro» per la suite)
   /usr/share/icons/hicolor/         icona ufficiale 48-512 px
@@ -31,6 +33,9 @@ import zipfile
 sys.dont_write_bytecode = True
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 BUILD = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BUILD)
+import crea_version_json  # noqa: E402
+
 RELEASE = os.path.abspath(os.path.join(BUILD, "..", "..", "..", ".."))
 DEPS = os.path.join(RELEASE, "dipendenze", "linux")
 MODELS = os.path.join(RELEASE, "modelli")
@@ -40,8 +45,9 @@ EDITIONS = {
                 "summary": "Germano AI - anonimizzazione dei documenti, 100% offline",
                 "long": ["Germano AI anonimizza documenti e testi direttamente su questo computer: i dati personali",
                          "vengono sostituiti da etichette prima di qualsiasi uso con servizi di intelligenza",
-                         "artificiale. Include il runtime Python, tutte le librerie e i 6 modelli IA: funziona",
-                         "senza Internet e non scarica nulla durante l'installazione."]},
+                         "artificiale. Documenti, immagini, registrazioni audio (trascrizione offline) e archivi",
+                         "compressi. Include il runtime Python, tutte le librerie e i modelli IA: funziona senza",
+                         "Internet e non scarica nulla durante l'installazione."]},
     "germano-client": {"package": "germano-ai-client", "folder": "germano-client", "command": "germano-ai-client",
                        "desktop": "germano-ai-client", "title": "Germano AI Client", "file": "germano-client-{v}.deb",
                        "summary": "Germano AI Client - collega questo PC al Server Germano AI della rete locale",
@@ -54,6 +60,10 @@ APP_EXCLUDE_TOP = {"build", "germano.desktop", "__pycache__", "runtime", "models
                    "germano_install.json"}
 EXECUTABLE_APP = re.compile(r"(^|/)germano\.sh$")
 PBS_SKIP = re.compile(r"^python/lib/python3\.11/(test|idlelib|turtledemo|tkinter/test|lib2to3/tests|ensurepip/_bundled)/")
+# llama.cpp (Sistema 2): dall'archivio ufficiale solo il server, le librerie che carica (soname + file reale) e le
+# varianti della CPU di ggml (scelte all'avvio secondo il processore). Niente RPC, niente altri strumenti.
+LLAMA_KEEP = re.compile(r"^(llama-server|libllama-server-impl\.so|lib(llama|llama-common|mtmd|ggml|ggml-base)\.so\.0(\.\d+)*|"
+                        r"libggml-cpu-[a-z0-9]+\.so|LICENSE)$")
 
 
 class Entry:
@@ -154,6 +164,59 @@ def from_python_tarball(entries, tarball, dst_root):
     return count
 
 
+def from_llama_tarball(entries, dst, doc):
+    """llama-server per il Sistema 2 (vedi scarica_dipendenze.py llama): eseguibile e librerie in runtime/llama
+    (RUNPATH $ORIGIN: si cercano li'), con i collegamenti simbolici dell'archivio; licenza in /usr/share/doc."""
+    folder = os.path.join(DEPS, "llama-server")
+    tars = [f for f in os.listdir(folder) if re.match(r"^llama-b\d+-bin-ubuntu-x64\.tar\.gz$", f)]
+    assert len(tars) == 1, f"atteso un archivio di llama.cpp in {folder}: {tars} (scarica_dipendenze.py llama)"
+    n = 0
+    with tarfile.open(os.path.join(folder, tars[0]), "r:gz") as tar:
+        for m in tar:
+            base = m.name.rsplit("/", 1)[-1]
+            if m.isdir() or not LLAMA_KEEP.match(base):
+                continue
+            if base == "LICENSE":
+                data = tar.extractfile(m).read()
+                put_file(entries, f"{doc}/llama.cpp-LICENSE", 0o644, m.mtime, len(data), (lambda d=data: io.BytesIO(d)))
+            elif m.issym():
+                add_dirs(entries, f"{dst}/{base}", m.mtime)
+                entries[f"{dst}/{base}"] = Entry("link", 0o777, m.mtime, link=m.linkname)
+            elif m.isfile():
+                data = tar.extractfile(m).read()
+                put_file(entries, f"{dst}/{base}", 0o755, m.mtime, len(data), (lambda d=data: io.BytesIO(d)))
+                n += 1
+    for path, e in list(entries.items()):          # ogni collegamento deve puntare a un file incluso
+        if e.kind == "link" and path.startswith(dst + "/"):
+            assert entries.get(f"{dst}/{e.link}") is not None and entries[f"{dst}/{e.link}"].kind == "file", path
+    assert entries[f"{dst}/llama-server"].mode == 0o755 and f"{dst}/libllama-server-impl.so" in entries
+    return n
+
+
+def from_7zip_tarball(entries, dst, doc):
+    """Console di 7-Zip per gli archivi 7Z e RAR (vedi scarica_dipendenze.py 7zip): dall'archivio ufficiale solo
+    7zzs (collegato staticamente: nessuna libreria di sistema richiesta) in runtime/7zip, con la licenza."""
+    folder = os.path.join(DEPS, "7zip")
+    tars = [f for f in os.listdir(folder) if re.match(r"^7z\d+-linux-x64\.tar\.xz$", f)]
+    assert len(tars) == 1, f"atteso un archivio di 7-Zip in {folder}: {tars} (scarica_dipendenze.py 7zip)"
+    n = 0
+    with tarfile.open(os.path.join(folder, tars[0]), "r:xz") as tar:
+        for m in tar:
+            base = m.name.lstrip("./")
+            if not m.isfile() or base not in ("7zzs", "License.txt"):
+                continue
+            data = tar.extractfile(m).read()
+            if base == "7zzs":
+                assert data[:4] == b"\x7fELF", "7zzs non e' un programma Linux"
+                put_file(entries, f"{dst}/7zzs", 0o755, m.mtime, len(data), (lambda d=data: io.BytesIO(d)))
+            else:
+                put_file(entries, f"{dst}/License.txt", 0o644, m.mtime, len(data), (lambda d=data: io.BytesIO(d)))
+                put_file(entries, f"{doc}/7-Zip-License.txt", 0o644, m.mtime, len(data), (lambda d=data: io.BytesIO(d)))
+            n += 1
+    assert f"{dst}/7zzs" in entries and f"{dst}/License.txt" in entries, "7zzs o License.txt mancanti nell'archivio"
+    return n
+
+
 def from_wheel(entries, wheel, site, runtime):
     z = zipfile.ZipFile(wheel)
     mtime = int(time.mktime(time.localtime()))
@@ -229,8 +292,17 @@ def build(edition):
     wheels = lock_wheels(edition)
     n_whl = sum(from_wheel(entries, os.path.join(DEPS, "wheels-x86_64", w), site, f"{root}/runtime") for w in wheels)
     n_xcb = from_xcb_libs(entries, site, f"usr/share/doc/{ed['package']}")
+    n_llama = n_7z = 0
     if edition == "germano":
         from_disk(entries, MODELS, f"{root}/models")
+        n_llama = from_llama_tarball(entries, f"{root}/runtime/llama", f"usr/share/doc/{ed['package']}")
+        n_7z = from_7zip_tarball(entries, f"{root}/runtime/7zip", f"usr/share/doc/{ed['package']}")
+        for need in ("models/whisper-small/model.bin", "models/qwen3.5-0.8b/germano.json",
+                     "models/italian-ner-xxl/onnx/model.onnx", "germano/speech_worker.py", "germano/formats/archive.py",
+                     "runtime/lib/python3.11/site-packages/faster_whisper/__init__.py",
+                     "runtime/lib/python3.11/site-packages/ctranslate2/__init__.py",
+                     "runtime/lib/python3.11/site-packages/av/__init__.py"):
+            assert f"{root}/{need}" in entries, f"manca {need} (modelli o librerie della 0.80 non pronti per Linux)"
     # comando, voce di menu, icone, copyright
     launcher = f"#!/bin/sh\n# {ed['title']}: avvia il programma installato in /{root}\nexec /{root}/germano.sh \"$@\"\n"
     put_file(entries, f"usr/bin/{ed['command']}", 0o755, int(time.time()), len(launcher),
@@ -257,14 +329,23 @@ def build(edition):
                       f" rispettive cartelle *.dist-info sotto /{site}.\n"
                       f" Le librerie X11 libxcb-* e libxkbcommon-x11 in /{site}/PySide6/Qt/lib vengono dai\n"
                       f" pacchetti di Ubuntu 26.04 (licenze MIT/X11): testi e provenienza in\n"
-                      f" /usr/share/doc/{ed['package']}/xcb.\n")
+                      f" /usr/share/doc/{ed['package']}/xcb.\n" +
+                      (f" llama.cpp (llama-server per il Sistema 2) in /{root}/runtime/llama: licenza MIT,\n"
+                       f" testo in /usr/share/doc/{ed['package']}/llama.cpp-LICENSE.\n" if n_llama else "") +
+                      (f" 7-Zip (console 7zzs per gli archivi 7Z e RAR) in /{root}/runtime/7zip: GNU LGPL con la\n"
+                       f" restrizione unRAR, testo in /usr/share/doc/{ed['package']}/7-Zip-License.txt.\n"
+                       f" PyAV include le librerie FFmpeg (LGPL/GPL) per leggere i file audio: licenze nella\n"
+                       f" cartella av-*.dist-info. I modelli in /{root}/models hanno le proprie licenze\n"
+                       f" (germano.json o README di ogni cartella).\n" if n_7z else ""))
     put_file(entries, f"usr/share/doc/{ed['package']}/copyright", 0o644, int(time.time()), len(copyright_text.encode()),
              (lambda d=copyright_text.encode(): io.BytesIO(d)))
 
     files = [p for p, e in entries.items() if e.kind == "file"]
     installed_kb = sum(entries[p].size for p in files) // 1024 + len(entries) // 4
     print(f"  {len(files):,} file ({n_py:,} del runtime Python, {n_whl:,} dalle {len(wheels)} librerie, {n_xcb} "
-          f"librerie X11 per Qt), {sum(entries[p].size for p in files) / 2**30:.2f} GB installati")
+          f"librerie X11 per Qt" + (f", {n_llama} di llama.cpp" if n_llama else "") +
+          (f", {n_7z} di 7-Zip" if n_7z else "") +
+          f"), {sum(entries[p].size for p in files) / 2**30:.2f} GB installati")
 
     os.makedirs(os.path.dirname(out), exist_ok=True)
     part = out + ".part"
@@ -331,7 +412,9 @@ def build(edition):
         os.remove(data_tmp)
     verify(part, ed, root, len(files))
     os.replace(part, out)
-    print(f"  OK {os.path.basename(out)}: {os.path.getsize(out) / 2**30:.2f} GB in {time.time() - t0:.0f} s")
+    crea_version_json.scarta_se_superato(out)
+    print(f"  OK {os.path.basename(out)}: {os.path.getsize(out):,} byte ({os.path.getsize(out) / 2**30:.2f} GB) in "
+          f"{time.time() - t0:.0f} s")
     return out
 
 
@@ -357,6 +440,10 @@ def verify(deb, ed, root, n_files):
         f.seek(members["data.tar.gz"][0])
         need = {f"./{root}/germano_desktop.py", f"./{root}/germano.sh", f"./{root}/runtime/bin/python3",
                 f"./usr/bin/{ed['command']}", f"./usr/share/applications/{ed['desktop']}.desktop"}
+        if ed["package"] == "germano-ai":
+            need |= {f"./{root}/runtime/llama/llama-server", f"./{root}/runtime/llama/libllama.so.0",
+                     f"./{root}/runtime/7zip/7zzs", f"./{root}/models/whisper-small/model.bin",
+                     f"./{root}/models/qwen3.5-0.8b/germano.json", f"./{root}/germano/speech_worker.py"}
         modes, n = {}, 0
         with tarfile.open(fileobj=f, mode="r|gz") as data:
             for m in data:
@@ -368,6 +455,10 @@ def verify(deb, ed, root, n_files):
     assert not missing, f"mancano {missing}"
     assert n == n_files, f"{n} file in data.tar.gz invece di {n_files}"
     assert modes[f"./{root}/germano.sh"][1] == "0o755" and modes[f"./usr/bin/{ed['command']}"][1] == "0o755"
+    if ed["package"] == "germano-ai":
+        assert modes[f"./{root}/runtime/llama/llama-server"] == (tarfile.REGTYPE, "0o755")
+        assert modes[f"./{root}/runtime/llama/libllama.so.0"][0] == tarfile.SYMTYPE
+        assert modes[f"./{root}/runtime/7zip/7zzs"] == (tarfile.REGTYPE, "0o755")
     print(f"  verifica: control, script e {n:,} file riletti; permessi: " +
           ", ".join(f"{k.split('/')[-1]}={v[1]}" for k, v in sorted(modes.items())))
 

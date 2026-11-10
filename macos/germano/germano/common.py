@@ -40,7 +40,11 @@ CACHE_DIR = os.path.abspath(os.environ.get("GERMANO_CACHE_DIR") or os.path.join(
 UPLOAD_DIR = os.path.join(STATE_DIR, "uploads")
 WORK_TMP_DIR = os.path.join(STATE_DIR, "tmp")
 # Modelli IA accanto al programma; dai sorgenti GERMANO_MODELS_DIR indica la cartella modelli/ della release (senza copie)
-MODELS_DIR = os.path.abspath(os.environ.get("GERMANO_MODELS_DIR") or os.path.join(BASE_DIR, "models"))
+_cand_models = os.path.abspath(os.path.join(BASE_DIR, "..", "..", "..", "modelli"))
+MODELS_DIR = os.path.abspath(
+    os.environ.get("GERMANO_MODELS_DIR")
+    or (os.path.join(BASE_DIR, "models") if os.path.isdir(os.path.join(BASE_DIR, "models")) else (_cand_models if os.path.isdir(_cand_models) else os.path.join(BASE_DIR, "models")))
+)
 
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 VERSION_FILE = os.path.join(BASE_DIR, "VERSION")

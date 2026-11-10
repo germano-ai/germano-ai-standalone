@@ -7,7 +7,7 @@ import tempfile
 from .. import common
 from ..analyzer import Anonymizer, Restorer, Unit, apply_replacements
 from ..detect import Propagator
-from ..engine import NO_CANCEL
+from ..engine import NO_CANCEL, CancelledError
 
 MAX_DEPTH = 4
 
@@ -20,11 +20,21 @@ class ProcessingError(Exception):
     pass
 
 
+def reraise_control(exc):
+    """Da chiamare in un `except Exception` che tollera gli errori di un elemento annidato (allegato, file di un
+    archivio, immagine incorporata): l'annullamento (arresto, tempo scaduto) e il motore remoto non disponibile non
+    sono errori di quell'elemento e devono fermare l'intero documento. Altrimenti, con il server remoto caduto a
+    meta' documento, gli elementi annidati verrebbero rimossi o lasciati in chiaro invece di attendere il server."""
+    from ..remote_engine import EngineUnavailable
+    if isinstance(exc, (CancelledError, EngineUnavailable)):
+        raise exc
+
+
 class Ctx:
     """Contesto di elaborazione di un documento (condiviso con i documenti annidati)."""
 
     def __init__(self, mode, settings, engine=None, vault=None, tag_map=None, cancel=None, progress=None,
-                 depth=0, audit=None, notes=None, propagator=None):
+                 depth=0, audit=None, notes=None, propagator=None, system2=None, shared=None):
         self.mode = mode
         self.settings = settings
         self.engine = engine
@@ -33,9 +43,15 @@ class Ctx:
         self.cancel = cancel or NO_CANCEL
         self.progress = progress
         self.depth = depth
-        self.audit = audit if audit is not None else []
+        self.audit = audit if audit is not None else []           # dati oscurati: uno per sostituzione, in ordine
         self.notes = notes if notes is not None else []
         self.propagator = propagator if propagator is not None else Propagator()
+        # decisioni del Sistema 2 sui casi dubbi (confermati, rilasciati, incerti): registro a parte, perche' i
+        # rilasciati NON sono sostituzioni e l'audit deve restare uno a uno con i dati oscurati
+        self.system2 = system2 if system2 is not None else []
+        # stato condiviso con i documenti annidati: limiti degli archivi (byte ed elementi decompressi in totale),
+        # report di estrazione degli archivi, informazioni sulle trascrizioni audio
+        self.shared = shared if shared is not None else {}
         self.transformer = Anonymizer(self) if mode == "anonymize" else Restorer(self)
 
     @property
@@ -46,9 +62,24 @@ class Ctx:
         if self.depth + 1 > MAX_DEPTH:
             raise ProcessingError("Troppi livelli di file annidati (archivi/allegati).")
         c = Ctx(self.mode, self.settings, self.engine, self.vault, self.tag_map, self.cancel, self.progress,
-                self.depth + 1, self.audit, self.notes, self.propagator)
+                self.depth + 1, self.audit, self.notes, self.propagator, self.system2, self.shared)
         c.label_override = getattr(self, "label_override", None)   # es. ████ anche negli allegati annidati
+        c.archive_label = getattr(self, "archive_label", None)     # percorso logico nell'archivio (per il report)
         return c
+
+    @property
+    def reports(self):
+        """Voci di report oltre ai dati oscurati (estrazione degli archivi, trascrizioni audio): finiscono nel
+        registro di audit accanto alle note. Non sono sostituzioni: restano fuori da `audit`."""
+        return list(self.shared.get("archive_report") or []) + list(self.shared.get("audio_report") or [])
+
+    def extend_deadline(self, seconds):
+        """Per le elaborazioni la cui durata dipende dal contenuto (trascrizione di una registrazione lunga): sposta
+        in avanti il tempo massimo del file, se ne ha uno. L'arresto richiesto dall'utente continua a valere."""
+        deadline = getattr(self.cancel, "deadline", None)
+        if deadline is not None and self.cancel is not NO_CANCEL:
+            import time
+            self.cancel.deadline = max(deadline, time.time() + float(seconds))
 
     # -------------------------------------------------------------- analisi
     def analyze(self, units, batch_context=True):
@@ -66,9 +97,18 @@ class Ctx:
             return [[] for _ in texts]
         return self.engine.classify_many(texts, self.settings, self.cancel)
 
+    def resolve_doubts(self, text, spans):
+        """Sistema 2 sui casi dubbi del testo (solo con il motore locale; altrimenti i dubbi restano oscurati)."""
+        resolve = getattr(self.engine, "resolve_doubts", None)
+        if resolve is None or not spans:
+            return spans
+        kept, decisions = resolve(text, spans, self.settings, self.cancel)
+        self.system2.extend(decisions)
+        return kept
+
     # -------------------------------------------------------------- servizio
-    def audit_add(self, word, label, entity, score):
-        self.audit.append({"word": word, "label": label, "entity": str(entity), "score": round(float(score), 4)})
+    def audit_add(self, word, label, entity, score, status="confirmed"):
+        self.audit.append({"word": word, "label": label, "entity": str(entity), "score": round(float(score), 4), "status": status})
 
     def note(self, msg):
         if msg not in self.notes:
@@ -115,6 +155,11 @@ OOXML_EXTS = {
     ".pptx", ".pptm", ".potx", ".potm", ".ppsx", ".ppsm",
 }
 ODF_EXTS = {".odt", ".ods", ".odp", ".ott", ".ots", ".otp", ".odg"}
+# Audio (v0.80): il parlato viene trascritto offline e il testo passa dal filtro di privacy; in uscita una trascrizione
+AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".oga", ".opus", ".aac", ".wma", ".amr", ".aiff", ".aif",
+              ".m4b", ".mka", ".weba"}
+# Archivi compressi (v0.80): contenuto elaborato file per file e archivio ricomposto (formats/archive.py)
+ARCHIVE_EXTS = {".zip", ".tar", ".tgz", ".tbz2", ".tbz", ".txz", ".gz", ".bz2", ".xz", ".7z", ".rar"}
 
 
 def processor_for(ext):
@@ -149,9 +194,12 @@ def processor_for(ext):
     if ext == ".eml":
         from .eml import process_eml
         return process_eml
-    if ext == ".zip":
-        from .archive import process_zip
-        return process_zip
+    if ext in ARCHIVE_EXTS:
+        from .archive import process_archive
+        return process_archive
+    if ext in AUDIO_EXTS:
+        from .audio import process_audio
+        return process_audio
     if ext == ".rtf":
         from .rtf import process_rtf
         return process_rtf
@@ -229,9 +277,37 @@ def transform_filename(name, ctx):
 
 
 def sample_text(path, max_chars=3_000_000):
-    """Testo del documento per riconoscere i file "di ritorno dall'AI" (con etichette del vault)."""
+    """Testo del documento per riconoscere i file "di ritorno dall'AI" (con etichette del vault). I file audio non
+    hanno testo finche' non vengono trascritti: qui valgono come vuoti (non sono mai file di ritorno)."""
     from .detection import sample_text as _st
     try:
         return _st(path, max_chars)
     except Exception:
+        return ""
+
+
+def extract_text(path, ctx, max_chars=200_000):
+    """Testo di un file per gli allegati dell'Harness: come sample_text, ma i file audio vengono trascritti dal
+    motore del contesto (anche dentro gli archivi) e i file di un archivio sono preceduti dal loro nome.
+    Il testo restituito NON e' protetto: chi chiama lo deve anonimizzare prima di mostrarlo o inviarlo.
+    Per un file audio gli errori (registrazione troppo lunga, file danneggiato) arrivano come ProcessingError."""
+    from .detection import sample_text as _st
+
+    def audio(p, label):
+        from .audio import plain_text, transcribe
+        res = transcribe(p, ctx)
+        ctx.shared.setdefault("audio_info", []).append({
+            "name": label, "duration": round(float(res.get("duration") or 0), 1), "language": res.get("language"),
+            "segments": len(res.get("segments") or []), "seconds": res.get("seconds")})
+        return plain_text(res)
+
+    ext = os.path.splitext(path)[1].lower()
+    if ext in AUDIO_EXTS:
+        return audio(path, os.path.basename(path))[:max_chars]
+    try:
+        return _st(path, max_chars, audio=audio, headers=True)
+    except CancelledError:
+        raise
+    except Exception as e:
+        reraise_control(e)
         return ""

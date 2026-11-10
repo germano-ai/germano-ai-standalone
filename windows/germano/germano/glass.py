@@ -338,7 +338,7 @@ CACHE = AnonCache()
 def settings_signature(cfg, options=None):
     """Impronta delle impostazioni che cambiano il risultato del motore (modelli, categorie, soglia, mascheramento)."""
     keys = sorted(k for k in cfg if k.startswith(("enable_model", "enable_regex", "censor_")) or
-                  k in ("ai_threshold", "compliance_mode", "enable_deanonymize"))
+                  k in ("ai_threshold", "compliance_mode", "enable_deanonymize", "enable_system2"))
     base = {k: cfg.get(k) for k in keys}
     return hashlib.sha256(json.dumps([base, options or None], sort_keys=True, default=str).encode()).hexdigest()[:24]
 
@@ -351,6 +351,18 @@ def label_category(label):
     """[PERSONA_3] -> PERSONA; [COD.FISCALE/P.IVA_1] -> COD.FISCALE/P.IVA (per i colori della Glass Window)."""
     m = _LABEL_BASE_RE.match(str(label or ""))
     return (m.group(1) if m else str(label or "")).strip().upper()
+
+
+def public_system2(decisions, source=None):
+    """Decisioni del Sistema 2 sui casi dubbi per la Glass Window: frammento, tipo, decisione, probabilita', motivo."""
+    out = []
+    for d in decisions or []:
+        item = {"word": d.get("word") or "", "entity": d.get("entity") or "", "decision": d.get("decision") or "",
+                "p": d.get("p_personale"), "reason": d.get("reason") or "", "ms": d.get("ms")}
+        if source:
+            item["source"] = source
+        out.append(item)
+    return out
 
 
 def public_entities(entities, source=None):

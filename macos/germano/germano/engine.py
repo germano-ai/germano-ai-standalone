@@ -90,6 +90,7 @@ class Engine:
         self.precision = "fp32"
         self.pf = None
         self.ita = None
+        self.ita_onnx = None
         self.ocr_reader = None
         self._face = None
         self._sig = None
@@ -136,43 +137,60 @@ class Engine:
         self.log(f"RAM totale {total_gb:.1f} GB ({free_gb:.1f} GB liberi): Privacy Filter in "
                  f"{'BF16' if dt == torch.bfloat16 else 'FP32'} - {why}.")
 
-        pf_path = os.path.join(common.MODELS_DIR, "privacy-filter")
-        if not os.path.isdir(pf_path) or not os.listdir(pf_path):
-            raise FileNotFoundError(f"Modello locale non trovato in {pf_path}")
-        t = time.time()
-        self.log("Caricamento modello Privacy Filter 1.5B (100% offline)...")
-        try:
-            self.pf = self._load_pf(pipeline, pf_path, dt)
-            if dt == torch.bfloat16:
-                t2 = time.time()
-                self.pf(SELF_TEST_TEXT)       # alcune CPU o librerie non hanno tutte le operazioni in BF16
-                self.log(f"Prova del modello in BF16 riuscita ({time.time() - t2:.1f} s).")
-        except Exception as e:
-            if dt != torch.bfloat16:
-                raise
-            self.log(f"ATTENZIONE: BF16 non utilizzabile su questo processore ({type(e).__name__}: {e}): ripiego "
-                     "automatico su FP32.")
+        use_pf = bool(settings.get("enable_model_velvet", True))
+        if use_pf:
+            pf_path = os.path.join(common.MODELS_DIR, "privacy-filter")
+            if not os.path.isdir(pf_path) or not os.listdir(pf_path):
+                raise FileNotFoundError(f"Modello locale non trovato in {pf_path}")
+            t = time.time()
+            self.log("Caricamento modello Privacy Filter 1.5B (100% offline)...")
+            try:
+                self.pf = self._load_pf(pipeline, pf_path, dt)
+                if dt == torch.bfloat16:
+                    t2 = time.time()
+                    self.pf(SELF_TEST_TEXT)       # alcune CPU o librerie non hanno tutte le operazioni in BF16
+                    self.log(f"Prova del modello in BF16 riuscita ({time.time() - t2:.1f} s).")
+            except Exception as e:
+                if dt != torch.bfloat16:
+                    raise
+                self.log(f"ATTENZIONE: BF16 non utilizzabile su questo processore ({type(e).__name__}: {e}): ripiego "
+                         "automatico su FP32.")
+                self.pf = None
+                import gc
+                gc.collect()
+                dt = torch.float32
+                self.pf = self._load_pf(pipeline, pf_path, dt)
+            self.precision = "bf16" if dt == torch.bfloat16 else "fp32"
+            self.log(f"Privacy Filter pronto in {time.time() - t:.0f}s.")
+        else:
             self.pf = None
-            import gc
-            gc.collect()
-            dt = torch.float32
-            self.pf = self._load_pf(pipeline, pf_path, dt)
-        self.precision = "bf16" if dt == torch.bfloat16 else "fp32"
-        self.log(f"Privacy Filter pronto in {time.time() - t:.0f}s.")
+            self.precision = "fp32"
+            self.log("Privacy Filter 1.5B disattivato (modalita' veloce Sistema 1 ONNX attiva).")
 
         ita_path = os.path.join(common.MODELS_DIR, "italian-ner-xxl")
         if os.path.isdir(ita_path) and os.listdir(ita_path):
             try:
+                from . import engine_onnx
                 t = time.time()
-                self.log("Caricamento modello specialistico Italian_NER_XXL_v2 (58 categorie)...")
-                self.ita = pipeline(
-                    task="token-classification", model=ita_path, tokenizer=ita_path,
-                    aggregation_strategy="simple", device=self.device, model_kwargs={"dtype": torch.float32},
-                )
-                self.log(f"Italian NER pronto in {time.time() - t:.0f}s.")
+                self.log("Caricamento modello specialistico Italian_NER_XXL_v2 (Sistema 1 ONNX INT8)...")
+                self.ita_onnx = engine_onnx.OnnxTokenClassifier(ita_path, threads=threads)
+                self.log(f"Italian NER ONNX pronto in {time.time() - t:.1f}s.")
             except Exception as e:
-                self.log(f"Avviso: Italian_NER_XXL non caricato ({e}).")
-                self.ita = None
+                self.log(f"Info: motore ONNX non avviato ({e}), ripiego su PyTorch.")
+                self.ita_onnx = None
+
+            if self.ita_onnx is None:
+                try:
+                    t = time.time()
+                    self.log("Caricamento modello specialistico Italian_NER_XXL_v2 (58 categorie, PyTorch)...")
+                    self.ita = pipeline(
+                        task="token-classification", model=ita_path, tokenizer=ita_path,
+                        aggregation_strategy="simple", device=self.device, model_kwargs={"dtype": torch.float32},
+                    )
+                    self.log(f"Italian NER pronto in {time.time() - t:.0f}s.")
+                except Exception as e:
+                    self.log(f"Avviso: Italian_NER_XXL non caricato ({e}).")
+                    self.ita = None
 
         self.log("Caricamento motore OCR (EasyOCR locale)...")
         try:
@@ -197,7 +215,8 @@ class Engine:
             "bf16_native": bf16_native,
             "vm": vm,
             "privacy_filter": self.pf is not None,
-            "italian_ner": self.ita is not None,
+            "italian_ner_onnx": self.ita_onnx is not None,
+            "italian_ner": self.ita is not None or self.ita_onnx is not None,
             "ocr": self.ocr_reader is not None,
         }
 
@@ -287,7 +306,7 @@ class Engine:
         cancel = cancel or NO_CANCEL
         results = [[] for _ in texts]
         use_pf = bool(settings.get("enable_model_velvet", True)) and self.pf is not None
-        use_ita = bool(settings.get("enable_model_italian_ner", True)) and self.ita is not None
+        use_ita = bool(settings.get("enable_model_italian_ner", True)) and (self.ita_onnx is not None or self.ita is not None)
         if not (use_pf or use_ita):
             return results
         thr = float(settings.get("ai_threshold", 0.0) or 0.0)
@@ -316,11 +335,20 @@ class Engine:
             cancel.check()
             group = pending[i:i + batch]
             chunks = [g[4] for g in group]
-            with self.lock:
-                pf_out = self._run_pipe(self.pf, chunks, batch_size=PF_BATCH) if use_pf else [[] for _ in chunks]
-                ita_out = (
-                    self._run_pipe(self.ita, chunks, batch_size=len(chunks), stride=64) if use_ita else [[] for _ in chunks]
-                )
+            if use_pf:
+                with self.lock:
+                    pf_out = self._run_pipe(self.pf, chunks, batch_size=PF_BATCH)
+            else:
+                pf_out = [[] for _ in chunks]
+
+            if use_ita and self.ita_onnx is not None:
+                # Esecuzione nativa C++ ONNX Runtime (thread-safe, senza lock)
+                ita_out = self.ita_onnx.predict(chunks)
+            elif use_ita and self.ita is not None:
+                with self.lock:
+                    ita_out = self._run_pipe(self.ita, chunks, batch_size=len(chunks), stride=64)
+            else:
+                ita_out = [[] for _ in chunks]
             for (ti, a, klo, khi, chunk, key), po, io in zip(group, pf_out, ita_out):
                 spans = []
                 for r in po or []:

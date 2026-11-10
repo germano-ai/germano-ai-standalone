@@ -6,6 +6,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [0.80] - 2026-11-10
+Germano AI v0.80 - **Native Audio & Offline Speech-to-Text Transcription**, **Recursive Compressed Archive Extraction & Sanitization**, **Atomic Updater Size Verification**, and refined System 1 / System 2 triage.
+
+### Added - Native Audio & Offline Transcription
+- Support for .mp3, .wav, .m4a, .ogg, .flac, .opus, .aac, .wma, .amr, .aiff files.
+- Local speech-to-text transcription powered by bundled **Whisper Small INT8** (240 MB) via CTranslate2 running in an isolated worker process: 100% offline, zero cloud data leakage.
+- Extraction and redaction of audio metadata and ID3/Vorbis/MP4/WAV tags (title, artist, author, comments, GPS coordinates) into Vault tokens.
+- Sanitized output transcription <name>.trascrizione.txt generated with timestamped segments [hh:mm:ss]; original audio file is kept intact in processed.
+- Seamless audio attachments in AI Harness (drag & drop or clip icon) with live transcription into prompt composer.
+
+### Added - Compressed Archives Module (ZIP, TAR, GZ, 7Z, RAR)
+- Safe recursive inspection and redaction for .zip, .tar, .tar.gz, .tgz, .gz, .bz2, .xz, .7z, .rar.
+- Format detection based on binary magic bytes rather than file extension.
+- Hardened sandbox extraction preventing Path Traversal (no file extracted using archive path, rejection of .. or absolute paths) and Decompression Bombs (200x max expansion ratio, 4 GB maximum size).
+- Bundled **7-Zip 26.06** integration for high-performance .7z and .rar streaming extraction.
+- Automatic repacking preserving the exact internal folder hierarchy; .rar archives are safely repacked as .rar.zip.
+
+### Improved - Glass Window Instant Abort
+- The 'Interrompi' (Abort) button on Glass Window stops voice transcription workers and archive unpacking in under 0.2 seconds, instantly releasing RAM and clearing temp directories.
+
+### Fixed - Atomic Updater Byte Size Verification
+- Resolved byte-size mismatch in ersion.json: exact byte sizes and SHA256 hashes are computed directly from on-disk binaries atomically via crea_version_json.py, ensuring the Google Chrome-style silent background updater validates and applies updates reliably.
+
 ## [0.70] - 2026-11-01
 Germano AI v0.70 - New **AI Harness** architecture, real-time transparent **Glass Window**, integrated manual
 sanitization and **silent updates like Google Chrome**. The interface has been reworked and simplified: it looks and

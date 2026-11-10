@@ -1,4 +1,4 @@
-/* Germano AI 0.70 - Harness AI e Glass Window.
+/* Germano AI 0.80 - Harness AI e Glass Window.
    Componente condiviso dalla Dashboard (index.html), dal Remote Control (/remote) e dal pannello di Germano Client:
    stessa interfaccia ovunque, stesse rotte del server (/api/harness/v2/*), che applica le regole di chi chiede
    (questo computer o un dispositivo della rete).
@@ -81,6 +81,10 @@
         protectOnly: ['Solo protezione', 'Protection only'],
         you: ['Tu', 'You'],
         filterWorking: ['Germano sta proteggendo la richiesta…', 'Germano is protecting the request…'],
+        filterAudio: ['Germano sta trascrivendo l\'audio su questo computer e proteggendo la richiesta… (circa un terzo della durata della registrazione)', 'Germano is transcribing the audio on this computer and protecting the request… (about one third of the recording length)'],
+        filterArchive: ['Germano sta aprendo l\'archivio in sicurezza e proteggendo la richiesta…', 'Germano is opening the archive safely and protecting the request…'],
+        audioFile: ['Registrazione audio: Germano la trascrive sul computer del motore (senza Internet) e protegge il testo prima dell\'invio.', 'Audio recording: Germano transcribes it on the engine\'s computer (no Internet) and protects the text before sending.'],
+        archiveFile: ['Archivio compresso: Germano lo apre in sicurezza e usa, protetto, il testo dei documenti che contiene.', 'Compressed archive: Germano opens it safely and uses, protected, the text of the documents it contains.'],
         filterDone: ['Germano Privacy Filter', 'Germano Privacy Filter'],
         masked: ['dati oscurati', 'data masked'], maskedOne: ['dato oscurato', 'item masked'], noneMasked: ['nessun dato personale trovato', 'no personal data found'],
         fromCache: ['dalla cache', 'from cache'],
@@ -105,7 +109,7 @@
         chooseAi: ['Scegli un\'AI in basso a destra.', 'Choose an AI at the bottom right.'],
         writeSomething: ['Scrivi un messaggio o allega un file.', 'Type a message or attach a file.'],
         maxFiles: ['Al massimo 12 allegati per richiesta.', 'At most 12 attachments per request.'],
-        nonTextFile: ['Allegato senza testo (es. immagine): il suo contenuto non viene inviato. Per oscurare immagini usa la scheda Sanitizzazione manuale.', 'Attachment without text (e.g. image): its content is not sent. To mask images use the Manual Sanitization tab.'],
+        nonTextFile: ['Allegato senza testo (immagine o video): il suo contenuto non viene inviato. Per oscurare le immagini usa la scheda Sanitizzazione manuale.', 'Attachment without text (image or video): its content is not sent. To mask images use the Manual Sanitization tab.'],
         busy: ['Attendi la fine della richiesta in corso o interrompila.', 'Wait for the current request to finish or stop it.'],
         exportNote: ['Conversazione esportata da Germano AI', 'Conversation exported from Germano AI'],
         // Glass Window
@@ -127,6 +131,11 @@
         gwVaultNote: ['Etichette numerate e stabili: lo stesso dato ha sempre la stessa etichetta (Vault). Il ripristino usa solo le corrispondenze di questa richiesta.', 'Numbered, stable tags: the same data always gets the same tag (Vault). Restoration uses only the mappings of this request.'],
         gwOriginal: ['Originale', 'Original'], gwLabel: ['Etichetta', 'Tag'], gwCategory: ['Categoria', 'Category'], gwScore: ['Affidabilità', 'Confidence'],
         gwHistoryEnt: ['dati nella cronologia', 'data in the history'],
+        gwS2: ['Sistema 2 · casi dubbi decisi nel contesto (modello locale)', 'System 2 · doubtful cases decided in context (local model)'],
+        gwS2rel: ['rilasciato', 'released'],
+        gwS2conf: ['confermato', 'confirmed'],
+        gwS2kept: ['resta oscurato', 'kept masked'],
+        gwS2note: ['Il Sistema 2 lascia in chiaro un dubbio solo se è sicuro che non sia un dato personale; nel dubbio resta oscurato.', 'System 2 leaves a doubtful item in clear only when it is sure it is not personal data; otherwise it stays masked.'],
         gwHint: ['istruzione di Germano sulle etichette', 'Germano instruction about tags'],
         gwCopy: ['Copia', 'Copy'], gwHeaders: ['Intestazioni (chiavi oscurate)', 'Headers (keys masked)'], gwBody: ['Corpo JSON', 'JSON body'],
         gwCli: ['Comando della CLI (nessun testo tra gli argomenti)', 'CLI command (no text among the arguments)'], gwEnv: ['Variabili impostate da Germano', 'Variables set by Germano'],
@@ -179,6 +188,12 @@
     };
     const svg = (name, cls = 'hx-icon-svg') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[name] || ''}</svg>`;
     const MAX_FILES = 12;
+    // Allegati che il motore di Germano trasforma in testo (dalla 0.80): registrazioni audio (trascrizione offline)
+    // e archivi compressi (testo dei documenti contenuti). Stesse estensioni di germano/formats/__init__.py.
+    const AUDIO_EXT_RE = /\.(mp3|wav|m4a|ogg|oga|opus|flac|aac|wma|amr|aiff?|m4b|mka|weba)$/i;
+    const ARCHIVE_EXT_RE = /\.(zip|tar|tgz|tbz2?|txz|gz|bz2|xz|7z|rar)$/i;
+    function isAudioFile(f) { return Boolean(f) && (AUDIO_EXT_RE.test(f.name || '') || /^audio\//.test(f.type || '')); }
+    function isArchiveFile(f) { return Boolean(f) && ARCHIVE_EXT_RE.test(f.name || ''); }
     const DETECT_MS = 12000;
     const KEY_RE = /^[\x21-\x7e]{8,512}$/;
     const TAG_RE = /\[\s*([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ./]*(?:[ _]+[A-Za-zÀ-ÖØ-öø-ÿ./]+)*?)[ _]+(\d{1,7})\s*\]/g;
@@ -973,7 +988,10 @@
                 if (!f) continue;
                 if (this.files.length >= MAX_FILES) { this.toast(this.T('maxFiles'), 'warn'); break; }
                 this.files.push(f);
-                if (/^(image|audio|video)\//.test(f.type || '')) this.toast(this.T('nonTextFile'), 'warn');
+                // dalla 0.80 audio e archivi compressi hanno testo: trascrizione offline e apertura sicura nel motore
+                if (isAudioFile(f)) this.toast(this.T('audioFile'), 'info');
+                else if (isArchiveFile(f)) this.toast(this.T('archiveFile'), 'info');
+                else if (/^(image|video)\//.test(f.type || '')) this.toast(this.T('nonTextFile'), 'warn');
             }
             this.renderFiles();
             this.updateSend();
@@ -1273,6 +1291,8 @@
             if (!conv.title) conv.title = (text || files.map(f => f.name).join(', ')).replace(/\s+/g, ' ').slice(0, 60);
             conv.updated = Date.now();
             const filterMsg = { id: uid(), role: 'filter', state: 'working' };
+            const slowNote = files.some(isAudioFile) ? this.T('filterAudio') : (files.some(isArchiveFile) ? this.T('filterArchive') : '');
+            if (slowNote) filterMsg.message = slowNote;
             conv.messages.push(filterMsg);
             const aiMsg = target.kind === 'protect' ? null : { id: uid(), role: 'assistant', status: 'waiting', targetName: target.name, model: this.modelFor(target),
                                                                protectedText: '', text: '', map: {}, masking: 'numbered' };
@@ -1284,7 +1304,8 @@
             const run = { key: uid(), id: null, n: this.runs.length + 1, started: Date.now(), target, model: this.modelFor(target), phase: 'starting',
                           original: { prompt: text, system: conv.system || '', attachments: files.map(f => ({ name: f.name, size: f.size })), history: [] },
                           entities: null, sanitized: null, payloads: [], raw: '', thinking: '', frames: [], cli: [], usage: null, done: null, aborted: null,
-                          error: null, review: Boolean(this.prefs.review), ctrl: new AbortController(), userMsg, filterMsg, aiMsg, conv, transmitted: false, receivedAt: null };
+                          error: null, review: Boolean(this.prefs.review), ctrl: new AbortController(), userMsg, filterMsg, aiMsg, conv, transmitted: false, receivedAt: null,
+                          slowNote };
             filterMsg.runKey = run.key;
             if (aiMsg) aiMsg.runKey = run.key;
             this.runs.push(run);
@@ -1400,7 +1421,7 @@
                 return false;
             } finally {
                 this.starting = false;
-                run.filterMsg.message = '';
+                run.filterMsg.message = run.slowNote || '';
                 this.renderShield();
             }
         }
@@ -1735,6 +1756,17 @@
                 <span class="gw-sec-meta">${meta || ''}</span>${svg('chevron', 'hx-icon-svg gw-chev')}</button>
                 <div class="gw-sec-body">${body}</div></section>`;
         }
+        system2Html(list) {
+            // decisioni del Sistema 2: rilasciato (in chiaro), confermato (oscurato), resta oscurato (incerto o non deciso)
+            if (!(list || []).length) return '';
+            const tag = { rilasciato: ['info', 'gwS2rel'], confermato: ['ok', 'gwS2conf'] };
+            return `<div class="gw-k">${esc(this.T('gwS2'))}</div>
+                <table class="gw-table"><tbody>${list.map(d => {
+                    const [cls, key] = tag[d.decision] || ['warn', 'gwS2kept'];
+                    return `<tr><td class="orig">${esc(d.word)}</td><td><span class="gw-tag ${cls}">${esc(this.T(key))}</span></td>
+                        <td>${esc(d.reason || '')}</td><td class="score">${d.p != null ? Math.round((1 - d.p) * 100) + '% NO' : ''}</td></tr>`;
+                }).join('')}</tbody></table><div class="gw-note">${esc(this.T('gwS2note'))}</div>`;
+        }
         highlightOriginal(text, items) {
             const words = Array.from(new Set((items || []).map(e => e.word).filter(w => w && w.length > 1))).sort((a, b) => b.length - a.length);
             if (!words.length) return esc(text);
@@ -1783,6 +1815,7 @@
                     <td class="score">${e.score != null ? Math.round(e.score * 100) + '%' : ''}</td></tr>`).join('')}</tbody></table>`
                     : `<div class="gw-note ok">✓ ${esc(this.T('gwNoEnt'))}</div>`;
                 if ((ent.history_items || []).length) b2 += `<div class="gw-note">+ ${ent.history_items.length} ${esc(this.T('gwHistoryEnt'))}</div>`;
+                b2 += this.system2Html(ent.system2);
                 b2 += `<div class="gw-note">${esc(this.T('gwVaultNote'))}</div>`;
             }
             html += this.sec(2, 'gwSec2', ent ? `${ent.count || 0} · ${fmtSec(ent.protect_ms)}${ent.cached ? ' · cache ' + ent.cached : ''}` : '', b2, run.phase === 'protecting', keepOpen[2] !== 'false');

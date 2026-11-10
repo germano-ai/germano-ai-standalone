@@ -67,8 +67,8 @@ class Ctx:
         return self.engine.classify_many(texts, self.settings, self.cancel)
 
     # -------------------------------------------------------------- servizio
-    def audit_add(self, word, label, entity, score):
-        self.audit.append({"word": word, "label": label, "entity": str(entity), "score": round(float(score), 4)})
+    def audit_add(self, word, label, entity, score, status="confirmed"):
+        self.audit.append({"word": word, "label": label, "entity": str(entity), "score": round(float(score), 4), "status": status})
 
     def note(self, msg):
         if msg not in self.notes:

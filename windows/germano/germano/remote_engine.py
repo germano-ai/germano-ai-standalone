@@ -34,6 +34,14 @@ class EngineUnavailable(RuntimeError):
     l'operazione va ripetuta piu' tardi (i documenti in coda restano nella cartella input)."""
 
 
+class RemoteRejected(Exception):
+    """Il server ha rifiutato il contenuto inviato (non e' un problema di rete: riprovare non serve)."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
 def _error_text(err):
     try:
         data = json.loads(err.read().decode("utf-8", errors="replace"))
@@ -90,7 +98,9 @@ class RemoteEngine:
         self.last_error = ""
 
     # ------------------------------------------------------------------ HTTP
-    def _call(self, path, payload=None, png=None, timeout=None):
+    def _call(self, path, payload=None, png=None, timeout=None, raw=None, rejected=()):
+        """`raw`: corpo binario generico (file audio). `rejected`: codici HTTP con cui il server rifiuta QUEL
+        contenuto (es. file non leggibile): diventano RemoteRejected invece di «motore non disponibile»."""
         headers = {"Accept": "application/json"}
         if self.token:
             headers["X-Germano-Auth"] = self.token
@@ -101,6 +111,9 @@ class RemoteEngine:
         elif png is not None:
             data = png
             headers["Content-Type"] = "image/png"
+        elif raw is not None:
+            data = raw
+            headers["Content-Type"] = "application/octet-stream"
         req = urllib.request.Request(self.base + API_PATH + path, data=data, headers=headers,
                                      method="POST" if data is not None else "GET")
         t0 = time.perf_counter()
@@ -109,6 +122,8 @@ class RemoteEngine:
                 body = r.read()
         except urllib.error.HTTPError as e:
             msg = _error_text(e)
+            if e.code in rejected:
+                raise RemoteRejected(e.code, msg) from None
             self.last_error = msg
             if e.code in (401, 403):
                 raise EngineUnavailable(f"Il Germano Server {self.base} ha rifiutato l'accesso ({e.code}): sul server "
@@ -152,6 +167,8 @@ class RemoteEngine:
             "server_version": info.get("version"), "device": info.get("device"), "precision": info.get("precision"),
             "privacy_filter": bool(info.get("privacy_filter")), "italian_ner": bool(info.get("italian_ner")),
             "ocr": bool(info.get("ocr")), "latency_ms": self.latency_ms, "ok": True, "error": "",
+            # trascrizione audio del server (dalla 0.80): {"available": bool, "model": ...}
+            "speech": info.get("speech") if isinstance(info.get("speech"), dict) else {"available": False},
         }
         return self.info
 
@@ -216,6 +233,42 @@ class RemoteEngine:
                 self._cache[key] = clean
                 if len(self._cache) > self._cache_max:
                     self._cache.popitem(last=False)
+
+    # ------------------------------------------------------------------ audio
+    def transcribe(self, path, settings=None, cancel=None, progress=None, extend=None):
+        """Come Engine.transcribe: il file audio viene trascritto dal Germano Server (che non lo conserva); testo,
+        Vault ed etichette restano su questo computer."""
+        import os
+        import urllib.parse
+        from .speech import SpeechError
+        cancel = cancel or NO_CANCEL
+        settings = settings or {}
+        if not (self.info.get("speech") or {}).get("available"):
+            raise SpeechError(f"Il Germano Server {self.base} non offre la trascrizione audio: serve la versione 0.80 "
+                              "o successiva, con il modello vocale installato.")
+        size = os.path.getsize(path)
+        if size > 200 * 1024 * 1024:
+            raise SpeechError("File audio troppo grande per il motore remoto (massimo 200 MB): dividilo in parti o "
+                              "elaboralo sul computer del server.")
+        cancel.check()
+        with open(path, "rb") as f:
+            data = f.read()
+        if progress:
+            progress(f"audio: trascrizione sul Germano Server ({size / 2**20:.1f} MB)")
+        if extend:
+            extend(4 * 3600)             # la durata si conosce solo sul server: tempo ampio, poi vale la risposta
+        query = urllib.parse.urlencode({
+            "name": os.path.basename(path)[-80:], "speech_language": settings.get("speech_language") or "auto",
+            "speech_max_minutes": int(settings.get("speech_max_minutes") or 240)})
+        try:
+            out = self._call("/transcribe?" + query, raw=data, timeout=4 * 3600, rejected=(400, 404, 413, 422))
+        except RemoteRejected as e:
+            if e.code == 404:
+                raise SpeechError(f"Il Germano Server {self.base} non offre la trascrizione audio: aggiornalo alla "
+                                  "versione 0.80 o successiva.") from None
+            raise SpeechError(str(e) or "Trascrizione non riuscita sul Germano Server.") from None
+        out["segments"] = [(float(s), float(e), str(t)) for s, e, t in out.get("segments") or []]
+        return out
 
     # ------------------------------------------------------------------ immagini
     @staticmethod

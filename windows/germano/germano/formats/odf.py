@@ -134,6 +134,8 @@ def process_odf(in_path, out_path, ctx):
                     if nb is not None:
                         new_data[n] = nb
                 except Exception as e:
+                    from . import reraise_control
+                    reraise_control(e)
                     ctx.note(f"immagine incorporata non elaborata ({os.path.basename(n)}): {e}")
         write_zip(out_path, zin, infos, new_data)
     return None

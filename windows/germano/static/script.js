@@ -1,5 +1,5 @@
 'use strict';
-/* Germano AI 0.70 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
+/* Germano AI 0.80 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
    (cartelle di lavoro, documenti, testo), Impostazioni (modalita' e rete, protezione, AI e chiavi, Proxy e API, sistema,
    aggiornamenti silenziosi) e Guida offline. */
 
@@ -409,7 +409,7 @@ function updateProfilePill() {
     if (settingsLocked) pill.title += updText(' Impostazioni bloccate dall\'amministratore.', ' Settings locked by the administrator.');
     document.body.classList.toggle('settings-locked', settingsLocked);
     $('lockedBanner').hidden = !settingsLocked;
-    document.querySelectorAll('.model-check, .cat-check, .btn-preset, #ai_threshold, #check_updates, #auto_update').forEach(el => {
+    document.querySelectorAll('.model-check, .cat-check, .btn-preset, #ai_threshold, #check_updates, #auto_update, #enable_system2, #speech_language').forEach(el => {
         el.disabled = settingsLocked;
     });
 }
@@ -453,9 +453,11 @@ function gatherSettings() {
         hardware_mode: val('hardware_mode', 'gpu_fallback'),
         precision: val('precision', 'auto'),
         file_timeout_minutes: parseInt(val('file_timeout_minutes', '60'), 10) || 60,
+        speech_language: val('speech_language', 'auto'),
         anonymize_filenames: $('anonymize_filenames')?.checked ?? false,
         check_updates: $('check_updates')?.checked ?? true,
         auto_update: $('auto_update')?.checked ?? true,
+        enable_system2: $('enable_system2')?.checked ?? true,
         enable_tooltips: tooltipsEnabled
     };
     ALL_MODEL_IDS.forEach(k => { out[k] = $(k)?.checked ?? true; });
@@ -483,11 +485,13 @@ function applySettingsToUi(cfg) {
     setVal('hardware_mode', cfg.hardware_mode);
     setVal('precision', cfg.precision);
     setVal('file_timeout_minutes', cfg.file_timeout_minutes);
+    setVal('speech_language', cfg.speech_language || 'auto');
     setVal('target_api_url', cfg.target_api_url);
     setVal('target_anthropic_url', cfg.target_anthropic_url);
     $('anonymize_filenames').checked = Boolean(cfg.anonymize_filenames);
     $('check_updates').checked = cfg.check_updates !== false;
     $('auto_update').checked = cfg.auto_update !== false;
+    if ($('enable_system2')) $('enable_system2').checked = cfg.enable_system2 !== false;
     tooltipsEnabled = cfg.enable_tooltips !== false;
     Tips.setEnabled(tooltipsEnabled);
     updatePresetButtons();
@@ -1598,10 +1602,12 @@ const TIPS = [
     ['#netSummary', 'Modalità e rete', 'Stato attuale: ascolto sulla rete, collegamento al Germano Server e accesso dalla rete (libero o con utente e password).'],
     ['.field:has(#hardware_mode)', 'Calcolo', 'Automatico usa una scheda video NVIDIA se presente, altrimenti il processore.'],
     ['.field:has(#precision)', 'Precisione del modello', 'FP32 è più veloce ma usa più memoria; BF16 la dimezza ed è più lento sui processori meno recenti. Vale dal prossimo avvio del motore.'],
-    ['.field:has(#file_timeout_minutes)', 'Tempo massimo per documento', 'Oltre questo tempo il documento viene interrotto e spostato tra i non riusciti.'],
+    ['.field:has(#file_timeout_minutes)', 'Tempo massimo per documento', 'Oltre questo tempo il documento viene interrotto e spostato tra i non riusciti. Per le registrazioni audio il tempo si allunga da solo in base alla durata.'],
+    ['.field:has(#speech_language)', 'Lingua delle registrazioni audio', 'I file audio vengono trascritti su questo computer, senza Internet, e la trascrizione passa dal filtro di privacy come ogni altro documento. «Automatica» riconosce la lingua dai primi secondi di parlato; se le tue registrazioni sono sempre in una lingua, sceglila.'],
     ['.check-row:has(#anonymize_filenames)', 'Anonimizza i nomi dei file', 'Anche i nomi di file e cartelle in uscita vengono anonimizzati (es. CV_[PERSONA_1].pdf).'],
     ['.check-row:has(#check_updates)', 'Controllo aggiornamenti', 'Solo quando il sistema segnala una connessione a Internet, Germano controlla in silenzio se esiste una nuova versione.'],
     ['.check-row:has(#auto_update)', 'Aggiornamento automatico', 'Scarica e prepara gli aggiornamenti in background, a bassa priorità, e li applica al successivo avvio di Germano in pochi secondi.'],
+    ['.option:has(#enable_system2)', 'Sistema 2', 'Solo per i casi in cui i modelli sono incerti: un modello linguistico locale (Qwen3.5 con llama.cpp, nessun dato esce dal computer) legge il contesto e decide. Rilascia un dato solo se è sicuro che non sia personale; spento, tutti i casi dubbi restano oscurati.'],
     ['#btnUpdateCheck', 'Controlla ora', 'Controlla subito se è disponibile una nuova versione (anche se il sistema non segnala la rete).'],
     ['#btnUpdateInstall', 'Riavvia per aggiornare', 'Chiude Germano, applica la nuova versione già preparata e lo riapre: pochi secondi. Cartelle, archivio e impostazioni non vengono toccati.'],
     ['#sysUsagePill', 'Risorse del computer', 'Uso del processore e della memoria; a seguire la precisione del modello principale.'],
@@ -1702,6 +1708,8 @@ const TIPS_EN = {
     '#netSummary': ['Mode & network', 'Current state: network listening, connection to the Germano Server and network access (open or with user and password).'],
     '.check-row:has(#check_updates)': ['Update check', 'Only when the system reports an Internet connection, Germano silently checks whether a new version exists.'],
     '.check-row:has(#auto_update)': ['Automatic update', 'Downloads and prepares updates in the background, at low priority, and applies them at the next start of Germano in a few seconds.'],
+    '.option:has(#enable_system2)': ['System 2', 'Only for the cases where the models are uncertain: a local language model (Qwen3.5 with llama.cpp, no data leaves the computer) reads the context and decides. It releases data only when it is sure it is not personal; when off, all doubtful cases stay masked.'],
+    '.field:has(#speech_language)': ['Language of audio recordings', 'Audio files are transcribed on this computer, without Internet, and the transcript goes through the privacy filter like any other document. «Automatic» recognizes the language from the first seconds of speech; if your recordings are always in one language, choose it.'],
     '#btnUpdateCheck': ['Check now', 'Checks right away whether a new version is available (even if the system reports no network).'],
     '#btnUpdateInstall': ['Restart to update', 'Closes Germano, applies the already prepared version and reopens it: a few seconds. Folders, archive and settings are not touched.'],
     '#sysUsagePill': ['Computer resources', 'Processor and memory usage; then the precision of the main model.'],
@@ -2682,8 +2690,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         persistSettings(true);
     });
     ['hardware_mode', 'precision', 'target_api_url', 'target_anthropic_url', 'file_timeout_minutes', 'anonymize_filenames',
-        'check_updates', 'auto_update']
-        .forEach(id => $(id).addEventListener('change', () => persistSettings(true)));
+        'check_updates', 'auto_update', 'enable_system2', 'speech_language']
+        .forEach(id => $(id)?.addEventListener('change', () => persistSettings(true)));
 
     // Aggiornamenti silenziosi
     $('btnUpdateCheck').addEventListener('click', () => updateAction(lastUpdate && lastUpdate.state === 'available' ? '/api/update/download' : '/api/update/check',

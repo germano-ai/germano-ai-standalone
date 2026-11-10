@@ -18,6 +18,8 @@ REQUEST_TIMEOUT = 900
 ENGINE_MAX_TEXTS = 256              # motore condiviso: limiti per richiesta di un client della LAN
 ENGINE_MAX_CHARS = 2_000_000
 ENGINE_MAX_IMAGE = 80 * 1024 * 1024
+ENGINE_MAX_AUDIO = 200 * 1024 * 1024
+EXTRACT_MAX_CHARS = 3_000_000
 
 
 class EngineDelegated(Exception):
@@ -85,16 +87,96 @@ def handle_engine_image(daemon, body, kind):
     return {"results": [[float(v) for v in b[:5]] for b in out or []]}
 
 
+def handle_engine_transcribe(daemon, body):
+    """Motore condiviso: trascrizione di un file audio per un Germano in modalita' Client. Il file resta solo per
+    la durata della richiesta in state/tmp; non viene salvato nulla, il Vault non viene toccato."""
+    eng = _local_engine(daemon)
+    try:
+        data = base64.b64decode(body.get("data_b64") or "", validate=True)
+    except Exception:
+        raise ValueError("file audio non valido")
+    if not data or len(data) > ENGINE_MAX_AUDIO:
+        raise ValueError("file audio mancante o troppo grande")
+    raw = body.get("settings") if isinstance(body.get("settings"), dict) else {}
+    settings = {k: common._validate_value(k, raw.get(k, daemon.settings.get(k)), common.DEFAULT_SETTINGS[k])
+                for k in ("speech_language", "speech_max_minutes")}
+    name = common.safe_filename(body.get("filename") or "audio.bin", max_len=80)
+    ctx = _ctx(daemon, "anonymize", op=body.get("op"))
+    with ctx.tempdir() as d:
+        src = os.path.join(d, name)
+        with open(src, "wb") as f:
+            f.write(data)
+        del data
+        from .speech import SpeechError
+        try:
+            res = eng.transcribe(src, settings, ctx.cancel, extend=ctx.extend_deadline)
+        except SpeechError as e:
+            raise ValueError(str(e)) from None
+    res["segments"] = [[float(s), float(e), str(t)] for s, e, t in res.get("segments") or []]
+    return res
+
+
 class _Server(ThreadingHTTPServer):
     allow_reuse_address = False  # su Windows SO_REUSEADDR permetterebbe a due processi di condividere la porta
     daemon_threads = True
 
 
-def _ctx(daemon, mode, tag_map=None, settings=None):
+# Operazioni lunghe annullabili dal server web (es. l'utente interrompe dalla Glass Window mentre un allegato audio
+# viene trascritto): il server indica un identificativo «op» nella richiesta e, se serve, lo annulla.
+_CANCELLED_OPS = {}
+_OPS_LOCK = threading.Lock()
+
+
+def cancel_op(op):
+    if isinstance(op, str) and 0 < len(op) <= 80:
+        with _OPS_LOCK:
+            now = time.time()
+            for k in [k for k, t in _CANCELLED_OPS.items() if now - t > 6 * 3600]:
+                _CANCELLED_OPS.pop(k, None)
+            _CANCELLED_OPS[op] = now
+
+
+def _ctx(daemon, mode, tag_map=None, settings=None, op=None):
+    stop = daemon.should_stop
+    if isinstance(op, str) and op:
+        def stop(op=op):
+            return daemon.should_stop() or op in _CANCELLED_OPS
     return formats.Ctx(
         mode, settings or dict(daemon.settings), engine=daemon.engine, vault=daemon.vault, tag_map=tag_map or {},
-        cancel=CancelToken(deadline=time.time() + REQUEST_TIMEOUT, stop_check=daemon.should_stop),
+        cancel=CancelToken(deadline=time.time() + REQUEST_TIMEOUT, stop_check=stop),
     )
+
+
+def handle_extract_text(daemon, body):
+    """Testo di un allegato per l'Harness: documenti e archivi come nell'anteprima, file audio trascritti dal
+    motore (anche dentro gli archivi). Il testo NON e' ancora protetto: il server lo passa subito ad anonymize_texts
+    e non lo mostra ne' lo invia prima. Nessun dato viene salvato."""
+    try:
+        data = base64.b64decode(body.get("data_b64") or "", validate=False)
+    except Exception:
+        raise ValueError("contenuto del file non valido (base64)")
+    name = common.safe_filename(body.get("filename") or "allegato.bin", max_len=100)
+    try:
+        max_chars = max(1000, min(int(body.get("max_chars") or 200_000), EXTRACT_MAX_CHARS))
+    except (TypeError, ValueError):
+        max_chars = 200_000
+    ctx = _ctx(daemon, "anonymize", op=body.get("op"))
+    ext = os.path.splitext(name)[1].lower()
+    kind = "audio" if ext in formats.AUDIO_EXTS else ("archive" if ext in formats.ARCHIVE_EXTS else "document")
+    with ctx.tempdir() as d:
+        src = os.path.join(d, name)
+        with open(src, "wb") as f:
+            f.write(data)
+        del data
+        try:
+            text = formats.extract_text(src, ctx, max_chars)
+        except formats.ProcessingError as e:
+            return {"text": "", "kind": kind, "error": str(e)}
+    out = {"text": text, "kind": kind}
+    audio = ctx.shared.get("audio_info") or []
+    if audio:
+        out["audio"] = audio
+    return out
 
 
 def _client_settings(daemon, options):
@@ -120,12 +202,14 @@ def handle_texts(daemon, body):
     res = ctx.analyze(units, batch_context=bool(body.get("batch_context", False)))
     out = []
     k = 0
-    for u, r in zip(units, res):
+    for i, (u, r) in enumerate(zip(units, res)):
         n = len(r)
-        out.append({"anonymized": apply_replacements(u.text, r), "extracted_data": ctx.audit[k:k + n]})
+        out.append({"anonymized": apply_replacements(u.text, r), "extracted_data": ctx.audit[k:k + n],
+                    "system2": [d for d in ctx.system2 if d.get("unit") == i]})
         k += n
     daemon.vault.flush()
-    return {"results": out, "elapsed": round(time.time() - t0, 3)}
+    # decisioni del Sistema 2 sui casi dubbi (confermati, rilasciati, incerti) per la trasparenza (Glass Window)
+    return {"results": out, "elapsed": round(time.time() - t0, 3), "system2": ctx.system2}
 
 
 def handle_text(daemon, body):
@@ -139,8 +223,9 @@ def handle_text(daemon, body):
         if contains_tags(text, tm):
             restored = restore_text(text, tm)
             return {"anonymized": restored, "restored": restored, "auto_restored": True, "extracted_data": []}
-    r = handle_texts(daemon, {"texts": [text]})["results"][0]
-    return {"anonymized": r["anonymized"], "extracted_data": r["extracted_data"]}
+    res = handle_texts(daemon, {"texts": [text]})
+    r = res["results"][0]
+    return {"anonymized": r["anonymized"], "extracted_data": r["extracted_data"], "system2": res["system2"]}
 
 
 def handle_file(daemon, body):
@@ -171,7 +256,7 @@ def handle_file(daemon, body):
                         mode = "restore"
                 except Exception:
                     pass
-        ctx = _ctx(daemon, mode, tm, settings=settings if mode == "anonymize" else None)
+        ctx = _ctx(daemon, mode, tm, settings=settings if mode == "anonymize" else None, op=body.get("op"))
         ctx.label_override = label if mode == "anonymize" else None
         out = formats.process_file(src, os.path.join(out_dir, name), ctx)
         with open(out, "rb") as f:
@@ -182,7 +267,9 @@ def handle_file(daemon, body):
         "mode": mode,
         "data_b64": base64.b64encode(new_data).decode("ascii"),
         "extracted_data": ctx.audit if mode == "anonymize" else [],
+        "system2": ctx.system2 if mode == "anonymize" else [],
         "notes": ctx.notes,
+        "reports": ctx.reports,          # estrazione degli archivi e trascrizioni audio (per il registro di audit)
     }
 
 
@@ -248,6 +335,13 @@ def start_api(daemon):
                     self._json(200, handle_text(daemon, body))
                 elif self.path == "/internal/process_file":
                     self._json(200, handle_file(daemon, body))
+                elif self.path == "/internal/extract_text":
+                    self._json(200, handle_extract_text(daemon, body))
+                elif self.path == "/internal/cancel":
+                    cancel_op(body.get("op"))
+                    self._json(200, {"status": "ok"})
+                elif self.path == "/internal/engine/transcribe":
+                    self._json(200, handle_engine_transcribe(daemon, body))
                 elif self.path == "/internal/vault/clear":
                     daemon.vault.clear()
                     daemon.engine.clear_cache()
@@ -271,6 +365,9 @@ def start_api(daemon):
                 self._json(503, {"error": f"elaborazione annullata ({e.reason})"})
             except formats.UnsupportedFormat as e:
                 self._json(415, {"error": str(e)})
+            except formats.ProcessingError as e:
+                # errore «previsto» del file (password, archivio rifiutato, audio troppo lungo...): messaggio chiaro
+                self._json(422, {"error": str(e)})
             except ValueError as e:
                 if self.path.startswith("/internal/engine/"):
                     self._json(400, {"error": str(e)})

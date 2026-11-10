@@ -1,8 +1,12 @@
 """Costruisce gli installer Windows IN UN SOLO FILE della release:
-  germano.ai-0.70/releases/windows/germano-0.70.exe          suite completa (runtime, 6 modelli IA, interfaccia)
-  germano.ai-0.70/releases/windows/germano-client-0.70.exe   client leggero
+  germano.ai-0.80/releases/windows/germano-0.80.exe          suite completa (runtime, modelli IA, interfaccia)
+  germano.ai-0.80/releases/windows/germano-client-0.80.exe   client leggero
 partendo da sorgenti/windows/<edizione> (programma), dipendenze/windows/runtime-<edizione> (Python 3.11 con tutte
-le librerie e le DLL di Visual C++ accanto all'interprete: nessun ridistribuibile da installare) e modelli/ (suite).
+le librerie e le DLL di Visual C++ accanto all'interprete: nessun ridistribuibile da installare), modelli/,
+dipendenze/windows/llama-server (llama.cpp per il Sistema 2, installato in runtime/llama) e dipendenze/windows/7zip
+(console di 7-Zip per gli archivi 7Z e RAR, installata in runtime/7zip) per la suite.
+ATTENZIONE: Windows non avvia eseguibili da 4 GB in su. La suite 0.80 e' vicina al limite (modelli compresi): la
+costruzione si ferma con un errore se l'installer lo supera, invece di produrre un file che non partirebbe.
 Germano.exe (l'unico programma) viene creato qui da build_exe.py e messo solo nell'installer: i sorgenti restano
 senza binari.
 
@@ -37,8 +41,11 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TOOLS)
 import build_exe  # noqa: E402
+import crea_version_json  # noqa: E402
 
-RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-0.70
+WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # oltre, Windows rifiuta di avviare l'eseguibile
+
+RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-0.80
 SOURCES = os.path.join(RELEASE, "sorgenti", "windows")
 DEPS = os.path.join(RELEASE, "dipendenze", "windows")
 MODELS = os.path.join(RELEASE, "modelli")
@@ -145,6 +152,10 @@ def payload_items(ed, extra):
     roots = [(os.path.join(SOURCES, ed["folder"]), "", EXCLUDE_TOP), (os.path.join(DEPS, ed["runtime"]), "runtime/", ())]
     if ed["models"]:
         roots.append((MODELS, "models/", ()))
+        assert not os.path.exists(os.path.join(DEPS, ed["runtime"], "llama")), "runtime/llama gia' nel runtime"
+        roots.append((os.path.join(DEPS, "llama-server"), "runtime/llama/", ()))
+        assert not os.path.exists(os.path.join(DEPS, ed["runtime"], "7zip")), "runtime/7zip gia' nel runtime"
+        roots.append((os.path.join(DEPS, "7zip"), "runtime/7zip/", ()))
     files, empty_dirs = [], []
     for root, prefix, exclude in roots:
         for base, dirs, names in os.walk(root):
@@ -263,13 +274,31 @@ def build(edition_key):
     print("  verifica completa (CRC di ogni file)...", flush=True)
     required = ["Germano.exe", "germano_desktop.py", "VERSION", "runtime/python.exe", "runtime/pythonw.exe"]
     if ed["models"]:
-        required += ["server.py", "models/privacy-filter/config.json", "models/italian-ner-xxl/config.json"]
+        required += ["server.py", "models/privacy-filter/config.json", "models/italian-ner-xxl/config.json",
+                     "models/italian-ner-xxl/onnx/model.onnx",
+                     "runtime/llama/llama-server.exe", "runtime/llama/llama-server-impl.dll",
+                     "models/qwen3.5-0.8b/germano.json", "models/qwen3.5-0.8b/Qwen3.5-0.8B-Q8_0.gguf",
+                     # audio (0.80): modello vocale, processo separato e librerie
+                     "models/whisper-small/model.bin", "models/whisper-small/germano.json",
+                     "germano/speech.py", "germano/speech_worker.py", "germano/formats/audio.py",
+                     "runtime/Lib/site-packages/faster_whisper/__init__.py",
+                     "runtime/Lib/site-packages/ctranslate2/__init__.py", "runtime/Lib/site-packages/av/__init__.py",
+                     # archivi (0.80): console di 7-Zip
+                     "germano/formats/archive.py", "runtime/7zip/7z.exe", "runtime/7zip/7z.dll",
+                     "runtime/7zip/License.txt"]
     verify(part, n_files, required)
+    size = os.path.getsize(part)
+    if size > WINDOWS_EXE_MAX:
+        os.remove(part)
+        raise SystemExit(f"ERRORE: l'installer sarebbe di {size:,} byte ({size / 2**30:.2f} GB): Windows non avvia "
+                         "eseguibili da 4 GB in su. Ridurre i modelli inclusi.")
     os.replace(part, out)
+    crea_version_json.scarta_se_superato(out)
     others = sorted(set(os.listdir(OUT_DIR)) - {e["file"].format(v=version) for e in EDITIONS.values()})
     if others:
         print(f"  ATTENZIONE: in {OUT_DIR} ci sono anche: {others}")
-    print(f"  OK {out}: {os.path.getsize(out):,} byte ({os.path.getsize(out) / 2**30:.2f} GB) in {time.time() - t0:.0f} s")
+    print(f"  OK {out}: {os.path.getsize(out):,} byte ({os.path.getsize(out) / 2**30:.2f} GB) in {time.time() - t0:.0f} s"
+          + (f"; margine sul limite di 4 GB di Windows: {(WINDOWS_EXE_MAX - size) / 2**20:,.0f} MB" if ed["models"] else ""))
     return out
 
 

@@ -1,4 +1,4 @@
-"""Germano Client v0.70 - pannello locale (si apre in una finestra app dedicata, via germano_desktop.py).
+"""Germano Client v0.80 - pannello locale (si apre in una finestra app dedicata, via germano_desktop.py).
 
 E' LO STESSO Remote Control del Germano Server (remote/remote.html, remote.js, remote.css, harness.js, harness.css:
 copie identiche di quelli del server), servito qui su 127.0.0.1: le sue richieste (/api/remote/v1/..., /api/auth/...,
@@ -201,7 +201,10 @@ def _headers(tok):
     return headers
 
 
-def _forward(path, body=None, extra_json=None):
+LONG_TIMEOUT = 4 * 3600      # file elaborati dal server: una registrazione audio lunga richiede decine di minuti
+
+
+def _forward(path, body=None, extra_json=None, response_headers=None):
     try:
         base, tok = _server()
     except client.ClientError as e:
@@ -212,8 +215,10 @@ def _forward(path, body=None, extra_json=None):
         data = json.dumps(extra_json, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json; charset=utf-8"
     url = base + path + (("?" + request.query_string.decode("latin-1")) if request.query_string else "")
+    timeout = LONG_TIMEOUT if path.endswith(("/anonymize_file", "/restore_file")) else 900
     try:
-        st, raw = client._request(request.method, url, data=data, headers=headers, timeout=900)
+        st, raw = client._request(request.method, url, data=data, headers=headers, timeout=timeout,
+                                  response_headers=response_headers)
     except client.ClientError as e:
         return None, jsonify({"status": "error", "error": str(e), "message": str(e)}), 502
     return (st, raw), None, None
@@ -229,14 +234,19 @@ def _forward(path, body=None, extra_json=None):
 @app.route("/api/harness/v2/runs/<path:sub>", methods=["POST"])
 def proxy_remote(sub=None):
     path = request.path
-    res, err, code = _forward(path)
+    got = {}
+    res, err, code = _forward(path, response_headers=got)
     if err is not None:
         return err, code
     st, raw = res
     ctype = "application/json"
+    extra = {}
     if path.endswith("/restore_file") and st == 200:
         ctype = "application/octet-stream"
-    return Response(raw, status=st, content_type=ctype)
+        disposition = next((v for k, v in got.items() if k.lower() == "content-disposition"), None)
+        if disposition:        # nome del file deciso dal server (es. un archivio RAR ripristinato torna come ZIP)
+            extra["Content-Disposition"] = disposition
+    return Response(raw, status=st, content_type=ctype, headers=extra)
 
 
 @app.route("/api/harness/v2/run", methods=["POST"])

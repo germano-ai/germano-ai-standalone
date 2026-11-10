@@ -158,7 +158,7 @@ class Anonymizer:
             for sp in spans_per_unit[i]:
                 word = u.text[sp.start:sp.end]
                 label = override or (vault.label_for(word, sp.label) if use_indexed else sp.label)
-                ctx.audit_add(word, label, sp.group, sp.score)
+                ctx.audit_add(word, label, sp.group, sp.score, getattr(sp, "status", "confirmed"))
                 results[i].append((sp.start, sp.end, label))
         return results
 
@@ -192,7 +192,7 @@ class Anonymizer:
                     text = units[grp[k]].text
                     la, lb = detect.trim_span(text, a - starts[k], b - starts[k], sp.label)
                     if lb > la and (sp.source == "regex" or not detect.is_fragment(text, la, lb)):
-                        spans_per_unit[grp[k]].append(detect.Span(la, lb, sp.group, sp.label, sp.key, sp.score, sp.source))
+                        spans_per_unit[grp[k]].append(detect.Span(la, lb, sp.group, sp.label, sp.key, sp.score, sp.source, getattr(sp, "status", "confirmed")))
                 k += 1
         for i in grp:
             spans_per_unit[i].sort(key=lambda x: x.start)

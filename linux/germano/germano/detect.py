@@ -1,4 +1,11 @@
-"""Rilevamento deterministico (RegEx validate) e post-elaborazione degli span dei modelli IA."""
+"""Rilevamento deterministico (RegEx validate a checksum matematico) e post-elaborazione degli span dei modelli IA.
+
+In accordo con l'architettura 'Meno RegEx, Più AI', le euristiche fragili su linguaggio naturale
+(indirizzi, toponimi, ruoli professionali, date colloquiali, organi catastali e societari)
+sono state rimosse e delegate ai modelli neurali (Sistema 1 / Sistema 2).
+Qui rimangono esclusivamente i verificatori deterministici e crittografici (IBAN MOD-97,
+Codice Fiscale, Algoritmo di Luhn, Partite IVA, Secret Keys e pattern rigidi ad alta entropia).
+"""
 import re
 from bisect import bisect_right
 
@@ -100,9 +107,9 @@ def categorize(group):
 
 
 class Span:
-    __slots__ = ("start", "end", "group", "label", "key", "score", "source", "length_hint")
+    __slots__ = ("start", "end", "group", "label", "key", "score", "source", "length_hint", "status")
 
-    def __init__(self, start, end, group, label, key, score=1.0, source="model"):
+    def __init__(self, start, end, group, label, key, score=1.0, source="model", status="confirmed"):
         self.start = start
         self.end = end
         self.group = group
@@ -111,17 +118,18 @@ class Span:
         self.score = float(score)
         self.source = source
         self.length_hint = end - start
+        self.status = status
+
+    def __repr__(self):
+        return f"Span({self.start},{self.end},{self.group},{self.label},{self.score:.2f},{self.source},{self.status})"
 
 
 def _priority(sp):
     return (1 if sp.source == "regex" else 0, sp.length_hint, sp.score)
 
-    def __repr__(self):
-        return f"Span({self.start},{self.end},{self.group},{self.label},{self.score:.2f},{self.source})"
-
 
 # --------------------------------------------------------------------------------------
-# Validatori
+# Validatori Matematici e Algoritmici
 # --------------------------------------------------------------------------------------
 
 def _iban_valid(s):
@@ -179,7 +187,7 @@ _IBAN_LEN = {
 _DATE_LIKE_RE = re.compile(r"^\d{1,2}[ ./\-]\d{1,2}[ ./\-]\d{2,4}$")
 
 # --------------------------------------------------------------------------------------
-# Pattern
+# Pattern Rigidi a Checksum ed Entropia Elevata
 # --------------------------------------------------------------------------------------
 _UPC = "A-ZÀ-ÖØ-Þ"
 _WC = r"\wÀ-ÖØ-öø-ÿ"
@@ -200,58 +208,9 @@ PIVA_CTX_RE = re.compile(
 PIVA_IT_RE = re.compile(r"(?<![A-Za-z0-9])IT[ \t]?(\d{11})(?!\d)")
 IBAN_START_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z]{2})(\d{2})(?=[ \-]?[A-Z0-9])")
 CARD_RE = re.compile(r"(?<![\d\-])(?:\d[ \-]?){12,18}\d(?![\d\-])")
-PHONE_MOBILE_RE = re.compile(r"(?<![\w+])(?:(?:\+|00)[ \t]?39[ .\-]?)?3\d{2}(?:[ .\-]?\d){6,7}(?![\d])")
-# Prefisso 0X..0XXX; la "/" e' ammessa solo subito dopo il prefisso (02/12345678), non nei protocolli 12345/2024.
-PHONE_LAND_RE = re.compile(
-    r"(?<![\w+/.\-])(?:(?:\+|00)[ \t]?39[ .\-]?)?0[1-9]\d{0,2}(?:[ \t]?/[ \t]?|[ .\-])?\d(?:[ .\-]?\d){4,7}(?![\d/\-]|\.\d)"
-)
-PHONE_INTL_RE = re.compile(
-    r"(?<![\w+])(?:\+|00)(?!39)[1-9]\d{0,2}[ .\-]?(?:\(\d{1,4}\)[ .\-]?)?\d{1,4}(?:[ .\-]?\d{1,4}){1,4}(?![\d])"
-)
-PHONE_CTX_RE = re.compile(
-    r"(?i)\b(?:tel(?:efono)?|cell(?:ulare)?|fax|mobile|phone|recapito(?:\s+telefonico)?|telefonino|whatsapp)\b\.?"
-    r"[ \t]*(?:n\.?|nr\.?|num(?:ero)?\.?)?[ \t]*[:.]?[ \t]*((?:\+|00)?\d[\d .\-/()]{5,20}\d)"
-)
-_STREET_TYPES = (
-    r"via|viale|v\.le|piazza|p\.zza|p\.za|piazzale|p\.le|piazzetta|corso|c\.so|largo|l\.go|vicolo|vico|strada|"
-    r"str\.|contrada|c\.da|localit[aà]|loc\.|borgo|lungomare|lungotevere|lungarno|salita|traversa|frazione|fraz\.|"
-    r"calle|fondamenta|rione|circonvallazione|galleria|vialetto|stradone|calata|rampa"
-)
-_PARTICLES = (
-    r"d[ei]|del|dell['’]|della|delle|degli|dello|dei|da|di|de|la|le|lo|il|san|santa|santo|sant['’]|s\.|ss\.|e|al|alla|alle|ai"
-)
-ADDRESS_RE = re.compile(
-    r"(?<![\w])(?i:" + _STREET_TYPES + r")(?:[ \t]+(?:" + _PARTICLES + r"|[0-9" + _UPC + r"][" + _WC + r"'’.\-]*)){1,7}?"
-    r",?[ \t]*(?:(?i:n\.?|n°|nr\.?|civ(?:ico)?\.?)[ \t]*)?\d{1,4}(?:[ \t]?/[ \t]?[A-Za-z0-9]{1,3}|[A-Za-z](?![\w]))?(?![\w])"
-)
-CAP_CITY_RE = re.compile(
-    r"(?<![\w])\d{5}[ \t]+(?!(?i:euro|eur|lire|pagine?|pag|art|anni|mesi|giorni|ore|kg|km|mq|metri|totale|unit[aà])\b)"
-    r"[" + _UPC + r"][" + _WC + r"'’]+(?:[ \t\-](?:[" + _UPC + r"][" + _WC + r"'’]+|d[ei]|del|della|sul|sulla|in|al|di|e))*"
-    r"(?:[ \t]*\([ \t]*[A-Z]{2}[ \t]*\))?"
-)
-DATE_NUM_RE = re.compile(
-    r"(?<![\d/.\-])(?:0?[1-9]|[12]\d|3[01])([/.\-])(?:0?[1-9]|1[0-2])\1(?:19|20)?\d{2}(?![\d/\-]|\.\d)"
-)
+PHONE_STRICT_RE = re.compile(r"(?<![\w+])(?:\+|00)39[ \t]?3\d{2}[ .\-]?\d{6,7}(?![\d])")
 CIE_RE = re.compile(r"(?<![A-Za-z0-9])C[A-Z]\d{5}[A-Z]{2}(?![A-Za-z0-9])")
-DOC_CTX_RE = re.compile(
-    r"(?i)\b(?:passaporto|passport|carta\s+d['’]\s?identit[aà]|patente(?:\s+di\s+guida)?|permesso\s+di\s+soggiorno|"
-    r"documento\s+di\s+(?:riconoscimento|identit[aà]))\b[^\n\d]{0,30}?(?:n\.?|nr\.?|numero|n°)?[ \t]*[:.]?[ \t]*"
-    r"([A-Z]{1,2}[ ]?\d{5,8}[A-Z]{0,2})(?![A-Za-z0-9])"
-)
 PLATE_RE = re.compile(r"(?<![A-Za-z0-9])[A-HJ-NPR-TV-Z]{2}[ ]?\d{3}[ ]?[A-HJ-NPR-TV-Z]{2}(?![A-Za-z0-9])")
-CADASTRE_RE = re.compile(
-    r"(?i)\b(?:foglio|fg\.?|particella|p\.lla|part\.|mappale|mapp?\.|subalterno|sub\.?)[ \t]*(?:n\.?|n°|nr\.?)?[ \t]*:?[ \t]*"
-    r"(\d{1,5}(?:[ \t]*[-/][ \t]*\d{1,5})*)(?![\w])"
-)
-_ORG_SUFFIX = (
-    r"s\.?\s?r\.?\s?l\.?(?:\s?s\.?)?|s\.?\s?p\.?\s?a\.?|s\.?\s?n\.?\s?c\.?|s\.?\s?a\.?\s?s\.?|s\.?\s?c\.?\s?a\.?\s?r\.?\s?l\.?|"
-    r"s\.?\s?c\.?\s?r\.?\s?l\.?|s\.?\s?c\.?\s?p\.?\s?a\.?|soc(?:iet[aà]|\.)?\s+coop(?:erativa|\.)?(?:\s+a\s+r\.?\s?l\.?)?|onlus"
-)
-_ORG_NOT_FIRST = r"(?!(?:La|Il|Lo|Le|Gli|I|Una|Un|Uno|Alla|Dalla|Della|Nella|Sulla|Con|Per|Tra|Fra|Ditta|Spett\.le|Spettabile)\b)"
-ORG_RE = re.compile(
-    r"(?<![\w])" + _ORG_NOT_FIRST + r"[0-9" + _UPC + r"][" + _WC + r"&'’.\-]*(?:[ \t]+(?:[0-9" + _UPC + r"][" + _WC + r"&'’.\-]*|&|e|di|de|del|della|dei|degli|delle)){0,5}?"
-    r"[ \t]*,?[ \t]+(?i:" + _ORG_SUFFIX + r")(?![\w])"
-)
 IPV4_RE = re.compile(
     r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?!\d|\.\d)"
 )
@@ -265,10 +224,6 @@ SECRET_RES = [
     re.compile(r"(?<![\w\-])eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}"),
     re.compile(r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\s\S]{20,}?-----END (?:[A-Z]+ )*PRIVATE KEY-----"),
 ]
-SECRET_CTX_RE = re.compile(
-    r"(?i)\b(?:password|passwd|pwd|parola\s+(?:chiave|d['’]ordine)|passphrase|pin|api[_\- ]?key|secret|token)\b"
-    r"[ \t]*[:=][ \t]*[\"']?([^\s\"',;]{4,128})"
-)
 
 
 def _add(spans, s, e, group, score=1.0):
@@ -315,7 +270,7 @@ def _iban_spans(text, spans, ocr):
 
 
 def regex_spans(text, ocr=False):
-    """Span grezzi (start, end, gruppo, score) dalle regole deterministiche."""
+    """Span grezzi (start, end, gruppo, score) da sole regole deterministiche/matematiche."""
     spans = []
     if not isinstance(text, str) or not text:
         return spans
@@ -339,39 +294,12 @@ def regex_spans(text, ocr=False):
         d = re.sub(r"\D", "", m.group(0))
         if 13 <= len(d) <= 19 and d[0] in "23456" and _luhn(d):
             _add(spans, m.start(), m.end(), "account_number")
-    for rx in (PHONE_MOBILE_RE, PHONE_LAND_RE, PHONE_INTL_RE):
-        for m in rx.finditer(text):
-            w = m.group(0)
-            if _DATE_LIKE_RE.match(w.strip()):
-                continue
-            nd = sum(c.isdigit() for c in w)
-            if rx is PHONE_LAND_RE:
-                core = re.sub(r"^\s*(?:\+|00)\s?39", "", w)
-                if not 8 <= sum(c.isdigit() for c in core) <= 11:
-                    continue
-            elif rx is PHONE_INTL_RE and not 8 <= nd <= 15:
-                continue
-            _add(spans, m.start(), m.end(), "private_phone")
-    for m in PHONE_CTX_RE.finditer(text):
-        nd = sum(c.isdigit() for c in m.group(1))
-        if 6 <= nd <= 15 and not _DATE_LIKE_RE.match(m.group(1).strip()):
-            _add(spans, m.start(1), m.end(1), "private_phone")
-    for m in ADDRESS_RE.finditer(text):
-        _add(spans, m.start(), m.end(), "private_address")
-    for m in CAP_CITY_RE.finditer(text):
-        _add(spans, m.start(), m.end(), "private_address")
-    for m in DATE_NUM_RE.finditer(text):
-        _add(spans, m.start(), m.end(), "private_date")
+    for m in PHONE_STRICT_RE.finditer(text):
+        _add(spans, m.start(), m.end(), "private_phone")
     for m in CIE_RE.finditer(text):
         _add(spans, m.start(), m.end(), "plates_docs")
-    for m in DOC_CTX_RE.finditer(text):
-        _add(spans, m.start(1), m.end(1), "plates_docs")
     for m in PLATE_RE.finditer(text):
         _add(spans, m.start(), m.end(), "plates_docs")
-    for m in CADASTRE_RE.finditer(text):
-        _add(spans, m.start(1), m.end(1), "cadastre")
-    for m in ORG_RE.finditer(text):
-        _add(spans, m.start(), m.end(), "private_org")
     for m in IPV4_RE.finditer(text):
         ip = m.group(0)
         if ip.startswith("127.") or ip == "0.0.0.0" or ip.startswith("255."):
@@ -380,8 +308,6 @@ def regex_spans(text, ocr=False):
     for rx in SECRET_RES:
         for m in rx.finditer(text):
             _add(spans, m.start(), m.end(), "secret")
-    for m in SECRET_CTX_RE.finditer(text):
-        _add(spans, m.start(1), m.end(1), "secret")
     return spans
 
 
@@ -399,7 +325,6 @@ _FIELD = (
     r"e-?mail|mail|pec|iban|bic|swift|nato\s+(?:a|il|in)|nata\s+(?:a|il|in)|residente\s+(?:a|in)|"
     r"domiciliat[oa]\s+(?:a|in)|con\s+sede\s+(?:a|in|legale\s+in)|sit[oa]\s+in"
 )
-# Nessuna ancora "^": il pattern viene usato con .match(text, pos, endpos), che ancora gia' su pos.
 _PREFIX_RE = re.compile(
     r"(?i)(?:(?:(?:il|lo|la|i|gli|le|al|alla|del|della|dal|dalla)\s+)?(?:" + _HONORIFIC + r"|" + _FIELD + r")(?![\w])[.:]?[ \t]*)+"
 )
@@ -415,7 +340,6 @@ def trim_span(text, s, e, label):
     trail = _SECRET_TRAIL_CHARS if label == SECRET_LABEL else _TRAIL_CHARS
     while e > s and text[e - 1] in trail:
         c = text[e - 1]
-        # "S.r.l." / "S.p.A.": il punto finale fa parte della sigla (ma non in "SRL.")
         if c == "." and label == ORG_LABEL and "." in text[max(s, e - 6):e - 1]:
             break
         if c == ")" and "(" in text[s:e - 1]:
@@ -471,14 +395,22 @@ def _subtract_tags(text, s, e, tag_ranges, tag_starts):
 
 
 def postprocess(raw, text, settings):
-    """Da span grezzi (start, end, gruppo, score, [source]) a Span definitivi ordinati per inizio."""
+    """Da span grezzi (start, end, gruppo, score, [source]) a Span definitivi con calibrazione tri-stato."""
     if not raw or not isinstance(text, str):
         return []
     items = []
     n = len(text)
     for r in raw:
-        s, e, group, score = int(r[0]), int(r[1]), r[2], r[3]
+        s, e, group, score = int(r[0]), int(r[1]), r[2], float(r[3])
         source = r[4] if len(r) > 4 else "model"
+        # Calibrazione tri-stato Kahneman (Sistema 1)
+        if source == "regex" or score >= 0.85:
+            status = "confirmed"
+        elif score >= 0.15:
+            status = "doubt"
+        else:
+            continue  # Escluso (< 0.15)
+
         s = max(0, min(s, n))
         e = max(0, min(e, n))
         g, label, key = categorize(group)
@@ -490,7 +422,7 @@ def postprocess(raw, text, settings):
             e -= 1
         if e <= s:
             continue
-        items.append(Span(s, e, g, label, key, score, source))
+        items.append(Span(s, e, g, label, key, score, source, status))
     if not items:
         return []
     items.sort(key=lambda x: (x.start, -x.end))
@@ -500,25 +432,26 @@ def postprocess(raw, text, settings):
         if merged:
             prev = merged[-1]
             if sp.start < prev.end:
-                # Etichetta dello span "migliore": prima le regole validate (CF, IBAN, email...), poi il piu' lungo
                 if _priority(sp) > _priority(prev):
                     prev.group, prev.label, prev.key = sp.group, sp.label, sp.key
                     prev.source = sp.source
                     prev.length_hint = sp.end - sp.start
+                    prev.status = sp.status
                 prev.end = max(prev.end, sp.end)
                 prev.score = max(prev.score, sp.score)
+                if sp.status == "confirmed":
+                    prev.status = "confirmed"
                 continue
             if sp.label == prev.label:
                 gap = text[prev.end:sp.start]
                 if len(gap) <= 2 and all(c in " \t" for c in gap):
                     prev.end = max(prev.end, sp.end)
                     prev.score = max(prev.score, sp.score)
+                    if sp.status == "confirmed":
+                        prev.status = "confirmed"
                     continue
         merged.append(sp)
 
-    # I modelli lavorano a sotto-parole: uno span (gia' unito ai frammenti adiacenti) che taglia ancora una
-    # parola o un numero viene esteso all'intera parola, per non lasciare scoperta meta' di un cognome o di un
-    # codice. I frammenti brevi dentro parole comuni (es. "ita" in "abita") restano invece esclusi.
     extended = False
     for sp in merged:
         if sp.source == "regex":
@@ -529,7 +462,7 @@ def postprocess(raw, text, settings):
         if not cut:
             continue
         if len(w) <= 3 and w.isalpha() and not w.isupper():
-            continue  # scartato piu' avanti da is_fragment
+            continue
         k = 0
         while s > 0 and text[s - 1].isalnum() and text[s].isalnum() and k < 25:
             s -= 1
@@ -548,7 +481,10 @@ def postprocess(raw, text, settings):
                 prev = again[-1]
                 if _priority(sp) > _priority(prev):
                     prev.group, prev.label, prev.key, prev.source = sp.group, sp.label, sp.key, sp.source
+                    prev.status = sp.status
                 prev.end = max(prev.end, sp.end)
+                if sp.status == "confirmed":
+                    prev.status = "confirmed"
                 continue
             again.append(sp)
         merged = again
@@ -561,13 +497,12 @@ def postprocess(raw, text, settings):
             a, b = trim_span(text, a, b, sp.label)
             if b <= a:
                 continue
-            # Le regole RegEx sono precise per costruzione (es. "sub. 6"): il filtro frammenti vale per i modelli.
             if sp.source == "regex":
                 if not any(ch.isalnum() for ch in text[a:b]):
                     continue
             elif is_fragment(text, a, b):
                 continue
-            out.append(Span(a, b, sp.group, sp.label, sp.key, sp.score, sp.source))
+            out.append(Span(a, b, sp.group, sp.label, sp.key, sp.score, sp.source, sp.status))
     out.sort(key=lambda x: x.start)
     return out
 
@@ -595,7 +530,7 @@ class Propagator:
     """Indice delle entita' gia' rilevate, per trovarne altre occorrenze (match per token, O(n))."""
 
     def __init__(self):
-        self.index = {}  # primo token (casefold) -> lista di (tokens, label, group, key)
+        self.index = {}
         self.seen = set()
 
     def add(self, word, label, group, key):
@@ -624,7 +559,6 @@ class Propagator:
         return bool(self.index)
 
     def find(self, text):
-        """Restituisce [(start, end, label, group, key)] delle occorrenze nel testo."""
         out = []
         if not self.index or not text:
             return out
@@ -644,7 +578,6 @@ class Propagator:
                         if toks[i + j][2] != seq[j]:
                             ok = False
                             break
-                        # non attraversare a capo / separatori di cella
                         gap = text[toks[i + j - 1][1]:toks[i + j][0]]
                         if "\n" in gap or "|" in gap or len(gap) > 3:
                             ok = False
