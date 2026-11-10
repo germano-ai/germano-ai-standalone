@@ -370,7 +370,15 @@ class Daemon:
                 log(f"Completato ripristino dati veri: {os.path.relpath(final, common.OUTPUT_DIR)} ({elapsed:.1f}s).")
             else:
                 self.status["done"] += 1
-                log(f"Completato: {rel} ({len(ctx.audit)} elementi censurati, {elapsed:.1f}s).")
+                s2 = ""
+                if ctx.system2:
+                    by = {}
+                    for d in ctx.system2:
+                        by[d.get("decision")] = by.get(d.get("decision"), 0) + 1
+                    s2 = (f"; Sistema 2: {len(ctx.system2)} casi dubbi decisi nel contesto, {by.get('rilasciato', 0)} "
+                          f"rilasciati, {by.get('confermato', 0)} confermati, "
+                          f"{by.get('incerto', 0) + by.get('non_deciso', 0)} lasciati oscurati per prudenza")
+                log(f"Completato: {rel} ({len(ctx.audit)} elementi censurati{s2}, {elapsed:.1f}s).")
         except EngineUnavailable as e:
             self._discard(result, tmp_out, tmp_prefix)
             self._engine_unavailable(path, e)
@@ -439,6 +447,12 @@ class Daemon:
             entries = list(ctx.audit)
             for n in ctx.notes:
                 entries.append({"word": "", "label": "[NOTA]", "entity": "NOTE", "score": 1.0, "note": n})
+            # decisioni del Sistema 2: anche i dubbi RILASCIATI (rimasti in chiaro), con il motivo
+            for d in getattr(ctx, "system2", []) or []:
+                entries.append(dict(d, label="[SISTEMA2]"))
+            # report di estrazione degli archivi ([ARCHIVIO]: ogni file interno, bonificato o escluso e perche') e
+            # delle trascrizioni audio ([AUDIO]: durata, lingua, segmenti)
+            entries.extend(getattr(ctx, "reports", []) or [])
             path = os.path.join(common.EXTRACTED_DIR, rel + ".json")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             common.atomic_write_json(path, entries, indent=4)
@@ -590,6 +604,9 @@ class Daemon:
                 self.stop_event.wait(1.0)
         log("Segnale di arresto ricevuto: chiusura sicura del demone.")
         self.vault.flush()
+        close = getattr(self.engine, "close", None)
+        if close:
+            close()                                # ferma il server locale del Sistema 2
         return 0
 
     def shutdown(self):

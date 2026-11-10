@@ -215,9 +215,9 @@ def _setup_output():
 def get_version():
     try:
         with open(os.path.join(BASE_DIR, "VERSION"), "r", encoding="utf-8-sig") as f:
-            return f.read().strip() or "0.70"
+            return f.read().strip() or "0.80"
     except OSError:
-        return "0.70"
+        return "0.80"
 
 
 def _clean(value, limit=60):
@@ -396,12 +396,15 @@ def _network_problem(reason, url, timeout):
     return f"collegamento a {where} non riuscito ({reason.__class__.__name__}: {reason})."
 
 
-def _request(method, url, data=None, headers=None, timeout=6.0):
-    """(stato HTTP, corpo). Solleva ClientError se non si riesce a dialogare con il server."""
+def _request(method, url, data=None, headers=None, timeout=6.0, response_headers=None):
+    """(stato HTTP, corpo). Solleva ClientError se non si riesce a dialogare con il server.
+    `response_headers`: dizionario che riceve le intestazioni della risposta (es. il nome del file restituito)."""
     req = urllib.request.Request(url, data=data, headers=dict(headers or {}), method=method)
     req.add_header("User-Agent", f"GermanoClient/{get_version()}")
     try:
         with _HTTP.open(req, timeout=timeout) as r:
+            if response_headers is not None:
+                response_headers.update(r.headers.items())
             return r.status, r.read()
     except urllib.error.HTTPError as e:
         try:

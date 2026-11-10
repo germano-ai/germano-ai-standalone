@@ -816,6 +816,27 @@ def api_engine_classify():
     return _engine_forward("/internal/engine/classify", payload, timeout=3600)
 
 
+ENGINE_AUDIO_MAX = 200 * 1024 * 1024
+
+
+@app.route("/api/engine/v1/transcribe", methods=["POST"])
+def api_engine_transcribe():
+    """Motore condiviso: trascrizione di un file audio per un Germano in modalita' Client. Il corpo e' il file;
+    nome, lingua e durata massima arrivano nell'indirizzo. Il server non conserva ne' l'audio ne' il testo."""
+    import base64
+    data = request.get_data(cache=False)
+    if not data:
+        return jsonify({"error": _L("File audio mancante.", "Audio file missing.")}), 400
+    if len(data) > ENGINE_AUDIO_MAX:
+        return jsonify({"error": _L("File audio troppo grande per il motore condiviso (massimo 200 MB).",
+                                    "Audio file too large for the shared engine (at most 200 MB).")}), 413
+    settings = {k: request.args.get(k) for k in ("speech_language", "speech_max_minutes") if request.args.get(k)}
+    payload = {"filename": common.safe_filename(request.args.get("name") or "audio.bin", max_len=80),
+               "data_b64": base64.b64encode(data).decode("ascii"), "settings": settings}
+    del data
+    return _engine_forward("/internal/engine/transcribe", payload, timeout=6 * 3600)
+
+
 @app.route("/api/engine/v1/<kind>", methods=["POST"])
 def api_engine_image(kind):
     import base64
@@ -1143,6 +1164,14 @@ def _restore_file_locally(src, dest, tag_map):
     return formats.process_file(src, dest, ctx)
 
 
+def _restored_name(name, tmp_out, real):
+    """Nome del file ripristinato quando l'elaborazione ne ha cambiato l'estensione (es. un archivio RAR, che non si
+    puo' ricreare, torna come «nome.rar.zip»)."""
+    if real and real != tmp_out and real.startswith(tmp_out):
+        return name + real[len(tmp_out):]
+    return name
+
+
 def _is_return_file(path, tag_map):
     if not tag_map:
         return False
@@ -1185,7 +1214,7 @@ def api_upload_files():
                 out_rel = os.path.join(rel_dir, base if base.startswith("ripristinato_") else "ripristinato_" + base)
                 tmp_out = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + os.path.basename(out_rel))
                 real = _restore_file_locally(staged, tmp_out, tag_map)
-                final = _move_unique(real, os.path.join(common.OUTPUT_DIR, out_rel))
+                final = _move_unique(real, os.path.join(common.OUTPUT_DIR, _restored_name(out_rel, tmp_out, real)))
                 _move_unique(staged, os.path.join(common.PROCESSED_DIR, rel))
                 name = os.path.relpath(final, common.OUTPUT_DIR).replace("\\", "/")
                 restored.append({"name": name, "download_url": "/api/download/output/" + requests.utils.quote(name)})
@@ -1242,6 +1271,9 @@ OPENABLE_EXTS = {
     ".doc", ".docx", ".docm", ".dotx", ".xls", ".xlsx", ".xlsm", ".xltx", ".ppt", ".pptx", ".pptm", ".potx",
     ".ppsx", ".odt", ".ods", ".odp", ".png", ".jpg", ".jpeg", ".jfif", ".bmp", ".tif", ".tiff", ".webp", ".gif",
     ".zip", ".p7m",
+    # v0.80: archivi (si aprono con il gestore di archivi del sistema) e audio (lettore predefinito)
+    ".7z", ".rar", ".tar", ".gz", ".tgz", ".bz2", ".xz",
+    ".mp3", ".wav", ".m4a", ".ogg", ".oga", ".opus", ".flac", ".aac", ".wma", ".amr",
 }
 
 
@@ -1433,7 +1465,7 @@ def api_deanonymize_file():
             out_name = name if name.startswith("ripristinato_") else "ripristinato_" + name
             tmp_out = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + out_name)
             real = _restore_file_locally(staged, tmp_out, tag_map)
-            final = _move_unique(real, os.path.join(common.OUTPUT_DIR, out_name))
+            final = _move_unique(real, os.path.join(common.OUTPUT_DIR, _restored_name(out_name, tmp_out, real)))
             n = os.path.basename(final)
             out.append({"name": n, "download_url": "/api/download/output/" + requests.utils.quote(n)})
         except Exception as e:
@@ -1498,7 +1530,7 @@ def api_anonymize_file():
                 with open(real, "rb") as fh:
                     out = fh.read()
                 common.remove_quietly(real)
-                return send_file(io.BytesIO(out), as_attachment=True, download_name=name)
+                return send_file(io.BytesIO(out), as_attachment=True, download_name=_restored_name(name, tmp_out, real))
         finally:
             common.remove_quietly(staged)
     if not daemon_ready():
@@ -1515,13 +1547,15 @@ def api_anonymize_file():
         except Exception:
             msg = r.text[:300]
         return jsonify({"error": _L(f"Elaborazione non riuscita: {msg}", f"Processing failed: {msg}")}), \
-            r.status_code if r.status_code in (415, 503) else 500
+            r.status_code if r.status_code in (415, 422, 503) else 500
     res = r.json()
     try:
         audit_dir = os.path.join(common.EXTRACTED_DIR, "api")
         os.makedirs(audit_dir, exist_ok=True)
         entries = list(res.get("extracted_data") or [])
         entries += [{"word": "", "label": "[NOTA]", "entity": "NOTE", "score": 1.0, "note": n} for n in res.get("notes") or []]
+        entries += [dict(d, label="[SISTEMA2]") for d in res.get("system2") or []]      # anche i dubbi rilasciati
+        entries += list(res.get("reports") or [])                 # estrazione degli archivi, trascrizioni audio
         common.atomic_write_json(os.path.join(audit_dir, time.strftime("%Y%m%d-%H%M%S_") + name + ".json"), entries, indent=4)
     except Exception:
         pass
@@ -1535,13 +1569,44 @@ def api_anonymize_file():
 STUDIO_MAX_PROMPT = 400_000      # caratteri del prompt
 STUDIO_MAX_ATTACH = 12           # numero di allegati per invio
 STUDIO_ATTACH_CHARS = 200_000    # caratteri estratti per allegato
+STUDIO_ENGINE_ATTACH_MAX = 150 * 1024 * 1024   # audio e archivi allegati: passano dal motore (trascrizione, apertura)
 
 
-def _studio_attachment_text(filename, data):
-    """Estrae il testo di un allegato (per usarlo come contesto del prompt). Offline, nel processo server.
-    Restituisce '' per i contenuti non testuali (es. immagini: vanno elaborate come file, non come testo)."""
+def _engine_attachment_text(name, data, op=None):
+    """Allegati che richiedono il motore: i file audio (trascrizione offline del parlato) e gli archivi compressi
+    (aperti in sicurezza, con gli eventuali audio interni). Restituisce (testo, motivo se non e' stato possibile).
+    Il testo non e' ancora protetto: viene anonimizzato subito dopo, prima di mostrarlo o inviarlo."""
+    import base64
+    if len(data) > STUDIO_ENGINE_ATTACH_MAX:
+        return "", _L("file troppo grande come allegato (massimo 150 MB): usa la scheda Sanitizzazione manuale",
+                      "file too large as an attachment (at most 150 MB): use the Manual Sanitization tab")
+    payload = {"filename": name, "data_b64": base64.b64encode(data).decode("ascii"), "max_chars": STUDIO_ATTACH_CHARS}
+    if op:
+        payload["op"] = op
+    try:
+        r = daemon_call("/internal/extract_text", payload, timeout=6 * 3600)
+    except Exception:
+        return "", _L("motore IA non raggiungibile", "AI engine unreachable")
+    if r.status_code != 200:
+        return "", _daemon_error(r) or _L("lettura non riuscita", "could not be read")
+    res = r.json()
+    return res.get("text") or "", (res.get("error") or "")
+
+
+def _studio_attachment_text(filename, data, op=None, why=None):
+    """Estrae il testo di un allegato (per usarlo come contesto del prompt). Offline: nel processo server per i
+    documenti, nel motore per i file audio (trascrizione) e gli archivi compressi.
+    Restituisce '' per i contenuti non testuali (es. immagini: vanno elaborate come file, non come testo);
+    `why` (lista) riceve il motivo quando un audio o un archivio non ha dato testo."""
     from germano import formats
     name = common.safe_filename(filename or "allegato")
+    ext = os.path.splitext(name)[1].lower()
+    if ext in formats.AUDIO_EXTS or ext in formats.ARCHIVE_EXTS:
+        text, reason = _engine_attachment_text(name, data, op)
+        if why is not None and not text.strip():
+            why.append(reason or (_L("nessun parlato riconosciuto", "no speech recognized") if ext in formats.AUDIO_EXTS
+                                  else _L("nessun testo leggibile nell'archivio", "no readable text in the archive")))
+        return text
     os.makedirs(common.UPLOAD_DIR, exist_ok=True)
     staged = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + name)
     try:
@@ -1584,9 +1649,12 @@ def _studio_attachments(files):
     attachments, parts = [], []
     for f in files:
         name = common.safe_filename(f.filename)
-        text = _studio_attachment_text(f.filename, f.read())
+        why = []
+        text = _studio_attachment_text(f.filename, f.read(), why=why)
         textual = bool(text.strip())
         attachments.append({"name": name, "chars": len(text), "textual": textual})
+        if why:
+            attachments[-1]["note"] = why[0]
         if textual:
             parts.append((name, text))
     return attachments, parts
@@ -2343,17 +2411,26 @@ def _anonymize_cached(texts, options, cfg):
     return results, len(texts) - len(missing)
 
 
-def _attachments_from_bytes(items):
-    """[(nome, bytes)] -> (descrizione degli allegati, [(nome, testo)] di quelli con testo)."""
+def _attachments_from_bytes(items, op=None):
+    """[(nome, bytes)] -> (descrizione degli allegati, [(nome, testo)] di quelli con testo). `op`: identificativo
+    dell'esecuzione, per poter annullare nel motore una trascrizione lunga."""
     attachments, parts = [], []
     for name, data in items:
         safe = common.safe_filename(name)
-        text = _studio_attachment_text(name, data)
+        why = []
+        text = _studio_attachment_text(name, data, op=op, why=why)
         textual = bool(text.strip())
         attachments.append({"name": safe, "size": len(data), "chars": len(text), "textual": textual})
+        if why:
+            attachments[-1]["note"] = why[0]
         if textual:
             parts.append((safe, text))
     return attachments, parts
+
+
+def _skipped_names(attachments):
+    """Allegati non inclusi, con il motivo quando c'e' (es. «nota.mp3 (registrazione troppo lunga...)»)."""
+    return [a["name"] + (f" ({a['note']})" if a.get("note") else "") for a in attachments if not a["textual"]]
 
 
 def _validate_harness_target(target, model, local, sharing, cfg):
@@ -2503,7 +2580,7 @@ def _harness_stream(run, ctx):
 
         def protect():
             try:
-                attachments, parts = _attachments_from_bytes(ctx["files"])
+                attachments, parts = _attachments_from_bytes(ctx["files"], op=run.id)
                 system_text = ctx["system"]
                 texts = ([system_text] if system_text else []) + [h["text"] for h in ctx["history"]] + \
                         [ctx["prompt"] or " "] + [t for _, t in parts]
@@ -2521,6 +2598,10 @@ def _harness_stream(run, ctx):
         while worker.is_alive():
             worker.join(0.25)
             if run.cancelled:
+                try:    # ferma anche il lavoro in corso nel motore (es. la trascrizione di un allegato audio)
+                    daemon_call("/internal/cancel", {"op": run.id}, timeout=5)
+                except Exception:
+                    pass
                 yield aborted_event()
                 return
             if time.time() - last_ping > 5:
@@ -2556,13 +2637,15 @@ def _harness_stream(run, ctx):
                  history_items=gglass.public_entities([e for r in results[:idx + n] for e in (r.get("extracted_data") or [])],
                                                       "history"),
                  count=len(cur_entities), total=len(entities), masking=masking, protect_ms=protect_ms,
-                 cached=box["cached"], map=tag_map)
+                 cached=box["cached"], map=tag_map,
+                 system2=gglass.public_system2([d for r in results[idx + n:] for d in (r.get("system2") or [])],
+                                               "request"))
         messages = ([{"role": "system", "content": sys_out}] if sys_out else []) + \
             [{"role": h["role"], "content": h["text"]} for h in p_history] + [{"role": "user", "content": current}]
         yield ev("sanitized", system=gglass.cap(sys_out), hint=bool(hint),
                  messages=gglass.cap_obj(messages), current=gglass.cap(current),
                  attachments=[{"name": a["name"], "text": gglass.cap(a["anonymized"], 60_000)} for a in p_attach],
-                 skipped=[a["name"] for a in box["attachments"] if not a["textual"]])
+                 skipped=_skipped_names(box["attachments"]))
         user_text = ctx["prompt"]
         for nm, text in box["parts"]:
             user_text += f"\n\n----- {nm} -----\n{text[:HARNESS_ATTACH_HISTORY]}"
@@ -2797,6 +2880,7 @@ def api_harness_preview():
     r = results[0]
     return jsonify({"status": "success", "anonymized": r["anonymized"], "cached": bool(cached_n),
                     "entities": gglass.public_entities(r.get("extracted_data") or [], "preview"),
+                    "system2": gglass.public_system2(r.get("system2") or [], "preview"),
                     "elapsed_ms": round((time.time() - t0) * 1000)})
 
 
@@ -2858,7 +2942,7 @@ def api_remote_anonymize_file():
     if r.status_code != 200:
         return jsonify({"status": "error", "message": _L(f"Elaborazione non riuscita: {_daemon_error(r)}",
                                                          f"Processing failed: {_daemon_error(r)}")}), \
-            r.status_code if r.status_code in (415, 503) else 500
+            r.status_code if r.status_code in (415, 422, 503) else 500
     res = r.json()
     entities = res.get("extracted_data") or []
     masking = (options or common.server_options(cfg))["masking"]
@@ -2909,6 +2993,7 @@ def api_remote_restore_file():
         real = _restore_file_locally(staged, tmp_out, tag_map)
         with open(real, "rb") as fh:
             out = fh.read()
+        out_name = _restored_name(out_name, tmp_out, real)   # es. un archivio RAR ripristinato torna come .rar.zip
     except Exception as e:
         return jsonify({"status": "error", "message": _L(f"Impossibile ripristinare {name}: {e}",
                                                          f"Cannot restore {name}: {e}")}), 400
