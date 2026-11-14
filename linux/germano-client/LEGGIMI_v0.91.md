@@ -1,10 +1,10 @@
-# Germano AI 0.90 — Client leggero per Windows
+# Germano AI 0.91 — Client leggero per Windows
 
 Installer leggero (circa 22 MB, **senza modelli IA**) per i PC che si collegano a un **Germano Server** della rete (la
 suite completa installata sul PC più potente dell'ufficio, in modalità Server).
 
 ## Installazione
-Scarica **`germano-client-0.90.exe`** da https://download.germano.ai/ e fai doppio clic: contiene il proprio Python e
+Scarica **`germano-client-0.91.exe`** da https://download.germano.ai/ e fai doppio clic: contiene il proprio Python e
 non scarica nulla. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client`, **senza diritti di
 amministratore**, con i collegamenti **Germano AI Client** sul Desktop e nel menu Start; alla fine il client si apre da
 solo. Le impostazioni del client (server, sessione e opzioni) sono in `%LOCALAPPDATA%\Germano AI Client`.
@@ -20,8 +20,9 @@ Disinstallazione: Impostazioni › App › App installate › Germano AI Client.
    e la password impostati dall'amministratore (il client conserva solo la sessione, mai la password).
 3. Usa le schede:
    - **Chatbot e Agenti AI** — scrivi alla tua AI e scegli il modello **in basso a destra** tra le AI del server
-     rilevate automaticamente (CLI condivise, servizi via API filtrati da Germano come Meta Muse, Kimi, DeepSeek, Qwen,
-     Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic, e i modelli locali del server); le altre restano in grigio e
+     rilevate automaticamente (CLI condivise, servizi via API filtrati da Germano come Meta Muse, Kimi, DeepSeek, Qwen
+     (anche Qwen 4 Max), GLM 5.3, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic, e i modelli locali del
+     server); le altre restano in grigio e
      l'elenco si aggiorna da solo. Messaggio e fino a 12 allegati (anche audio e archivi compressi) vengono anonimizzati
      dal server prima di uscire; la risposta arriva in streaming con i tuoi dati. Il pulsante **Glass Window** mostra in
      tempo reale tutto ciò che il server comunica al modello, comprese le decisioni del Sistema 2, e **Interrompi
@@ -36,6 +37,15 @@ Disinstallazione: Impostazioni › App › App installate › Germano AI Client.
 
 Prima di inviare qualsiasi dato il client verifica, **senza inviare dati personali**, che risponda un vero Germano
 Server, che l'accesso sia consentito e che il motore sia pronto; altrimenti non invia nulla.
+
+## Novità della 0.91
+- Pannello allineato a quello del Germano Server 0.91: con un server 0.91 compaiono i nuovi servizi **Qwen Token Plan
+  (Qwen4-Max)**, **Qwen Coding Plan**, **GLM (Z.ai)** e **GLM Coding Plan (Z.ai)**, con la tua chiave o, se
+  l'amministratore condivide le AI del server, con quella del server.
+- L'Assistente di configurazione e Antigravity CLI della suite restano sul computer del server (Antigravity CLI usa
+  l'account Google di chi è davanti al server): il client non li mostra e non li esegue. `client launch agy` spiega
+  perché la CLI non si può indirizzare al Proxy e indica le alternative (per i modelli Gemini il servizio «Google
+  Gemini»).
 
 ## Novità della 0.90
 - Pannello allineato a quello del Germano Server 0.90 (allegati audio e archivi, Sistema 2 nella Glass Window).
@@ -60,7 +70,7 @@ anche `login --user mario`, `models`, `ask claude-code "..."`, `ask deepseek "..
   finestra dedicata (di serie su Windows 10/11; su Windows Server 2019 va installato, altrimenti il client indica
   l'indirizzo del pannello e si può usare la riga di comando).
 - Un Germano Server attivo in modalità Server sulla stessa rete locale, versione 0.70 o successiva (consigliata la
-  0.90): Chatbot e Agenti AI e la sanitizzazione dei file del pannello usano API del server introdotte con la 0.70; con
+  0.91): Chatbot e Agenti AI e la sanitizzazione dei file del pannello usano API del server introdotte con la 0.70; con
   un server 0.60 resta utilizzabile la riga di comando (`client ask`, `client send`, `client launch`).
 
 ## Per gli sviluppatori

@@ -2,7 +2,7 @@
 
  *Read this in other languages: [English](README.en.md)*
 
-**Versione 0.90** (14 novembre 2026): pannello allineato al Germano Server 0.90. Novità nel [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.md) della suite.
+**Versione 0.91** (14 novembre 2026): pannello allineato al Germano Server 0.91 (nuovi servizi Qwen 4 Max e GLM 5.3). Novità nel [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.md) della suite.
 
 **Germano AI Client** è l'applicazione client leggera (circa 22 MB su Windows) progettata per connettere qualsiasi postazione di lavoro (notebook, PC standard) a un **Germano Server** attivo sulla rete locale (LAN).
 
@@ -15,7 +15,7 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
 1. **Rilevamento Automatico del Server (Broadcast UDP 8182)**:
    All'avvio il Client cerca sulla rete locale i Germano Server attivi e si collega: accesso libero di base, oppure con **utente e password** (`client login`) se sul server è attiva la gestione utenti. Il Client conserva solo la sessione, mai la password. Prima di inviare qualsiasi dato verifica, **senza inviare dati personali**, che risponda un vero Germano Server, che l'accesso sia consentito e che il motore sia pronto.
 2. **Esposizione delle AI e dei Modelli del Server**:
-   Il Client interroga il Server ed elenca le AI rilevate sul server (Claude Code, Codex, Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Kiro, OpenCode, Aider, Ollama, LM Studio...) e i **servizi di AI via API** filtrati da Germano (Meta Muse Wonder e Muse Spark, Kimi, DeepSeek, Qwen, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic e i modelli locali del server). Con la chat protetta li usa direttamente dalla propria postazione, anche se non sono installati localmente.
+   Il Client interroga il Server ed elenca le AI rilevate sul server (Claude Code, Codex, Gemini CLI, Meta Muse Code, Kimi Code, Qwen Code, DeepSeek, Mistral Vibe, Grok Build, Perplexity, GitHub Copilot CLI, Cursor, Kiro, OpenCode, Aider, Ollama, LM Studio...) e i **servizi di AI via API** filtrati da Germano (Meta Muse Wonder e Muse Spark, Kimi, DeepSeek, Qwen anche con Qwen 4 Max, GLM 5.3 di Z.ai, Mistral, Grok, Perplexity, Gemini, OpenAI, Anthropic e i modelli locali del server). Con la chat protetta li usa direttamente dalla propria postazione, anche se non sono installati localmente.
 3. **Stessa interfaccia del Remote Control**:
    Il pannello del Client è lo stesso Remote Control che il Server offre a qualsiasi browser della rete, con le schede **Chatbot e Agenti AI**, **Sanitizzazione manuale**, **Impostazioni** e **Guida**: chi usa il Client e chi usa il browser ha le stesse capacità. In Chatbot e Agenti AI si sceglie il modello **in basso a destra** tra le AI rilevate sul server (le altre restano in grigio, non selezionabili, e l'elenco si aggiorna da solo), le risposte arrivano in streaming con Markdown e codice evidenziato, e la **Glass Window** mostra in tempo reale tutto ciò che il server comunica al modello, comprese le decisioni del Sistema 2, con **Interrompi operazione** per fermarlo. Nella Sanitizzazione manuale si trascinano file da anonimizzare (anche registrazioni audio e archivi compressi) e si ripristinano i file restituiti dalle AI. In più il Client cerca il server in rete e avvia protette le CLI di questo PC.
 4. **Opzioni di elaborazione di questo PC**:
@@ -28,8 +28,10 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
    Disponibile sia in finestra grafica dedicata (senza barre di navigazione generiche né console nera) sia tramite interfaccia a riga di comando (`client.py`) per automazioni e script.
 8. **Aggiornamenti silenziosi, come Google Chrome**:
    Attivi di default: solo quando il sistema segnala una connessione a Internet, il Client controlla `download.germano.ai`, scarica in background a bassa priorità la nuova versione e su Windows la applica al successivo avvio in pochi secondi, senza finestre (al massimo un discreto «Riavvia per aggiornare»); su macOS e Linux il pacchetto si apre quando lo decidi tu. Stato e opzioni in Impostazioni › Aggiornamenti.
-9. **Più veloce con un Germano Server 0.90**:
+9. **Più veloce con un Germano Server 0.90 o successivo**:
    Le richieste dei client passano nella corsia preferenziale del server, davanti ai documenti in coda nella sua cartella `input`; il server lavora in parallelo (Privacy Filter e Italian NER insieme, un lock per modello) e serve dalla cache la cronologia e gli allegati già protetti.
+10. **Nuovi servizi con un Germano Server 0.91**:
+   Qwen Token Plan (Qwen4-Max), Qwen Coding Plan, GLM (Z.ai) e GLM Coding Plan (Z.ai) compaiono tra i servizi del server. L'Assistente di configurazione e Antigravity CLI restano sul computer del server (Antigravity CLI usa l'account Google di chi è davanti al server): il client non li mostra né li esegue. Sul PC client Antigravity CLI non si può proteggere con il Proxy: `client launch agy` lo spiega e indica le alternative.
 
 ---
 
@@ -55,13 +57,13 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
 Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](https://download.germano.ai/)** e includono il proprio Python con tutte le librerie: l'installazione non scarica nulla da Internet. Il client non crea cartelle di lavoro in Documenti: le sue impostazioni (indirizzo del server, sessione, opzioni) restano nella cartella tecnica dell'utente.
 
 ### Windows (10 / 11 e Windows Server 2019 o successivo, a 64 bit, anche in macchina virtuale)
-1. **Download:** scarica `germano-client-0.90.exe` (circa 22 MB).
+1. **Download:** scarica `germano-client-0.91.exe` (circa 22 MB).
 2. **Installazione:** doppio clic sull'installer. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client` **senza diritti di amministratore (nessuna richiesta UAC)**, con i collegamenti sul Desktop e nel menu Start e la voce in Impostazioni > App. Le impostazioni del client sono in `%LOCALAPPDATA%\Germano AI Client`.
 3. **Avvio:** al termine dell'installazione il client si apre da solo; poi dal collegamento **Germano AI Client** sul Desktop o nel menu Start (finestra dedicata, senza terminale; nome diverso da quello della suite, così le due edizioni possono stare sullo stesso computer).
 4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI Client.
 
 ### macOS (Apple Silicon e Intel, macOS 11 o successivo)
-1. **Download:** scarica `germano-client-0.90.pkg`.
+1. **Download:** scarica `germano-client-0.91.pkg`.
 2. **Installazione:** doppio clic sul pacchetto e, alla scelta della destinazione, **Installa solo per me**: l'app va in `~/Applications/Germano AI Client/Germano.app` **senza password di amministratore** (con «Installa per tutti gli utenti» va in `/Applications/Germano AI Client` e macOS chiede la password). Le impostazioni sono in `~/Library/Application Support/Germano AI Client`.
 3. **Avvio:** apri **Germano** da Launchpad o dalla cartella Applicazioni > Germano AI Client.
 4. **Disinstallazione:** trascina la cartella `Germano AI Client` nel Cestino.
@@ -69,12 +71,12 @@ Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](
 Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema > Privacy e sicurezza** e scegli **Apri comunque**.
 
 ### Linux (Ubuntu / Debian a 64 bit)
-1. **Download:** scarica `germano-client-0.90.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva.
-2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-client-0.90.deb` (password di amministratore, come per ogni pacchetto di sistema). Il programma va in `/opt/germano-client`, con la voce **Germano AI Client** nel menu delle applicazioni e il comando `germano-ai-client`; le impostazioni sono in `~/.local/state/germano-client`.
+1. **Download:** scarica `germano-client-0.91.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva.
+2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-client-0.91.deb` (password di amministratore, come per ogni pacchetto di sistema). Il programma va in `/opt/germano-client`, con la voce **Germano AI Client** nel menu delle applicazioni e il comando `germano-ai-client`; le impostazioni sono in `~/.local/state/germano-client`.
 3. **Avvio:** dal menu delle applicazioni.
 4. **Disinstallazione:** `sudo apt remove germano-ai-client`.
 
-**Requisiti:** un Germano Server in modalità Server sulla stessa rete locale, versione 0.70 o successiva (consigliata la 0.90: con un server 0.60 resta utilizzabile solo la riga di comando).
+**Requisiti:** un Germano Server in modalità Server sulla stessa rete locale, versione 0.70 o successiva (consigliata la 0.91: con un server 0.60 resta utilizzabile solo la riga di comando).
 
 ---
 

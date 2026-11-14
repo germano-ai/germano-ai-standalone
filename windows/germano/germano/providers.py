@@ -5,9 +5,14 @@ Anthropic (messages). Il Proxy li usa con il prefisso /p/<servizio>/ (es. http:/
 del Remote Control li chiama con il testo GIA' anonimizzato da Germano.
 
 Chiave API: quella che l'utente inserisce nel Remote Control o nella propria CLI (mai salvata dal server). La chiave del
-server (variabile d'ambiente del servizio) si usa per gli altri solo se l'amministratore condivide le AI di questo
-computer (share_ai_tools), come per le CLI condivise.
+server (variabile d'ambiente del servizio, oppure dal turno 28 la chiave di un altro strumento «collegata» con
+l'assistente di configurazione, germano/ai_assist.py, che si legge al momento dell'uso senza copiarla) si usa per gli
+altri solo se l'amministratore condivide le AI di questo computer (share_ai_tools), come per le CLI condivise.
 Ollama e LM Studio sono modelli locali del server: nessuna chiave, nessun dato fuori dalla rete locale.
+
+Modelli suggeriti verificati il 14/11/2026 sulla documentazione ufficiale: Qwen a consumo qwen3.8-max / qwen3.7-plus /
+qwen3.8-flash; Qwen4-Max solo con il Token Plan (qwen4-max-preview, anteprima fino al 25/11/2026); GLM-5.3 di Z.ai
+(glm-5.3) sull'API generale e sul GLM Coding Plan (chiavi diverse, indirizzi diversi).
 """
 import json
 import os
@@ -29,7 +34,20 @@ SERVICES = {
                  "anthropic": "https://api.deepseek.com/anthropic/v1", "keys": ("DEEPSEEK_API_KEY",),
                  "models": ("deepseek-chat", "deepseek-reasoner")},
     "qwen": {"name": "Qwen (Alibaba Cloud Model Studio)", "openai": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-             "keys": ("DASHSCOPE_API_KEY", "QWEN_API_KEY")},
+             "anthropic": "https://dashscope-intl.aliyuncs.com/apps/anthropic/v1",
+             "keys": ("DASHSCOPE_API_KEY", "QWEN_API_KEY"), "models": ("qwen3.8-max", "qwen3.7-plus", "qwen3.8-flash")},
+    "qwen-token": {"name": "Qwen Token Plan (Qwen4-Max)",
+                   "openai": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+                   "anthropic": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/apps/anthropic/v1",
+                   "keys": ("QWEN_TOKEN_PLAN_API_KEY",), "models": ("qwen4-max-preview", "qwen3.8-max")},
+    "qwen-coding": {"name": "Qwen Coding Plan", "openai": "https://coding-intl.dashscope.aliyuncs.com/v1",
+                    "anthropic": "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1",
+                    "keys": ("BAILIAN_CODING_PLAN_API_KEY",)},
+    "zai": {"name": "GLM (Z.ai)", "openai": "https://api.z.ai/api/paas/v4", "anthropic": "https://api.z.ai/api/anthropic/v1",
+            "keys": ("ZAI_API_KEY", "Z_AI_API_KEY", "GLM_API_KEY"), "models": ("glm-5.3",)},
+    "zai-coding": {"name": "GLM Coding Plan (Z.ai)", "openai": "https://api.z.ai/api/coding/paas/v4",
+                   "anthropic": "https://api.z.ai/api/anthropic/v1", "keys": ("ZAI_CODING_API_KEY",),
+                   "models": ("glm-5.3",)},
     "mistral": {"name": "Mistral (Mistral Large, Codestral)", "openai": "https://api.mistral.ai/v1",
                 "keys": ("MISTRAL_API_KEY",)},
     "xai": {"name": "Grok (xAI)", "openai": "https://api.x.ai/v1", "keys": ("XAI_API_KEY", "GROK_API_KEY")},
@@ -71,12 +89,29 @@ def get(service_id):
     return SERVICES.get(str(service_id or "").strip().lower())
 
 
+_key_resolver = None
+
+
+def set_key_resolver(fn):
+    """fn(servizio) -> chiave collegata ('' se nessuna): impostata da server.py con ai_assist.linked_key."""
+    global _key_resolver
+    _key_resolver = fn
+
+
 def server_key(service_id):
-    """Chiave API presente sul server per questo servizio (variabile d'ambiente), o ''."""
+    """Chiave API presente sul server per questo servizio: variabile d'ambiente, poi chiave collegata con
+    l'assistente di configurazione (letta adesso dalla sua fonte), o ''."""
     spec = get(service_id) or {}
     for var in spec.get("keys", ()):
         value = (os.environ.get(var) or "").strip()
         if value:
+            return value
+    if _key_resolver is not None and spec and not spec.get("local"):
+        try:
+            value = (_key_resolver(str(service_id).strip().lower()) or "").strip()
+        except Exception:
+            value = ""
+        if value and KEY_RE.match(value):
             return value
     return ""
 

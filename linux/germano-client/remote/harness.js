@@ -1,4 +1,4 @@
-/* Germano AI 0.90 - Harness AI e Glass Window.
+/* Germano AI 0.91 - Harness AI e Glass Window.
    Componente condiviso dalla Dashboard (index.html), dal Remote Control (/remote) e dal pannello di Germano Client:
    stessa interfaccia ovunque, stesse rotte del server (/api/harness/v2/*), che applica le regole di chi chiede
    (questo computer o un dispositivo della rete).
@@ -156,6 +156,17 @@
         gwNotSent: ['Solo protezione: nessun invio a un modello.', 'Protection only: nothing sent to a model.'],
         gwWaitingPayload: ['Il payload compare qui prima dell\'invio.', 'The payload appears here before it is sent.'],
         gwWaitingStream: ['La risposta grezza, con le etichette, compare qui man mano che arriva.', 'The raw answer, with the tags, appears here as it arrives.'],
+        gwDirect: ['Destinazione esterna raggiunta direttamente dalla CLI (non dal Proxy): esce solo il testo protetto mostrato qui, più le istruzioni interne della CLI.', 'External destination reached directly by the CLI (not through the Proxy): only the protected text shown here leaves, plus the CLI\'s internal instructions.'],
+        // Assistente di configurazione (solo su questo computer)
+        assistKicker: ['Assistente di configurazione', 'Configuration assistant'],
+        assistTitle: ['Configura le AI di questo computer', 'Set up the AIs of this computer'],
+        assistLoading: ['Controllo di questo computer…', 'Checking this computer…'],
+        assistState: ['Stato', 'Status'], assistActions: ['Cosa può fare Germano', 'What Germano can do'], assistLinks: ['Pagine ufficiali', 'Official pages'],
+        assistLog: ['Avanzamento', 'Progress'], assistCancel: ['Annulla', 'Cancel'], assistClose: ['Chiudi', 'Close'], assistGo: ['Esegui', 'Run'],
+        assistRunning: ['In corso…', 'Running…'], assistDone: ['Completato', 'Completed'], assistError: ['Non riuscito', 'Failed'], assistCancelled: ['Annullato', 'Cancelled'],
+        assistSafe: ['Le operazioni girano solo su questo computer, con comandi fissi e download verificati; le chiavi non vengono mai mostrate né copiate.', 'Operations run only on this computer, with fixed commands and verified downloads; keys are never shown or copied.'],
+        assistOpen: ['Configura', 'Set up'], assistNothing: ['Nessuna azione necessaria.', 'No action needed.'],
+        assistReady: ['pronto', 'ready'], assistTodo: ['da configurare', 'to set up'], assistFailed: ['L\'assistente non risponde.', 'The assistant does not respond.'],
     };
     const ICON = {
         plus: '<path d="M12 5v14M5 12h14"/>',
@@ -675,8 +686,9 @@
         visible() { return this.root.offsetParent !== null; }
 
         onClick(e) {
-            const t = e.target.closest('[data-act], [data-copy-code], [data-conv], [data-pick], [data-run], [data-key-for]');
+            const t = e.target.closest('[data-act], [data-copy-code], [data-conv], [data-pick], [data-run], [data-key-for], [data-assist-for]');
             if (!t || !this.root.contains(t)) return;
+            if (t.dataset.assistFor) { e.stopPropagation(); this.openAssist(t.dataset.assistFor); return; }
             if (t.dataset.copyCode !== undefined) {
                 const code = t.closest('.hx-code')?.querySelector('pre')?.textContent || '';
                 copyText(code).then(ok => {
@@ -1139,10 +1151,13 @@
                 const sub = t.kind === 'cloud' ? (t.key === 'server' ? this.T(this.remote ? 'keyServerRemote' : 'keyServer') : (this.key(t.service) ? this.T('keyDevice') : this.T('keyNeeded')))
                     : t.kind === 'cli' ? (t.version ? `v${t.version}` : (t.vendor || '')) : t.kind === 'local' ? (t.vendor || '') : (t.vendor || '');
                 const keyBtn = t.kind === 'cloud' && t.key !== 'server' ? `<span class="hx-pick-key" role="button" data-key-for="${esc(t.service)}">${esc(this.T('enterKey'))}</span>` : '';
-                const tag = ok ? (t.kind === 'local' ? `<span class="hx-pick-tag ok">${this.remote ? 'LAN' : 'locale'}</span>` : '') : `<span class="hx-pick-tag">${esc(this.reason(t))}</span>`;
+                // Assistente di configurazione (solo su questo computer): «Installa CLI», «Avvia», «Recupera chiave»…
+                const assistBtn = !this.remote && t.assist && !(t.kind === 'cloud' && ok && !t.assist_hint)
+                    ? `<span class="hx-pick-assist" role="button" data-assist-for="${esc(t.assist)}" title="${esc(t.assist_hint || this.T('assistKicker'))}">${esc(t.assist_label || this.T('assistOpen'))}</span>` : '';
+                const tag = ok ? (t.kind === 'local' ? `<span class="hx-pick-tag ok">${this.remote ? 'LAN' : 'locale'}</span>` : '') : `<span class="hx-pick-tag">${esc(t.assist_hint || this.reason(t))}</span>`;
                 return `<li class="hx-pick" role="option" data-pick="${esc(t.id)}" aria-selected="${t.id === cur}" aria-disabled="${!ok}" tabindex="-1">
                     <span class="hx-dot ${ok ? 'ok' : ''}"></span><span class="hx-pick-main"><span class="hx-pick-name">${esc(t.kind === 'protect' ? t.name : t.name)}</span>
-                    <span class="hx-pick-sub">${esc(sub)}</span></span>${tag}${keyBtn}</li>`;
+                    <span class="hx-pick-sub">${esc(sub)}</span></span>${tag}${keyBtn}${assistBtn}</li>`;
             };
             groups.forEach(([kind, label]) => {
                 const items = all.filter(t => t.kind === kind);
@@ -1241,6 +1256,192 @@
             else { const mi = this.$pickerDetail.querySelector('[data-model-input]'); if (mi && !mi.value) mi.focus(); }
             this.renderPickerButton();
         }
+        // -------------------------------------------------------------- assistente di configurazione (solo suite)
+        // Finestra montata su document.body: si apre dal selettore dei modelli e dalle Impostazioni (dove la vista
+        // dell'Harness e' nascosta). Tutto passa da /api/ai/assist/*, che risponde solo a questo computer.
+        ensureAssistDom() {
+            if (this.$assist) return this.$assist;
+            const el = document.createElement('div');
+            el.className = 'hx-assist';
+            el.hidden = true;
+            el.setAttribute('role', 'dialog');
+            el.setAttribute('aria-modal', 'true');
+            el.innerHTML = `<div class="hx-assist-card" data-assist-card>
+                <header class="hx-assist-head"><div class="hx-assist-titles"><span class="hx-assist-kicker" data-ax="kicker"></span>
+                  <h3 data-ax="title"></h3><p data-ax="summary"></p></div>
+                  <button type="button" class="hx-btn-icon" data-ax-act="close">${svg('x')}</button></header>
+                <div class="hx-assist-body" data-ax="body"></div>
+                <footer class="hx-assist-foot" data-ax="foot"></footer></div>`;
+            el.addEventListener('click', e => this.onAssistClick(e));
+            el.addEventListener('mousedown', e => { if (e.target === el) this.closeAssist(); });
+            document.addEventListener('keydown', e => { if (e.key === 'Escape' && !el.hidden) this.closeAssist(); });
+            document.body.append(el);
+            this.$assist = el;
+            return el;
+        }
+        async openAssist(id) {
+            if (this.remote || !id) return;
+            const el = this.ensureAssistDom();
+            this.assistId = id;
+            this.assistItem = null;
+            el.hidden = false;
+            this.closePicker();
+            this.renderAssist();
+            await this.loadAssist();
+        }
+        closeAssist() {
+            if (!this.$assist) return;
+            this.$assist.hidden = true;
+            this.assistId = null;
+        }
+        async loadAssist() {
+            const id = this.assistId;
+            if (!id) return;
+            try {
+                const r = await this.api('/api/ai/assist?id=' + encodeURIComponent(id));
+                const data = await r.json().catch(() => ({}));
+                if (id !== this.assistId) return;
+                if (!r.ok) { this.assistItem = { id, name: id, error: data.message || this.T('assistFailed'), facts: [], actions: [], links: [] }; }
+                else this.assistItem = data.item;
+            } catch (e) {
+                this.assistItem = { id, name: id, error: this.T('netError'), facts: [], actions: [], links: [] };
+            }
+            this.renderAssist();
+            const job = this.assistItem && this.assistItem.job;
+            if (job && job.state === 'running') this.followJob(job);
+        }
+        renderAssist() {
+            const el = this.$assist;
+            if (!el || el.hidden) return;
+            const it = this.assistItem;
+            const q = s => el.querySelector(`[data-ax="${s}"]`);
+            q('kicker').textContent = this.T('assistKicker');
+            q('title').textContent = it ? it.name : this.T('assistTitle');
+            q('summary').textContent = it ? (it.error || it.summary || '') : this.T('assistLoading');
+            if (!it) { q('body').innerHTML = `<div class="hx-assist-wait"><span class="hx-spinner"></span>${esc(this.T('assistLoading'))}</div>`; q('foot').textContent = ''; return; }
+            const job = this.assistJob && this.assistJob.assist === it.id ? this.assistJob : it.job;
+            const busy = Boolean(job && job.state === 'running');
+            let html = '';
+            if ((it.facts || []).length) {
+                html += `<div class="hx-assist-sec"><div class="hx-assist-k">${esc(this.T('assistState'))}</div><ul class="hx-assist-facts">${it.facts.map(f =>
+                    `<li class="${f.ok === true ? 'ok' : f.ok === false ? 'no' : 'info'}"><span class="hx-dot ${f.ok === true ? 'ok' : f.ok === false ? 'err' : ''}"></span><span>${esc(f.text)}</span></li>`).join('')}</ul></div>`;
+            }
+            const acts = it.actions || [];
+            html += `<div class="hx-assist-sec"><div class="hx-assist-k">${esc(this.T('assistActions'))}</div>`;
+            if (!acts.length) html += `<p class="hx-small-note">${esc(this.T('assistNothing'))}</p>`;
+            acts.forEach((a, i) => {
+                const choice = a.choices && a.choices.length ? `<select data-ax-choice="${i}">${a.choices.map(c => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join('')}</select>` : '';
+                html += `<div class="hx-assist-act"><div class="hx-row">${choice}<button type="button" class="hx-mini${a.primary ? ' primary' : ''}" data-ax-act="run" data-i="${i}"${busy ? ' disabled' : ''}>${esc(a.label)}</button></div>
+                    ${a.note ? `<span class="hx-small-note">${esc(a.note)}</span>` : ''}</div>`;
+            });
+            html += '</div>';
+            if (job) {
+                const st = job.state;
+                const label = st === 'running' ? this.T('assistRunning') : st === 'done' ? this.T('assistDone') : st === 'cancelled' ? this.T('assistCancelled') : this.T('assistError');
+                const pct = typeof job.progress === 'number' ? Math.round(job.progress * 100) : null;
+                const lines = (this.assistLines && this.assistLines.id === job.id ? this.assistLines.lines : job.lines || []).slice(-14);
+                html += `<div class="hx-assist-sec hx-assist-job ${esc(st)}"><div class="hx-assist-k">${esc(this.T('assistLog'))} · ${esc(job.title || '')}
+                    <span class="hx-assist-state">${st === 'running' ? '<span class="hx-spinner"></span>' : ''}${esc(label)}${pct !== null && st === 'running' ? ` · ${pct}%` : ''}</span></div>
+                    ${pct !== null && st === 'running' ? `<div class="hx-assist-bar"><span style="width:${pct}%"></span></div>` : ''}
+                    <pre class="hx-assist-log">${esc(lines.map(l => l.text).join('\n'))}</pre>
+                    ${job.message && st !== 'running' ? `<p class="hx-assist-msg">${esc(job.message)}</p>` : ''}
+                    ${st === 'running' ? `<button type="button" class="hx-mini danger" data-ax-act="cancel">${esc(this.T('assistCancel'))}</button>` : ''}</div>`;
+            }
+            if ((it.links || []).length) {
+                html += `<div class="hx-assist-sec"><div class="hx-assist-k">${esc(this.T('assistLinks'))}</div><div class="hx-assist-links">${it.links.map(l =>
+                    /^https:\/\//.test(l.url || '') ? `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)}</a>` : '').join('')}</div></div>`;
+            }
+            q('body').innerHTML = html;
+            const log = q('body').querySelector('.hx-assist-log');
+            if (log) log.scrollTop = log.scrollHeight;
+            q('foot').innerHTML = `<span>🔒 ${esc(this.T('assistSafe'))}</span><button type="button" class="hx-mini" data-ax-act="close">${esc(this.T('assistClose'))}</button>`;
+        }
+        onAssistClick(e) {
+            const b = e.target.closest('[data-ax-act]');
+            if (!b) return;
+            const act = b.dataset.axAct;
+            if (act === 'close') { this.closeAssist(); return; }
+            if (act === 'cancel') { this.cancelAssistJob(); return; }
+            if (act === 'run') {
+                const a = (this.assistItem && this.assistItem.actions || [])[+b.dataset.i];
+                if (!a) return;
+                let param = a.param || '';
+                if (a.choices) {
+                    const sel = this.$assist.querySelector(`[data-ax-choice="${b.dataset.i}"]`);
+                    param = sel ? sel.value : param;
+                }
+                if (a.confirm && !window.confirm(a.confirm)) return;
+                this.runAssist(a.id, param);
+            }
+        }
+        async runAssist(action, param) {
+            try {
+                const r = await this.api('/api/ai/assist/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, param }) });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) { this.toast(data.message || this.T('assistFailed'), 'error'); return; }
+                this.followJob(data.job);
+            } catch (e) { this.toast(this.T('netError'), 'error'); }
+        }
+        followJob(job) {
+            this.assistJob = job;
+            this.assistLines = { id: job.id, lines: (job.lines || []).slice() };
+            this.renderAssist();
+            if (this.assistTimer) clearTimeout(this.assistTimer);
+            const tick = async () => {
+                const cur = this.assistJob;
+                if (!cur || cur.id !== job.id) return;
+                try {
+                    const r = await this.api(`/api/ai/assist/jobs/${encodeURIComponent(job.id)}?since=${this.assistLines.lines.length}`);
+                    const data = await r.json().catch(() => ({}));
+                    if (r.ok && data.job) {
+                        this.assistLines.lines.push(...(data.job.lines || []));
+                        this.assistJob = Object.assign({}, data.job, { lines: this.assistLines.lines });
+                        if (data.job.state !== 'running') {
+                            this.renderAssist();
+                            this.toast(data.job.message || this.T('assistDone'), data.job.state === 'done' ? 'success' : data.job.state === 'cancelled' ? 'warn' : 'error');
+                            await this.refreshTargets(true);
+                            await this.loadAssist();
+                            if (this.o.onAssistChanged) this.o.onAssistChanged();
+                            return;
+                        }
+                    }
+                } catch (e) { /* si riprova */ }
+                this.renderAssist();
+                this.assistTimer = setTimeout(tick, 700);
+            };
+            this.assistTimer = setTimeout(tick, 500);
+        }
+        async cancelAssistJob() {
+            const job = this.assistJob;
+            if (!job) return;
+            try { await this.api(`/api/ai/assist/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST' }); } catch (e) { /* nulla */ }
+        }
+        // Elenco per le Impostazioni (pannello «Assistente di configurazione»): una scheda per voce
+        async renderAssistOverview(container) {
+            if (this.remote || !container) return;
+            if (!container.dataset.axBound) {
+                container.dataset.axBound = '1';
+                container.addEventListener('click', e => {
+                    const b = e.target.closest('[data-assist-open]');
+                    if (b) this.openAssist(b.dataset.assistOpen);
+                });
+            }
+            try {
+                const r = await this.api('/api/ai/assist');
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok) { container.innerHTML = `<span class="muted">${esc(data.message || this.T('assistFailed'))}</span>`; return; }
+                container.innerHTML = (data.items || []).map(it => {
+                    const ready = it.status === 'ready';
+                    const next = (it.actions || []).find(a => a.primary) || (it.actions || [])[0];
+                    return `<div class="ax-card${ready ? ' ready' : ''}"><div class="ax-card-head"><span class="hx-dot ${ready ? 'ok' : 'warn'}"></span>
+                        <span class="ax-card-name">${esc(it.name || it.id)}</span><span class="ax-card-state">${esc(this.T(ready ? 'assistReady' : 'assistTodo'))}</span></div>
+                        <p class="ax-card-sub">${esc(it.summary || '')}</p>
+                        <ul class="ax-card-facts">${(it.facts || []).slice(0, 3).map(f => `<li class="${f.ok === true ? 'ok' : f.ok === false ? 'no' : 'info'}">${esc(f.text)}</li>`).join('')}</ul>
+                        <button type="button" class="btn btn-secondary btn-sm" data-assist-open="${esc(it.id)}">${esc(next ? next.label : this.T('assistOpen'))}</button></div>`;
+                }).join('');
+            } catch (e) { container.innerHTML = `<span class="muted">${esc(this.T('netError'))}</span>`; }
+        }
+
         pickerKey(e) {
             const opts = Array.from(this.$pickerList.querySelectorAll('.hx-pick[aria-disabled="false"]'));
             if (!opts.length) return;
@@ -1843,6 +2044,7 @@
                         <div class="gw-pre">${esc((p.argv || []).map(a => (a === '' ? '""' : /\s/.test(a) ? `"${a}"` : a)).join(' '))}</div>
                         <div class="gw-k">${esc(this.T('gwEnv'))}</div><div class="gw-headers">${Object.entries(p.env || {}).map(([a, v]) => `<span>${esc(a)}</span><span>${esc(v)}</span>`).join('')}</div>
                         <div class="gw-k">${esc(this.T('gwStdin'))}</div><div class="gw-pre">${highlightLabels(p.stdin || '')}</div>
+                        ${p.via === 'direct' ? `<div class="gw-note">🌐 ${esc(this.T('gwDirect'))}</div>` : ''}
                         ${p.note ? `<div class="gw-note">${esc(p.note)}</div>` : ''}`;
                 } else {
                     const viaProxy = p.via === 'proxy';

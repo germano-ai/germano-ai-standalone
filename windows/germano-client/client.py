@@ -84,6 +84,14 @@ PROFILES = {
         "alternativa": "Per lavorare protetti usa Claude Code, Codex, Aider o Qwen Code, oppure proteggi il testo con:  "
                        "client send \"...\"",
     },
+    "agy": {   # Antigravity CLI (turno 28): con l'account Google parla solo con i server di Google
+        "stato": "non_supportato",
+        "motivo": "Antigravity CLI usa l'account Google (portachiavi del sistema) e invia le richieste direttamente ai "
+                  "server di Google: non si puo' indirizzare al Proxy del Germano Server.",
+        "alternativa": "Sul computer dove gira Germano si usa nella scheda «Chatbot e Agenti AI», che le passa solo testo "
+                       "gia' protetto. Da qui, per i modelli Gemini:  client ask gemini \"...\"  oppure il Remote "
+                       "Control nel browser.",
+    },
     "kimi": {
         "stato": "manuale",
         "motivo": "Kimi Code CLI non legge indirizzo e chiave del servizio dalle variabili d'ambiente, ma solo dal "
@@ -215,9 +223,9 @@ def _setup_output():
 def get_version():
     try:
         with open(os.path.join(BASE_DIR, "VERSION"), "r", encoding="utf-8-sig") as f:
-            return f.read().strip() or "0.90"
+            return f.read().strip() or "0.91"
     except OSError:
-        return "0.90"
+        return "0.91"
 
 
 def _clean(value, limit=60):

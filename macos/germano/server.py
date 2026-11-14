@@ -46,6 +46,10 @@ from germano import auth as gauth  # noqa: E402
 from germano import glass as gglass  # noqa: E402
 from germano import providers as gproviders  # noqa: E402
 from germano import updater as gupdater  # noqa: E402
+from germano import ai_assist as gassist  # noqa: E402
+
+# Chiavi «collegate» con l'assistente di configurazione: lette dalla loro fonte al momento dell'uso (mai copiate)
+gproviders.set_key_resolver(gassist.linked_key)
 
 APP_VERSION = common.get_version()
 app = Flask(__name__)
@@ -212,6 +216,10 @@ def cached(key, ttl, fn):
     val = fn()
     _cache[key] = (now, val)
     return val
+
+
+# A fine installazione o avvio (assistente di configurazione) l'AI deve comparire subito: si svuota la cache
+gassist.set_refresh_hook(lambda: _cache.pop("ai_detect", None))
 
 
 # ------------------------------------------------------------------------------------------------
@@ -389,7 +397,7 @@ _CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'
 def _headers(resp):
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
-    if request.path.startswith(("/api/remote/", "/api/auth/", "/api/harness/")):
+    if request.path.startswith(("/api/remote/", "/api/auth/", "/api/harness/", "/api/ai/assist")):
         resp.headers["Cache-Control"] = "no-store"
     if request.path in ("/", "/remote"):
         resp.headers.setdefault("X-Frame-Options", "DENY")
@@ -695,6 +703,73 @@ def api_ai_detect():
         # dalla rete solo nomi e versioni: i percorsi rivelerebbero il nome utente di Windows del server
         data = {**data, "tools": [{k: v for k, v in t.items() if k != "path"} for t in data["tools"]]}
     return jsonify(data)
+
+
+# ------------------------------------------------------------------------------------------------
+# Assistente di configurazione delle AI (0.91, turno 28): installa e configura le AI di QUESTO computer (Antigravity
+# CLI, chiavi gia' configurate per altri strumenti, Ollama, LM Studio, Jan). Solo da questo computer: le rotte non
+# sono tra quelle aperte alla rete (_guard risponde 403) e ognuna lo ricontrolla; azioni a ricette fisse.
+# ------------------------------------------------------------------------------------------------
+def _assist_local_only():
+    if not _remote_is_local():
+        return jsonify({"status": "error", "message": _L(
+            "L'assistente di configurazione si usa solo sul computer dove gira Germano.",
+            "The configuration assistant can only be used on the computer running Germano.")}), 403
+    return None
+
+
+@app.route("/api/ai/assist")
+def api_ai_assist():
+    refused = _assist_local_only()
+    if refused:
+        return refused
+    aid = (request.args.get("id") or "").strip()[:60]
+    try:
+        if aid:
+            return jsonify({"status": "success", "item": gassist.describe(aid, _lang())})
+        return jsonify({"status": "success", "items": gassist.overview(_lang()),
+                        "jobs": [j.view() for j in gassist.running_jobs()]})
+    except gassist.AssistError as e:
+        return jsonify({"status": "error", "message": str(e)}), 404
+
+
+@app.route("/api/ai/assist/run", methods=["POST"])
+def api_ai_assist_run():
+    refused = _assist_local_only() or _admin_locked()
+    if refused:
+        return refused
+    data = request.get_json(silent=True) or {}
+    try:
+        job = gassist.start(data.get("action"), data.get("param"), _lang())
+    except gassist.AssistError as e:
+        return jsonify({"status": "error", "message": str(e)}), e.status
+    return jsonify({"status": "success", "job": job.view()}), 202
+
+
+@app.route("/api/ai/assist/jobs/<jid>")
+def api_ai_assist_job(jid):
+    refused = _assist_local_only()
+    if refused:
+        return refused
+    job = gassist.job(jid)
+    if not job:
+        return jsonify({"status": "error", "message": _L("Operazione non trovata.", "Operation not found.")}), 404
+    try:
+        since = max(0, int(request.args.get("since") or 0))
+    except ValueError:
+        since = 0
+    return jsonify({"status": "success", "job": job.view(since)})
+
+
+@app.route("/api/ai/assist/jobs/<jid>/cancel", methods=["POST"])
+def api_ai_assist_cancel(jid):
+    refused = _assist_local_only()
+    if refused:
+        return refused
+    job = gassist.cancel_job(jid)
+    if not job:
+        return jsonify({"status": "error", "message": _L("Operazione non trovata.", "Operation not found.")}), 404
+    return jsonify({"status": "success", "job": job.view()})
 
 
 def _server_info():
@@ -2399,6 +2474,13 @@ def _harness_targets(local, sharing, lang="it"):
         out.append({"id": f"other:{tid}", "kind": "other", "tool": tid, "name": t.get("name") or spec.get("name") or tid,
                     "vendor": spec.get("vendor"), "enabled": False, "reason": why, "detected": detected,
                     "alt": f"cloud:{spec['service']}" if detected and alt and not alt.get("local") else None})
+    if local:
+        # Assistente di configurazione (solo per chi usa questo computer): pulsante contestuale accanto alle voci
+        # («Installa CLI», «Avvia», «Recupera chiave», «Configura»), modelli di agy e modelli gia' sul disco.
+        try:
+            gassist.annotate(out, det.get("tools") or [], lang)
+        except Exception as e:
+            common.log(f"Assistente AI: annotazione non riuscita ({type(e).__name__}: {e})")
     return out, det.get("checked_at")
 
 
@@ -2705,7 +2787,15 @@ def _harness_stream(run, ctx):
         if kind == "cli":
             # Le CLI non conservano la conversazione: istruzioni, turni precedenti e richiesta in un solo testo, che
             # passa dallo standard input (mai tra gli argomenti, vedi germano/harness.py).
+            cli_prof = dest.get("profile") or {}
             lines = []
+            if cli_prof.get("no_tools_hint"):
+                # agy non ha un'opzione per togliere tutti gli strumenti: lo si chiede (testo visibile nella Glass
+                # Window) e Germano interrompe comunque la risposta al primo strumento annunciato.
+                sys_out = "\n\n".join(x for x in (L(
+                    "Rispondi solo con testo, direttamente: non usare strumenti (file, comandi, browser, ricerche web, "
+                    "MCP o sotto-agenti).", "Answer with text only, directly: do not use tools (files, commands, "
+                    "browser, web searches, MCP or subagents)."), sys_out) if x)
             if sys_out:
                 lines += [L("Istruzioni per l'assistente:", "Instructions for the assistant:"), sys_out, ""]
             if p_history:
@@ -2727,13 +2817,29 @@ def _harness_stream(run, ctx):
                          message=L("Modello non valido per la CLI.", "Invalid model for the CLI."))
                 return
             shown = [os.path.basename(argv[0])] + [gglass.cap(a, 2000) for a in argv[1:]]
-            yield ev("payload", transport="cli", via="germano", tool=dest["tool"], argv=shown,
-                     env=harness.germano_env(prof, PORT, scope), stdin=gglass.cap(transcript),
-                     profile="restricted" if ctx["local"] else "bare",
-                     note=L("La CLI invia la richiesta al Proxy di Germano, che la anonimizza di nuovo e la inoltra: il "
-                            "payload HTTP esatto compare qui appena parte.",
-                            "The CLI sends the request to the Germano Proxy, which anonymizes it again and forwards it: "
-                            "the exact HTTP payload appears here as soon as it leaves."))
+            if prof.get("direct"):
+                yield ev("payload", transport="cli", via="direct", tool=dest["tool"], argv=shown,
+                         env=harness.germano_env(prof, PORT, scope),
+                         stdin=gglass.cap(harness.stdin_payload(prof, transcript).decode("utf-8")),
+                         profile="isolato" if prof.get("isolate_home") else "sessione",
+                         note=L(f"La CLI invia il testo qui sopra, gia' protetto da Germano, direttamente a "
+                                f"{prof['direct']} con l'account di Antigravity: non passa dal Proxy, quindi le sue "
+                                "istruzioni interne (circa 10.000 token con la cartella di lavoro) non sono visibili qui. "
+                                "Germano la avvia senza le impostazioni dell'utente, in una cartella vuota, con tutti "
+                                "gli strumenti negati, e la ferma se prova comunque a usarne uno.",
+                                f"The CLI sends the text above, already protected by Germano, directly to "
+                                f"{prof['direct']} with the Antigravity account: it does not go through the Proxy, so "
+                                "its internal instructions (about 10,000 tokens with the working folder) are not visible "
+                                "here. Germano starts it without the user's settings, in an empty folder, with every "
+                                "tool denied, and stops it if it tries to use one anyway."))
+            else:
+                yield ev("payload", transport="cli", via="germano", tool=dest["tool"], argv=shown,
+                         env=harness.germano_env(prof, PORT, scope), stdin=gglass.cap(transcript),
+                         profile="restricted" if ctx["local"] else "bare",
+                         note=L("La CLI invia la richiesta al Proxy di Germano, che la anonimizza di nuovo e la inoltra: "
+                                "il payload HTTP esatto compare qui appena parte.",
+                                "The CLI sends the request to the Germano Proxy, which anonymizes it again and forwards "
+                                "it: the exact HTTP payload appears here as soon as it leaves."))
         else:
             url, headers, body, fmt = gproviders.build_request(dest["service"], dest["model"], messages, dest["key"])
             yield ev("payload", transport="http", via="germano", format=fmt, method="POST", url=url,

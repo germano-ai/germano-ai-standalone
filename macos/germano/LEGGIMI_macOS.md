@@ -1,7 +1,7 @@
-# Germano AI 0.90 — Suite completa per macOS
+# Germano AI 0.91 — Suite completa per macOS
 
 ## Installazione
-Scarica **`germano-0.90.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
+Scarica **`germano-0.91.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
 **macOS 14 Sonoma** o successivo: PyTorch non è più pubblicato per i Mac Intel, che usano il client leggero) e fai
 doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, gli 8 modelli IA, llama.cpp per il
 Sistema 2 e 7-Zip per gli archivi) e non scarica nulla.
@@ -15,8 +15,9 @@ Apri **Germano** da Launchpad o dalla cartella Applicazioni: si apre una **fines
 niente terminale né browser). La **X rossa** (o ⌘Q) chiude tutto: finestra, server e motore IA.
 
 - **Chatbot e Agenti AI** (scheda predefinita): scrivi alla tua AI e scegli il modello **in basso a destra** (solo le AI
-  rilevate: Claude Code, i modelli di Ollama, LM Studio e Jan, i servizi via API con una chiave); Germano oscura i dati
-  personali prima dell'invio e li rimette nella risposta. La **Glass Window** mostra in tempo reale tutto ciò che viene
+  rilevate: Claude Code, Antigravity CLI, i modelli di Ollama, LM Studio e Jan, i servizi via API con una chiave;
+  accanto alle altre, il pulsante dell'Assistente di configurazione); Germano oscura i dati personali prima
+  dell'invio e li rimette nella risposta. La **Glass Window** mostra in tempo reale tutto ciò che viene
   comunicato al modello e **Interrompi operazione** ferma tutto.
 - **Sanitizzazione Manuale & Vault**: quattro riquadri (`input`, `output`, `processed`, `failed`) mostrano in tempo
   reale i file di ogni cartella, con il percorso completo sopra: trascina i documenti sul riquadro **input**; un clic su
@@ -29,6 +30,16 @@ questo computer filtrate da Germano e la Glass Window, sanitizzazione manuale di
 profilo PA). Di base l'accesso è libero; con la gestione utenti (Impostazioni › Modalità e rete › Accesso dalla rete)
 servono utente e password. Alla prima attivazione macOS può chiedere di consentire le connessioni in entrata a Python:
 rispondi **Consenti**.
+
+## Novità della 0.91: assistente di configurazione delle AI
+Accanto a ogni AI un pulsante dice che cosa manca e lo fa con un clic: **Antigravity CLI** (`agy`, installata in
+`~/.local/bin` dal manifesto ufficiale di Google con verifica SHA-512) si usa in Chatbot e Agenti AI con l'account di
+Antigravity (Portachiavi di macOS), ricevendo solo il testo già protetto e senza strumenti (le sue istruzioni interne
+vanno a Google senza passare dal Proxy, come dichiara la Glass Window; su macOS la sua cartella personale non viene
+isolata, perché il Portachiavi la segue); **Qwen 4 Max** e **GLM 5.3** sono nuovi servizi e «Recupera configurazione»
+collega senza copiarle le chiavi già impostate in altri strumenti; **Ollama, LM Studio e Jan** mostrano i modelli già
+scaricati anche a servizio spento (per installare Ollama su macOS si apre la pagina ufficiale; Qwen Code anche con
+Homebrew). Su macOS queste funzioni sono verificate solo staticamente. Dettagli nel CHANGELOG e nella Guida (capitolo 2).
 
 ## Novità della 0.90: più veloce e in parallelo
 Stessi dati protetti della 0.80, tempi più brevi: Privacy Filter e Italian NER lavorano insieme e ogni modello ha il

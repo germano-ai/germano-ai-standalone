@@ -1,7 +1,7 @@
 #!/bin/bash
-# Germano AI v0.90 - avvio su macOS dal Finder (nessun terminale). Un solo lanciatore per tutti i pacchetti: la suite
+# Germano AI v0.91 - avvio su macOS dal Finder (nessun terminale). Un solo lanciatore per tutti i pacchetti: la suite
 # completa apre la Dashboard unificata (Standalone / Server / Client), il pacchetto client leggero il pannello client.
-# Installato con germano-client-0.90.pkg il programma sta dentro l'app (Contents/Resources/app) con il proprio Python
+# Installato con germano-client-0.91.pkg il programma sta dentro l'app (Contents/Resources/app) con il proprio Python
 # (runtime/ per Apple Silicon, runtime-x86_64/ per i Mac Intel). Nella copia di sviluppo Germano.app sta accanto ai sorgenti.
 HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "$HERE/../Resources/app/germano_desktop.py" ]; then
@@ -17,7 +17,7 @@ fi
 # strumenti per sviluppatori /usr/bin/python3 chiederebbe di installarli da Internet.
 if [ ! -x "$PY" ] && [ "$INSTALLED" = 0 ]; then PY="$(command -v python3)"; fi
 if [ -z "$PY" ] || [ ! -x "$PY" ]; then
-  osascript -e 'display dialog "Germano AI non trova il proprio Python: reinstalla germano-client-0.90.pkg." buttons {"OK"} with icon stop with title "Germano AI"'
+  osascript -e 'display dialog "Germano AI non trova il proprio Python: reinstalla germano-client-0.91.pkg." buttons {"OK"} with icon stop with title "Germano AI"'
   exit 1
 fi
 exec "$PY" "$APP_ROOT/germano_desktop.py" auto "$@"

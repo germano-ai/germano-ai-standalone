@@ -1,7 +1,7 @@
-# Germano AI 0.90 — Suite completa per Windows
+# Germano AI 0.91 — Suite completa per Windows
 
 ## Installazione
-Scarica **`germano-0.90.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
+Scarica **`germano-0.91.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
 necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, gli 8 modelli IA) e non scarica
 nulla. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a
 consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows solo per il Python di
@@ -17,15 +17,16 @@ applicativa dedicata** (niente finestra nera del terminale, niente browser con b
 quattro schede in alto:
 
 - **Chatbot e Agenti AI** (predefinita): scrivi alla tua AI come in un assistente moderno e scegli il modello **in basso a
-  destra** (solo le AI rilevate: Claude Code, i modelli di Ollama, LM Studio e Jan, i servizi via API con una chiave;
-  le altre restano in grigio con il motivo). Germano oscura i dati personali prima dell'invio e li rimette nella
+  destra** (solo le AI rilevate: Claude Code, Antigravity CLI, i modelli di Ollama, LM Studio e Jan, i servizi via API con
+  una chiave; le altre restano in grigio con il motivo e, accanto, il pulsante dell'Assistente di configurazione). Germano oscura i dati personali prima dell'invio e li rimette nella
   risposta. Il pulsante **Glass Window** mostra in tempo reale tutto ciò che viene comunicato al modello (testo
   originale, dati oscurati, decisioni del Sistema 2, testo inviato, payload grezzo, risposta grezza) e **Interrompi
   operazione** ferma tutto;
 - **Sanitizzazione Manuale & Vault**: quattro riquadri (`input`, `output`, `processed`, `failed`) mostrano, come un
   file manager, i file che entrano, vengono elaborati e si spostano, in tempo reale; per anonimizzare dei documenti
   trascinali sul riquadro **input**. Qui ci sono anche la sanitizzazione manuale di un testo e il Vault;
-- **Impostazioni**: modalità e rete, protezione e modelli, AI e chiavi, Proxy e API, sistema, aggiornamenti;
+- **Impostazioni**: modalità e rete, protezione e modelli, AI e chiavi (con l'Assistente di configurazione), Proxy e
+  API, sistema, aggiornamenti;
 - **Guida**: il manuale completo, anche senza Internet.
 
 Modalità operative (si scelgono e si cambiano in qualsiasi momento in Impostazioni › Modalità e rete):
@@ -41,6 +42,23 @@ Modalità operative (si scelgono e si cambiano in qualsiasi momento in Impostazi
 
 Per chiudere **tutto** basta la **X rossa**: si fermano anche il server Flask e il motore IA, senza lasciare processi in
 memoria.
+
+## Novità della 0.91: assistente di configurazione delle AI
+Accanto a ogni AI (selettore in basso a destra, Impostazioni › AI, chiavi e Chatbot) un pulsante dice che cosa manca e
+lo fa con un clic:
+
+- **Google Antigravity CLI (`agy`)**: «Installa CLI» scarica la CLI ufficiale di Google (impronta SHA-512, firma
+  «Google LLC») e la CLI usa da sola l'account già collegato in Antigravity Desktop (Gestore credenziali di Windows:
+  Germano non legge né copia i token). In Chatbot e Agenti AI riceve solo il testo già protetto, gira senza strumenti
+  e la Glass Window dichiara che le sue istruzioni interne vanno a Google senza passare dal Proxy; con la CLI
+  installata e la Dashboard aperta, Germano verifica circa ogni 10 minuti l'accesso e i modelli (`agy models`, verso
+  Google, senza testi);
+- **Qwen 4 Max e GLM 5.3**: servizi Qwen Token Plan (`qwen4-max-preview`), Qwen Coding Plan, GLM (Z.ai) e GLM Coding
+  Plan (`glm-5.3`); «Recupera configurazione» collega senza copiarle le chiavi già impostate in altri strumenti;
+- **modelli locali**: Ollama, LM Studio e Jan mostrano i modelli già scaricati anche a servizio spento, con «Installa
+  Ollama», «Avvia» e «Scarica modello consigliato»;
+- **sicurezza**: l'assistente funziona solo su questo PC (mai dalla rete), ogni download chiede conferma e viene
+  verificato (HTTPS, impronta o firma).
 
 ## Novità della 0.90: più veloce e in parallelo
 A parità di protezione (stessi dati oscurati della 0.80), misurato su un PC con Intel i5-4570, 4 core e 16 GB di RAM:
@@ -83,7 +101,9 @@ massimo compare un discreto **«Riavvia per aggiornare»** in alto. Stato e opzi
 - Impostazioni in `Documenti\Germano AI\config.json`; file tecnici (finestra, registri, aggiornamenti scaricati) in
   `%LOCALAPPDATA%\Germano AI`.
 - All'AI scelta in Chatbot e Agenti AI (o tramite il Proxy) arriva solo testo anonimizzato; la Glass Window non salva
-  nulla. Aggiornamenti solo da https://download.germano.ai/. Tutto il resto avviene al 100% in locale.
+  nulla. Aggiornamenti solo da https://download.germano.ai/; i download dell'Assistente di configurazione partono solo
+  su tua richiesta; con Antigravity CLI le istruzioni interne della CLI e la verifica dei modelli vanno a Google.
+  Tutto il resto avviene al 100% in locale.
 
 ## Disinstallazione
 Impostazioni › App › App installate › Germano AI, a scelta conservando le cartelle di lavoro e il Vault. Chiede i
@@ -103,7 +123,7 @@ App e file tecnici.
   correggerlo; nelle VM con NAT serve l'inoltro della porta TCP 8181 (o una scheda in modalità bridge).
 
 ## Client leggero per i colleghi
-Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.90.exe`** (circa 22 MB, senza
+Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.91.exe`** (circa 22 MB, senza
 modelli, nessun permesso di amministratore): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del
 client (collegamento **Germano AI Client**), che è lo stesso Remote Control del browser, con Chatbot e Agenti AI e Glass
 Window. Chi non vuole installare nulla apre direttamente nel browser `http://<IP-di-questo-PC>:8181/`.

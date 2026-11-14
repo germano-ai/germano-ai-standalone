@@ -1,11 +1,11 @@
-# Germano AI 0.90 — Suite completa per Linux
+# Germano AI 0.91 — Suite completa per Linux
 
 ## Installazione
-Scarica **`germano-0.90.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-0.91.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure da terminale:
 
 ```bash
-sudo apt install ./germano-0.90.deb
+sudo apt install ./germano-0.91.deb
 ```
 
 Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, gli 8 modelli IA,
@@ -18,8 +18,9 @@ Apri **Germano AI** dal menu delle applicazioni: si apre una **finestra dedicata
 **X rossa** chiude tutto: finestra, server e motore IA (nessun processo orfano).
 
 - **Chatbot e Agenti AI** (scheda predefinita): scrivi alla tua AI e scegli il modello **in basso a destra** (solo le AI
-  rilevate: Claude Code, i modelli di Ollama, LM Studio e Jan, i servizi via API con una chiave); Germano oscura i dati
-  personali prima dell'invio e li rimette nella risposta. La **Glass Window** mostra in tempo reale tutto ciò che viene
+  rilevate: Claude Code, Antigravity CLI, i modelli di Ollama, LM Studio e Jan, i servizi via API con una chiave;
+  accanto alle altre, il pulsante dell'Assistente di configurazione); Germano oscura i dati personali prima
+  dell'invio e li rimette nella risposta. La **Glass Window** mostra in tempo reale tutto ciò che viene
   comunicato al modello e **Interrompi operazione** ferma tutto.
 - **Sanitizzazione Manuale & Vault**: quattro riquadri (`input`, `output`, `processed`, `failed`) mostrano in tempo
   reale i file di ogni cartella, con il percorso completo sopra: trascina i documenti sul riquadro **input**; un clic su
@@ -35,6 +36,15 @@ automatica, 8182/udp solo dalla rete locale.
 
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
 fuori dalla sessione grafica dell'utente.
+
+## Novità della 0.91: assistente di configurazione delle AI
+Accanto a ogni AI un pulsante dice che cosa manca e lo fa con un clic: **Antigravity CLI** (`agy`, installata in
+`~/.local/bin` dal manifesto ufficiale di Google con verifica SHA-512) si usa in Chatbot e Agenti AI con l'account di
+Antigravity, ricevendo solo il testo già protetto e senza strumenti (le sue istruzioni interne vanno a Google senza
+passare dal Proxy, come dichiara la Glass Window); **Qwen 4 Max** e **GLM 5.3** sono nuovi servizi e «Recupera
+configurazione» collega senza copiarle le chiavi già impostate in altri strumenti; **Ollama, LM Studio e Jan** mostrano
+i modelli già scaricati anche a servizio spento (per installare Ollama su Linux si apre la pagina ufficiale). Su Linux
+queste funzioni sono verificate solo staticamente. Dettagli nel CHANGELOG e nella Guida (capitolo 2).
 
 ## Novità della 0.90: più veloce e in parallelo
 Stessi dati protetti della 0.80, tempi più brevi: Privacy Filter e Italian NER lavorano insieme e ogni modello ha il

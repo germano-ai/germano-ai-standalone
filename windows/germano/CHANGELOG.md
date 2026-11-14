@@ -5,6 +5,102 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.91] - 2026-11-14
+Germano AI v0.91 - **assistente di configurazione delle AI**. Accanto a ogni AI rilevata Germano dice che cosa manca
+per usarla e lo fa con un clic: installa Google Antigravity CLI (`agy`) e la usa in Chatbot e Agenti AI con l'account
+di Antigravity Desktop, aggiunge Qwen 4 Max e GLM 5.3, collega senza copiarle le chiavi già configurate in altri
+strumenti e rende utilizzabili Ollama, LM Studio e Jan anche quando sono spenti o non ancora installati. Motore di
+protezione, modelli locali e formati supportati sono quelli della 0.90.
+
+### Aggiunto - Assistente di configurazione delle AI
+- **Pulsante contestuale** sulla riga di ogni AI nel selettore dei modelli in basso a destra e accanto alle **AI
+  rilevate** in *Impostazioni › AI, chiavi e Chatbot*: «Installa CLI», «Accedi», «Configura», «Avvia», «Installa»,
+  «Scarica modello», «Recupera chiave». Apre la finestra dell'assistente con lo stato verificato (che cosa è
+  installato, con quale account, quali modelli), le azioni possibili, l'avanzamento in tempo reale con «Annulla» e le
+  pagine ufficiali.
+- Nuovo pannello **Assistente di configurazione** in *Impostazioni › AI, chiavi e Chatbot*, con le schede Google
+  Antigravity, Qwen, GLM, Ollama, LM Studio e Jan e una scheda per ogni chiave trovata di altri servizi.
+- **Sicurezza:** le rotte `/api/ai/assist/*` rispondono solo a questo computer (dalla rete `403`), respingono le
+  richieste di siti esterni (anti-CSRF) e, con `lock_settings`, ogni azione; con `GERMANO_OFFLINE=1` nessun download.
+  Le azioni sono ricette fisse, senza shell e senza testo dell'utente tra gli argomenti; i download partono solo dopo
+  una conferma esplicita, solo in HTTPS da host consentiti e con l'impronta SHA-512 del produttore e/o la firma
+  Authenticode verificate (se la verifica fallisce il file viene scartato). Nessuna chiave o token arriva alla pagina o
+  ai registri.
+- Remote Control e Germano Client non mostrano l'assistente: configura soltanto le AI del computer su cui gira
+  Germano.
+
+### Aggiunto - Google Antigravity CLI (`agy`) in Chatbot e Agenti AI
+- **Installa CLI** scarica la CLI ufficiale di Google dal manifesto ufficiale (impronta SHA-512; su Windows anche la
+  firma Authenticode «Google LLC») ed esegue il passo ufficiale `agy install` (`%LOCALAPPDATA%\agy\bin` nel PATH
+  dell'utente; su macOS e Linux `~/.local/bin/agy`).
+- La CLI usa **da sola l'account già collegato in Antigravity Desktop**: l'accesso è condiviso dal portachiavi del
+  sistema (Gestore credenziali di Windows, Portachiavi Apple, Secret Service). Germano non legge e non copia mai i
+  token: controlla solo che l'accesso esista e mostra l'account in forma oscurata. Se manca: «Accedi con Google».
+- **Antigravity CLI (agy)** compare nel selettore con i modelli del tuo account e si usa come le altre AI: messaggio,
+  cronologia e allegati partono **già protetti** dallo standard input (una riga NDJSON con le sole etichette) e la
+  risposta torna con i dati veri.
+- **Esecuzione protetta:** profilo isolato (`USERPROFILE`/`HOME` in `state\agy\home`: nessuna impostazione, hook,
+  MCP, plugin o regola dell'utente), cartella di lavoro vuota, impostazioni di sessione restrittive
+  (`toolPermission: strict`, regole che negano comandi, file, indirizzi web e MCP), istruzione di non usare strumenti
+  e **interruzione immediata** se la CLI annuncia comunque uno strumento; la conversazione salvata dalla CLI viene
+  tolta a fine risposta.
+- **Trasparenza:** con l'account OAuth la CLI parla solo con Google e non si può indirizzare al Proxy di Germano. La
+  Glass Window lo dichiara a ogni richiesta: le istruzioni interne della CLI (circa 10.000 token, con il percorso
+  della cartella di lavoro) vanno a Google senza passare dal Proxy, mentre il tuo testo, la cronologia e gli allegati
+  sono già anonimizzati. Quando la CLI è installata, mentre la Dashboard è aperta Germano verifica circa ogni 10
+  minuti l'accesso e i modelli dell'account con `agy models`: la CLI contatta Google, senza testi né dati dei
+  documenti.
+- Solo per chi usa questo computer: la CLI non viene mai eseguita per i client della rete (dal Remote Control, per i
+  modelli Gemini, resta il servizio «Google Gemini»).
+
+### Aggiunto - Qwen 4 Max e GLM 5.3
+- Nuovi servizi via API (anche nel Proxy come `/p/<servizio>/v1` e nel Remote Control), con indirizzi e modelli
+  verificati sulla documentazione ufficiale il 14/11/2026:
+  - `qwen-token` **Qwen Token Plan (Qwen4-Max)**: `qwen4-max-preview` (anteprima fino al 25/11/2026) e `qwen3.8-max`;
+  - `qwen` **Qwen (Alibaba Cloud Model Studio)** a consumo: `qwen3.8-max`, `qwen3.7-plus`, `qwen3.8-flash`;
+  - `qwen-coding` **Qwen Coding Plan**;
+  - `zai` **GLM (Z.ai)** e `zai-coding` **GLM Coding Plan (Z.ai)**: `glm-5.3`.
+- **Recupera configurazione** cerca le chiavi già impostate per altri strumenti (variabili d'ambiente dell'utente,
+  Qwen Code, Claude Code configurato verso altri fornitori, OpenCode, Codex, Gemini CLI), sceglie il servizio giusto
+  dall'indirizzo (piano e regione) e la **collega senza copiarla**: `state\ai_links.json` contiene solo la fonte e il
+  nome della variabile, la chiave si legge al momento dell'uso (una chiave cambiata nella fonte vale subito). Le
+  regioni non ancora supportate vengono segnalate e non collegate; «Scollega» toglie il collegamento.
+- **Installa Qwen Code** (con Node.js, consigliato il 22 o successivo; su macOS anche con Homebrew), per usare Qwen
+  Code con il Proxy di Germano.
+
+### Aggiunto - Modelli locali (Ollama, LM Studio, Jan)
+- I modelli già scaricati vengono letti dal disco **anche a servizio spento** (Ollama: `~/.ollama/models` o
+  `OLLAMA_MODELS`; LM Studio: `~/.lmstudio/models` e la cartella dei download; Jan: la sua cartella dati) e la riga
+  del selettore lo indica («N modelli già scaricati»).
+- Ollama: **Installa Ollama** (Windows: `OllamaSetup.exe` ufficiale con firma Authenticode «Ollama Inc.»
+  obbligatoria, installazione silenziosa per l'utente; macOS e Linux: pagina ufficiale), **Avvia Ollama** e **Scarica
+  modello consigliato** (`qwen3.5:4b`, `gemma4:e4b`, `llama3.2:3b`, `qwen3.5:2b`) con l'avanzamento dall'API locale.
+- LM Studio: **Avvia server locale** (`lms server start`, oppure l'app); Jan: **Avvia Jan** (con la nota sul Local
+  API Server).
+
+### Modificato
+- Germano Client: `client launch agy` spiega che la CLI non si può indirizzare al Proxy e indica le alternative.
+- Versione 0.91 nei sei alberi dei sorgenti e nei sei pacchetti; la voce «Versione» della scheda Informazioni
+  riassume le novità. Guida offline, README e LEGGIMI aggiornati alle novità.
+
+### Collaudi
+- Backend dell'assistente: 72/72 prove (fonti delle chiavi in una cartella personale finta, collegamento senza copia
+  e chiave cambiata, regioni non supportate, modelli sul disco, profilo `agy`, CLI finta che tenta uno strumento,
+  rotte da questo computer e da una rete simulata, CSRF, `lock_settings`, firme Authenticode), ripetute con lo
+  stesso esito sui sorgenti 0.91.
+- CLI `agy` 1.5.9 reale nel profilo dell'Harness: risposta corretta e conversazione tolta; uno strumento tentato
+  (`run_command`) interrotto da Germano prima dell'uso. Richiesta reale con dati sintetici: a Google sono arrivate
+  solo le etichette (`[PERSONA_1]`, `[COD.FISCALE/P.IVA_1]`, `[EMAIL_1]`, `[TELEFONO_1]`).
+- Sulla vera app 29/29 prove; Remote Control e Dashboard in Edge headless 9/9.
+
+### Limiti noti
+- Con Antigravity CLI le istruzioni interne della CLI vanno a Google direttamente (dichiarato nella Glass Window).
+- Su macOS la cartella personale di `agy` non viene isolata (il Portachiavi la segue); Linux e macOS verificati solo
+  staticamente.
+- Installazione reale di Ollama, LM Studio e Jan e chiamate reali a Qwen e GLM non collaudate dal vivo (provati la
+  conferma annullata, il download di un modello con un Ollama simulato e i servizi senza chiave).
+- `qwen4-max-preview` è un'anteprima fino al 25/11/2026: dopo quella data l'identificativo va aggiornato.
+
 ## [0.90] - 2026-11-14
 Germano AI v0.90 - **più veloce e in parallelo, a parità di protezione**. Le misure sono state prese sul motore vero
 (PC di collaudo Intel i5-4570, 4 core, 16 GB di RAM, nessuna GPU) confrontando 0.80 e 0.90 sugli stessi file: stessi

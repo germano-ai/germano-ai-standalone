@@ -549,6 +549,15 @@
                 <div class="panel">
                     <div class="panel-header panel-header-tight">
                         <div>
+                            <h3 class="panel-title" data-en="Configuration assistant">Assistente di configurazione</h3>
+                            <p class="panel-desc" data-en="Germano checks the AIs installed on this computer and, with one click, installs the Antigravity CLI with the account already used by Antigravity Desktop, retrieves the keys already set up for other tools (Qwen Code, Claude Code, OpenCode, Codex, Gemini CLI, environment variables) without copying them, starts the local models and downloads a recommended one. Only on this computer: the keys are never shown.">Germano controlla le AI installate su questo computer e, con un clic, installa la CLI di Antigravity con l'account già usato da Antigravity Desktop, recupera le chiavi già configurate per altri strumenti (Qwen Code, Claude Code, OpenCode, Codex, Gemini CLI, variabili d'ambiente) senza copiarle, avvia i modelli locali e ne scarica uno consigliato. Solo su questo computer: le chiavi non vengono mai mostrate.</p>
+                        </div>
+                    </div>
+                    <div class="ax-grid" id="aiAssistList"><span class="muted" data-en="Checking…">Controllo in corso…</span></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-header panel-header-tight">
+                        <div>
                             <h3 class="panel-title" data-en="API keys of the services">Chiavi API dei servizi</h3>
                             <p class="panel-desc" data-en="A service is selectable in the Harness only with a key: the one set on this computer (environment variable, e.g. OPENAI_API_KEY) or one typed here. In the Glass Window the keys always appear masked.">Un servizio si può scegliere nell'Harness solo con una chiave: quella impostata su questo computer (variabile d'ambiente, es. OPENAI_API_KEY) oppure una inserita qui. Nella Glass Window le chiavi compaiono sempre oscurate.</p>
                         </div>
@@ -803,7 +812,7 @@
                     </div>
                     <p class="panel-desc" data-en="Germano AI protects personal data before they reach artificial intelligence services: everything is analyzed on this computer, with local models, 100% offline. The AI Harness, the Proxy, the Remote Control and the file processing all use the same engine and the same Vault.">Germano AI protegge i dati personali prima che arrivino ai servizi di intelligenza artificiale: tutto viene analizzato su questo computer, con modelli locali, 100% offline. L'Harness AI, il Proxy, il Remote Control e l'elaborazione dei file usano lo stesso motore e lo stesso Vault.</p>
                     <div class="net-summary about-facts">
-                        <div class="net-item"><div class="net-item-label" data-en="Version">Versione</div><div class="net-item-value">{{ version }}</div><div class="net-item-sub" data-en="Parallel engine, SQLite Vault, hardened Proxy">Motore in parallelo, Vault su SQLite, Proxy blindato</div></div>
+                        <div class="net-item"><div class="net-item-label" data-en="Version">Versione</div><div class="net-item-value">{{ version }}</div><div class="net-item-sub" data-en="AI configuration assistant, Antigravity CLI, Qwen 4 Max, GLM 5.3">Assistente di configurazione AI, Antigravity CLI, Qwen 4 Max, GLM 5.3</div></div>
                         <div class="net-item"><div class="net-item-label" data-en="License">Licenza</div><div class="net-item-value">GNU GPL v3</div><div class="net-item-sub">germano.ai</div></div>
                         <div class="net-item"><div class="net-item-label" data-en="Updates">Aggiornamenti</div><div class="net-item-value">download.germano.ai</div><div class="net-item-sub" data-en="the only update source">l'unica fonte degli aggiornamenti</div></div>
                     </div>

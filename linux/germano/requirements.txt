@@ -1,5 +1,5 @@
-# Germano AI 0.90 - librerie Python del programma, per chi lo esegue dai sorgenti (Python 3.11, x86_64).
-# Il pacchetto germano-0.90.deb le include gia' tutte con il proprio Python: per usare Germano non serve installarle.
+# Germano AI 0.91 - librerie Python del programma, per chi lo esegue dai sorgenti (Python 3.11, x86_64).
+# Il pacchetto germano-0.91.deb le include gia' tutte con il proprio Python: per usare Germano non serve installarle.
 # Stesse versioni collaudate nel pacchetto. torch per CPU (senza librerie CUDA da gigabyte):
 #   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 Flask==3.1.3

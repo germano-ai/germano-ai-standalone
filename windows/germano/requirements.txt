@@ -1,5 +1,5 @@
-# Germano AI 0.90 - librerie Python del programma, per chi lo esegue dai sorgenti (Python 3.11, 64 bit).
-# L'installer germano-0.90.exe le include gia' tutte con il proprio Python: per usare Germano non serve installarle.
+# Germano AI 0.91 - librerie Python del programma, per chi lo esegue dai sorgenti (Python 3.11, 64 bit).
+# L'installer germano-0.91.exe le include gia' tutte con il proprio Python: per usare Germano non serve installarle.
 # Stesse versioni collaudate nel pacchetto (pip install -r requirements.txt).
 Flask==3.1.3
 Werkzeug==3.1.9

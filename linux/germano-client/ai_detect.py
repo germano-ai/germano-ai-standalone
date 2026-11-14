@@ -26,6 +26,7 @@ _EXT_RANK = {e: i for i, e in enumerate(_RUNNABLE + _DETECT_ONLY)}
 _EXTRA_DIRS_WIN = (
     r"%APPDATA%\npm",                                   # pacchetti globali npm: codex, gemini, qwen, copilot
     r"%USERPROFILE%\.local\bin",                        # uv/pipx (kimi, vibe), installatori nativi (claude, pplx)
+    r"%LOCALAPPDATA%\agy\bin",                          # Antigravity CLI (installatore ufficiale di Google)
     r"%LOCALAPPDATA%\Microsoft\WinGet\Links",           # collegamenti di winget
     r"%LOCALAPPDATA%\Microsoft\WindowsApps",            # alias delle app dello Store
     r"%LOCALAPPDATA%\pnpm",
@@ -63,9 +64,15 @@ CATALOG = (
      "service": "openai"},
     {"id": "chatgpt", "name": "ChatGPT (app)", "vendor": "OpenAI", "kind": "app", "bins": ("chatgpt",),
      "mac": "ChatGPT.app", "service": "openai"},
-    # --- Google
-    {"id": "antigravity", "name": "Antigravity", "vendor": "Google", "kind": "app", "bins": ("agy", "antigravity"),
-     "globs": (r"%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe",), "mac": "Antigravity.app", "service": "gemini"},
+    # --- Google (Antigravity 2.x: app desktop, IDE e CLI «agy» sono tre programmi distinti con lo stesso accesso)
+    {"id": "antigravity", "name": "Antigravity (app desktop)", "vendor": "Google", "kind": "app",
+     "bins": ("antigravity",), "globs": (r"%LOCALAPPDATA%\Programs\Antigravity\Antigravity.exe",),
+     "mac": "Antigravity.app", "service": "gemini"},
+    {"id": "antigravity-ide", "name": "Antigravity IDE", "vendor": "Google", "kind": "app", "bins": ("antigravity-ide",),
+     "globs": (r"%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe",), "mac": "Antigravity IDE.app",
+     "service": "gemini"},
+    {"id": "agy", "name": "Antigravity CLI (agy)", "vendor": "Google", "kind": "cli", "bins": ("agy",),
+     "globs": (r"%LOCALAPPDATA%\agy\bin\agy.exe",), "service": "gemini"},
     {"id": "gemini-cli", "name": "Gemini CLI", "vendor": "Google", "kind": "cli", "bins": ("gemini",),
      "service": "gemini"},
     {"id": "jules", "name": "Jules CLI", "vendor": "Google", "kind": "cli", "bins": ("jules",), "service": "gemini"},

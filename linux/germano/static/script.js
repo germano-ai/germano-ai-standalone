@@ -1,5 +1,5 @@
 'use strict';
-/* Germano AI 0.90 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
+/* Germano AI 0.91 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
    (cartelle di lavoro, documenti, testo), Impostazioni (modalita' e rete, protezione, AI e chiavi, Proxy e API, sistema,
    aggiornamenti silenziosi) e Guida offline. */
 
@@ -295,7 +295,7 @@ function applyPane(pane, remember = true) {
     }
     if (pane === 'general') { if (!settingsWelcome) refreshModeSection(); renderNetSummary(); }
     if (pane === 'system') { loadFolders(); pollLogs(); }
-    if (pane === 'ai') { renderAiSettings(); if (harness) harness.refreshTargets(false).then(renderAiSettings); }
+    if (pane === 'ai') { renderAiSettings(); renderAssistOverview(); if (harness) harness.refreshTargets(false).then(renderAiSettings); }
     if (pane === 'updates') { renderUpdatePanel(lastUpdate); acknowledgeInstallResult(); }
 }
 
@@ -331,7 +331,15 @@ function mountHarness() {
         },
         toast: (msg, type) => showToast(msg, type === 'success' ? 'success' : type),
         onKeysChanged: () => renderAiSettings(),
+        onAssistChanged: () => { renderAiSettings(); if (currentPane === 'ai') renderAssistOverview(); },
     });
+}
+
+// Assistente di configurazione (Impostazioni > AI): schede per Antigravity, Qwen, GLM, Ollama, LM Studio, Jan e per le
+// chiavi trovate su questo computer; la finestra con le azioni e' quella dell'Harness (static/harness.js).
+function renderAssistOverview() {
+    const box = $('aiAssistList');
+    if (box && harness && harness.renderAssistOverview) harness.renderAssistOverview(box);
 }
 
 const KIND_LABEL = { cli: ['CLI', 'CLI'], local: ['modelli locali', 'local models'], other: ['non utilizzabile', 'not usable'] };
@@ -349,8 +357,10 @@ function renderAiSettings() {
     list.innerHTML = shown.length ? shown.map(t => {
         const kind = KIND_LABEL[t.kind] ? updText(KIND_LABEL[t.kind][0], KIND_LABEL[t.kind][1]) : t.kind;
         const sub = t.enabled ? `${kind}${t.version ? ' · v' + t.version : ''}${t.vendor && t.kind !== 'local' ? ' · ' + t.vendor : ''}` : (t.reason || '');
+        // pulsante dell'assistente accanto alla voce (es. «Installa CLI» accanto ad Antigravity, «Avvia» accanto a Ollama)
+        const assist = t.assist ? `<button type="button" class="hx-pick-assist ai-item-assist" data-assist-open="${escapeHtml(t.assist)}">${escapeHtml(t.assist_label || updText('Configura', 'Set up'))}</button>` : '';
         return `<div class="ai-item${t.enabled ? ' on' : ''}" title="${escapeHtml(t.reason || t.name)}"><span class="hx-dot${t.enabled ? ' ok' : ''}"></span>
-            <span class="ai-item-main"><span class="ai-item-name">${escapeHtml(t.name)}</span><span class="ai-item-sub">${escapeHtml(sub)}</span></span></div>`;
+            <span class="ai-item-main"><span class="ai-item-name">${escapeHtml(t.name)}</span><span class="ai-item-sub">${escapeHtml(sub)}</span></span>${assist}</div>`;
     }).join('') : `<span class="muted">${escapeHtml(updText('Nessuna AI o CLI rilevata su questo computer: quando ne installi una (o avvii Ollama, LM Studio o Jan) compare qui da sola.',
                                                               'No AI or CLI detected on this computer: when you install one (or start Ollama, LM Studio or Jan) it shows up here by itself.'))}</span>`;
     const clouds = targets.filter(t => t.kind === 'cloud');
@@ -2499,7 +2509,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (initialConfig && initialConfig.first_run_done !== true) openSettings({ welcome: true });
 
     // AI, chiavi e Harness
-    $('btnRedetectAi').addEventListener('click', async () => { if (harness) { await harness.refreshTargets(true); renderAiSettings(); } });
+    $('btnRedetectAi').addEventListener('click', async () => { if (harness) { await harness.refreshTargets(true); renderAiSettings(); renderAssistOverview(); } });
+    $('aiDetectedList').addEventListener('click', e => {
+        const b = e.target.closest('[data-assist-open]');
+        if (b && harness) harness.openAssist(b.dataset.assistOpen);
+    });
     $('keyList').addEventListener('click', onKeyListClick);
     document.querySelectorAll('#harnessPrefs [data-hpref]').forEach(box => box.addEventListener('change', () => {
         if (harness) harness.setPref(box.dataset.hpref, box.checked);

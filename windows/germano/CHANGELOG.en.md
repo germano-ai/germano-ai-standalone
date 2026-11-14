@@ -6,6 +6,96 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [0.91] - 2026-11-14
+Germano AI v0.91 - **AI configuration assistant**. Next to every detected AI Germano tells what is missing to use it
+and does it with one click: it installs Google Antigravity CLI (`agy`) and uses it in the Chatbot & AI Agents with the
+Antigravity Desktop account, adds Qwen 4 Max and GLM 5.3, links the keys already set up in other tools without copying
+them and makes Ollama, LM Studio and Jan usable even when they are stopped or not installed yet. Protection engine,
+local models and supported formats are those of 0.90.
+
+### Added - AI configuration assistant
+- **Contextual button** on the row of every AI in the model picker at the bottom right and next to the **Detected
+  AIs** in *Settings › AI, keys & Chatbot*: «Install CLI», «Sign in», «Set up», «Start», «Install», «Get a model»,
+  «Retrieve key». It opens the assistant window with the verified status (what is installed, with which account,
+  which models), the possible actions, the live progress with «Cancel» and the official pages.
+- New **Configuration assistant** panel in *Settings › AI, keys & Chatbot*, with the Google Antigravity, Qwen, GLM,
+  Ollama, LM Studio and Jan tabs and one tab for every key found for other services.
+- **Security:** the `/api/ai/assist/*` routes only answer this computer (`403` from the network), reject requests from
+  external sites (anti-CSRF) and, with `lock_settings`, every action; with `GERMANO_OFFLINE=1` no downloads. Actions
+  are fixed recipes, with no shell and no user text among the arguments; downloads start only after an explicit
+  confirmation, only over HTTPS from allowed hosts and with the vendor's SHA-512 digest and/or Authenticode signature
+  verified (if the check fails the file is discarded). No key or token ever reaches the page or the logs.
+- The Remote Control and Germano Client do not show the assistant: it only configures the AIs of the computer running
+  Germano.
+
+### Added - Google Antigravity CLI (`agy`) in the Chatbot & AI Agents
+- **Install CLI** downloads Google's official CLI from the official manifest (SHA-512 digest; on Windows also the
+  «Google LLC» Authenticode signature) and runs the official `agy install` step (`%LOCALAPPDATA%\agy\bin` in the
+  user's PATH; on macOS and Linux `~/.local/bin/agy`).
+- The CLI **uses the account already signed in to Antigravity Desktop by itself**: the sign-in is shared through the
+  system keychain (Windows Credential Manager, Apple Keychain, Secret Service). Germano never reads or copies the
+  tokens: it only checks that the sign-in exists and shows the account masked. If it is missing: «Sign in with Google».
+- **Antigravity CLI (agy)** appears in the picker with the models of your account and is used like the other AIs:
+  message, history and attachments leave **already protected** through standard input (one NDJSON line with only the
+  tags) and the answer comes back with the real data.
+- **Protected execution:** isolated profile (`USERPROFILE`/`HOME` in `state\agy\home`: none of the user's settings,
+  hooks, MCP, plugins or rules), empty working folder, restrictive session settings (`toolPermission: strict`, rules
+  denying commands, files, web addresses and MCP), an instruction not to use tools and an **immediate stop** if the CLI
+  announces a tool anyway; the conversation saved by the CLI is removed at the end of the answer.
+- **Transparency:** with the OAuth account the CLI only talks to Google and cannot be pointed at the Germano Proxy. The
+  Glass Window states it for every request: the CLI's internal instructions (about 10,000 tokens, with the path of the
+  working folder) go to Google without passing through the Proxy, while your text, the history and the attachments are
+  already anonymized. When the CLI is installed, while the Dashboard is open Germano checks the sign-in and the
+  account's models about every 10 minutes with `agy models`: the CLI contacts Google, with no texts or document data.
+- Only for whoever uses this computer: the CLI is never run for network clients (from the Remote Control, for Gemini
+  models, the «Google Gemini» service remains).
+
+### Added - Qwen 4 Max and GLM 5.3
+- New services via API (also in the Proxy as `/p/<service>/v1` and in the Remote Control), with addresses and models
+  verified on the official documentation on 2026-11-14:
+  - `qwen-token` **Qwen Token Plan (Qwen4-Max)**: `qwen4-max-preview` (preview until 2026-11-25) and `qwen3.8-max`;
+  - `qwen` **Qwen (Alibaba Cloud Model Studio)** pay-as-you-go: `qwen3.8-max`, `qwen3.7-plus`, `qwen3.8-flash`;
+  - `qwen-coding` **Qwen Coding Plan**;
+  - `zai` **GLM (Z.ai)** and `zai-coding` **GLM Coding Plan (Z.ai)**: `glm-5.3`.
+- **Retrieve configuration** looks for keys already set for other tools (the user's environment variables, Qwen Code,
+  Claude Code configured toward other providers, OpenCode, Codex, Gemini CLI), picks the right service from the
+  address (plan and region) and **links it without copying it**: `state\ai_links.json` only holds the source and the
+  variable name, the key is read when it is used (a key changed in the source applies right away). Regions not yet
+  supported are reported and not linked; «Unlink» removes the link.
+- **Install Qwen Code** (with Node.js, 22 or later recommended; on macOS also with Homebrew), to use Qwen Code with the
+  Germano Proxy.
+
+### Added - Local models (Ollama, LM Studio, Jan)
+- The models already downloaded are read from disk **even when the service is stopped** (Ollama: `~/.ollama/models` or
+  `OLLAMA_MODELS`; LM Studio: `~/.lmstudio/models` and the downloads folder; Jan: its data folder) and the picker row
+  says so («N models already downloaded»).
+- Ollama: **Install Ollama** (Windows: the official `OllamaSetup.exe` with the «Ollama Inc.» Authenticode signature
+  required, silent per-user installation; macOS and Linux: official page), **Start Ollama** and **Download a
+  recommended model** (`qwen3.5:4b`, `gemma4:e4b`, `llama3.2:3b`, `qwen3.5:2b`) with the progress from the local API.
+- LM Studio: **Start local server** (`lms server start`, or the app); Jan: **Start Jan** (with the note on the Local
+  API Server).
+
+### Changed
+- Germano Client: `client launch agy` explains that the CLI cannot be pointed at the Proxy and shows the alternatives.
+- Version 0.91 in the six source trees and in the six packages; the «Version» entry of the About tab summarizes what
+  is new. Offline guide, READMEs and LEGGIMI updated with the new features.
+
+### Tests
+- Assistant backend: 72/72 checks (key sources in a fake home folder, link without copy and changed key, unsupported
+  regions, models on disk, `agy` profile, fake CLI attempting a tool, routes from this computer and from a simulated
+  network, CSRF, `lock_settings`, Authenticode signatures), repeated with the same result on the 0.91 sources.
+- Real `agy` 1.5.9 CLI in the Harness profile: correct answer and conversation removed; an attempted tool
+  (`run_command`) stopped by Germano before use. Real request with synthetic data: Google only received the tags
+  (`[PERSONA_1]`, `[COD.FISCALE/P.IVA_1]`, `[EMAIL_1]`, `[TELEFONO_1]`).
+- On the real app 29/29 checks; Remote Control and Dashboard in headless Edge 9/9.
+
+### Known limits
+- With Antigravity CLI the CLI's internal instructions go to Google directly (stated in the Glass Window).
+- On macOS the `agy` home folder is not isolated (the Keychain follows it); Linux and macOS verified statically only.
+- Real installation of Ollama, LM Studio and Jan and real calls to Qwen and GLM not tested live (tested: the cancelled
+  confirmation, a model download with a simulated Ollama and the services without a key).
+- `qwen4-max-preview` is a preview until 2026-11-25: after that date the identifier must be updated.
+
 ## [0.90] - 2026-11-14
 Germano AI v0.90 - **faster and parallel, with the same protection**. All measurements were taken on the real engine
 (test PC Intel i5-4570, 4 cores, 16 GB of RAM, no GPU) comparing 0.80 and 0.90 on the same files: same masked data,
