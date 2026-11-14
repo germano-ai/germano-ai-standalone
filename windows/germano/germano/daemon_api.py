@@ -250,21 +250,44 @@ def _client_settings(daemon, options):
     return base, label
 
 
+def _protective_overrides(settings, raw, label=None):
+    """Modifiche per UNA richiesta delle integrazioni (MCP, UTCP, API v1: 0.95) che possono solo AUMENTARE la
+    protezione, quindi valgono anche con il profilo PA o lock_settings: Sistema 2 spento (ogni dubbio resta oscurato),
+    etichette generiche o ████ (irreversibili), ispezione senza alcuna voce nel Vault (dry_run)."""
+    if not isinstance(raw, dict):
+        return settings, label
+    s = dict(settings)
+    if raw.get("system2") is False:
+        s["enable_system2"] = False
+    masking = raw.get("masking")
+    if masking in ("generic", "blackout") or raw.get("dry_run"):
+        s["enable_deanonymize"] = False
+    if masking == "blackout":
+        label = common.BLACKOUT_LABEL
+    return s, label
+
+
 def handle_texts(daemon, body):
     texts = body.get("texts") or []
     if not isinstance(texts, list):
         raise ValueError("'texts' deve essere una lista di stringhe")
     settings, label = _client_settings(daemon, body.get("options"))
+    settings, label = _protective_overrides(settings, body.get("overrides"), label)
     ctx = _ctx(daemon, "anonymize", settings=settings)
     ctx.label_override = label
     units = [Unit(t if isinstance(t, str) else "") for t in texts]
     t0 = time.time()
     res = ctx.analyze(units, batch_context=bool(body.get("batch_context", False)))
+    positions = bool(body.get("positions"))
     out = []
     k = 0
     for i, (u, r) in enumerate(zip(units, res)):
         n = len(r)
-        out.append({"anonymized": apply_replacements(u.text, r), "extracted_data": ctx.audit[k:k + n],
+        items = ctx.audit[k:k + n]
+        if positions:
+            # posizioni (inizio, fine) nel testo originale, una per dato oscurato e nello stesso ordine dell'audit
+            items = [dict(a, start=s, end=e) for a, (s, e, _rep) in zip(items, r)]
+        out.append({"anonymized": apply_replacements(u.text, r), "extracted_data": items,
                     "system2": [d for d in ctx.system2 if d.get("unit") == i]})
         k += n
     daemon.vault.flush()
@@ -293,6 +316,11 @@ def handle_file(daemon, body):
     mode = body.get("mode", "auto")
     # opzioni di un client della rete (Remote Control, Germano Client): valgono solo per questo file
     settings, label = _client_settings(daemon, body.get("options"))
+    # integrazioni (0.95): solo modifiche che aumentano la protezione (niente dry_run sui file)
+    overrides = body.get("overrides") if isinstance(body.get("overrides"), dict) else None
+    if overrides:
+        settings, label = _protective_overrides(settings, {k: v for k, v in overrides.items() if k != "dry_run"},
+                                                label)
     daemon.vault.refresh()
     tm = daemon.vault.tag_map()
     ctx0 = _ctx(daemon, "anonymize")

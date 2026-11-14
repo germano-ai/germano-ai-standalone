@@ -1954,3 +1954,185 @@ def annotate(targets, tools, lang="it"):
                 else:
                     t["assist_label"] = L("Installa", "Install")
     return targets
+
+
+# ------------------------------------------------------------------------------------------------ client MCP (0.95)
+# «Collega con 1 clic» (Impostazioni > Integrazioni MCP e UTCP): registra Germano come server MCP (trasporto stdio) nel
+# file di configurazione di un client rilevato su QUESTO computer. Prima di ogni modifica una copia di sicurezza del
+# file accanto all'originale; scrittura atomica; cambia solo la voce «germano» (il resto del file resta com'e'); un file
+# che non e' JSON valido (es. con commenti) non viene mai riscritto. Le rotte rispondono solo a questo computer
+# (server.py, /api/integrations/*, con controllo dell'origine e corpo JSON obbligatorio).
+MCP_SERVER_NAME = "germano"
+MCP_BACKUPS_KEPT = 5
+
+
+def _app_support(*parts):
+    """Cartella di configurazione delle applicazioni: %APPDATA% (Windows), ~/Library/Application Support (macOS),
+    ~/.config (Linux)."""
+    if IS_WIN:
+        return os.path.join(os.environ.get("APPDATA") or os.path.join(_home(), "AppData", "Roaming"), *parts)
+    if IS_MAC:
+        return os.path.join(_home(), "Library", "Application Support", *parts)
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(_home(), ".config"), *parts)
+
+
+def _mcp_client_specs():
+    h = _home()
+    return (
+        {"id": "claude-desktop", "name": "Claude Desktop", "path": _app_support("Claude", "claude_desktop_config.json"),
+         "detect": [_app_support("Claude")], "bins": (), "container": "mcpServers", "typed": False},
+        {"id": "claude-code", "name": "Claude Code", "path": os.path.join(h, ".claude.json"),
+         "detect": [os.path.join(h, ".claude.json"), os.path.join(h, ".claude")], "bins": ("claude",),
+         "container": "mcpServers", "typed": True},
+        {"id": "antigravity", "name": "Google Antigravity",
+         "path": os.path.join(h, ".gemini", "antigravity", "mcp_config.json"),
+         "detect": [os.path.join(h, ".gemini", "antigravity")], "bins": (), "container": "mcpServers", "typed": False},
+        {"id": "cursor", "name": "Cursor", "path": os.path.join(h, ".cursor", "mcp.json"),
+         "detect": [os.path.join(h, ".cursor")], "bins": ("cursor",), "container": "mcpServers", "typed": False},
+        {"id": "windsurf", "name": "Windsurf", "path": os.path.join(h, ".codeium", "windsurf", "mcp_config.json"),
+         "detect": [os.path.join(h, ".codeium", "windsurf")], "bins": ("windsurf",), "container": "mcpServers",
+         "typed": False},
+        {"id": "vscode", "name": "Visual Studio Code", "path": _app_support("Code", "User", "mcp.json"),
+         "detect": [_app_support("Code", "User")], "bins": ("code",), "container": "servers", "typed": True},
+        {"id": "gemini-cli", "name": "Gemini CLI", "path": os.path.join(h, ".gemini", "settings.json"),
+         "detect": [os.path.join(h, ".gemini", "settings.json")], "bins": ("gemini",), "container": "mcpServers",
+         "typed": False},
+    )
+
+
+def _mcp_entry(spec, cmd):
+    entry = {"type": "stdio"} if spec["typed"] else {}
+    entry["command"] = cmd["command"]
+    entry["args"] = list(cmd["args"])
+    if cmd.get("env"):
+        entry["env"] = dict(cmd["env"])
+    return entry
+
+
+def _read_config_json(path):
+    """(dati, errore): file assente -> ({}, None); errore = "json" (non valido o con commenti) oppure "os"."""
+    if not os.path.exists(path):
+        return {}, None
+    try:
+        if os.path.getsize(path) > 20_000_000:
+            return None, "os"
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except ValueError:
+        return None, "json"
+    except OSError:
+        return None, "os"
+    return (data, None) if isinstance(data, dict) else (None, "json")
+
+
+def _mcp_detected(spec):
+    return any(os.path.exists(p) for p in spec["detect"]) or any(shutil.which(b) for b in spec["bins"])
+
+
+def mcp_clients(lang="it", cmd=None):
+    """Client MCP di questo computer con lo stato della voce «germano»: not_detected, available, connected
+    (comando uguale a quello di questo Germano), outdated (voce di un'altra installazione o versione), error."""
+    if cmd is None:
+        from .integrations import stdio_command
+        cmd = stdio_command()
+    out = []
+    for spec in _mcp_client_specs():
+        detected = _mcp_detected(spec)
+        item = {"id": spec["id"], "name": spec["name"], "path": spec["path"], "short_path": _short_path(spec["path"]),
+                "detected": detected, "container": spec["container"]}
+        data, err = _read_config_json(spec["path"])
+        if err:
+            item["status"] = "error"
+            item["message"] = _L(lang, "file di configurazione non leggibile come JSON (forse contiene commenti): "
+                                       "la voce va aggiunta a mano", "configuration file not readable as JSON (it may "
+                                       "contain comments): add the entry by hand")
+        else:
+            box = (data or {}).get(spec["container"])
+            entry = box.get(MCP_SERVER_NAME) if isinstance(box, dict) else None
+            if isinstance(entry, dict):
+                same = entry.get("command") == cmd["command"] and list(entry.get("args") or []) == list(cmd["args"])
+                item["status"] = "connected" if same else "outdated"
+            else:
+                item["status"] = "available" if detected else "not_detected"
+        out.append(item)
+    return out
+
+
+def _prune_backups(path):
+    folder, base = os.path.dirname(path), os.path.basename(path) + ".germano-backup-"
+    try:
+        olds = sorted(f for f in os.listdir(folder) if f.startswith(base))
+    except OSError:
+        return
+    for f in olds[:-MCP_BACKUPS_KEPT]:
+        try:
+            os.remove(os.path.join(folder, f))
+        except OSError:
+            pass
+
+
+def mcp_connect(client_id, cmd, remove=False, lang="it"):
+    """Aggiunge (o toglie, remove=True) la voce «germano» nel file MCP del client indicato."""
+    spec = next((s for s in _mcp_client_specs() if s["id"] == str(client_id or "")), None)
+    if spec is None:
+        raise AssistError(_L(lang, "Client MCP sconosciuto.", "Unknown MCP client."))
+    if not remove and not _mcp_detected(spec):
+        raise AssistError(_L(lang, f"{spec['name']} non risulta installato su questo computer.",
+                             f"{spec['name']} does not appear to be installed on this computer."))
+    path = spec["path"]
+    data, err = _read_config_json(path)
+    if err:
+        raise AssistError(_L(lang, f"{_short_path(path)} non e' un JSON valido (forse contiene commenti): Germano non "
+                                   "lo modifica. Aggiungi la voce a mano con «Copia configurazione MCP».",
+                             f"{_short_path(path)} is not valid JSON (it may contain comments): Germano does not "
+                             "modify it. Add the entry by hand with «Copy MCP configuration»."))
+    data = dict(data or {})
+    box = data.get(spec["container"])
+    if box is None:
+        box = {}
+    if not isinstance(box, dict):
+        raise AssistError(_L(lang, f"«{spec['container']}» in {_short_path(path)} non e' un oggetto: modifica a mano.",
+                             f"«{spec['container']}» in {_short_path(path)} is not an object: edit it by hand."))
+    box = dict(box)
+    before = box.get(MCP_SERVER_NAME)
+    result = {"client": spec["id"], "name": spec["name"], "path": path, "backup": None}
+    if remove:
+        if before is None:
+            result["action"] = "absent"
+            return result
+        box.pop(MCP_SERVER_NAME, None)
+        result["action"] = "removed"
+    else:
+        entry = _mcp_entry(spec, cmd)
+        if before == entry:
+            result["action"] = "unchanged"
+            return result
+        box[MCP_SERVER_NAME] = entry
+        result["action"] = "updated" if before is not None else "connected"
+    data[spec["container"]] = box
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.exists(path):
+            backup = f"{path}.germano-backup-{time.strftime('%Y%m%d-%H%M%S')}"
+            shutil.copy2(path, backup)
+            result["backup"] = backup
+        tmp = path + ".germano-tmp"
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp, path)
+    except OSError as e:
+        try:
+            os.remove(path + ".germano-tmp")
+        except OSError:
+            pass
+        raise AssistError(_L(lang, f"Impossibile scrivere {_short_path(path)} ({e.strerror or e}).",
+                             f"Cannot write {_short_path(path)} ({e.strerror or e}).")) from None
+    _prune_backups(path)
+    common.log(f"Integrazioni: Germano {'tolto da' if remove else 'collegato a'} {spec['name']} ({path}); copia di "
+               f"sicurezza: {result['backup'] or 'nessuna (file nuovo)'}.")
+    result["message"] = (_L(lang, f"Germano tolto da {spec['name']}.", f"Germano removed from {spec['name']}.")
+                         if remove else
+                         _L(lang, f"Germano collegato a {spec['name']}: riavvia {spec['name']} per vedere gli strumenti.",
+                            f"Germano connected to {spec['name']}: restart {spec['name']} to see the tools."))
+    return result

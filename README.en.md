@@ -2,7 +2,7 @@
 
  *Leggi questo documento in altre lingue: [Italiano](README.md)*
 
-**Version 0.91** (November 14, 2026): AI configuration assistant — Antigravity CLI with the Antigravity Desktop account, Qwen 4 Max, GLM 5.3 and local models in one click. See [What's new in 0.91](#whats-new-in-091-ai-configuration-assistant) and the [CHANGELOG](CHANGELOG.en.md).
+**Version 0.95** (November 14, 2026): MCP server and UTCP — Germano in input workflows (anonymization, inspection, leak checks) and output workflows (data restoration), for Claude, Antigravity, Cursor, n8n and agents. See [What's new in 0.95](#whats-new-in-095-mcp-server-and-utcp-germano-in-workflows) and the [CHANGELOG](CHANGELOG.en.md).
 
 *<span style="color: #007bff; font-weight: bold;">Use Case 1</span>: You simply have a large number of documents to anonymize on your computer or server or NAS. Germano works in standalone mode and returns the anonymized documents; it supports many formats and is highly configurable. You simply copy the folder containing the files into input and receive the anonymized files in the output folder. Germano maintains the original directory and subfolder structure. Germano anonymizes text, prompts and faces and is compatible with the GDPR; Germano is a local and offline Windows application (does not require internet access to work).*
 
@@ -26,6 +26,20 @@ Germano opens on the **Chatbot & AI Agents** tab, where you talk to the AI you p
  **Productivity Tip:** the protection engine starts by itself on the first send or when you add documents; while it is off no data leaves. You can add files *while the software is already working*: they are queued without restarting anything. **Export list** saves the list of ready or failed documents as CSV (for Excel), and the **«Manual text sanitization»** box anonymizes a text on the fly to paste into any AI (and restores the answer).
 
  **[DOWNLOAD GERMANO AI STANDALONE](https://download.germano.ai)**
+
+---
+
+## What's new in 0.95: MCP server and UTCP, Germano in workflows
+
+Germano becomes a **tool** for other systems: Claude Desktop, Claude Code, Google Antigravity, Cursor, Windsurf, Visual Studio Code, Gemini CLI, n8n, agents and scripts use it **on the way in** (anonymize texts and documents, inspect personal data, stop leaks before anything leaves) and **on the way out** (restore the original data in the replies). Protection engine, local models and formats are those of 0.91.
+
+- **MCP server** (Model Context Protocol) at `http://127.0.0.1:8181/mcp` (Streamable HTTP), `/mcp/sse` (SSE for n8n and older clients) and over **stdio** (`server.py --mcp-stdio`: it connects to the open Germano or works on its own). Revisions 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05; 8 tools with input and output schemas, 4 resources and 3 prompts.
+- **8 tools** — input: `germano_anonymize_text`, `germano_anonymize_file`, `germano_inspect_entities` (read-only), `germano_leak_check` (JSON payloads too); output: `germano_deanonymize_text`, `germano_deanonymize_file`; verify and status: `germano_workflow_roundtrip`, `germano_status`.
+- **UTCP 1.0** at `/utcp` and `/.well-known/utcp.json`, **OpenAPI 3.1** at `/openapi.json` and new **REST APIs** `/api/v1/anonymize-text`, `/api/v1/leak-check`, `/api/v1/deanonymize-text`... sharing the same registry as the MCP tools.
+- **Settings › MCP & UTCP integrations:** addresses and configurations to copy, **Connect with 1 click** to the clients found on the PC (with a backup of their file), Input → Output flow test, token for the network.
+- **Security:** if the engine is not ready the request is blocked (never clear data presented as safe), the Vault is never listed and restoration covers only the placeholders present; from the network the integration token or a user session is needed and restoration covers only the data of one's own anonymization; file paths are limited to the allowed folders.
+
+Details, tests (also with the official MCP and UTCP SDKs) and known limitations in the [CHANGELOG](CHANGELOG.en.md); full manual in the Guide, chapter 11.
 
 ---
 
@@ -75,12 +89,12 @@ All official installers are single ready-to-use files on **[download.germano.ai]
 
 | System | Full suite | Lightweight client |
 |---|---|---|
-| Windows 10/11 and Windows Server 2019/2022/2025 64-bit (also in a virtual machine) | `germano-0.91.exe` | `germano-client-0.91.exe` |
-| macOS | `germano-0.91.pkg` (Apple Silicon, macOS 14 or later) | `germano-client-0.91.pkg` (Apple Silicon and Intel, macOS 11 or later) |
-| Linux Ubuntu/Debian 64-bit | `germano-0.91.deb` | `germano-client-0.91.deb` |
+| Windows 10/11 and Windows Server 2019/2022/2025 64-bit (also in a virtual machine) | `germano-0.95.exe` | `germano-client-0.95.exe` |
+| macOS | `germano-0.95.pkg` (Apple Silicon, macOS 14 or later) | `germano-client-0.95.pkg` (Apple Silicon and Intel, macOS 11 or later) |
+| Linux Ubuntu/Debian 64-bit | `germano-0.95.deb` | `germano-client-0.95.deb` |
 
 ### Windows (10 / 11 64-bit)
-1. **Download:** download `germano-0.91.exe`.
+1. **Download:** download `germano-0.95.exe`.
 2. **Installation:** double-click the installer. **As soon as it opens it asks for administrator permission** (Windows UAC prompt: choose **Yes**): it is needed to allow access from the local network, always enabled, with a Windows Firewall rule that only applies to Germano's Python and only to private and domain networks (Server LAN mode). The program installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI`, with the Desktop and Start menu shortcuts, the entry in Settings > Apps and the working folders in `Documents\Germano AI`; at the end the installer window closes and **Germano AI opens by itself**, with the user's normal permissions. The Microsoft Visual C++ libraries are already included: nothing else to install.
 3. **Launch:** **Germano AI** shortcut on the Desktop or in the Start menu (dedicated window, no black terminal windows).
 4. **Uninstall:** Settings > Apps > Installed apps > Germano AI (it asks for administrator permission to remove the firewall rule); you can choose whether to keep the working folders and the Vault.
@@ -93,7 +107,7 @@ All official installers are single ready-to-use files on **[download.germano.ai]
 The full suite installer is about 3.8 GB (it contains all the AI models): on the first double-click Microsoft Defender scans it, so the window may take a few seconds to appear. The installer is not digitally signed yet: if "Windows protected your PC" appears, choose **More info > Run anyway**.
 
 ### macOS
-1. **Download:** download `germano-0.91.pkg`. The full suite requires a Mac with **Apple Silicon** (M1 or later) and **macOS 14 Sonoma** or later, because PyTorch is no longer published for Intel Macs; on Intel Macs use the lightweight client `germano-client-0.91.pkg`.
+1. **Download:** download `germano-0.95.pkg`. The full suite requires a Mac with **Apple Silicon** (M1 or later) and **macOS 14 Sonoma** or later, because PyTorch is no longer published for Intel Macs; on Intel Macs use the lightweight client `germano-client-0.95.pkg`.
 2. **Installation:** double-click the package. When choosing the destination select **Install for me only**: `Germano.app` goes into `~/Applications` **with no administrator password**. With "Install for all users of this computer" it goes into `/Applications` and macOS asks for the password. At the end Germano opens by itself.
 3. **Launch:** open **Germano** (`Germano.app`) from Launchpad or the Applications folder. On first launch it creates the working folders in `~/Documents/Germano AI` (in `~/Germano AI` if Documents is synced with iCloud).
 4. **Uninstall:** drag `Germano.app` to the Trash; the working folders stay where they are.
@@ -101,8 +115,8 @@ The full suite installer is about 3.8 GB (it contains all the AI models): on the
 The package is not signed by Apple yet: if macOS blocks it, go to **System Settings > Privacy & Security** and choose **Open Anyway**.
 
 ### Linux (Ubuntu / Debian 64-bit)
-1. **Download:** download `germano-0.91.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later (Ubuntu 22.04 or later, Debian 12 or later).
-2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-0.91.deb` in a terminal. As with any system package, the administrator password is required. The program goes into `/opt/germano`, with the **Germano AI** entry in the applications menu and the `germano-ai` command; no other packages are needed.
+1. **Download:** download `germano-0.95.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later (Ubuntu 22.04 or later, Debian 12 or later).
+2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-0.95.deb` in a terminal. As with any system package, the administrator password is required. The program goes into `/opt/germano`, with the **Germano AI** entry in the applications menu and the `germano-ai` command; no other packages are needed.
 3. **Launch:** from the applications menu. On first launch it creates the working folders in `Documents/Germano AI` (the Documents folder in the system language).
 4. **Uninstall:** `sudo apt remove germano-ai`; the working folders stay where they are.
 
@@ -160,7 +174,7 @@ With **Server** mode on, from a Windows, Mac or Linux PC, a tablet or a smartpho
 ## Main Features
 
 *   **100% Offline & ready on a freshly installed system:** every installer bundles its own Python 3.11 with all libraries (on Windows also the 64-bit Microsoft Visual C++ libraries, next to the interpreter: no redistributable to install), an offline Web UI free of external CDNs, and **8 pre-installed local AI models**.
-*   **All settings in one place:** **Mode & network** (Standalone, Server, Client, network access, user management), **Protection & models** (compliance profiles, sensitivity, **18 categories and 7 analysis engines**: Names, Professions/Titles, Addresses, Cadastral, Tax Codes/VAT, Email/PEC, Phone Numbers, IBAN/Bank accounts, Amounts/Finance, Dates, Companies/Entities, License Plates/IDs, Health Data (GDPR Art. 9), Medications/Therapies, Judicial Data (GDPR Art. 10), Marital Status, Passwords/Secrets, and URLs/IPs), **AI, keys & Chatbot** (detected AIs, keys and, since 0.91, the Configuration assistant), **Proxy & APIs** (Proxy URLs, per-tool setup, target services, REST examples), **System & log**, **Updates** (like Google Chrome's «About» page) and **About Germano**.
+*   **All settings in one place:** **Mode & network** (Standalone, Server, Client, network access, user management), **Protection & models** (compliance profiles, sensitivity, **18 categories and 7 analysis engines**: Names, Professions/Titles, Addresses, Cadastral, Tax Codes/VAT, Email/PEC, Phone Numbers, IBAN/Bank accounts, Amounts/Finance, Dates, Companies/Entities, License Plates/IDs, Health Data (GDPR Art. 9), Medications/Therapies, Judicial Data (GDPR Art. 10), Marital Status, Passwords/Secrets, and URLs/IPs), **AI, keys & Chatbot** (detected AIs, keys and, since 0.91, the Configuration assistant), **Proxy & APIs** (Proxy URLs, per-tool setup, target services, REST examples), **MCP & UTCP integrations** (since 0.95: MCP, UTCP and OpenAPI addresses, 1-click connection to the clients, Input → Output flow test, network token), **System & log**, **Updates** (like Google Chrome's «About» page) and **About Germano**.
 *   **Complete Offline Guide & Technical Documentation:** *"Guide"* tab integrated into the Dashboard (available at `/guide` and as standalone file `GUIDA_OFFLINE.html`), fully bilingual (Italian and English), featuring step-by-step guides, 5-folder workflow breakdown, REST API specifications, and setup instructions for Google Antigravity (also Antigravity CLI with the same account), OpenAI Codex, Cursor, and Claude Code.
 *   **Automatic De-Anonymization via API Proxy and Internal Folders:** When *"Ripristino automatico dei dati originali"* (Automatic data restoration) is active (default), Germano logs entity mappings in the local Vault (`extracted/deanonymize_vault.db`, with the portable copy `deanonymize_vault.json`). In API Proxy integrations (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` for **Claude Code, Codex, OpenCode, Aider** and the other tools that accept a service address) and in the local `input/` folder, AI responses and returned documents are **automatically de-anonymized** with their true original values.
 *   **8 Integrated 100% Offline AI Models (`models/`):**
@@ -199,6 +213,16 @@ POST http://127.0.0.1:8181/api/v1/anonymize_text
 ```
 Expects a JSON payload with the `{"text": "..."}` field and returns the anonymized text along with the detailed map of extracted entities.
 
+### MCP server, UTCP and workflow APIs (since 0.95)
+```http
+POST http://127.0.0.1:8181/mcp                     # MCP server (Streamable HTTP; SSE at /mcp/sse; stdio: server.py --mcp-stdio)
+GET  http://127.0.0.1:8181/utcp                    # UTCP 1.0 manual (also /.well-known/utcp.json)
+GET  http://127.0.0.1:8181/openapi.json            # OpenAPI 3.1
+POST http://127.0.0.1:8181/api/v1/anonymize-text   # and anonymize-file, inspect-entities, leak-check,
+                                                   # deanonymize-text, deanonymize-file, workflow-roundtrip
+```
+The same 8 tools in MCP, UTCP, OpenAPI and REST: on the way in they anonymize, inspect and check for leaks, on the way out they restore the original data only for the placeholders present. From this computer no key is needed; from the network (Server mode) `Authorization: Bearer <token>` is required with the token of *Settings › MCP & UTCP integrations*. JSON-RPC, curl, n8n and Python examples in the Guide, chapter 11.
+
 ---
 
 ## Cross-Platform AI Integration: Local API Proxy
@@ -225,7 +249,7 @@ In **Settings › Proxy & APIs** the Dashboard shows the addresses to copy and, 
    - **Claude Code**: before starting it, set `ANTHROPIC_BASE_URL=http://127.0.0.1:8181` (in PowerShell: `$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8181"`).
    - **OpenAI Codex CLI**: set `OPENAI_BASE_URL=http://127.0.0.1:8181/v1`.
    - **Aider, Qwen Code, OpenCode, Continue, OpenAI and Anthropic SDKs**: set the Base URL to `http://127.0.0.1:8181/v1` (OpenAI format) or `http://127.0.0.1:8181` (Anthropic format).
-   - **Cursor, Google Antigravity, Windsurf, Claude Desktop**: **cannot be protected** with the Proxy (they build prompts on their own servers or do not accept a local address): to work protected use Germano's **Chatbot & AI Agents**. For Antigravity, since 0.91 the configuration assistant installs **Antigravity CLI**, which in the Chatbot & AI Agents uses the same account as Antigravity Desktop.
+   - **Cursor, Google Antigravity, Windsurf, Claude Desktop**: **cannot be protected** with the Proxy (they build prompts on their own servers or do not accept a local address): to work protected use Germano's **Chatbot & AI Agents**. For Antigravity, since 0.91 the configuration assistant installs **Antigravity CLI**, which in the Chatbot & AI Agents uses the same account as Antigravity Desktop. Since 0.95 these tools can use Germano as an **MCP server** (see *MCP server, UTCP and workflow APIs*): their chat does not become protected, but the agent can anonymize documents before reading them, check what it sends and write restored results to files.
 3. Make sure you enter your real API Key (OpenAI or Anthropic) in the tool. The tool will send it to Germano AI, which will use it locally **exclusively** to forward the request to the service after finishing the anonymization of prompts and files.
 
 ### "Fail-Safe Privacy" (Hard Block Active)
@@ -243,7 +267,7 @@ By default Germano updates itself **silently**, with no windows or notices inter
 3. On Windows the installer prepares the new version right away, silently and at low priority, in a folder next to the program's one (`Germano AI.nuovo`), while Germano stays open and the version in use is not touched.
 4. At the **next start** the new version replaces the old one in a few seconds and Germano opens already updated. Whoever wants to apply it right away only finds a discreet **«Restart to update»** at the top. Working folders in `Documents\Germano AI`, the Vault (`extracted\deanonymize_vault.db` and the copy `deanonymize_vault.json`) and the preferences `config.json` stay intact; if anything goes wrong, the version in use stays.
 
-**Settings › Updates**, like Chrome's «About» page, shows the status: «Germano AI is up to date (v0.91)» with the time of the last check, «Downloading the update in the background…» with the progress bar, «Restart Germano to apply the update». On macOS and Linux the `.pkg` / `.deb` package is downloaded the same way and opened with the system installer when you decide. Germano Client updates itself the same way.
+**Settings › Updates**, like Chrome's «About» page, shows the status: «Germano AI is up to date (v0.95)» with the time of the last check, «Downloading the update in the background…» with the progress bar, «Restart Germano to apply the update». On macOS and Linux the `.pkg` / `.deb` package is downloaded the same way and opened with the system installer when you decide. Germano Client updates itself the same way.
 
 Options (in Settings or in `config.json`): `"auto_update": false` only reports the new version, `"check_updates": false` disables the check. No document or text data is sent during the check.
 
@@ -311,9 +335,9 @@ Every release has the same structure: `sorgenti/{windows,linux,macos}/{germano,g
 
 ```bash
 python -B build/coerenza_sorgenti.py                    # Linux and macOS sources identical to the Windows ones in common files
-python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-0.91.exe and germano-client-0.91.exe
-python -B build/costruisci_deb.py tutti                 # releases/linux/germano-0.91.deb and germano-client-0.91.deb
-python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-0.91.pkg and germano-client-0.91.pkg
+python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-0.95.exe and germano-client-0.95.exe
+python -B build/costruisci_deb.py tutti                 # releases/linux/germano-0.95.deb and germano-client-0.95.deb
+python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-0.95.pkg and germano-client-0.95.pkg
 python -B build/crea_version_json.py                    # releases/version.json: sizes and SHA-256 read from the files
 ```
 

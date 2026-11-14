@@ -3,13 +3,13 @@ GERMANO AI — STRUTTURA DELLE CARTELLE PER OGNI RELEASE (v0.60+)
 ================================================================================
 
 Questa è la struttura ufficiale e tassativa adottata dalla release 0.60 e da tutte
-le release successive di Germano AI. Release corrente: 0.91 (14 novembre 2026).
+le release successive di Germano AI. Release corrente: 0.95 (14 novembre 2026).
 
 --------------------------------------------------------------------------------
 ALBERATURA DELLE CARTELLE
 --------------------------------------------------------------------------------
 
-germano.ai-0.91/
+germano.ai-0.95/
 ├── sorgenti/
 │   ├── macos/
 │   │   ├── germano/
@@ -28,14 +28,14 @@ germano.ai-0.91/
 └── releases/
     ├── version.json
     ├── macos/
-    │   ├── germano-0.91.pkg
-    │   └── germano-client-0.91.pkg
+    │   ├── germano-0.95.pkg
+    │   └── germano-client-0.95.pkg
     ├── linux/
-    │   ├── germano-0.91.deb
-    │   └── germano-client-0.91.deb
+    │   ├── germano-0.95.deb
+    │   └── germano-client-0.95.deb
     └── windows/
-        ├── germano-0.91.exe
-        └── germano-client-0.91.exe
+        ├── germano-0.95.exe
+        └── germano-client-0.95.exe
 
 
 --------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
      * Template HTML della Dashboard e del pannello client
      * Fogli di stile CSS, asset grafici (loghi SVG, favicon ICO)
      * Documentazione: README.md / README.en.md, CHANGELOG.md / CHANGELOG.en.md,
-       LEGGIMI_v0.91.md, guida offline GUIDA_OFFLINE.html (identica in tutte le copie)
+       LEGGIMI_v0.95.md, guida offline GUIDA_OFFLINE.html (identica in tutte le copie)
    - Regola vincolante: NESSUN modello di intelligenza artificiale pesante, nessun
      file binario proprietario di terze parti, nessun installer o eseguibile compilato,
      nessuna cache (__pycache__, .pyc).
@@ -77,7 +77,7 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
      * face-detection (YuNet), signature-detection e plate-detection (YOLOS)
      * whisper-small (trascrizione audio, CTranslate2 INT8)
      * qwen3.5-0.8b (Sistema 2, GGUF Q8_0 per llama.cpp)
-   - Nella 0.91 «modelli» è una giunzione NTFS DIRETTA verso germano.ai-0.80/modelli
+   - Nella 0.95 «modelli» è una giunzione NTFS DIRETTA verso germano.ai-0.80/modelli
      (stessi file, nessuna copia): NON cancellare la cartella della 0.80 senza
      prima sostituire la giunzione con una copia reale.
 
@@ -94,9 +94,12 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
        - Python 3.11 portabile, wheel x86_64, librerie X11 per Qt, llama.cpp, 7-Zip
      * dipendenze/macos/:
        - Python 3.11 portabile e wheel (Apple Silicon e Intel), llama.cpp, 7-Zip
-   - Nella 0.91 «dipendenze» è una giunzione NTFS DIRETTA verso germano.ai-0.80/dipendenze
+   - Nella 0.95 «dipendenze» è una giunzione NTFS DIRETTA verso germano.ai-0.80/dipendenze
      (i costruttori leggono soltanto). Attenzione: build/scarica_dipendenze.py
-     lanciato dalla 0.91 scriverebbe nelle dipendenze della 0.80.
+     lanciato dalla 0.95 scriverebbe nelle dipendenze della 0.80.
+   - Dalla 0.95 il codice comprende anche germano/integrations.py (registro degli strumenti MCP/UTCP), germano/mcp_server.py
+     (Server MCP: Streamable HTTP, SSE e stdio), germano/utcp.py (manuale UTCP e OpenAPI) e static/integrations.js
+     (Impostazioni > Integrazioni MCP e UTCP): stessi alberi, stessa struttura.
 
 4. releases/
    - Scopo: Cartella di distribuzione contenente esclusivamente i singoli installer
@@ -106,25 +109,25 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
    - Regola fondamentale: Zero dipendenze da Internet all'installazione. L'applicazione
      deve funzionare al primo colpo anche su sistemi operativi appena installati ("vanilla"):
      * Windows (Windows 10/11, Windows Server 2019+):
-       - releases/windows/germano-0.91.exe
+       - releases/windows/germano-0.95.exe
          Installer unico autoestraente della suite completa. Si installa per
          l'utente corrente (%LOCALAPPDATA%\Programs\Germano AI); appena si apre
          chiede i permessi di amministratore solo per la regola del firewall
          (accesso dalla rete locale), crea i collegamenti e le cartelle di lavoro
          in Documenti\Germano AI. Deve restare sotto i 4 GB (limite di Windows).
-       - releases/windows/germano-client-0.91.exe
+       - releases/windows/germano-client-0.95.exe
          Installer unico del client leggero (~22 MB, senza modelli, nessun UAC).
      * Linux (Ubuntu 26.04 / Debian):
-       - releases/linux/germano-0.91.deb
+       - releases/linux/germano-0.95.deb
          Pacchetto nativo Debian/Ubuntu autosufficiente in /opt/germano, con la
          voce di menu e il comando germano-ai.
-       - releases/linux/germano-client-0.91.deb
+       - releases/linux/germano-client-0.95.deb
          Pacchetto nativo Debian/Ubuntu per il client leggero.
      * macOS (Apple Silicon per la suite, Apple Silicon e Intel per il client):
-       - releases/macos/germano-0.91.pkg
+       - releases/macos/germano-0.95.pkg
          Pacchetto nativo macOS (.pkg). «Installa solo per me» mette Germano.app in
          ~/Applications senza password di amministratore.
-       - releases/macos/germano-client-0.91.pkg
+       - releases/macos/germano-client-0.95.pkg
          Pacchetto nativo macOS per il client leggero.
 
 --------------------------------------------------------------------------------

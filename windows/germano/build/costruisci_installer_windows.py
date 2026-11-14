@@ -1,6 +1,6 @@
 """Costruisce gli installer Windows IN UN SOLO FILE della release:
-  germano.ai-0.91/releases/windows/germano-0.91.exe          suite completa (runtime, modelli IA, interfaccia)
-  germano.ai-0.91/releases/windows/germano-client-0.91.exe   client leggero
+  germano.ai-0.95/releases/windows/germano-0.95.exe          suite completa (runtime, modelli IA, interfaccia)
+  germano.ai-0.95/releases/windows/germano-client-0.95.exe   client leggero
 partendo da sorgenti/windows/<edizione> (programma), dipendenze/windows/runtime-<edizione> (Python 3.11 con tutte
 le librerie e le DLL di Visual C++ accanto all'interprete: nessun ridistribuibile da installare), modelli/,
 dipendenze/windows/llama-server (llama.cpp per il Sistema 2, installato in runtime/llama) e dipendenze/windows/7zip
@@ -45,7 +45,7 @@ import crea_version_json  # noqa: E402
 
 WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # oltre, Windows rifiuta di avviare l'eseguibile
 
-RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-0.91
+RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-0.95
 SOURCES = os.path.join(RELEASE, "sorgenti", "windows")
 DEPS = os.path.join(RELEASE, "dipendenze", "windows")
 MODELS = os.path.join(RELEASE, "modelli")

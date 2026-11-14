@@ -2,7 +2,7 @@
 
  *Leggi questo documento in altre lingue: [Italiano](README.md)*
 
-**Version 0.91** (November 14, 2026): panel aligned with Germano Server 0.91 (new Qwen 4 Max and GLM 5.3 services). What's new in the suite [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.en.md).
+**Version 0.95** (November 14, 2026): `client mcp` and `client utcp` to use the MCP server and the UTCP manual of Germano Server 0.95 from the network PCs; panel aligned with the 0.95 server. What's new in the suite [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.en.md).
 
 **Germano AI Client** is the lightweight companion application (about 22 MB on Windows) built to connect any workstation (laptop, standard office PC) to a **Germano Server** running on your local network (LAN).
 
@@ -32,6 +32,8 @@ It requires no heavy AI models or dedicated GPUs on your local machine: all comp
    Client requests take the server's fast lane, ahead of the documents queued in its `input` folder; the server works in parallel (Privacy Filter and Italian NER together, one lock per model) and serves already protected history and attachments from its cache.
 10. **New services with a Germano Server 0.91**:
    Qwen Token Plan (Qwen4-Max), Qwen Coding Plan, GLM (Z.ai) and GLM Coding Plan (Z.ai) appear among the server's services. The configuration assistant and Antigravity CLI stay on the server computer (Antigravity CLI uses the Google account of whoever sits at the server): the client neither shows nor runs them. On the client PC Antigravity CLI cannot be protected with the Proxy: `client launch agy` explains it and shows the alternatives.
+11. **The server's MCP server and UTCP (0.95)**:
+   `client mcp` is a stdio MCP server on this PC that forwards to the Germano Server's MCP server (Claude Desktop, Claude Code, Cursor, Antigravity installed here use it like any MCP server); `client utcp` shows the server's MCP, UTCP and OpenAPI addresses and its tools. From the network the server's integration token is needed (`client config --api-token <token>`).
 
 ---
 
@@ -57,13 +59,13 @@ It requires no heavy AI models or dedicated GPUs on your local machine: all comp
 The official Client installers are single files on **[download.germano.ai](https://download.germano.ai/)** and bundle their own Python with all libraries: installation downloads nothing from the Internet. The client creates no working folders in Documents: its settings (server address, session, options) stay in the user's technical folder.
 
 ### Windows (10 / 11 and Windows Server 2019 or later, 64-bit, also in a virtual machine)
-1. **Download:** download `germano-client-0.91.exe` (about 22 MB).
+1. **Download:** download `germano-client-0.95.exe` (about 22 MB).
 2. **Installation:** double-click the installer. It installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI Client` **without administrator privileges (no UAC prompt)**, with Desktop and Start menu shortcuts and the entry in Settings > Apps. The client settings are in `%LOCALAPPDATA%\Germano AI Client`.
 3. **Launch:** at the end of the installation the client opens by itself; afterwards use the **Germano AI Client** shortcut on the Desktop or in the Start menu (dedicated window, no terminal; its name differs from the suite's, so both editions can live on the same computer).
 4. **Uninstall:** Settings > Apps > Installed apps > Germano AI Client.
 
 ### macOS (Apple Silicon and Intel, macOS 11 or later)
-1. **Download:** download `germano-client-0.91.pkg`.
+1. **Download:** download `germano-client-0.95.pkg`.
 2. **Installation:** double-click the package and, when choosing the destination, **Install for me only**: the app goes into `~/Applications/Germano AI Client/Germano.app` **with no administrator password** (with "Install for all users of this computer" it goes into `/Applications/Germano AI Client` and macOS asks for the password). The settings are in `~/Library/Application Support/Germano AI Client`.
 3. **Launch:** open **Germano** from Launchpad or from Applications > Germano AI Client.
 4. **Uninstall:** drag the `Germano AI Client` folder to the Trash.
@@ -71,12 +73,12 @@ The official Client installers are single files on **[download.germano.ai](https
 The package is not signed by Apple yet: if macOS blocks it, go to **System Settings > Privacy & Security** and choose **Open Anyway**.
 
 ### Linux (Ubuntu / Debian 64-bit)
-1. **Download:** download `germano-client-0.91.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later.
-2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-client-0.91.deb` (administrator password, as for any system package). The program goes into `/opt/germano-client`, with the **Germano AI Client** entry in the applications menu and the `germano-ai-client` command; the settings are in `~/.local/state/germano-client`.
+1. **Download:** download `germano-client-0.95.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later.
+2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-client-0.95.deb` (administrator password, as for any system package). The program goes into `/opt/germano-client`, with the **Germano AI Client** entry in the applications menu and the `germano-ai-client` command; the settings are in `~/.local/state/germano-client`.
 3. **Launch:** from the applications menu.
 4. **Uninstall:** `sudo apt remove germano-ai-client`.
 
-**Requirements:** a Germano Server in Server mode on the same local network, version 0.70 or later (0.91 recommended: with a 0.60 server only the command line can be used).
+**Requirements:** a Germano Server in Server mode on the same local network, version 0.70 or later (0.95 recommended: with a 0.60 server only the command line can be used).
 
 ---
 
@@ -105,6 +107,11 @@ python client.py options --set censor_date=no --set masking=blackout
 
 # Launch a local AI agent routed through the server's privacy proxy
 python client.py launch claude-code
+
+# MCP/UTCP/OpenAPI addresses and tools of the server; stdio MCP server towards the server (0.95)
+python client.py config --api-token <the server's integration token>
+python client.py utcp
+python client.py mcp
 
 # Anonymize a local file via the server
 python client.py send document.pdf

@@ -11,6 +11,9 @@ oppure con utente e password se sul server e' attiva la gestione utenti: «clien
 Le CLI che non si possono proteggere in modo affidabile non vengono avviate come «protette»: il Client lo dice.
 Dalla 0.70 il pannello del Client (client_ui.py) e' l'Harness AI del Server con la Glass Window, la sanitizzazione
 manuale dei file e gli aggiornamenti silenziosi (client_updater.py); questa riga di comando resta invariata.
+Dalla 0.95: «client mcp» e' un Server MCP stdio su questo PC che inoltra al Server MCP del Germano Server (Claude
+Desktop, Claude Code, Cursor... dei PC della rete), con il token delle integrazioni («client config --api-token»);
+«client utcp» mostra gli indirizzi MCP/UTCP/OpenAPI del server e gli strumenti del manuale UTCP.
 
 Codici di uscita: 0 tutto bene, 1 server non raggiungibile o non valido, 2 uso errato dei comandi,
 3 accesso richiesto o non valido, 4 motore del server non pronto, 5 CLI non installata o non proteggibile,
@@ -223,9 +226,9 @@ def _setup_output():
 def get_version():
     try:
         with open(os.path.join(BASE_DIR, "VERSION"), "r", encoding="utf-8-sig") as f:
-            return f.read().strip() or "0.91"
+            return f.read().strip() or "0.95"
     except OSError:
-        return "0.91"
+        return "0.95"
 
 
 def _clean(value, limit=60):
@@ -1242,12 +1245,20 @@ def cmd_config(args):
         cfg["token"] = _login(parse_server(cfg["server_url"])[0], user, password)
         cfg["user"] = user if cfg["token"] else ""
         changed = True
+    api_token = getattr(args, "api_token", None)
+    if api_token is not None:                 # 0.95: token delle integrazioni MCP/UTCP del server
+        api_token = api_token.strip()
+        check_token_format(api_token)
+        cfg["api_token"] = api_token
+        changed = True
     cfg.setdefault("server_url", "")
     cfg.setdefault("token", "")
     cfg.setdefault("discovery_port", discovery.DEFAULT_PORT)
     if changed:
         save_config(cfg)
         print("Configurazione salvata in client_config.json.")
+    if cfg.get("api_token"):
+        print("  token MCP/UTCP : impostato (client mcp, client utcp)")
     print(f"  server_url     : {cfg.get('server_url') or '(automatico: ricerca in rete)'}")
     print(f"  accesso        : " + (f"sessione di «{_clean(cfg.get('user'), 64)}»" if cfg.get("token") and cfg.get("user")
                                     else "token impostato" if cfg.get("token") else "nessuna sessione (accesso libero o "
@@ -1261,6 +1272,115 @@ def cmd_config(args):
                   f"accesso {r['token']}.")
         except ClientError as e:
             print(f"Verifica: {e}")
+    return OK
+
+
+# ------------------------------------------------------------------ MCP e UTCP del server (0.95)
+def _integration_token(args):
+    """Token per MCP e API v1 del server: --api-token, poi «api_token» in client_config.json (token delle
+    integrazioni mostrato nella Dashboard del server), poi la sessione dell'utente (client login)."""
+    tok = getattr(args, "api_token", None) or load_config().get("api_token") or _token(args)
+    tok = str(tok or "").strip()
+    check_token_format(tok)
+    return tok
+
+
+def cmd_mcp(args):
+    """Server MCP stdio su QUESTO PC che inoltra i messaggi al Server MCP del Germano Server (POST /mcp), con il
+    token. Per Claude Desktop, Claude Code, Cursor... dei PC della rete: command = client.py (o START.bat) con «mcp».
+    Sullo stdout solo messaggi JSON-RPC; avvisi su stderr."""
+    proto = sys.stdout.buffer
+    sys.stdout = sys.stderr                   # qualsiasi stampa va su stderr: lo stdout e' del protocollo
+    base, origin = resolve_server(args)
+    tok = _integration_token(args)
+    print(f"Germano Client {get_version()}: ponte MCP verso {base}/mcp ({origin}).", file=sys.stderr)
+    state = {"sid": None, "version": None, "init": None}
+
+    def post(obj):
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+        if tok:
+            headers["Authorization"] = "Bearer " + tok
+        if state["sid"]:
+            headers["Mcp-Session-Id"] = state["sid"]
+        if state["version"]:
+            headers["MCP-Protocol-Version"] = state["version"]
+        rh = {}
+        st, body = _request("POST", base + "/mcp", json.dumps(obj, ensure_ascii=False).encode("utf-8"), headers,
+                            timeout=3700, response_headers=rh)
+        return st, body, {k.lower(): v for k, v in rh.items()}
+
+    def write(obj):
+        proto.write((json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8"))
+        proto.flush()
+
+    for raw in sys.stdin.buffer:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            write({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
+            continue
+        first = msg[0] if isinstance(msg, list) and msg else msg
+        is_init = isinstance(first, dict) and first.get("method") == "initialize"
+        if is_init:
+            state["init"], state["sid"] = first, None
+        ids = [m.get("id") for m in (msg if isinstance(msg, list) else [msg]) if isinstance(m, dict) and "id" in m
+               and m.get("method")]
+        try:
+            st, body, rh = post(msg)
+            if st == 404 and state["init"] is not None and not is_init:     # sessione scaduta: nuova sessione
+                state["sid"] = None
+                _st, _b, rh0 = post(state["init"])
+                state["sid"] = rh0.get("mcp-session-id")
+                post({"jsonrpc": "2.0", "method": "notifications/initialized"})
+                st, body, rh = post(msg)
+        except ClientError as e:
+            for rid in ids:
+                write({"jsonrpc": "2.0", "id": rid, "error": {"code": -32603, "message": f"Germano Server: {e}"}})
+            continue
+        if rh.get("mcp-session-id"):
+            state["sid"] = rh["mcp-session-id"]
+        if st == 202 or not body:
+            continue
+        data = _json(body)
+        if st == 401:
+            for rid in ids:
+                write({"jsonrpc": "2.0", "id": rid, "error": {"code": -32001, "message":
+                       "Germano Server: accesso richiesto (token delle integrazioni: client config --api-token <token>)"}})
+            continue
+        if data is None:
+            for rid in ids:
+                write({"jsonrpc": "2.0", "id": rid, "error": {"code": -32603, "message": f"Germano Server: HTTP {st}"}})
+            continue
+        if is_init and isinstance(data, dict) and isinstance(data.get("result"), dict):
+            state["version"] = data["result"].get("protocolVersion")
+        write(data)
+    return OK
+
+
+def cmd_utcp(args):
+    """Indirizzi MCP/UTCP/OpenAPI del server e strumenti del manuale UTCP (--json: il manuale completo)."""
+    base, origin = resolve_server(args)
+    st, body = _request("GET", base + "/utcp", timeout=10.0)
+    manual = _json(body)
+    if st != 200 or not isinstance(manual, dict) or not isinstance(manual.get("tools"), list):
+        raise ClientError(f"il server {_where(base)} non offre il manuale UTCP (HTTP {st}): serve Germano 0.95 o "
+                          "successivo.")
+    if getattr(args, "json", False):
+        print(json.dumps(manual, ensure_ascii=False, indent=2))
+        return OK
+    print(f"Germano Server: {base} ({origin})")
+    print(f"  Manuale UTCP : {base}/utcp  (anche {base}/.well-known/utcp.json) - UTCP {manual.get('utcp_version')}")
+    print(f"  OpenAPI      : {base}/openapi.json")
+    print(f"  Server MCP   : {base}/mcp  (SSE: {base}/mcp/sse; da questo PC in stdio: client mcp)")
+    print(f"  Strumenti ({len(manual['tools'])}):")
+    for t in manual["tools"]:
+        tpl = t.get("tool_call_template") or {}
+        print(f"    {_clean(t.get('name'), 40):<28} {_clean(tpl.get('http_method'), 6):<5} {_clean(tpl.get('url'), 120)}")
+    print("Dalla rete MCP e API v1 vogliono il token delle integrazioni (Dashboard del server > Impostazioni >")
+    print("Integrazioni MCP e UTCP): client config --api-token <token>.")
     return OK
 
 
@@ -1418,10 +1538,17 @@ def main(argv=None):
     sc = sub.add_parser("config", parents=[common], help="mostra o salva il server (e l'accesso) in client_config.json")
     sc.add_argument("--user", default=None, help="accede con questo utente (con --password)")
     sc.add_argument("--password", default=None, help="password dell'utente (non viene salvata)")
+    sc.add_argument("--api-token", dest="api_token", default=None,
+                    help="token delle integrazioni MCP/UTCP del server (Dashboard > Integrazioni MCP e UTCP)")
+    sm = sub.add_parser("mcp", parents=[common], help="Server MCP stdio che inoltra al Server MCP del Germano Server "
+                                                      "(per Claude, Cursor, Antigravity... di questo PC)")
+    sm.add_argument("--api-token", dest="api_token", default=None, help="token delle integrazioni del server")
+    su = sub.add_parser("utcp", parents=[common], help="indirizzi MCP/UTCP/OpenAPI del server e strumenti del manuale")
+    su.add_argument("--json", action="store_true", help="stampa il manuale UTCP completo")
     args = p.parse_args(argv)
     handlers = {"discover": cmd_discover, "status": cmd_status, "models": cmd_models, "ask": cmd_ask,
                 "launch": cmd_launch, "send": cmd_send, "config": cmd_config, "login": cmd_login,
-                "logout": cmd_logout, "options": cmd_options}
+                "logout": cmd_logout, "options": cmd_options, "mcp": cmd_mcp, "utcp": cmd_utcp}
     try:
         if not args.cmd:
             return interactive()

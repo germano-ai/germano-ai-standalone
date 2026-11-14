@@ -1,6 +1,6 @@
 """Costruisce i pacchetti Debian/Ubuntu AUTOSUFFICIENTI (nessuna dipendenza, nessun download all'installazione):
-  germano.ai-0.91/releases/linux/germano-0.91.deb          suite completa  -> /opt/germano
-  germano.ai-0.91/releases/linux/germano-client-0.91.deb   client leggero  -> /opt/germano-client
+  germano.ai-0.95/releases/linux/germano-0.95.deb          suite completa  -> /opt/germano
+  germano.ai-0.95/releases/linux/germano-client-0.95.deb   client leggero  -> /opt/germano-client
 partendo da sorgenti/linux/<edizione>, dipendenze/linux (Python portabile + librerie in versione Linux) e modelli/.
 
 Il .deb e' scritto direttamente (archivio «ar» con debian-binary, control.tar.gz e data.tar.gz), quindi si

@@ -2,7 +2,7 @@
 
  *Read this in other languages: [English](README.en.md)*
 
-**Versione 0.91** (14 novembre 2026): pannello allineato al Germano Server 0.91 (nuovi servizi Qwen 4 Max e GLM 5.3). Novità nel [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.md) della suite.
+**Versione 0.95** (14 novembre 2026): `client mcp` e `client utcp` per usare il Server MCP e il manuale UTCP del Germano Server 0.95 dai PC della rete; pannello allineato al server 0.95. Novità nel [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.md) della suite.
 
 **Germano AI Client** è l'applicazione client leggera (circa 22 MB su Windows) progettata per connettere qualsiasi postazione di lavoro (notebook, PC standard) a un **Germano Server** attivo sulla rete locale (LAN).
 
@@ -32,6 +32,8 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
    Le richieste dei client passano nella corsia preferenziale del server, davanti ai documenti in coda nella sua cartella `input`; il server lavora in parallelo (Privacy Filter e Italian NER insieme, un lock per modello) e serve dalla cache la cronologia e gli allegati già protetti.
 10. **Nuovi servizi con un Germano Server 0.91**:
    Qwen Token Plan (Qwen4-Max), Qwen Coding Plan, GLM (Z.ai) e GLM Coding Plan (Z.ai) compaiono tra i servizi del server. L'Assistente di configurazione e Antigravity CLI restano sul computer del server (Antigravity CLI usa l'account Google di chi è davanti al server): il client non li mostra né li esegue. Sul PC client Antigravity CLI non si può proteggere con il Proxy: `client launch agy` lo spiega e indica le alternative.
+11. **Server MCP e UTCP del server (0.95)**:
+   `client mcp` è un Server MCP stdio su questo PC che inoltra al Server MCP del Germano Server (Claude Desktop, Claude Code, Cursor, Antigravity installati qui lo usano come qualsiasi server MCP); `client utcp` mostra gli indirizzi MCP, UTCP e OpenAPI del server e i suoi strumenti. Dalla rete serve il token delle integrazioni del server (`client config --api-token <token>`).
 
 ---
 
@@ -57,13 +59,13 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
 Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](https://download.germano.ai/)** e includono il proprio Python con tutte le librerie: l'installazione non scarica nulla da Internet. Il client non crea cartelle di lavoro in Documenti: le sue impostazioni (indirizzo del server, sessione, opzioni) restano nella cartella tecnica dell'utente.
 
 ### Windows (10 / 11 e Windows Server 2019 o successivo, a 64 bit, anche in macchina virtuale)
-1. **Download:** scarica `germano-client-0.91.exe` (circa 22 MB).
+1. **Download:** scarica `germano-client-0.95.exe` (circa 22 MB).
 2. **Installazione:** doppio clic sull'installer. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client` **senza diritti di amministratore (nessuna richiesta UAC)**, con i collegamenti sul Desktop e nel menu Start e la voce in Impostazioni > App. Le impostazioni del client sono in `%LOCALAPPDATA%\Germano AI Client`.
 3. **Avvio:** al termine dell'installazione il client si apre da solo; poi dal collegamento **Germano AI Client** sul Desktop o nel menu Start (finestra dedicata, senza terminale; nome diverso da quello della suite, così le due edizioni possono stare sullo stesso computer).
 4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI Client.
 
 ### macOS (Apple Silicon e Intel, macOS 11 o successivo)
-1. **Download:** scarica `germano-client-0.91.pkg`.
+1. **Download:** scarica `germano-client-0.95.pkg`.
 2. **Installazione:** doppio clic sul pacchetto e, alla scelta della destinazione, **Installa solo per me**: l'app va in `~/Applications/Germano AI Client/Germano.app` **senza password di amministratore** (con «Installa per tutti gli utenti» va in `/Applications/Germano AI Client` e macOS chiede la password). Le impostazioni sono in `~/Library/Application Support/Germano AI Client`.
 3. **Avvio:** apri **Germano** da Launchpad o dalla cartella Applicazioni > Germano AI Client.
 4. **Disinstallazione:** trascina la cartella `Germano AI Client` nel Cestino.
@@ -71,12 +73,12 @@ Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](
 Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema > Privacy e sicurezza** e scegli **Apri comunque**.
 
 ### Linux (Ubuntu / Debian a 64 bit)
-1. **Download:** scarica `germano-client-0.91.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva.
-2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-client-0.91.deb` (password di amministratore, come per ogni pacchetto di sistema). Il programma va in `/opt/germano-client`, con la voce **Germano AI Client** nel menu delle applicazioni e il comando `germano-ai-client`; le impostazioni sono in `~/.local/state/germano-client`.
+1. **Download:** scarica `germano-client-0.95.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva.
+2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-client-0.95.deb` (password di amministratore, come per ogni pacchetto di sistema). Il programma va in `/opt/germano-client`, con la voce **Germano AI Client** nel menu delle applicazioni e il comando `germano-ai-client`; le impostazioni sono in `~/.local/state/germano-client`.
 3. **Avvio:** dal menu delle applicazioni.
 4. **Disinstallazione:** `sudo apt remove germano-ai-client`.
 
-**Requisiti:** un Germano Server in modalità Server sulla stessa rete locale, versione 0.70 o successiva (consigliata la 0.91: con un server 0.60 resta utilizzabile solo la riga di comando).
+**Requisiti:** un Germano Server in modalità Server sulla stessa rete locale, versione 0.70 o successiva (consigliata la 0.95: con un server 0.60 resta utilizzabile solo la riga di comando).
 
 ---
 
@@ -105,6 +107,11 @@ python client.py options --set censor_date=no --set masking=blackout
 
 # Avvia un agente locale reindirizzandolo verso il server
 python client.py launch claude-code
+
+# Indirizzi MCP/UTCP/OpenAPI e strumenti del server; Server MCP stdio verso il server (0.95)
+python client.py config --api-token <token delle integrazioni del server>
+python client.py utcp
+python client.py mcp
 
 # Anonimizza un documento locale tramite il server
 python client.py send documento.pdf

@@ -6,6 +6,132 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [0.95] - 2026-11-14
+Germano AI v0.95 - **MCP server and UTCP: Germano in input and output workflows**. Claude Desktop, Claude Code, Google
+Antigravity, Cursor, Windsurf, Visual Studio Code, Gemini CLI, n8n, agents and scripts use Germano as a tool: **on the
+way in** it anonymizes texts and documents, inspects personal data and stops leaks before anything leaves; **on the
+way out** it restores the original data in the replies. The same 8 tools are offered by the MCP server (Streamable
+HTTP, SSE and stdio), by the UTCP manual, by OpenAPI and by new REST APIs, with one registry and the same security
+rules. Protection engine, local models and formats are those of 0.91.
+
+### Added - MCP server (Model Context Protocol)
+- **Streamable HTTP** at `http://127.0.0.1:8181/mcp`: `POST` (JSON-RPC 2.0, batches too; client notifications and
+  responses → `202 Accepted`), sessions with `Mcp-Session-Id` (expired session → `404`, the client repeats
+  `initialize`), `DELETE /mcp` closes the session, `GET /mcp` with `Accept: text/event-stream` → `405` (no unsolicited
+  server stream), `GET /mcp` from a browser → JSON description.
+- **Legacy SSE** (2024-11-05 revision, for n8n and older clients): `GET /mcp/sse` opens the stream and announces the
+  endpoint, `POST /mcp/messages?session_id=...` → `202` and the response arrives on the stream.
+- **stdio**: `server.py --mcp-stdio` (or `python -m germano.mcp_server` from the program folder). Only JSON-RPC
+  messages on stdout. If Germano is open with the same data folder it acts as a **bridge** to `/mcp` (same engine, same
+  counters); otherwise it works **in its own process**: it starts the engine on the first request and closes it with
+  the MCP client. One engine per data folder (`state/daemon.lock`); the Vault is written only by the engine (SQLite in
+  WAL mode) and read by the other processes. Options `--mcp-bridge` (bridge only) and `--mcp-inprocess`. The server
+  writes its port to `state/server.json` for the bridge.
+- **Protocol revisions:** 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05, negotiated in `initialize` (an unknown
+  revision receives 2025-11-25). Revision 2026-07-28 removes the handshake: "dual-era" clients (e.g. the official
+  Python SDK `mcp` 2.3) probe `server/discover`, receive a classic error and fall back to `initialize` on their own —
+  verified.
+- **Methods:** `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`,
+  `resources/templates/list`, `prompts/list`, `prompts/get`, `logging/setLevel`.
+- **8 tools** with `inputSchema` and `outputSchema` (JSON Schema), `title`, `annotations` (`readOnlyHint`,
+  `destructiveHint`, `idempotentHint`, `openWorldHint`) and the result both in `structuredContent` and as JSON text
+  (universal compatibility); invalid arguments → result with `isError` (not a protocol error):
+  - **input:** `germano_anonymize_text` (text or `texts[]` list, `numbered`/`generic`/`blackout` masking, optional
+    System 2, `restore_scope` for the output step, `mapping` only on request), `germano_anonymize_file` (PDF, Office,
+    OpenDocument, RTF, EML, TXT, CSV, JSON, HTML, XML, images with OCR/faces/signatures/plates, audio, archives: from
+    `file_path` or `content_base64`, to `output_path` or in base64, preview of the anonymized text),
+    `germano_inspect_entities` (position, category, score and System 1/System 2 level, System 2 decisions,
+    **read-only**: nothing written to the Vault), `germano_leak_check` (text or any JSON payload, with the JSONPath of
+    every item found; `safe=true` only when nothing remains; values omitted by default);
+  - **output:** `germano_deanonymize_text` and `germano_deanonymize_file` (only the placeholders present,
+    `restored_count`, `unmatched_placeholders`; writing to `output_path` recommended for cloud assistants);
+  - **verify and status:** `germano_workflow_roundtrip` (input → external or simulated reply → output, restoration
+    limited to the placeholders of the cycle, check that nothing remains in the text that left) and `germano_status`
+    (engine, System 1/2, Vault counts only, addresses, calls).
+- **Resources:** `germano://status`, `germano://capabilities`, `germano://utcp-manual`, `germano://workflow-guide`.
+  **Prompts:** `sanitize-before-send`, `restore-after-reply`, `workflow-input-output-audit`.
+
+### Added - UTCP, OpenAPI and REST APIs for workflows
+- **UTCP 1.0 manual** (`utcp_version` 1.0.1, `manual_version` 1.0.0) at `/utcp`, `/.well-known/utcp.json` and
+  `/api/v1/utcp`: standard keys only (the official TypeScript client rejects extra ones), one HTTP
+  `tool_call_template` per tool with the address built from the request host, `body_field: "body"` (the arguments
+  become the JSON body), `tags` per phase (`input`, `output`, `workflow`, `status`...) and, when the manual is requested
+  from the network, `api_key` authentication with `Authorization: Bearer ${API_TOKEN}`. Variants `?format=extended`
+  (with `info`, for rs-utcp) and `?format=legacy` (0.1 format with `tool_provider`/`provider_type`).
+- **OpenAPI 3.1** at `/openapi.json` (8 operations, same schemas; a UTCP client can register it too).
+- **REST APIs:** `POST /api/v1/anonymize-text`, `/api/v1/anonymize-file`, `/api/v1/inspect-entities`,
+  `/api/v1/leak-check`, `/api/v1/deanonymize-text`, `/api/v1/deanonymize-file`, `/api/v1/workflow-roundtrip` and
+  `GET /api/v1/status` (JSON body with the arguments, also as `{"body": {...}}`). The existing local APIs
+  (`/api/v1/anonymize`, `/api/v1/anonymize_text`, `/api/v1/deanonymize_text`, `/api/v1/deanonymize_file`,
+  `/api/status`) are unchanged.
+- **One registry** (`germano/integrations.py`) for MCP, UTCP, OpenAPI and REST: same names, schemas and handlers.
+
+### Added - Settings › MCP & UTCP integrations
+- Ready-to-use addresses (Streamable HTTP, SSE, UTCP manual, OpenAPI) and the stdio command, with **Copy MCP
+  configuration** (stdio), **Copy HTTP configuration** and **Copy UTCP URL**; live status: exposed tools, calls
+  (succeeded, blocked, errors), open MCP sessions, MCP/UTCP revisions and check of the UTCP manual.
+- **Connect with 1 click** for the clients found on this computer: Claude Desktop, Claude Code, Google Antigravity,
+  Cursor, Windsurf, Visual Studio Code and Gemini CLI. It registers Germano (stdio) changing only the "germano" entry,
+  after a **backup** of the file (`.germano-backup-…`, last 5); files with comments (JSONC) are not touched. States:
+  Connected, Needs update, Detected, Not detected, Configure by hand; **Disconnect** too.
+- **Try the Input → Output flow** (three boxes: text that left anonymized, reply, restored text) and **Leak check**.
+- **Integration token** (show, copy, new), network addresses in Server mode, the **Start the engine automatically for
+  workflows** switch and the folders allowed for file paths. In Italian and English.
+
+### Added - Germano Client
+- `client mcp`: stdio MCP server on this PC that forwards to the Germano Server's MCP server, with the integration
+  token (`client config --api-token <token>`) or the user session; `client utcp` shows the server's MCP/UTCP/OpenAPI
+  addresses and tools (`--json` for the full manual).
+
+### Security
+- **Fail-safe:** anonymization, inspection and leak checks go through the engine; if it is not ready the request is
+  **blocked** (`status: "blocked"`, HTTP `503`) and the original text is never returned as safe (the leak check never
+  answers `safe=true` without the engine). With the switch on (default) an MCP/UTCP request starts the engine and waits
+  for it to load (up to 120 seconds, about a minute the first time).
+- **Vault:** no tool lists or downloads the Vault; the status reports only counts per type. Restoration replaces only
+  the placeholders present in the text or file received (at most 5,000 different ones per text).
+- **Local network** (only with the Server part on): MCP, SSE and API v1 need the **integration token**
+  (`Authorization: Bearer <token>`, created by Germano and shown only in the Dashboard) or a user session (user
+  management on), even with free access; the UTCP manual and OpenAPI stay public descriptions without data. From the
+  network restoration requires the `restore_scope` of one's own anonymization (in memory, 24 hours) or the caller's
+  `mapping`: never the whole Vault. The pre-existing local APIs stay local only.
+- **File paths:** `file_path`/`output_path` only from this computer, absolute, inside Documents, Desktop, Downloads,
+  the work folders or the ones added in `integration_allowed_dirs` (config.json); never Vault and reports, state,
+  configuration, program, cache and models, hidden folders or files; no overwrite without `overwrite`. A file given by
+  path without `output_path` goes to the `output` folder.
+- **Origin:** MCP (SSE too), API v1 and the panel accept only the Dashboard's own origin or no origin (MCP clients,
+  n8n, curl): a web page of another site or another port gets `403`. The 1-click connection answers only this
+  computer, needs a JSON body and honours `lock_settings`.
+- Per-request changes can only **increase** protection (System 2 off, generic or ████ labels, inspection without
+  Vault) and also apply with the PA profile.
+- Restored text contains personal data: tool descriptions and MCP instructions ask assistants running in the cloud to
+  write it to a file (`output_path`) instead of receiving it.
+
+### Changed
+- Engine (`daemon_api.py`): "more protective only" per-request changes and positions of the items found for inspection
+  and leak checks. `common.py`: `integration_token` and `integrations_autostart_engine` settings. The server console
+  also shows the MCP and UTCP addresses.
+
+### Tests
+- 158/158 end-to-end and security checks on the 0.95 sources (MCP HTTP/SSE/stdio as bridge and in-process, UTCP,
+  OpenAPI, REST, DOCX and TXT files in and out, forbidden paths, simulated network with and without token, fail-safe
+  with the engine stopped, 1-click connection on a test user folder, Germano Client).
+- 58/58 with the **official SDKs**: `mcp` 2.3.0 (Streamable HTTP in auto mode with fallback from 2026-07-28, SSE,
+  stdio) and `utcp` 1.2.0 + `utcp-http` 1.1.15 (registration from `/utcp`, `/.well-known/utcp.json` and
+  `/openapi.json`, calls and tag search).
+- 15/15 interface checks in headless Edge (Italian and English, 1400/860/390 px, no console errors); 72/72 tests of the
+  0.91 configuration assistant.
+
+### Known limitations
+- `python-utcp` accepts `http://` only towards loopback addresses: from another computer use HTTPS (e.g. a reverse
+  proxy with TLS) or MCP or the REST APIs.
+- `restore_scope` lives in memory for 24 hours and is lost when Germano restarts: for long network workflows ask
+  `return_mapping: true` and pass `mapping` to the restoration.
+- MCP revision 2026-07-28 (without handshake) is not supported natively yet: dual-era clients fall back to the
+  previous revisions on their own.
+- The 1-click connection does not modify files with comments (e.g. VS Code's `mcp.json` in JSONC): copy the
+  configuration by hand.
+
 ## [0.91] - 2026-11-14
 Germano AI v0.91 - **AI configuration assistant**. Next to every detected AI Germano tells what is missing to use it
 and does it with one click: it installs Google Antigravity CLI (`agy`) and uses it in the Chatbot & AI Agents with the

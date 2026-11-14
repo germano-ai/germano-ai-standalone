@@ -1,7 +1,7 @@
-# Germano AI 0.91 — Suite completa per macOS
+# Germano AI 0.95 — Suite completa per macOS
 
 ## Installazione
-Scarica **`germano-0.91.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
+Scarica **`germano-0.95.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
 **macOS 14 Sonoma** o successivo: PyTorch non è più pubblicato per i Mac Intel, che usano il client leggero) e fai
 doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, gli 8 modelli IA, llama.cpp per il
 Sistema 2 e 7-Zip per gli archivi) e non scarica nulla.
@@ -30,6 +30,16 @@ questo computer filtrate da Germano e la Glass Window, sanitizzazione manuale di
 profilo PA). Di base l'accesso è libero; con la gestione utenti (Impostazioni › Modalità e rete › Accesso dalla rete)
 servono utente e password. Alla prima attivazione macOS può chiedere di consentire le connessioni in entrata a Python:
 rispondi **Consenti**.
+
+## Novità della 0.95: Server MCP e UTCP
+Germano entra nei flussi di lavoro come strumento: **Server MCP** su `http://127.0.0.1:8181/mcp` (anche `/mcp/sse`
+e in stdio con il Python dell'app e `server.py --mcp-stdio`), manuale **UTCP** su `/utcp` e
+`/.well-known/utcp.json`, **OpenAPI** su `/openapi.json` e API REST `/api/v1/...`: in ingresso anonimizza, ispeziona
+e controlla le fughe, in uscita ripristina i dati originali. In Impostazioni › Integrazioni MCP e UTCP ci sono
+indirizzi, «Collega con 1 clic» (Claude Desktop in `~/Library/Application Support/Claude`, Cursor, Windsurf,
+Antigravity, VS Code, Gemini CLI), la prova del flusso e il token per la rete. Su macOS queste funzioni sono
+verificate staticamente e con gli stessi sorgenti collaudati su Windows. Dettagli nel CHANGELOG e nella Guida
+(capitolo 11).
 
 ## Novità della 0.91: assistente di configurazione delle AI
 Accanto a ogni AI un pulsante dice che cosa manca e lo fa con un clic: **Antigravity CLI** (`agy`, installata in

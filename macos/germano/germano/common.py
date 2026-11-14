@@ -133,6 +133,9 @@ DEFAULT_SETTINGS = {
     # riconosce dai primi secondi di voce; indicarla evita errori sulle registrazioni brevi o rumorose.
     "speech_language": "auto",
     "speech_max_minutes": 240,       # durata massima di una registrazione (oltre, il file finisce tra i non riusciti)
+    # --- Integrazioni MCP e UTCP (0.95): flussi di lavoro in ingresso e in uscita (germano/integrations.py) ---
+    "integration_token": "",                # token per MCP e API v1 dalla rete locale (creato alla prima necessita')
+    "integrations_autostart_engine": True,  # una richiesta MCP/UTCP avvia il motore se e' fermo (e ne attende il caricamento)
 }
 for _k in FEATURE_KEYS:
     DEFAULT_SETTINGS[_k] = True
@@ -140,7 +143,7 @@ for _k in FEATURE_KEYS:
 _BOOL_KEYS = set(FEATURE_KEYS) | {
     "enable_deanonymize", "lock_settings", "anonymize_filenames", "save_proxy_logs", "check_updates",
     "auto_update", "discovery_enabled", "first_run_done", "client_fallback_local", "enable_tooltips",
-    "share_ai_tools", "auth_enabled", "enable_system2",
+    "share_ai_tools", "auth_enabled", "enable_system2", "integrations_autostart_engine",
 }
 OPERATING_MODES = ("standalone", "server", "client", "server+client")
 # Lingue del parlato selezionabili (codici di Whisper); «auto» = riconoscimento automatico
@@ -160,8 +163,8 @@ _URL_KEYS = ("target_api_url", "target_anthropic_url", "remote_server")
 _HOST_KEYS = {"bind_host"}                       # 0.0.0.0, loopback o un IP letterale
 # stringhe libere (lunghezza massima)
 _STR_KEYS = {"lan_token": 128, "remote_token": 128, "server_name": 48, "instance_id": 64, "instance_host": 128,
-             "remote_user": 64}
-_TOKEN_KEYS = {"lan_token", "remote_token", "instance_id"}   # solo caratteri sicuri in URL e intestazioni
+             "remote_user": 64, "integration_token": 128}
+_TOKEN_KEYS = {"lan_token", "remote_token", "instance_id", "integration_token"}   # solo caratteri sicuri in URL e intestazioni
 # Chiavi modificabili anche quando l'amministratore ha bloccato le impostazioni (preferenze dell'interfaccia).
 # La modalita' operativa NO: decide se il computer si espone alla rete.
 _UNLOCKED_KEYS = {"ui_mode", "first_run_done", "enable_tooltips"}
@@ -261,7 +264,7 @@ def get_version():
                 return v
     except Exception:
         pass
-    return "0.91"
+    return "0.95"
 
 
 def ensure_dirs():

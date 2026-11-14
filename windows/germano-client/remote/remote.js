@@ -1,4 +1,4 @@
-/* Germano AI 0.91 - Remote Control: lo stesso codice gira nel browser di qualsiasi dispositivo della rete locale
+/* Germano AI 0.95 - Remote Control: lo stesso codice gira nel browser di qualsiasi dispositivo della rete locale
    (pagina /remote del Germano Server) e in Germano Client (che lo serve in locale e inoltra le richieste al server).
    Stesso paradigma della Dashboard: Harness AI (static/harness.js, con la Glass Window), Sanitizzazione manuale,
    Impostazioni, Guida. Tutto il testo ricevuto dal server viene inserito come testo (mai come HTML). */

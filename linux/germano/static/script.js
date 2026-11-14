@@ -1,5 +1,5 @@
 'use strict';
-/* Germano AI 0.91 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
+/* Germano AI 0.95 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
    (cartelle di lavoro, documenti, testo), Impostazioni (modalita' e rete, protezione, AI e chiavi, Proxy e API, sistema,
    aggiornamenti silenziosi) e Guida offline. */
 
@@ -27,7 +27,7 @@ let lastUpdate = null;            // ultimo stato degli aggiornamenti (germano/u
 let lastEngineKey = '';
 
 const TABS = ['harness', 'sanitize', 'settings', 'guide'];
-const PANES = ['general', 'protection', 'ai', 'proxy', 'system', 'updates', 'about'];
+const PANES = ['general', 'protection', 'ai', 'proxy', 'integrations', 'system', 'updates', 'about'];
 let currentTab = 'harness';
 let currentPane = 'general';
 
@@ -297,6 +297,7 @@ function applyPane(pane, remember = true) {
     if (pane === 'system') { loadFolders(); pollLogs(); }
     if (pane === 'ai') { renderAiSettings(); renderAssistOverview(); if (harness) harness.refreshTargets(false).then(renderAiSettings); }
     if (pane === 'updates') { renderUpdatePanel(lastUpdate); acknowledgeInstallResult(); }
+    if (pane === 'integrations' && window.GermanoIntegrations) window.GermanoIntegrations.load();
 }
 
 function loadGuide(hash) {
@@ -1587,6 +1588,7 @@ const TIPS = [
     ['.settings-link[data-pane="protection"]', 'Protezione e modelli', 'Profilo PA/PD, sensibilità, modelli di analisi attivi e categorie di dati da oscurare.'],
     ['.settings-link[data-pane="ai"]', 'AI, chiavi e Harness', 'AI rilevate, chiavi API dei servizi e preferenze dell\'Harness (revisione prima dell\'invio, anteprima, cronologia).'],
     ['.settings-link[data-pane="proxy"]', 'Proxy e API', 'Indirizzi del Proxy per Claude Code, Codex, Cursor e altri strumenti, servizi di destinazione ed esempi delle API REST.'],
+    ['.settings-link[data-pane="integrations"]', 'Integrazioni MCP e UTCP', 'Server MCP, manuale UTCP e API per i flussi di lavoro: anonimizzazione in ingresso, ripristino in uscita, collegamento con 1 clic a Claude, Antigravity, Cursor e altri client.'],
     ['.settings-link[data-pane="system"]', 'Sistema e registro', 'Esecuzione del motore, cartelle di lavoro e registro attività.'],
     ['.settings-link[data-pane="updates"]', 'Aggiornamenti', 'Aggiornamenti silenziosi come Google Chrome: stato, ultimo controllo e riavvio per applicare.'],
     ['#proxyStatus', 'Stato del Proxy', 'Il Proxy protegge le richieste solo con il motore attivo; altrimenti le blocca e nessun dato esce in chiaro.'],
@@ -1702,6 +1704,7 @@ const TIPS_EN = {
     '.settings-link[data-pane="protection"]': ['Protection & models', 'PA/PD profile, sensitivity, active analysis models and data categories to mask.'],
     '.settings-link[data-pane="ai"]': ['AI, keys & Harness', 'Detected AIs, API keys of the services and Harness preferences (review before sending, preview, history).'],
     '.settings-link[data-pane="proxy"]': ['Proxy & APIs', 'Proxy addresses for Claude Code, Codex, Cursor and other tools, destination services and REST API examples.'],
+    '.settings-link[data-pane="integrations"]': ['MCP & UTCP integrations', 'MCP server, UTCP manual and APIs for workflows: anonymization on the way in, restoration on the way out, 1-click connection to Claude, Antigravity, Cursor and other clients.'],
     '.settings-link[data-pane="system"]': ['System & log', 'Engine execution, work folders and activity log.'],
     '.settings-link[data-pane="updates"]': ['Updates', 'Silent updates like Google Chrome: status, last check and restart to apply.'],
     '#proxyStatus': ['Proxy status', 'The Proxy protects requests only with the engine running; otherwise it blocks them and no data leaves in clear.'],
@@ -2407,6 +2410,7 @@ function setLanguage(lang) {
     try { if (lastUpdate) { renderUpdate(lastUpdate); renderUpdatePanel(lastUpdate); } } catch (e) {}
     try { if (currentTab === 'guide') loadGuide(); else { const f = $('guideFrame'); if (f) f.dataset.loaded = ''; } } catch (e) {}
     try { if (currentTab === 'settings' && currentPane === 'general') renderNetSummary(); } catch (e) {}
+    try { if (window.GermanoIntegrations) window.GermanoIntegrations.render(); } catch (e) {}
 }
 
 function initLanguage() {

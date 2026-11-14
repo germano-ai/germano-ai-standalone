@@ -30,6 +30,12 @@ if BASE_DIR not in sys.path:
 
 from germano import common  # noqa: E402
 
+if "--mcp-stdio" in sys.argv:
+    # Server MCP su stdio (0.95): ponte verso il Germano aperto con questa cartella dati (non ritorna) oppure modalita'
+    # nel processo (si completa il caricamento e si serve lo stdio in fondo al file). Sullo stdout solo il protocollo.
+    from germano import mcp_server as _gmcp_stdio  # noqa: E402
+    _gmcp_stdio.stdio_main_early()
+
 common.setup_offline_env()
 common.force_utf8_stdio()
 
@@ -47,6 +53,9 @@ from germano import glass as gglass  # noqa: E402
 from germano import providers as gproviders  # noqa: E402
 from germano import updater as gupdater  # noqa: E402
 from germano import ai_assist as gassist  # noqa: E402
+from germano import integrations as gint  # noqa: E402
+from germano import mcp_server as gmcp  # noqa: E402
+from germano import utcp as gutcp  # noqa: E402
 
 # Chiavi «collegate» con l'assistente di configurazione: lette dalla loro fonte al momento dell'uso (mai copiate)
 gproviders.set_key_resolver(gassist.linked_key)
@@ -89,7 +98,14 @@ _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 # Dalla LAN sempre aperti: pagine, stato senza dati personali, accesso (login) e informazioni del Remote Control.
 _LAN_OPEN = ("/remote", "/guide", "/guide.html", "/static/", "/favicon.ico",
              "/api/status", "/api/discovery", "/api/auth/status", "/api/auth/login", "/api/auth/logout",
-             "/api/remote/v1/info")
+             "/api/remote/v1/info",
+             # 0.95: descrizioni pubbliche degli strumenti (nessun dato): manuale UTCP e OpenAPI
+             "/utcp", "/.well-known/utcp.json", "/openapi.json")
+# 0.95: Server MCP e API v1 per i flussi di lavoro. Dalla rete SEMPRE con il token delle integrazioni
+# (Authorization: Bearer) o con una sessione utente valida, anche con la gestione utenti spenta.
+_LAN_INTEGRATION = ("/mcp", "/api/v1/anonymize-text", "/api/v1/anonymize-file", "/api/v1/inspect-entities",
+                    "/api/v1/leak-check", "/api/v1/deanonymize-text", "/api/v1/deanonymize-file",
+                    "/api/v1/workflow-roundtrip", "/api/v1/status", "/api/v1/utcp")
 # Dalla LAN per i dispositivi e i client: aperti di base, con utente e password se la gestione utenti e' attiva.
 # Proxy verso le AI, Studio, Remote Control, AI condivise, motore condiviso ed elenco delle AI del server.
 _LAN_PROTECTED = ("/v1/messages", "/messages", "/v1/chat/completions", "/chat/completions",
@@ -144,6 +160,47 @@ def _origin_allowed(origin):
     if hn in _LOOPBACK or hn.startswith("127."):
         return True
     return hn == (request.host or "").split(":")[0].lower()   # stessa origine del server (LAN)
+
+
+def _same_origin(origin):
+    """Origine identica a quella del server (schema, host e porta): per MCP, API v1 e pannello delle integrazioni non
+    basta una pagina servita da un'altra porta di 127.0.0.1."""
+    from urllib.parse import urlsplit
+    try:
+        o = urlsplit(origin)
+        port = o.port or (443 if o.scheme == "https" else 80)
+    except ValueError:
+        return False
+    host = (request.host or "").lower()
+    hn = host.split("]")[0].strip("[") if host.startswith("[") else host.split(":")[0]
+    try:
+        hp = int(host.rsplit(":", 1)[1]) if ":" in host.split("]")[-1] else (443 if request.scheme == "https" else 80)
+    except ValueError:
+        return False
+    loop = {"127.0.0.1", "localhost", "::1"}
+    same_host = (o.hostname or "").lower() == hn or ((o.hostname or "").lower() in loop and hn in loop)
+    return same_host and port == hp and o.scheme == request.scheme
+
+
+def _bearer_token():
+    auth = (request.headers.get("Authorization") or "").strip()
+    if auth[:7].lower() == "bearer ":
+        return auth[7:].strip()
+    return (request.environ.get("germano.token") or request.headers.get("X-Germano-Auth") or "").strip()
+
+
+def _integration_principal():
+    """Identita' di chi chiama MCP o le API v1 dalla rete: token delle integrazioni oppure sessione di un utente
+    (gestione utenti attiva). None = non autenticato."""
+    tok = _bearer_token()
+    if not tok or len(tok) > 256:
+        return None
+    if gint.token_matches(tok):
+        return "token"
+    user = gauth.SESSIONS.user_for(tok)
+    if user and _auth_enabled():
+        return "user:" + str(user)
+    return None
 
 
 def _auth_enabled(cfg=None):
@@ -359,6 +416,19 @@ def _guard():
             return redirect("/remote")   # dalla rete si apre il Remote Control; la Dashboard completa e' solo sul server
         if _path_matches(path, _LAN_OPEN):
             pass  # pagine, stato senza dati personali e accesso
+        elif _path_matches(path, _LAN_INTEGRATION):
+            principal = _integration_principal()
+            if not principal:
+                resp = jsonify({"status": "error", "code": "auth_required", "auth_required": True, "error": _L(
+                    "Accesso richiesto: dalla rete MCP e API v1 vogliono il token delle integrazioni (intestazione "
+                    "Authorization: Bearer <token>, lo trovi nella Dashboard del server in Impostazioni > Integrazioni) "
+                    "oppure la sessione di un utente.",
+                    "Authentication required: from the network MCP and API v1 need the integration token (header "
+                    "Authorization: Bearer <token>, shown in the server Dashboard under Settings > Integrations) or "
+                    "a user session.")})
+                resp.headers["WWW-Authenticate"] = 'Bearer realm="germano"'
+                return resp, 401
+            g.integration_principal = principal
         elif _path_matches(path, _LAN_PROTECTED):
             if _auth_enabled():
                 user = _session_user()
@@ -375,6 +445,16 @@ def _guard():
         else:
             return jsonify({"error": _L("Operazione riservata al computer del server (accessibile solo in locale).",
                                         "Operation reserved to the server computer (local access only).")}), 403
+
+    # 0.95: MCP (anche il flusso SSE), API v1 e pannello delle integrazioni accettano solo la stessa origine del server
+    # o nessuna origine (client MCP, n8n, curl, script): mai una pagina web di un altro sito o di un'altra porta.
+    if _path_matches(request.path, ("/mcp",)) or (
+            request.path.startswith(("/api/v1/", "/api/integrations")) and request.method not in ("GET", "HEAD")):
+        origin = request.headers.get("Origin")
+        if (origin and not _same_origin(origin)) or request.headers.get("Sec-Fetch-Site") in ("cross-site",
+                                                                                               "same-site"):
+            return jsonify({"status": "error", "code": "origin_blocked", "error": _L(
+                "Richiesta da un'altra pagina web bloccata.", "Request from another web page blocked.")}), 403
 
     # Anti-CSRF: nessuna azione di modifica avviata da un sito web esterno.
     if request.path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -397,7 +477,8 @@ _CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'
 def _headers(resp):
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
-    if request.path.startswith(("/api/remote/", "/api/auth/", "/api/harness/", "/api/ai/assist")):
+    if request.path.startswith(("/api/remote/", "/api/auth/", "/api/harness/", "/api/ai/assist", "/api/v1/",
+                                "/api/integrations", "/mcp")):
         resp.headers["Cache-Control"] = "no-store"
     if request.path in ("/", "/remote"):
         resp.headers.setdefault("X-Frame-Options", "DENY")
@@ -1124,8 +1205,9 @@ def api_remote_servers():
 # Rete e identita' si cambiano solo da /api/mode, che le applica dal vivo e in modo coerente. I token non tornano
 # mai alla pagina con le impostazioni: quello per i client compare solo in /api/mode, con la parte Server attiva.
 _MODE_ONLY_KEYS = ("operating_mode", "remote_server", "remote_token", "remote_user", "client_fallback_local",
-                   "lan_token", "instance_id", "instance_host", "share_ai_tools", "auth_enabled", "users")
-_SECRET_KEYS = ("lan_token", "remote_token", "users")
+                   "lan_token", "instance_id", "instance_host", "share_ai_tools", "auth_enabled", "users",
+                   "integration_token")
+_SECRET_KEYS = ("lan_token", "remote_token", "users", "integration_token")
 
 
 def _without_mode_keys(settings):
@@ -3171,6 +3253,515 @@ def api_remote_restore_file():
 
 
 # ------------------------------------------------------------------------------------------------
+# Integrazioni (0.95, turno 30): Server MCP (Streamable HTTP, SSE legacy, stdio), UTCP, OpenAPI e API REST v1 per i
+# flussi di lavoro in ingresso (anonimizzazione, ispezione, controllo delle fughe) e in uscita (ripristino). Un solo
+# registro di strumenti, schemi e gestori: germano/integrations.py. Il backend qui sotto da' agli strumenti il motore,
+# il Vault (sola lettura) e i file di QUESTO Germano, con le stesse regole dell'Harness e del Remote Control.
+# ------------------------------------------------------------------------------------------------
+import shutil  # noqa: E402
+
+_HTTP_SERVING = False          # True quando questo processo e' il server HTTP (non il server MCP stdio nel processo)
+
+
+class _IntegrationBackend:
+    """Motore, Vault e file per germano/integrations.py (server HTTP e modalita' stdio nel processo)."""
+
+    def __init__(self):
+        self._start_lock = threading.Lock()
+        self._started_here = False
+        self._by_type = (0.0, -1, {})
+
+    # -------------------------------------------------------------- motore
+    def engine_ready(self):
+        return daemon_ready()
+
+    def autostart_allowed(self):
+        return bool(common.load_config().get("integrations_autostart_engine", True))
+
+    def ensure_engine(self, wait_s):
+        """Avvia il motore se e' fermo e ne attende il caricamento (al massimo wait_s secondi)."""
+        with self._start_lock:
+            if not is_daemon_running() and start_daemon():
+                self._started_here = True
+                common.log("Integrazioni: motore avviato da una richiesta MCP/UTCP (caricamento dei modelli).")
+        deadline = time.time() + max(0.0, float(wait_s))
+        while time.time() < deadline:
+            if daemon_ready():
+                return True
+            if not is_daemon_running():
+                return False                       # avvio non riuscito: errore nel registro del motore
+            time.sleep(0.5)
+        return daemon_ready()
+
+    def _blocked(self, detail=""):
+        extra_it = f" ({detail})" if detail else ""
+        return gint.ToolError("engine_not_ready",
+                              f"Motore di Germano non disponibile{extra_it}: richiesta bloccata, nessun dato e' stato "
+                              "elaborato o inviato.",
+                              f"Germano engine not available{extra_it}: request blocked, no data was processed or "
+                              "sent.", status=503, kind="blocked")
+
+    def anonymize_texts(self, texts, overrides, positions=False):
+        try:
+            r = daemon_call("/internal/anonymize_texts", {"texts": texts, "overrides": overrides,
+                                                          "positions": bool(positions)}, timeout=1800)
+        except Exception:
+            raise self._blocked() from None
+        if r.status_code == 503:
+            raise self._blocked(_daemon_error(r))
+        if r.status_code != 200:
+            raise gint.ToolError("anonymization_failed", f"Anonimizzazione non riuscita ({r.status_code}): nessun dato "
+                                                         "e' stato inviato.",
+                                 f"Anonymization failed ({r.status_code}): no data was sent.", status=502)
+        results = (r.json() or {}).get("results") or []
+        if len(results) != len(texts) or not all(isinstance(x.get("anonymized"), str) for x in results):
+            raise gint.ToolError("incomplete_result", "Risposta incompleta del motore: richiesta bloccata.",
+                                 "Incomplete answer from the engine: request blocked.", status=502, kind="blocked")
+        return results
+
+    def process_file(self, staged, name, overrides):
+        payload = {"filename": name, "mode": "anonymize", "src_path": staged, "return_path": True,
+                   "overrides": overrides}
+        try:
+            r = daemon_call("/internal/process_file", payload, timeout=6 * 3600)
+        except Exception:
+            raise self._blocked() from None
+        if r.status_code != 200:
+            msg = _daemon_error(r)
+            if r.status_code == 503:
+                raise self._blocked(msg)
+            code, status = {415: ("unsupported_format", 415), 422: ("processing_error", 422)}.get(
+                r.status_code, ("processing_failed", 500))
+            raise gint.ToolError(code, f"Elaborazione non riuscita: {msg}", f"Processing failed: {msg}", status=status)
+        res = r.json()
+        if res.get("out_path"):
+            from germano.daemon_api import output_dir
+            real = os.path.realpath(res["out_path"])
+            root = os.path.realpath(output_dir())
+            try:
+                inside = os.path.commonpath([real, root]) == root
+            except ValueError:
+                inside = False
+            if not inside or not os.path.isfile(real):
+                raise gint.ToolError("processing_failed", "Percorso del file prodotto non valido.",
+                                     "Invalid path of the produced file.", status=500)
+            res["out_path"] = real
+        else:
+            import base64
+            res["out_path"] = _stage_bytes(base64.b64decode(res.get("data_b64") or ""), res.get("filename") or name)
+        return res
+
+    # -------------------------------------------------------------- Vault e file
+    def tag_map(self):
+        return vault_reader.tag_map()
+
+    def vault_stats(self):
+        now = time.time()
+        at, count, by_type = self._by_type
+        n = vault_reader.count()
+        if now - at > 10 or n != count:
+            from collections import Counter
+            # solo i TIPI delle etichette ([PERSONA_12] -> PERSONA) e i conteggi: mai un valore del Vault
+            by_type = dict(sorted(Counter(t[1:-1].rsplit("_", 1)[0] for t in vault_reader.tag_map()).items()))
+            self._by_type = (now, n, by_type)
+        backend = "sqlite" if vault_reader.use_sqlite and os.path.exists(vault_reader.db_path) else "json"
+        return {"entries": n, "by_type": by_type, "backend": backend}
+
+    def stage_bytes(self, data, name):
+        return _stage_bytes(data, name)
+
+    def stage_file(self, path, name):
+        os.makedirs(common.UPLOAD_DIR, exist_ok=True)
+        staged = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + common.safe_filename(name))
+        shutil.copyfile(path, staged)
+        return staged
+
+    def session_log(self, entities):
+        """Corrispondenze della richiesta nel registro delle sessioni (come Proxy e Studio), se attivo."""
+        if not entities or not common.load_config().get("save_proxy_logs", True):
+            return
+        try:
+            d = os.path.join(common.EXTRACTED_DIR, "proxy_sessions")
+            os.makedirs(d, exist_ok=True)
+            line = json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "path": "integrations",
+                               "map": {e["label"]: e["word"] for e in entities if e.get("label")}}, ensure_ascii=False)
+            with open(os.path.join(d, time.strftime("%Y-%m-%d") + ".jsonl"), "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except Exception:
+            pass
+
+    def audit_file(self, name, res):
+        """Registro di audit del file anonimizzato in extracted/api (come l'API /api/v1/anonymize)."""
+        try:
+            audit_dir = os.path.join(common.EXTRACTED_DIR, "api")
+            os.makedirs(audit_dir, exist_ok=True)
+            entries = list(res.get("extracted_data") or [])
+            entries += [{"word": "", "label": "[NOTA]", "entity": "NOTE", "score": 1.0, "note": n}
+                        for n in res.get("notes") or []]
+            entries += [dict(d, label="[SISTEMA2]") for d in res.get("system2") or []]
+            entries += list(res.get("reports") or [])
+            common.atomic_write_json(os.path.join(audit_dir, time.strftime("%Y%m%d-%H%M%S_") + name + ".json"),
+                                     entries, indent=4)
+        except Exception:
+            pass
+
+    # -------------------------------------------------------------- stato
+    def status_info(self):
+        cfg = common.load_config()
+        running = is_daemon_running()
+        ready = daemon_ready()
+        if ready:
+            state = "running"
+        elif running:
+            state = "loading_models"
+        else:
+            le = common.read_json(common.LAST_ERROR_FILE, None)
+            state = "error" if isinstance(le, dict) and le.get("message") else "stopped"
+        eng = (daemon_state().get("engine") or {}) if running else {}
+        s2 = eng.get("system2") if isinstance(eng.get("system2"), dict) else {}
+        engine = {"state": state, "ready": ready, "running": running, "autostart": self.autostart_allowed(),
+                  "mode": eng.get("mode") or ("remote" if common.mode_flags(common.effective_operating_mode(cfg))[1]
+                                              and not eng else "local"),
+                  "system1": {"ready": ready, "privacy_filter": bool(eng.get("privacy_filter")),
+                              "italian_ner": bool(eng.get("italian_ner")), "regex": bool(cfg.get("enable_regex", True)),
+                              "ocr": bool(eng.get("ocr"))},
+                  "system2": {"enabled": bool(cfg.get("enable_system2", True)), "available": bool(s2.get("available")),
+                              "model": s2.get("model") or ""}}
+        if eng.get("device"):
+            engine["device"] = str(eng.get("device"))
+        eff = common.effective_operating_mode(cfg)
+        return {"mode": eff, "profile": str(cfg.get("compliance_mode") or ""), "engine": engine,
+                "vault": self.vault_stats(), "network": {"listening": LAN_MODE, "port": PORT}}
+
+    def shutdown(self):
+        """Fine del server MCP stdio nel processo: si chiude il motore avviato da qui (mai quello della Dashboard)."""
+        if self._started_here and not _HTTP_SERVING:
+            try:
+                stop_daemon(wait=4.0)
+            except Exception:
+                pass
+
+
+INTEGRATION_BACKEND = _IntegrationBackend()
+
+
+def integration_backend():
+    return INTEGRATION_BACKEND
+
+
+def _integration_base():
+    prefix = request.environ.get("germano.token")
+    return f"{request.scheme}://{request.host}", (f"/g/{prefix}" if prefix else "")
+
+
+def _integration_ctx(transport):
+    local = _remote_is_local()
+    principal = "local" if local else (getattr(g, "integration_principal", None) or "remote")
+    base, prefix = _integration_base()
+    return gint.CallContext(INTEGRATION_BACKEND, local=local, principal=principal, lang=_lang(), transport=transport,
+                            base_url=base + prefix)
+
+
+def _tool_args():
+    """Argomenti di uno strumento: corpo JSON (anche nella forma {"body": {...}} dei client UTCP) oppure, se il corpo
+    manca, i parametri della query (client UTCP che inviano gli argomenti nell'indirizzo)."""
+    raw = request.get_data(cache=True)
+    if raw.strip():
+        data = request.get_json(force=True, silent=True)
+        if not isinstance(data, dict):
+            raise gint.ToolError("invalid_json", "Corpo della richiesta non valido: serve un oggetto JSON.",
+                                 "Invalid request body: a JSON object is required.", status=400)
+        if set(data) == {"body"} and isinstance(data["body"], dict):
+            data = data["body"]
+        return data
+    args = {}
+    for k, v in request.args.items():
+        if k in ("lang",):
+            continue
+        if v.strip().startswith(("{", "[")):
+            try:
+                v = json.loads(v)
+            except ValueError:
+                pass
+        args[k] = v
+    return args
+
+
+def _rest_tool(name):
+    ctx = _integration_ctx("utcp-rest")
+    try:
+        args = _tool_args() if request.method != "GET" else {}
+        return jsonify(gint.call_tool(name, args, ctx))
+    except gint.ToolError as e:
+        resp = jsonify(e.payload(ctx.lang, name))
+        if e.data.get("retry_after"):
+            resp.headers["Retry-After"] = str(e.data["retry_after"])
+        return resp, e.status
+
+
+@app.route("/api/v1/anonymize-text", methods=["POST"])
+def api_v1_anonymize_text():
+    return _rest_tool("germano_anonymize_text")
+
+
+@app.route("/api/v1/anonymize-file", methods=["POST"])
+def api_v1_anonymize_file():
+    return _rest_tool("germano_anonymize_file")
+
+
+@app.route("/api/v1/inspect-entities", methods=["POST"])
+def api_v1_inspect_entities():
+    return _rest_tool("germano_inspect_entities")
+
+
+@app.route("/api/v1/leak-check", methods=["POST"])
+def api_v1_leak_check():
+    return _rest_tool("germano_leak_check")
+
+
+@app.route("/api/v1/deanonymize-text", methods=["POST"])
+def api_v1_deanonymize_text():
+    return _rest_tool("germano_deanonymize_text")
+
+
+@app.route("/api/v1/deanonymize-file", methods=["POST"])
+def api_v1_deanonymize_file():
+    return _rest_tool("germano_deanonymize_file")
+
+
+@app.route("/api/v1/workflow-roundtrip", methods=["POST"])
+def api_v1_workflow_roundtrip():
+    return _rest_tool("germano_workflow_roundtrip")
+
+
+@app.route("/api/v1/status", methods=["GET"])
+def api_v1_status():
+    return _rest_tool("germano_status")
+
+
+def _utcp_response():
+    base, prefix = _integration_base()
+    fmt = (request.args.get("format") or "1.0").strip().lower()
+    fmt = fmt if fmt in ("1.0", "extended", "legacy") else "1.0"
+    resp = jsonify(gutcp.manual(base, local=_remote_is_local(), fmt=fmt, prefix=prefix))
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/utcp", methods=["GET"])
+@app.route("/.well-known/utcp.json", methods=["GET"])
+@app.route("/api/v1/utcp", methods=["GET"])
+def utcp_manual():
+    return _utcp_response()
+
+
+@app.route("/openapi.json", methods=["GET"])
+def openapi_document():
+    base, prefix = _integration_base()
+    resp = jsonify(gutcp.openapi(base, local=_remote_is_local(), prefix=prefix))
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+# --- Server MCP: Streamable HTTP (POST/GET/DELETE /mcp) ---
+def _mcp_json(obj, status=200, headers=None):
+    resp = Response(json.dumps(obj, ensure_ascii=False), status=status, content_type="application/json")
+    for k, v in (headers or {}).items():
+        resp.headers[k] = v
+    return resp
+
+
+@app.route("/mcp", methods=["POST", "GET", "DELETE"])
+def mcp_endpoint():
+    principal = "local" if _remote_is_local() else (getattr(g, "integration_principal", None) or "remote")
+    if request.method == "GET":
+        if "text/event-stream" in (request.headers.get("Accept") or ""):
+            # nessun flusso server -> client (nessuna notifica spontanea): 405 come prevede la specifica
+            return Response(status=405, headers={"Allow": "POST, DELETE"})
+        base, prefix = _integration_base()
+        return jsonify(gmcp.server_description(base + prefix))
+    sid = request.headers.get("Mcp-Session-Id")
+    if request.method == "DELETE":
+        if not sid:
+            return _mcp_json(gmcp.error(None, gmcp.INVALID_REQUEST, "Missing Mcp-Session-Id header"), 400)
+        s = gmcp.HTTP_SESSIONS.get(sid)
+        if s is None or s.principal != principal:
+            return _mcp_json(gmcp.error(None, gmcp.INVALID_REQUEST, "Session not found"), 404)
+        gmcp.HTTP_SESSIONS.delete(sid)
+        return Response(status=200)
+    raw = request.get_data(cache=False)
+    try:
+        payload = json.loads(raw.decode("utf-8")) if raw else None
+    except (ValueError, UnicodeDecodeError):
+        payload = None
+    if payload is None or not isinstance(payload, (dict, list)):
+        return _mcp_json(gmcp.error(None, gmcp.PARSE_ERROR, "Parse error"), 400)
+    header_version = request.headers.get("MCP-Protocol-Version")
+    init = gmcp.is_initialize(payload)
+    session = None
+    if sid and not init:
+        session = gmcp.HTTP_SESSIONS.get(sid)
+        if session is None or session.principal != principal:
+            return _mcp_json(gmcp.error(None, -32001, "Session not found: send initialize again"), 404)
+    if session is None and not init and gmcp.modern_request(payload, header_version):
+        # revisione senza handshake (2026-07-28): errore classico, il client dual-era ripiega su initialize
+        rid = payload.get("id") if isinstance(payload, dict) else None
+        return _mcp_json(gmcp.legacy_only_error(rid), 400)
+    if header_version and header_version not in gmcp.PROTOCOL_VERSIONS and not init:
+        return _mcp_json(gmcp.error(None, gmcp.INVALID_REQUEST, f"Unsupported MCP-Protocol-Version: "
+                                    f"{header_version[:40]}", {"supported": list(gmcp.PROTOCOL_VERSIONS)}), 400)
+    headers = {}
+    if init:
+        session = gmcp.HTTP_SESSIONS.create(principal)
+        headers["Mcp-Session-Id"] = session.id
+    elif session is None:
+        session = gmcp.Session(principal, "mcp-http")      # senza sessione: richiesta isolata (es. curl)
+        session.protocol_version = header_version or gmcp.DEFAULT_HTTP_VERSION
+    out = gmcp.handle_payload(payload, session, lambda: _integration_ctx("mcp-http"))
+    if out is None:
+        return Response(status=202, headers=headers)
+    return _mcp_json(out, 200, headers)
+
+
+# --- Server MCP: SSE legacy (2024-11-05) per n8n e client meno recenti ---
+@app.route("/mcp/sse", methods=["GET"])
+def mcp_sse():
+    principal = "local" if _remote_is_local() else (getattr(g, "integration_principal", None) or "remote")
+    session = gmcp.SSE_HUB.open(principal)
+    if session is None:
+        return jsonify({"status": "error", "code": "too_many_sessions", "error": _L(
+            "Troppe sessioni SSE aperte: chiudine qualcuna o usa Streamable HTTP (/mcp).",
+            "Too many open SSE sessions: close some or use Streamable HTTP (/mcp).")}), 503
+    _base, prefix = _integration_base()
+    endpoint = f"{prefix}/mcp/messages?session_id={session.id}"
+
+    def stream():
+        try:
+            yield f"event: endpoint\ndata: {endpoint}\n\n"
+            while not session.closed:
+                try:
+                    msg = session.queue.get(timeout=15)
+                except queue.Empty:
+                    yield ": ping\n\n"          # mantiene viva la connessione e scopre i client chiusi
+                    continue
+                yield f"event: message\ndata: {msg}\n\n"
+        finally:
+            gmcp.SSE_HUB.close(session.id)
+
+    return Response(stream_with_context(stream()), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/mcp/messages", methods=["POST"])
+def mcp_sse_messages():
+    principal = "local" if _remote_is_local() else (getattr(g, "integration_principal", None) or "remote")
+    sid = request.args.get("session_id") or request.args.get("sessionId") or ""
+    session = gmcp.SSE_HUB.get(sid)
+    if session is None or session.principal != principal:
+        return jsonify({"status": "error", "error": "Session not found"}), 404
+    try:
+        payload = json.loads(request.get_data(cache=False).decode("utf-8") or "null")
+    except (ValueError, UnicodeDecodeError):
+        payload = None
+    if not isinstance(payload, (dict, list)):
+        session.queue.put(json.dumps(gmcp.error(None, gmcp.PARSE_ERROR, "Parse error")))
+        return Response("Accepted", status=202)
+    ctx_factory = (lambda: _integration_ctx("mcp-sse"))
+    environ = dict(request.environ)
+
+    def work():
+        # la risposta viaggia sul flusso SSE: l'elaborazione continua anche dopo il 202 di questo POST
+        with app.request_context(environ):
+            g.integration_principal = principal if principal != "local" else None
+            out = gmcp.handle_payload(payload, session, ctx_factory)
+        for item in (out if isinstance(out, list) else [out] if out is not None else []):
+            try:
+                session.queue.put(json.dumps(item, ensure_ascii=False), timeout=30)
+            except queue.Full:
+                break
+
+    threading.Thread(target=work, name="germano-mcp-sse", daemon=True).start()
+    return Response("Accepted", status=202)
+
+
+# --- Pannello «Integrazioni» della Dashboard (solo da questo computer: non e' tra le rotte aperte alla rete) ---
+def _integrations_json_only():
+    if not _remote_is_local():
+        return jsonify({"status": "error", "message": _L("Solo da questo computer.", "Only from this computer.")}), 403
+    if request.method == "POST" and not (request.mimetype == "application/json"):
+        return jsonify({"status": "error", "message": _L("Richiesta non valida (JSON atteso).",
+                                                         "Invalid request (JSON expected).")}), 415
+    return None
+
+
+def _integrations_state():
+    from germano import discovery as gdiscovery
+    cfg = common.load_config()
+    base = f"http://127.0.0.1:{PORT}"
+    lan = []
+    if LAN_MODE:
+        lan = [f"http://{ip}:{PORT}" for ip in gdiscovery.local_ipv4_addresses()]
+    manual = gutcp.manual(base, local=True)
+    return {"status": "success", "version": APP_VERSION, "endpoints": gint.endpoints(base),
+            "lan": {"listening": LAN_MODE, "bases": lan}, "stdio": gint.stdio_command(),
+            "token": gint.ensure_token(), "autostart_engine": bool(cfg.get("integrations_autostart_engine", True)),
+            "tools": [{"name": t["name"], "title": t["title"], "tags": t["tags"], "route": "/api/v1/" + t["route"],
+                       "method": t["method"]} for t in gint.TOOLS],
+            "resources": [r["uri"] for r in gint.RESOURCES], "prompts": [p["name"] for p in gint.PROMPTS],
+            "protocol_versions": list(gmcp.PROTOCOL_VERSIONS), "utcp_version": gutcp.UTCP_VERSION,
+            "utcp_check": gutcp.validate_manual(manual), "calls": gint.STATS.snapshot(),
+            "sessions": {"http": gmcp.HTTP_SESSIONS.count(), "sse": gmcp.SSE_HUB.count()},
+            "paths": gint.path_policy(_lang()), "clients": gassist.mcp_clients(_lang())}
+
+
+@app.route("/api/integrations", methods=["GET"])
+def api_integrations():
+    refused = _integrations_json_only()
+    if refused:
+        return refused
+    return jsonify(_integrations_state())
+
+
+@app.route("/api/integrations/token", methods=["POST"])
+def api_integrations_token():
+    refused = _integrations_json_only() or _admin_locked()
+    if refused:
+        return refused
+    gint.regenerate_token()
+    common.log("Integrazioni: token rigenerato dalla Dashboard (il precedente non vale piu').")
+    return jsonify(_integrations_state())
+
+
+@app.route("/api/integrations/settings", methods=["POST"])
+def api_integrations_settings():
+    refused = _integrations_json_only() or _admin_locked()
+    if refused:
+        return refused
+    data = request.get_json(silent=True) or {}
+    if "autostart_engine" in data:
+        common.save_config({"integrations_autostart_engine": common._to_bool(data.get("autostart_engine"), True)},
+                           admin=True)
+    return jsonify(_integrations_state())
+
+
+@app.route("/api/integrations/connect", methods=["POST"])
+def api_integrations_connect():
+    """«Collega con 1 clic»: registra Germano (stdio) nel file MCP di un client rilevato, con copia di sicurezza."""
+    refused = _integrations_json_only() or _admin_locked()
+    if refused:
+        return refused
+    data = request.get_json(silent=True) or {}
+    try:
+        res = gassist.mcp_connect(str(data.get("client") or ""), gint.stdio_command(),
+                                  remove=bool(data.get("remove")), lang=_lang())
+    except gassist.AssistError as e:
+        return jsonify({"status": "error", "message": str(e)}), e.status
+    state = _integrations_state()
+    state["result"] = res
+    return jsonify(state)
+
+
+# ------------------------------------------------------------------------------------------------
 # Proxy API per IDE e agenti IA
 # ------------------------------------------------------------------------------------------------
 from germano import proxy as gproxy  # noqa: E402
@@ -3547,6 +4138,19 @@ def _shutdown():
         pass
 
 
+_SERVER_INFO_FILE = os.path.join(common.STATE_DIR, "server.json")
+
+
+def _write_server_info():
+    """state/server.json: porta e processo di questo server (il server MCP stdio della stessa cartella dati lo usa
+    per fare da ponte). Nessun dato personale, nessun token."""
+    try:
+        common.atomic_write_json(_SERVER_INFO_FILE, {"port": PORT, "pid": os.getpid(), "version": APP_VERSION,
+                                                     "started": time.time()})
+    except Exception:
+        pass
+
+
 def _install_pending_update():
     """Chiamata all'avvio dal launcher (germano_desktop.py: server.py --install-update) se c'è un aggiornamento già
     scaricato. Come Chrome si applica da solo, in silenzio, solo quello gia' preparato in background (la nuova versione
@@ -3588,8 +4192,13 @@ def main():
         truststore.inject_into_ssl()  # certificati di Windows (proxy aziendali con ispezione TLS)
     except Exception:
         pass
+    global _HTTP_SERVING
+    _HTTP_SERVING = True
     atexit.register(_shutdown)
     _ensure_identity()
+    _write_server_info()                           # porta per il server MCP stdio (ponte verso questo Germano)
+    atexit.register(lambda: common.remove_quietly(_SERVER_INFO_FILE))
+    gint.ensure_token()                            # token delle integrazioni per l'accesso dalla rete
     mode, notes = _apply_operating_mode()          # parte Server: rete + rilevamento UDP
     server_on, client_on = common.mode_flags(mode)
     forced = common.mode_forced_by()
@@ -3597,6 +4206,8 @@ def main():
           + (f" (impostata da {forced})" if forced else ""))
     print(f"Dashboard:   {url}")
     print(f"Proxy API:   {url}/v1")
+    print(f"Server MCP:  {url}/mcp  (SSE: {url}/mcp/sse; stdio: server.py --mcp-stdio)")
+    print(f"UTCP:        {url}/utcp  (OpenAPI: {url}/openapi.json)")
     if server_on:
         from germano import discovery as gdiscovery
         print("=" * 64)
@@ -3639,4 +4250,7 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--mcp-stdio" in sys.argv:
+        # Server MCP stdio nel processo (nessun Germano aperto con questa cartella dati, oppure --mcp-inprocess)
+        sys.exit(gmcp.stdio_main_inprocess(INTEGRATION_BACKEND))
     sys.exit(main())

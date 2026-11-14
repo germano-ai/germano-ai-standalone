@@ -1,4 +1,4 @@
-"""Germano AI v0.91 - launcher come APPLICAZIONE DESKTOP (niente finestra nera di console, niente browser con barra URL).
+"""Germano AI v0.95 - launcher come APPLICAZIONE DESKTOP (niente finestra nera di console, niente browser con barra URL).
 
 NON cambia l'architettura: avvia lo stesso server Flask (server.py) o il pannello del client (client_ui.py) in un
 sottoprocesso, attende che sia pronto e apre l'interfaccia in una FINESTRA DEDICATA, con la X rossa e titolo/icona

@@ -5,6 +5,133 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.95] - 2026-11-14
+Germano AI v0.95 - **Server MCP e UTCP: Germano nei flussi di lavoro in ingresso e in uscita**. Claude Desktop, Claude
+Code, Google Antigravity, Cursor, Windsurf, Visual Studio Code, Gemini CLI, n8n, agenti e script usano Germano come
+strumento: **in ingresso** anonimizza testi e documenti, ispeziona i dati personali e blocca le fughe prima che
+qualcosa esca; **in uscita** ripristina i dati originali nelle risposte. Gli stessi 8 strumenti sono offerti dal
+Server MCP (Streamable HTTP, SSE e stdio), dal manuale UTCP, da OpenAPI e da nuove API REST, con un solo registro e le
+stesse regole di sicurezza. Motore di protezione, modelli locali e formati sono quelli della 0.91.
+
+### Aggiunto - Server MCP (Model Context Protocol)
+- **Streamable HTTP** su `http://127.0.0.1:8181/mcp`: `POST` (JSON-RPC 2.0, anche in lotti; notifiche e risposte del
+  client → `202 Accepted`), sessioni con `Mcp-Session-Id` (sessione scaduta → `404`, il client ripete `initialize`),
+  `DELETE /mcp` chiude la sessione, `GET /mcp` con `Accept: text/event-stream` → `405` (nessun flusso spontaneo dal
+  server), `GET /mcp` da browser → descrizione JSON.
+- **SSE legacy** (revisione 2024-11-05, per n8n e i client meno recenti): `GET /mcp/sse` apre il flusso e annuncia
+  l'endpoint, `POST /mcp/messages?session_id=...` → `202` e la risposta arriva sul flusso.
+- **stdio**: `server.py --mcp-stdio` (o `python -m germano.mcp_server` dalla cartella del programma). Sullo stdout
+  solo messaggi JSON-RPC. Se Germano è aperto con la stessa cartella dati fa da **ponte** verso `/mcp` (stesso motore,
+  stesse statistiche); altrimenti lavora **nel proprio processo**: avvia il motore alla prima richiesta e lo chiude con
+  il client MCP. Un solo motore per cartella dati (blocco `state/daemon.lock`); il Vault è scritto solo dal motore
+  (SQLite in WAL) e letto dagli altri processi. Opzioni `--mcp-bridge` (solo ponte) e `--mcp-inprocess`. Il server
+  scrive la propria porta in `state/server.json` per il ponte.
+- **Revisioni del protocollo:** 2025-11-25, 2025-06-18, 2025-03-26 e 2024-11-05, negoziate in `initialize` (una
+  revisione sconosciuta riceve la 2025-11-25). La revisione 2026-07-28 elimina l'handshake: i client «dual-era» (es.
+  SDK Python ufficiale `mcp` 2.3) provano `server/discover`, ricevono un errore classico e tornano da soli a
+  `initialize` — verificato.
+- **Metodi:** `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`,
+  `resources/templates/list`, `prompts/list`, `prompts/get`, `logging/setLevel`.
+- **8 strumenti** con `inputSchema` e `outputSchema` (JSON Schema), `title`, `annotations` (`readOnlyHint`,
+  `destructiveHint`, `idempotentHint`, `openWorldHint`) e risultato sia in `structuredContent` sia come testo JSON
+  (compatibilità universale); argomenti non validi → risultato con `isError` (non errore di protocollo):
+  - **ingresso:** `germano_anonymize_text` (testo o elenco `texts[]`, mascheramento `numbered`/`generic`/`blackout`,
+    Sistema 2 facoltativo, `restore_scope` per l'uscita, `mapping` solo su richiesta), `germano_anonymize_file`
+    (PDF, Office, OpenDocument, RTF, EML, TXT, CSV, JSON, HTML, XML, immagini con OCR/volti/firme/targhe, audio,
+    archivi: da `file_path` o `content_base64`, verso `output_path` o in base64, anteprima del testo anonimizzato),
+    `germano_inspect_entities` (posizione, categoria, punteggio e livello Sistema 1/Sistema 2, decisioni del Sistema 2,
+    **sola lettura**: nessuna voce nel Vault), `germano_leak_check` (testo o payload JSON qualsiasi, con il percorso
+    JSONPath di ogni dato trovato; `safe=true` solo se non resta nulla; valori omessi di default);
+  - **uscita:** `germano_deanonymize_text` e `germano_deanonymize_file` (solo le etichette presenti, `restored_count`,
+    `unmatched_placeholders`; scrittura su `output_path` consigliata per gli assistenti nel cloud);
+  - **verifica e stato:** `germano_workflow_roundtrip` (ingresso → risposta esterna o simulata → uscita, ripristino
+    limitato alle etichette del ciclo, controllo che nel testo uscito non resti nulla) e `germano_status` (motore,
+    Sistema 1/2, Vault solo con conteggi, indirizzi, invocazioni).
+- **Risorse:** `germano://status`, `germano://capabilities`, `germano://utcp-manual`, `germano://workflow-guide`.
+  **Prompt:** `sanitize-before-send`, `restore-after-reply`, `workflow-input-output-audit`.
+
+### Aggiunto - UTCP, OpenAPI e API REST per i flussi di lavoro
+- **Manuale UTCP 1.0** (`utcp_version` 1.0.1, `manual_version` 1.0.0) su `/utcp`, `/.well-known/utcp.json` e
+  `/api/v1/utcp`: solo le chiavi standard (il client TypeScript ufficiale rifiuta quelle in più), un
+  `tool_call_template` HTTP per strumento con l'indirizzo costruito dall'host della richiesta, `body_field: "body"`
+  (gli argomenti diventano il corpo JSON), `tags` per fase (`input`, `output`, `workflow`, `status`...) e, quando il
+  manuale è chiesto dalla rete, autenticazione `api_key` con `Authorization: Bearer ${API_TOKEN}`. Varianti
+  `?format=extended` (con `info`, per rs-utcp) e `?format=legacy` (formato 0.1 con `tool_provider`/`provider_type`).
+- **OpenAPI 3.1** su `/openapi.json` (8 operazioni, stessi schemi; anche un client UTCP lo registra da solo).
+- **API REST:** `POST /api/v1/anonymize-text`, `/api/v1/anonymize-file`, `/api/v1/inspect-entities`,
+  `/api/v1/leak-check`, `/api/v1/deanonymize-text`, `/api/v1/deanonymize-file`, `/api/v1/workflow-roundtrip` e
+  `GET /api/v1/status` (corpo JSON con gli argomenti, anche nella forma `{"body": {...}}`). Le API locali esistenti
+  (`/api/v1/anonymize`, `/api/v1/anonymize_text`, `/api/v1/deanonymize_text`, `/api/v1/deanonymize_file`,
+  `/api/status`) restano invariate.
+- **Un solo registro** (`germano/integrations.py`) per MCP, UTCP, OpenAPI e REST: stessi nomi, schemi e gestori.
+
+### Aggiunto - Impostazioni › Integrazioni MCP e UTCP
+- Indirizzi pronti all'uso (Streamable HTTP, SSE, manuale UTCP, OpenAPI) e comando stdio, con **Copia configurazione
+  MCP** (stdio), **Copia configurazione HTTP** e **Copia URL UTCP**; stato dal vivo: strumenti esposti, invocazioni
+  (riuscite, bloccate, errori), sessioni MCP aperte, revisioni MCP/UTCP e controllo del manuale UTCP.
+- **Collega con 1 clic** per i client trovati su questo computer: Claude Desktop, Claude Code, Google Antigravity,
+  Cursor, Windsurf, Visual Studio Code e Gemini CLI. Registra Germano (stdio) cambiando solo la voce «germano», dopo una
+  **copia di sicurezza** del file (`.germano-backup-…`, ultime 5); i file con commenti (JSONC) non vengono toccati.
+  Stati: Collegato, Da aggiornare, Rilevato, Non rilevato, Da configurare a mano; anche **Scollega**.
+- **Prova il flusso Ingresso → Uscita** (tre riquadri: testo uscito anonimizzato, risposta, testo ripristinato) e
+  **Controllo fughe**.
+- **Token delle integrazioni** (mostra, copia, nuovo), indirizzi di rete in modalità Server, interruttore **Avvia il
+  motore automaticamente per i flussi di lavoro** e cartelle consentite per i percorsi dei file. In italiano e inglese.
+
+### Aggiunto - Germano Client
+- `client mcp`: Server MCP stdio su questo PC che inoltra al Server MCP del Germano Server, con il token delle
+  integrazioni (`client config --api-token <token>`) o la sessione dell'utente; `client utcp` mostra indirizzi
+  MCP/UTCP/OpenAPI e strumenti del server (`--json` per il manuale completo).
+
+### Sicurezza
+- **Fail-safe:** anonimizzazione, ispezione e controllo delle fughe passano dal motore; se non è pronto la richiesta
+  è **bloccata** (`status: "blocked"`, HTTP `503`) e il testo originale non viene mai restituito come sicuro (il
+  controllo delle fughe non risponde mai `safe=true` senza motore). Con l'interruttore attivo (predefinito) una
+  richiesta MCP/UTCP avvia il motore e ne attende il caricamento (fino a 120 secondi, circa un minuto la prima volta).
+- **Vault:** nessuno strumento elenca o scarica il Vault; lo stato riporta solo conteggi per tipo. Il ripristino
+  sostituisce solo le etichette presenti nel testo o nel file ricevuto (al massimo 5.000 diverse per testo).
+- **Rete locale** (solo con la parte Server attiva): MCP, SSE e API v1 vogliono il **token delle integrazioni**
+  (`Authorization: Bearer <token>`, creato da Germano e mostrato solo nella Dashboard) o la sessione di un utente
+  (gestione utenti attiva), anche con l'accesso libero; manuale UTCP e OpenAPI restano descrizioni pubbliche senza
+  dati. Dalla rete il ripristino richiede il `restore_scope` della propria anonimizzazione (in memoria, 24 ore) o la
+  `mapping` del chiamante: mai il Vault intero. Le API locali preesistenti restano solo locali.
+- **Percorsi dei file:** `file_path`/`output_path` solo da questo computer, assoluti, dentro Documenti, Desktop,
+  Download, le cartelle di lavoro o quelle aggiunte in `integration_allowed_dirs` (config.json); mai Vault e report,
+  stato, configurazione, programma, cache e modelli, cartelle o file nascosti; nessuna sovrascrittura senza
+  `overwrite`. Un file indicato per percorso senza `output_path` finisce nella cartella `output`.
+- **Origine:** MCP (anche SSE), API v1 e pannello accettano solo la stessa origine della Dashboard o nessuna origine
+  (client MCP, n8n, curl): una pagina web di un altro sito o di un'altra porta riceve `403`. Il collegamento 1-clic
+  risponde solo a questo computer, vuole un corpo JSON e rispetta `lock_settings`.
+- Le modifiche per singola richiesta possono solo **aumentare** la protezione (Sistema 2 spento, etichette generiche
+  o ████, ispezione senza Vault) e valgono anche con il profilo PA.
+- Il testo ripristinato contiene dati personali: descrizioni degli strumenti e istruzioni MCP chiedono agli assistenti
+  che girano nel cloud di scriverlo su file (`output_path`) invece di riceverlo.
+
+### Modificato
+- Motore (`daemon_api.py`): modifiche per richiesta «solo più protettive» e posizioni dei dati trovati per
+  l'ispezione e il controllo delle fughe. `common.py`: impostazioni `integration_token` e
+  `integrations_autostart_engine`. La console del server mostra anche gli indirizzi MCP e UTCP.
+
+### Collaudi
+- 158/158 controlli end-to-end e di sicurezza sui sorgenti 0.95 (MCP HTTP/SSE/stdio come ponte e nel processo, UTCP,
+  OpenAPI, REST, file DOCX e TXT in ingresso e in uscita, percorsi vietati, rete simulata con e senza token, fail-safe
+  a motore fermo, collegamento 1-clic su una cartella utente di prova, Germano Client).
+- 58/58 con le **SDK ufficiali**: `mcp` 2.3.0 (Streamable HTTP in modalità auto con ripiego da 2026-07-28, SSE, stdio)
+  e `utcp` 1.2.0 + `utcp-http` 1.1.15 (registrazione da `/utcp`, `/.well-known/utcp.json` e `/openapi.json`,
+  chiamate e ricerca per tag).
+- 15/15 dell'interfaccia in Edge headless (italiano e inglese, 1400/860/390 px, nessun errore in console); 72/72 test
+  dell'assistente di configurazione della 0.91.
+
+### Limiti noti
+- `python-utcp` accetta `http://` solo verso indirizzi di loopback: da un altro computer servono HTTPS (es. un proxy
+  inverso con TLS) oppure MCP o le API REST.
+- `restore_scope` vive in memoria per 24 ore e si perde al riavvio di Germano: per i flussi lunghi dalla rete chiedi
+  `return_mapping: true` e passa `mapping` al ripristino.
+- La revisione MCP 2026-07-28 (senza handshake) non è ancora supportata in modo nativo: i client dual-era ripiegano da
+  soli sulle revisioni precedenti.
+- Il collegamento 1-clic non modifica i file con commenti (es. `mcp.json` di VS Code in JSONC): si copia la
+  configurazione a mano.
+
 ## [0.91] - 2026-11-14
 Germano AI v0.91 - **assistente di configurazione delle AI**. Accanto a ogni AI rilevata Germano dice che cosa manca
 per usarla e lo fa con un clic: installa Google Antigravity CLI (`agy`) e la usa in Chatbot e Agenti AI con l'account

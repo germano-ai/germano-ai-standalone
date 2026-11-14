@@ -1,4 +1,4 @@
-"""Installer di Germano AI 0.91 per Windows, senza console.
+"""Installer di Germano AI 0.95 per Windows, senza console.
 
 Si distribuisce come UN SOLO FILE, germano-<versione>.exe (germano-client-<versione>.exe per il client): un piccolo
 avviatore che estrae in una cartella temporanea l'interprete Python minimo e questo script, che a sua volta legge
@@ -39,7 +39,7 @@ Aggiornamenti silenziosi (0.70, come Google Chrome), avviati da Germano senza al
   con la sua dimensione), chiude Germano, la mette al posto di quella in uso in pochi secondi e riapre Germano; se
   la copia manca o e' incompleta installa per intero dall'archivio.
 
-Uso:  germano-0.91.exe [opzioni]           (installer in un solo file)
+Uso:  germano-0.95.exe [opzioni]           (installer in un solo file)
       Germano.exe --uninstall [opzioni]    (disinstallazione del programma installato)
 Opzioni: --silent (nessuna finestra)  --update (aggiornamento avviato da Germano: niente conferma, Germano si chiude
          e si riapre da solo)  --stage / --apply-staged (aggiornamento silenzioso in due tempi, vedi sopra)
@@ -172,9 +172,9 @@ def version():
         return str(SETUP["version"])
     try:
         with open(os.path.join(HERE, "VERSION"), encoding="utf-8-sig") as f:
-            return f.read().strip() or "0.91"
+            return f.read().strip() or "0.95"
     except OSError:
-        return "0.91"
+        return "0.95"
 
 
 def icon_file():

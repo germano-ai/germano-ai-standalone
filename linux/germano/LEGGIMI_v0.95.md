@@ -1,7 +1,7 @@
-# Germano AI 0.91 — Suite completa per Windows
+# Germano AI 0.95 — Suite completa per Windows
 
 ## Installazione
-Scarica **`germano-0.91.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
+Scarica **`germano-0.95.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
 necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, gli 8 modelli IA) e non scarica
 nulla. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a
 consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows solo per il Python di
@@ -26,7 +26,7 @@ quattro schede in alto:
   file manager, i file che entrano, vengono elaborati e si spostano, in tempo reale; per anonimizzare dei documenti
   trascinali sul riquadro **input**. Qui ci sono anche la sanitizzazione manuale di un testo e il Vault;
 - **Impostazioni**: modalità e rete, protezione e modelli, AI e chiavi (con l'Assistente di configurazione), Proxy e
-  API, sistema, aggiornamenti;
+  API, integrazioni MCP e UTCP, sistema, aggiornamenti;
 - **Guida**: il manuale completo, anche senza Internet.
 
 Modalità operative (si scelgono e si cambiano in qualsiasi momento in Impostazioni › Modalità e rete):
@@ -42,6 +42,21 @@ Modalità operative (si scelgono e si cambiano in qualsiasi momento in Impostazi
 
 Per chiudere **tutto** basta la **X rossa**: si fermano anche il server Flask e il motore IA, senza lasciare processi in
 memoria.
+
+## Novità della 0.95: Server MCP e UTCP (Germano nei flussi di lavoro)
+Claude Desktop, Claude Code, Google Antigravity, Cursor, Windsurf, VS Code, Gemini CLI, n8n, agenti e script usano
+Germano come strumento: **in ingresso** anonimizza testi e documenti, ispeziona i dati personali e blocca le fughe;
+**in uscita** ripristina i dati originali nelle risposte.
+
+- **Server MCP**: `http://127.0.0.1:8181/mcp` (Streamable HTTP), `/mcp/sse` (n8n e client meno recenti) e stdio
+  (`runtime\python.exe -B server.py --mcp-stdio`, che si collega al Germano aperto o lavora da solo);
+- **UTCP** su `/utcp` e `/.well-known/utcp.json`, **OpenAPI** su `/openapi.json`, API REST `/api/v1/anonymize-text`,
+  `/api/v1/leak-check`, `/api/v1/deanonymize-text` e le altre: gli stessi 8 strumenti ovunque;
+- **Impostazioni › Integrazioni MCP e UTCP**: indirizzi da copiare, **Collega con 1 clic** ai client trovati sul PC
+  (con copia di sicurezza del loro file di configurazione), prova del flusso Ingresso → Uscita, token per la rete;
+- **sicurezza**: motore non pronto = richiesta bloccata, Vault mai elencato, ripristino solo delle etichette
+  presenti; dalla rete solo con il token delle integrazioni e solo per i dati della propria anonimizzazione.
+  Manuale completo nella Guida, capitolo 11.
 
 ## Novità della 0.91: assistente di configurazione delle AI
 Accanto a ogni AI (selettore in basso a destra, Impostazioni › AI, chiavi e Chatbot) un pulsante dice che cosa manca e
@@ -100,6 +115,9 @@ massimo compare un discreto **«Riavvia per aggiornare»** in alto. Stato e opzi
   `deanonymize_vault.json` nella nuova cartella `extracted`: al primo avvio le sue voci vengono importate.
 - Impostazioni in `Documenti\Germano AI\config.json`; file tecnici (finestra, registri, aggiornamenti scaricati) in
   `%LOCALAPPDATA%\Germano AI`.
+- Server MCP, UTCP e API v1 rispondono di base solo a questo computer; dalla rete (modalità Server) solo con il token
+  delle integrazioni o una sessione utente. Il testo ripristinato contiene dati personali: un assistente AI nel cloud
+  dovrebbe scriverlo su file (`output_path`) invece di riceverlo.
 - All'AI scelta in Chatbot e Agenti AI (o tramite il Proxy) arriva solo testo anonimizzato; la Glass Window non salva
   nulla. Aggiornamenti solo da https://download.germano.ai/; i download dell'Assistente di configurazione partono solo
   su tua richiesta; con Antigravity CLI le istruzioni interne della CLI e la verifica dei modelli vanno a Google.
@@ -123,7 +141,7 @@ App e file tecnici.
   correggerlo; nelle VM con NAT serve l'inoltro della porta TCP 8181 (o una scheda in modalità bridge).
 
 ## Client leggero per i colleghi
-Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.91.exe`** (circa 22 MB, senza
+Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.95.exe`** (circa 22 MB, senza
 modelli, nessun permesso di amministratore): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del
 client (collegamento **Germano AI Client**), che è lo stesso Remote Control del browser, con Chatbot e Agenti AI e Glass
 Window. Chi non vuole installare nulla apre direttamente nel browser `http://<IP-di-questo-PC>:8181/`.

@@ -1,11 +1,11 @@
-# Germano AI 0.91 — Suite completa per Linux
+# Germano AI 0.95 — Suite completa per Linux
 
 ## Installazione
-Scarica **`germano-0.91.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-0.95.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure da terminale:
 
 ```bash
-sudo apt install ./germano-0.91.deb
+sudo apt install ./germano-0.95.deb
 ```
 
 Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, gli 8 modelli IA,
@@ -36,6 +36,16 @@ automatica, 8182/udp solo dalla rete locale.
 
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
 fuori dalla sessione grafica dell'utente.
+
+## Novità della 0.95: Server MCP e UTCP
+Germano entra nei flussi di lavoro come strumento: **Server MCP** su `http://127.0.0.1:8181/mcp` (anche `/mcp/sse`
+e in stdio con `/opt/germano/runtime/bin/python3 -B /opt/germano/server.py --mcp-stdio`), manuale **UTCP** su
+`/utcp` e `/.well-known/utcp.json`, **OpenAPI** su `/openapi.json` e API REST `/api/v1/...`: in ingresso
+anonimizza, ispeziona e controlla le fughe, in uscita ripristina i dati originali. In Impostazioni › Integrazioni MCP
+e UTCP ci sono indirizzi, «Collega con 1 clic» (i file di configurazione dei client sono quelli di Linux, es.
+`~/.config/Claude/claude_desktop_config.json`, `~/.cursor/mcp.json`), la prova del flusso e il token per la rete. Su
+Linux queste funzioni sono verificate staticamente e con gli stessi sorgenti collaudati su Windows. Dettagli nel
+CHANGELOG e nella Guida (capitolo 11).
 
 ## Novità della 0.91: assistente di configurazione delle AI
 Accanto a ogni AI un pulsante dice che cosa manca e lo fa con un clic: **Antigravity CLI** (`agy`, installata in
