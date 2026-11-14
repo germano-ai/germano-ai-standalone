@@ -1,5 +1,5 @@
-# Germano AI 0.80 - librerie Python del programma, per chi lo esegue dai sorgenti (Python 3.11, 64 bit).
-# L'installer germano-0.80.exe le include gia' tutte con il proprio Python: per usare Germano non serve installarle.
+# Germano AI 0.90 - librerie Python del programma, per chi lo esegue dai sorgenti (Python 3.11, 64 bit).
+# L'installer germano-0.90.exe le include gia' tutte con il proprio Python: per usare Germano non serve installarle.
 # Stesse versioni collaudate nel pacchetto (pip install -r requirements.txt).
 Flask==3.1.3
 Werkzeug==3.1.9
@@ -21,5 +21,11 @@ xlrd==2.0.2
 xlutils==2.0.0
 torch==2.14.1
 transformers==5.20.2
+# Italian NER in ONNX Runtime (stessi risultati del modello PyTorch, senza il lock dei modelli PyTorch)
+onnxruntime==1.31.0
+# Audio (0.80): trascrizione offline in un processo separato (Whisper in CTranslate2, decodifica con PyAV)
+faster-whisper==1.2.1
+ctranslate2==4.8.5
+av==18.1.0
 # Windows: stato della connessione (aggiornamenti) e conversione dei vecchi formati Office
 pywin32==312

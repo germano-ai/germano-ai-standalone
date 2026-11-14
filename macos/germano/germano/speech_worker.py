@@ -22,6 +22,12 @@ import sys
 import time
 
 SAMPLE_RATE = 16000
+# Registrazioni lunghe (turno 26): BatchedInferencePipeline di faster-whisper trascrive i segmenti del rilevatore di voce
+# a lotti. Misurato sulle registrazioni sintetiche del turno 24 (284 s, i5-4570, 3 thread): 66 s invece di 107 s e
+# errore di parola 11,6% invece di 13,3% (il modo in serie, condizionato sul testo precedente, perdeva anche una cifra
+# di un numero di telefono). Sotto il minuto i due modi danno lo stesso testo: resta il modo in serie.
+BATCH_MIN_SECONDS = 60
+BATCH_SIZE = 8
 # etichette dei metadati utili (le altre sono tecniche: codificatore, marche del contenitore...)
 TAG_KEYS = ("title", "artist", "album", "album_artist", "albumartist", "composer", "author", "performer", "lyricist",
             "conductor", "comment", "description", "synopsis", "date", "year", "creation_time", "genre", "track",
@@ -103,13 +109,31 @@ def main():
             send({"ev": "done", "segments": 0, "elapsed": round(time.time() - t0, 2), "duration": seconds})
             return
         load_s = load(req)
-        segments, info = state["model"].transcribe(
-            audio, language=req.get("language") or None, task="transcribe", beam_size=int(req.get("beam_size") or 5),
-            vad_filter=True, vad_parameters={"min_silence_duration_ms": 500}, condition_on_previous_text=True,
-            word_timestamps=False)
+        language = req.get("language") or None
+        beam = int(req.get("beam_size") or 5)
+        segments = info = None
+        mode = "serie"
+        if seconds >= BATCH_MIN_SECONDS and not req.get("no_batch"):
+            try:
+                from faster_whisper import BatchedInferencePipeline
+                if state.get("batched_for") is not state["model"]:
+                    state["batched"] = BatchedInferencePipeline(model=state["model"])
+                    state["batched_for"] = state["model"]
+                segments, info = state["batched"].transcribe(
+                    audio, language=language, task="transcribe", beam_size=beam, batch_size=BATCH_SIZE,
+                    vad_filter=True, vad_parameters={"min_silence_duration_ms": 500}, word_timestamps=False)
+                mode = "a lotti"
+            except Exception as e:                  # libreria senza il modo a lotti o errore all'avvio: in serie
+                log(f"trascrizione a lotti non disponibile ({type(e).__name__}: {e}): si usa il modo in serie")
+                segments = info = None
+        if segments is None:
+            segments, info = state["model"].transcribe(
+                audio, language=language, task="transcribe", beam_size=beam, vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500}, condition_on_previous_text=True,
+                word_timestamps=False)
         send({"ev": "info", "language": info.language, "language_probability": float(info.language_probability or 0),
               "duration": float(info.duration or seconds), "speech": float(getattr(info, "duration_after_vad", 0) or 0),
-              "load_s": round(load_s, 2)})
+              "load_s": round(load_s, 2), "mode": mode})
         n = 0
         for seg in segments:
             text = (seg.text or "").strip()

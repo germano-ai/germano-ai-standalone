@@ -1,4 +1,4 @@
-"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-0.80/releases/.
+"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-0.90/releases/.
 
 Per ogni piattaforma: nome del file, dimensione esatta e impronta SHA-256, calcolate DIRETTAMENTE dal file su disco
 in una sola lettura. Le chiavi «windows», «macos», «linux» sono quelle lette dall'updater della suite; le voci
@@ -39,8 +39,9 @@ DOWNLOAD_BASE = "https://download.germano.ai/"
 FILES = {"windows": "windows/germano-{v}.exe", "macos": "macos/germano-{v}.pkg", "linux": "linux/germano-{v}.deb",
          "windows-client": "windows/germano-client-{v}.exe", "macos-client": "macos/germano-client-{v}.pkg",
          "linux-client": "linux/germano-client-{v}.deb"}
-NOTES = ("Germano AI v{v} - Supporto nativo audio MP3/WAV/M4A/OGG/FLAC, estrazione e ricomposizione archivi compressi "
-         "ZIP/TAR/GZ/7Z/RAR, correzione verifica updater silenzioso")
+NOTES = ("Germano AI v{v} - Motore parallelo (Privacy Filter + Italian NER) con corsia preferenziale per le richieste "
+         "interattive, Sistema 2 senza domande superflue, Vault su SQLite WAL, Proxy che protegge anche gli argomenti "
+         "degli strumenti, trascrizione audio a lotti, Client in parallelo con verifica del server")
 SFX_MAGIC = b"GERMANO.SFX.0001"
 SFX_TRAILER = struct.Struct("<16sQQQQ")
 WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # Windows non avvia eseguibili da 4 GB in su

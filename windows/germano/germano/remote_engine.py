@@ -27,6 +27,13 @@ API_VERSION = 1
 TEXT_SETTINGS = ("enable_model_velvet", "enable_model_italian_ner", "ai_threshold")
 _MAX_BATCH_TEXTS = 64
 _MAX_BATCH_CHARS = 200_000
+# Prova di funzionamento (turno 26, rilievo del turno 25): all'aggancio e poi ogni 10 minuti il client manda al server
+# una frase di controllo con dati FINTI scelti a caso; se il server non riconosce il nome, il client smette di usarlo
+# (una risposta «nessun dato trovato» lascerebbe in chiaro tutto cio' che solo i modelli riconoscono).
+SELF_TEST_EVERY_S = 600
+_NAMES = ("Mario", "Giulia", "Luca", "Francesca", "Paolo", "Chiara", "Marco", "Elena", "Andrea", "Sara")
+_SURNAMES = ("Rossi", "Bianchi", "Esposito", "Romano", "Colombo", "Ricci", "Marino", "Greco", "Bruno", "Gallo")
+_CITIES = ("Milano", "Torino", "Bologna", "Firenze", "Bari", "Padova", "Verona", "Genova")
 
 
 class EngineUnavailable(RuntimeError):
@@ -96,6 +103,9 @@ class RemoteEngine:
         self.latency_ms = None
         self.last_ok = 0.0
         self.last_error = ""
+        self._untrusted = ""          # motivo per cui il server non ha superato la prova di funzionamento
+        self._self_test_at = 0.0
+        self._settings = {}
 
     # ------------------------------------------------------------------ HTTP
     def _call(self, path, payload=None, png=None, timeout=None, raw=None, rejected=()):
@@ -170,16 +180,56 @@ class RemoteEngine:
             # trascrizione audio del server (dalla 0.80): {"available": bool, "model": ...}
             "speech": info.get("speech") if isinstance(info.get("speech"), dict) else {"available": False},
         }
+        self._settings = dict(settings or {})
+        self.self_test()
         return self.info
 
+    def self_test(self):
+        """Prova di funzionamento: il server deve riconoscere il nome in una frase con dati finti casuali. Solleva
+        EngineUnavailable (e blocca le richieste successive) se non lo riconosce. Saltata se nelle impostazioni di
+        questo computer entrambi i modelli sono spenti (allora il server non deve trovare nulla)."""
+        import random
+        s = self._settings or {}
+        if not (s.get("enable_model_velvet", True) or s.get("enable_model_italian_ner", True)):
+            return
+        rnd = random.SystemRandom()
+        name, surname, city = rnd.choice(_NAMES), rnd.choice(_SURNAMES), rnd.choice(_CITIES)
+        text = (f"Il signor {name} {surname} abita in via Garibaldi {rnd.randint(2, 98)} a {city} e chiede il "
+                f"rimborso della pratica {rnd.randint(100, 999)}.")
+        a = text.index(surname)
+        b = a + len(surname)
+        sub = {k: s.get(k, common.DEFAULT_SETTINGS.get(k)) for k in TEXT_SETTINGS}
+        out = self._call("/classify", {"texts": [text], "settings": sub}, timeout=120)
+        res = out.get("results") if isinstance(out, dict) else None
+        spans = res[0] if isinstance(res, list) and res and isinstance(res[0], list) else []
+        try:
+            found = any(int(sp[0]) < b and int(sp[1]) > a for sp in spans if isinstance(sp, list) and len(sp) >= 2)
+        except (TypeError, ValueError):
+            found = False                              # risposta malformata: prova non superata
+        self._self_test_at = time.time()
+        if found:
+            self._untrusted = ""                       # solo una prova superata riabilita il server
+        else:
+            self._untrusted = (f"il Germano Server {self.base} non ha superato la prova di funzionamento (non riconosce "
+                               "un nome evidente in una frase di controllo con dati finti): per sicurezza non viene usato")
+            self.info.update(ok=False, error=self._untrusted)
+            raise EngineUnavailable(self._untrusted[0].upper() + self._untrusted[1:] + ".")
+
     def ping(self):
-        """Controllo periodico (non solleva eccezioni): aggiorna latenza e raggiungibilita' del server."""
+        """Controllo periodico (non solleva eccezioni): aggiorna latenza e raggiungibilita' del server e, ogni
+        SELF_TEST_EVERY_S secondi (o se l'ultima e' fallita), ripete la prova di funzionamento."""
         try:
             self._call("/info", timeout=5)
+            if self._untrusted or time.time() - self._self_test_at > SELF_TEST_EVERY_S:
+                self.self_test()
             self.info.update(ok=True, latency_ms=self.latency_ms, error="")
         except EngineUnavailable as e:
             self.info.update(ok=False, error=str(e))
         return bool(self.info.get("ok"))
+
+    def _check_trusted(self):
+        if self._untrusted:
+            raise EngineUnavailable(self._untrusted[0].upper() + self._untrusted[1:] + ".")
 
     def clear_cache(self):
         with self.lock:
@@ -188,6 +238,7 @@ class RemoteEngine:
     # ------------------------------------------------------------------ testo
     def classify_many(self, texts, settings, cancel=None):
         """Come Engine.classify_many: per ogni testo gli span grezzi [(start, end, gruppo, score)]."""
+        self._check_trusted()
         cancel = cancel or NO_CANCEL
         sub = {k: settings.get(k) for k in TEXT_SETTINGS}
         flags = json.dumps(sub, sort_keys=True)
@@ -241,6 +292,7 @@ class RemoteEngine:
         import os
         import urllib.parse
         from .speech import SpeechError
+        self._check_trusted()
         cancel = cancel or NO_CANCEL
         settings = settings or {}
         if not (self.info.get("speech") or {}).get("available"):
@@ -284,11 +336,13 @@ class RemoteEngine:
         """[(box4punti, testo, confidenza)] come EasyOCR.readtext(detail=1)."""
         if self.ocr_reader is None:
             return []
+        self._check_trusted()
         out = self._call("/ocr", png=self._png(img_rgb), timeout=900)
         return [([[float(p[0]), float(p[1])] for p in box], str(text), float(conf))
                 for box, text, conf in out.get("results") or []]
 
     def _boxes(self, path, img):
+        self._check_trusted()
         out = self._call(path, png=self._png(img), timeout=600)
         return [tuple(float(v) for v in b[:5]) for b in out.get("results") or []]
 

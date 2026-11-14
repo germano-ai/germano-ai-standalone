@@ -1,7 +1,8 @@
 """Analisi a "unita'" di testo (paragrafi, celle, campi) e applicazione delle sostituzioni.
 
 - Anonimizzazione: le unita' vengono concatenate in blocchi (contesto + velocita'), analizzate con modelli
-  e RegEx, poi le entita' trovate vengono propagate a tutte le altre occorrenze del documento.
+  e RegEx (Sistema 1); i casi dubbi vengono decisi nel contesto dal Sistema 2; poi le entita' trovate vengono
+  propagate a tutte le altre occorrenze del documento.
 - Ripristino: le etichette del vault ([PERSONA_1]) vengono sostituite con i dati reali.
 Le sostituzioni sono (inizio, fine, testo) relative all'unita'.
 """
@@ -95,6 +96,10 @@ class Anonymizer:
         n = len(units)
         spans_per_unit = [[] for _ in range(n)]
         todo = [i for i, u in enumerate(units) if u.force_label is None and u.text and u.text.strip()]
+        # parole gia' oscurate nel documento (propagatore condiviso fra le chiamate dello stesso documento) e, man mano,
+        # nei gruppi gia' analizzati: le loro occorrenze dubbie non serve chiederle al Sistema 2 (turno 26)
+        prop0 = getattr(ctx, "propagator", None)
+        self._known = {toks for toks, _label in getattr(prop0, "seen", ())}
 
         if batch_context:
             groups, cur, size = [], [], 0
@@ -118,8 +123,11 @@ class Anonymizer:
                 grp = todo[grp_start:grp_start + 64]
                 texts = [units[i].text for i in grp]
                 raws = ctx.classify_many(texts)
-                for i, raw in zip(grp, raws):
-                    spans_per_unit[i] = detect.detect(units[i].text, raw, settings, ocr=units[i].ocr)
+                found = [detect.detect(units[i].text, raw, settings, ocr=units[i].ocr) for i, raw in zip(grp, raws)]
+                # Sistema 2: i dubbi di tutti i testi del gruppo in un'unica coda parallela (turno 26), non un testo
+                # alla volta. Ogni decisione resta legata alla propria unita' (stesso registro di prima).
+                for i, spans in zip(grp, self._system2_many([(units[i].text, s) for i, s in zip(grp, found)], grp)):
+                    spans_per_unit[i] = spans
 
         # Propagazione delle entita' a tutte le occorrenze del documento (indice condiviso tra le chiamate
         # dello stesso documento: es. un nome letto nel testo digitale viene oscurato anche nelle scansioni).
@@ -162,6 +170,51 @@ class Anonymizer:
                 results[i].append((sp.start, sp.end, label))
         return results
 
+    def _remember(self, text, kept):
+        """Firme di propagazione degli span rimasti oscurati (per le domande superflue dei gruppi successivi)."""
+        from .system2_resolver import propagation_signature
+        known = getattr(self, "_known", None)
+        if known is None:
+            return
+        for sp in kept:
+            s = propagation_signature(text, sp)
+            if s is not None:
+                known.add(s)
+
+    def _system2(self, text, spans, grp, starts, ends):
+        """Casi dubbi decisi nel contesto (Sistema 2), PRIMA della propagazione: un falso positivo rilasciato non
+        viene cercato nel resto del documento; un dubbio confermato si'. Ogni decisione registra l'unita' di testo a
+        cui appartiene, con la posizione relativa a quell'unita' (per la Glass Window e il report)."""
+        resolve = getattr(self.ctx, "resolve_doubts", None)
+        if resolve is None:
+            return spans
+        log = getattr(self.ctx, "system2", None)
+        before = len(log) if log is not None else 0
+        kept = resolve(text, spans, known=getattr(self, "_known", None))
+        self._remember(text, kept)
+        for d in (log[before:] if log is not None else []):
+            k = max(0, bisect_right(starts, d.get("start", 0)) - 1)
+            d["unit"] = grp[k]
+            d["start"] = max(0, d.get("start", 0) - starts[k])
+            d["end"] = min(ends[k] - starts[k], d.get("end", 0) - starts[k])
+        return kept
+
+    def _system2_many(self, items, grp):
+        """Come _system2 per testi indipendenti [(testo, span)] (un'unita' ciascuno): un'unica coda per tutti i dubbi."""
+        many = getattr(self.ctx, "resolve_doubts_many", None)
+        if many is None:
+            return [self._system2(t, s, [i], [0], [len(t)]) for (t, s), i in zip(items, grp)]
+        out = []
+        log = getattr(self.ctx, "system2", None)
+        for (kept, decisions), i, (text, _s) in zip(many(items, known=getattr(self, "_known", None)), grp, items):
+            for d in decisions:
+                d["unit"] = i
+            if log is not None:
+                log.extend(decisions)
+            self._remember(text, kept)
+            out.append(kept)
+        return out
+
     def _analyze_group(self, units, grp, spans_per_unit):
         ctx = self.ctx
         parts = []
@@ -182,7 +235,7 @@ class Anonymizer:
         combined = "".join(parts)
         raw = ctx.classify_many([combined])[0]
         ocr = any(units[i].ocr for i in grp)
-        spans = detect.detect(combined, raw, ctx.settings, ocr=ocr)
+        spans = self._system2(combined, detect.detect(combined, raw, ctx.settings, ocr=ocr), grp, starts, ends)
         for sp in spans:
             k = max(0, bisect_right(starts, sp.start) - 1)
             while k < len(grp) and starts[k] < sp.end:

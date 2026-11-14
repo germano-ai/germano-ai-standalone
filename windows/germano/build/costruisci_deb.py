@@ -1,6 +1,6 @@
 """Costruisce i pacchetti Debian/Ubuntu AUTOSUFFICIENTI (nessuna dipendenza, nessun download all'installazione):
-  germano.ai-0.80/releases/linux/germano-0.80.deb          suite completa  -> /opt/germano
-  germano.ai-0.80/releases/linux/germano-client-0.80.deb   client leggero  -> /opt/germano-client
+  germano.ai-0.90/releases/linux/germano-0.90.deb          suite completa  -> /opt/germano
+  germano.ai-0.90/releases/linux/germano-client-0.90.deb   client leggero  -> /opt/germano-client
 partendo da sorgenti/linux/<edizione>, dipendenze/linux (Python portabile + librerie in versione Linux) e modelli/.
 
 Il .deb e' scritto direttamente (archivio «ar» con debian-binary, control.tar.gz e data.tar.gz), quindi si
@@ -274,6 +274,10 @@ def tar_bytes(members):
 def build(edition):
     ed = EDITIONS[edition]
     src = os.path.join(RELEASE, "sorgenti", "linux", edition)
+    # Cancello di coerenza (turno 26): i file comuni dell'albero Linux devono essere identici a quelli di Windows
+    import coerenza_sorgenti
+    n_common = coerenza_sorgenti.verify(RELEASE, edition, "linux")
+    print(f"   sorgenti linux/{edition} allineati a windows/{edition} ({n_common} file comuni identici)")
     version = open(os.path.join(src, "VERSION"), encoding="utf-8-sig").read().strip()
     out = os.path.join(RELEASE, "releases", "linux", ed["file"].format(v=version))
     root = f"opt/{ed['folder']}"

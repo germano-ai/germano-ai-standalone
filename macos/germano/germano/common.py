@@ -39,12 +39,27 @@ STATE_DIR = os.path.join(DATA_DIR, "state")
 CACHE_DIR = os.path.abspath(os.environ.get("GERMANO_CACHE_DIR") or os.path.join(BASE_DIR, "cache"))
 UPLOAD_DIR = os.path.join(STATE_DIR, "uploads")
 WORK_TMP_DIR = os.path.join(STATE_DIR, "tmp")
-# Modelli IA accanto al programma; dai sorgenti GERMANO_MODELS_DIR indica la cartella modelli/ della release (senza copie)
-_cand_models = os.path.abspath(os.path.join(BASE_DIR, "..", "..", "..", "modelli"))
-MODELS_DIR = os.path.abspath(
-    os.environ.get("GERMANO_MODELS_DIR")
-    or (os.path.join(BASE_DIR, "models") if os.path.isdir(os.path.join(BASE_DIR, "models")) else (_cand_models if os.path.isdir(_cand_models) else os.path.join(BASE_DIR, "models")))
-)
+_OS_FOLDER = "windows" if os.name == "nt" else ("macos" if sys.platform == "darwin" else "linux")
+
+
+def _program_or_release(env, installed, *release):
+    """Cartella del programma installato (o indicata da una variabile d'ambiente); eseguendo dai sorgenti della
+    release (sorgenti/<sistema>/germano) la cartella corrispondente della release stessa, senza copie."""
+    if os.environ.get(env):
+        return os.path.abspath(os.environ[env])
+    inst = os.path.join(BASE_DIR, *installed)
+    if os.path.isdir(inst):
+        return os.path.abspath(inst)
+    rel = os.path.abspath(os.path.join(BASE_DIR, "..", "..", "..", *release))
+    return rel if os.path.isdir(rel) else os.path.abspath(inst)
+
+
+# Modelli IA accanto al programma (models/); dai sorgenti la cartella modelli/ della release
+MODELS_DIR = _program_or_release("GERMANO_MODELS_DIR", ("models",), "modelli")
+# Server di llama.cpp per il Sistema 2 (runtime/llama); dai sorgenti dipendenze/<sistema>/llama-server
+LLAMA_DIR = _program_or_release("GERMANO_LLAMA_DIR", ("runtime", "llama"), "dipendenze", _OS_FOLDER, "llama-server")
+# Console di 7-Zip per gli archivi 7Z e RAR (runtime/7zip); dai sorgenti dipendenze/<sistema>/7zip
+SEVENZIP_DIR = _program_or_release("GERMANO_7ZIP_DIR", ("runtime", "7zip"), "dipendenze", _OS_FOLDER, "7zip")
 
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 VERSION_FILE = os.path.join(BASE_DIR, "VERSION")
@@ -111,6 +126,13 @@ DEFAULT_SETTINGS = {
     "enable_tooltips": True,         # suggerimenti al passaggio del mouse nella Dashboard
     # --- Prestazioni (v0.60): 0 = automatico (processori disponibili, uno lasciato libero da 3 in su, massimo 16) ---
     "cpu_threads": 0,
+    # --- Sistema 2 (turno 23): i casi dubbi del Sistema 1 si decidono nel contesto con un modello linguistico locale
+    # (Qwen3.5 con llama.cpp, solo 127.0.0.1). Spento: tutti i dubbi restano oscurati, come prima.
+    "enable_system2": True,
+    # --- Audio (v0.80): trascrizione offline del parlato (Whisper, in un processo separato). Lingua: «auto» la
+    # riconosce dai primi secondi di voce; indicarla evita errori sulle registrazioni brevi o rumorose.
+    "speech_language": "auto",
+    "speech_max_minutes": 240,       # durata massima di una registrazione (oltre, il file finisce tra i non riusciti)
 }
 for _k in FEATURE_KEYS:
     DEFAULT_SETTINGS[_k] = True
@@ -118,19 +140,22 @@ for _k in FEATURE_KEYS:
 _BOOL_KEYS = set(FEATURE_KEYS) | {
     "enable_deanonymize", "lock_settings", "anonymize_filenames", "save_proxy_logs", "check_updates",
     "auto_update", "discovery_enabled", "first_run_done", "client_fallback_local", "enable_tooltips",
-    "share_ai_tools", "auth_enabled",
+    "share_ai_tools", "auth_enabled", "enable_system2",
 }
 OPERATING_MODES = ("standalone", "server", "client", "server+client")
+# Lingue del parlato selezionabili (codici di Whisper); «auto» = riconoscimento automatico
+SPEECH_LANGUAGES = ("auto", "it", "en", "fr", "de", "es", "pt", "nl", "ro", "pl", "sq", "uk", "ru", "ar", "zh")
 _ENUM_KEYS = {
     "ui_mode": ("simple", "advanced"),
     "compliance_mode": ("PA", "PD"),
     "hardware_mode": ("gpu_fallback", "cpu", "gpu"),
     "precision": ("auto", "fp32", "bf16"),
     "operating_mode": OPERATING_MODES,
+    "speech_language": SPEECH_LANGUAGES,
 }
 _FLOAT_KEYS = {"ai_threshold": (0.0, 0.95)}
 _INT_KEYS = {"file_timeout_minutes": (5, 1440), "port": (1024, 65535), "discovery_port": (1024, 65535),
-             "cpu_threads": (0, 256)}
+             "cpu_threads": (0, 256), "speech_max_minutes": (1, 1440)}
 _URL_KEYS = ("target_api_url", "target_anthropic_url", "remote_server")
 _HOST_KEYS = {"bind_host"}                       # 0.0.0.0, loopback o un IP letterale
 # stringhe libere (lunghezza massima)
@@ -236,7 +261,7 @@ def get_version():
                 return v
     except Exception:
         pass
-    return "0.52-alpha"
+    return "0.90"
 
 
 def ensure_dirs():

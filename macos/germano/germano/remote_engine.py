@@ -27,11 +27,26 @@ API_VERSION = 1
 TEXT_SETTINGS = ("enable_model_velvet", "enable_model_italian_ner", "ai_threshold")
 _MAX_BATCH_TEXTS = 64
 _MAX_BATCH_CHARS = 200_000
+# Prova di funzionamento (turno 26, rilievo del turno 25): all'aggancio e poi ogni 10 minuti il client manda al server
+# una frase di controllo con dati FINTI scelti a caso; se il server non riconosce il nome, il client smette di usarlo
+# (una risposta «nessun dato trovato» lascerebbe in chiaro tutto cio' che solo i modelli riconoscono).
+SELF_TEST_EVERY_S = 600
+_NAMES = ("Mario", "Giulia", "Luca", "Francesca", "Paolo", "Chiara", "Marco", "Elena", "Andrea", "Sara")
+_SURNAMES = ("Rossi", "Bianchi", "Esposito", "Romano", "Colombo", "Ricci", "Marino", "Greco", "Bruno", "Gallo")
+_CITIES = ("Milano", "Torino", "Bologna", "Firenze", "Bari", "Padova", "Verona", "Genova")
 
 
 class EngineUnavailable(RuntimeError):
     """Il motore remoto non risponde o rifiuta la richiesta. Nessun dato e' stato inoltrato al cloud:
     l'operazione va ripetuta piu' tardi (i documenti in coda restano nella cartella input)."""
+
+
+class RemoteRejected(Exception):
+    """Il server ha rifiutato il contenuto inviato (non e' un problema di rete: riprovare non serve)."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
 
 
 def _error_text(err):
@@ -88,9 +103,14 @@ class RemoteEngine:
         self.latency_ms = None
         self.last_ok = 0.0
         self.last_error = ""
+        self._untrusted = ""          # motivo per cui il server non ha superato la prova di funzionamento
+        self._self_test_at = 0.0
+        self._settings = {}
 
     # ------------------------------------------------------------------ HTTP
-    def _call(self, path, payload=None, png=None, timeout=None):
+    def _call(self, path, payload=None, png=None, timeout=None, raw=None, rejected=()):
+        """`raw`: corpo binario generico (file audio). `rejected`: codici HTTP con cui il server rifiuta QUEL
+        contenuto (es. file non leggibile): diventano RemoteRejected invece di «motore non disponibile»."""
         headers = {"Accept": "application/json"}
         if self.token:
             headers["X-Germano-Auth"] = self.token
@@ -101,6 +121,9 @@ class RemoteEngine:
         elif png is not None:
             data = png
             headers["Content-Type"] = "image/png"
+        elif raw is not None:
+            data = raw
+            headers["Content-Type"] = "application/octet-stream"
         req = urllib.request.Request(self.base + API_PATH + path, data=data, headers=headers,
                                      method="POST" if data is not None else "GET")
         t0 = time.perf_counter()
@@ -109,6 +132,8 @@ class RemoteEngine:
                 body = r.read()
         except urllib.error.HTTPError as e:
             msg = _error_text(e)
+            if e.code in rejected:
+                raise RemoteRejected(e.code, msg) from None
             self.last_error = msg
             if e.code in (401, 403):
                 raise EngineUnavailable(f"Il Germano Server {self.base} ha rifiutato l'accesso ({e.code}): sul server "
@@ -152,17 +177,59 @@ class RemoteEngine:
             "server_version": info.get("version"), "device": info.get("device"), "precision": info.get("precision"),
             "privacy_filter": bool(info.get("privacy_filter")), "italian_ner": bool(info.get("italian_ner")),
             "ocr": bool(info.get("ocr")), "latency_ms": self.latency_ms, "ok": True, "error": "",
+            # trascrizione audio del server (dalla 0.80): {"available": bool, "model": ...}
+            "speech": info.get("speech") if isinstance(info.get("speech"), dict) else {"available": False},
         }
+        self._settings = dict(settings or {})
+        self.self_test()
         return self.info
 
+    def self_test(self):
+        """Prova di funzionamento: il server deve riconoscere il nome in una frase con dati finti casuali. Solleva
+        EngineUnavailable (e blocca le richieste successive) se non lo riconosce. Saltata se nelle impostazioni di
+        questo computer entrambi i modelli sono spenti (allora il server non deve trovare nulla)."""
+        import random
+        s = self._settings or {}
+        if not (s.get("enable_model_velvet", True) or s.get("enable_model_italian_ner", True)):
+            return
+        rnd = random.SystemRandom()
+        name, surname, city = rnd.choice(_NAMES), rnd.choice(_SURNAMES), rnd.choice(_CITIES)
+        text = (f"Il signor {name} {surname} abita in via Garibaldi {rnd.randint(2, 98)} a {city} e chiede il "
+                f"rimborso della pratica {rnd.randint(100, 999)}.")
+        a = text.index(surname)
+        b = a + len(surname)
+        sub = {k: s.get(k, common.DEFAULT_SETTINGS.get(k)) for k in TEXT_SETTINGS}
+        out = self._call("/classify", {"texts": [text], "settings": sub}, timeout=120)
+        res = out.get("results") if isinstance(out, dict) else None
+        spans = res[0] if isinstance(res, list) and res and isinstance(res[0], list) else []
+        try:
+            found = any(int(sp[0]) < b and int(sp[1]) > a for sp in spans if isinstance(sp, list) and len(sp) >= 2)
+        except (TypeError, ValueError):
+            found = False                              # risposta malformata: prova non superata
+        self._self_test_at = time.time()
+        if found:
+            self._untrusted = ""                       # solo una prova superata riabilita il server
+        else:
+            self._untrusted = (f"il Germano Server {self.base} non ha superato la prova di funzionamento (non riconosce "
+                               "un nome evidente in una frase di controllo con dati finti): per sicurezza non viene usato")
+            self.info.update(ok=False, error=self._untrusted)
+            raise EngineUnavailable(self._untrusted[0].upper() + self._untrusted[1:] + ".")
+
     def ping(self):
-        """Controllo periodico (non solleva eccezioni): aggiorna latenza e raggiungibilita' del server."""
+        """Controllo periodico (non solleva eccezioni): aggiorna latenza e raggiungibilita' del server e, ogni
+        SELF_TEST_EVERY_S secondi (o se l'ultima e' fallita), ripete la prova di funzionamento."""
         try:
             self._call("/info", timeout=5)
+            if self._untrusted or time.time() - self._self_test_at > SELF_TEST_EVERY_S:
+                self.self_test()
             self.info.update(ok=True, latency_ms=self.latency_ms, error="")
         except EngineUnavailable as e:
             self.info.update(ok=False, error=str(e))
         return bool(self.info.get("ok"))
+
+    def _check_trusted(self):
+        if self._untrusted:
+            raise EngineUnavailable(self._untrusted[0].upper() + self._untrusted[1:] + ".")
 
     def clear_cache(self):
         with self.lock:
@@ -171,6 +238,7 @@ class RemoteEngine:
     # ------------------------------------------------------------------ testo
     def classify_many(self, texts, settings, cancel=None):
         """Come Engine.classify_many: per ogni testo gli span grezzi [(start, end, gruppo, score)]."""
+        self._check_trusted()
         cancel = cancel or NO_CANCEL
         sub = {k: settings.get(k) for k in TEXT_SETTINGS}
         flags = json.dumps(sub, sort_keys=True)
@@ -217,6 +285,43 @@ class RemoteEngine:
                 if len(self._cache) > self._cache_max:
                     self._cache.popitem(last=False)
 
+    # ------------------------------------------------------------------ audio
+    def transcribe(self, path, settings=None, cancel=None, progress=None, extend=None):
+        """Come Engine.transcribe: il file audio viene trascritto dal Germano Server (che non lo conserva); testo,
+        Vault ed etichette restano su questo computer."""
+        import os
+        import urllib.parse
+        from .speech import SpeechError
+        self._check_trusted()
+        cancel = cancel or NO_CANCEL
+        settings = settings or {}
+        if not (self.info.get("speech") or {}).get("available"):
+            raise SpeechError(f"Il Germano Server {self.base} non offre la trascrizione audio: serve la versione 0.80 "
+                              "o successiva, con il modello vocale installato.")
+        size = os.path.getsize(path)
+        if size > 200 * 1024 * 1024:
+            raise SpeechError("File audio troppo grande per il motore remoto (massimo 200 MB): dividilo in parti o "
+                              "elaboralo sul computer del server.")
+        cancel.check()
+        with open(path, "rb") as f:
+            data = f.read()
+        if progress:
+            progress(f"audio: trascrizione sul Germano Server ({size / 2**20:.1f} MB)")
+        if extend:
+            extend(4 * 3600)             # la durata si conosce solo sul server: tempo ampio, poi vale la risposta
+        query = urllib.parse.urlencode({
+            "name": os.path.basename(path)[-80:], "speech_language": settings.get("speech_language") or "auto",
+            "speech_max_minutes": int(settings.get("speech_max_minutes") or 240)})
+        try:
+            out = self._call("/transcribe?" + query, raw=data, timeout=4 * 3600, rejected=(400, 404, 413, 422))
+        except RemoteRejected as e:
+            if e.code == 404:
+                raise SpeechError(f"Il Germano Server {self.base} non offre la trascrizione audio: aggiornalo alla "
+                                  "versione 0.80 o successiva.") from None
+            raise SpeechError(str(e) or "Trascrizione non riuscita sul Germano Server.") from None
+        out["segments"] = [(float(s), float(e), str(t)) for s, e, t in out.get("segments") or []]
+        return out
+
     # ------------------------------------------------------------------ immagini
     @staticmethod
     def _png(img):
@@ -231,11 +336,13 @@ class RemoteEngine:
         """[(box4punti, testo, confidenza)] come EasyOCR.readtext(detail=1)."""
         if self.ocr_reader is None:
             return []
+        self._check_trusted()
         out = self._call("/ocr", png=self._png(img_rgb), timeout=900)
         return [([[float(p[0]), float(p[1])] for p in box], str(text), float(conf))
                 for box, text, conf in out.get("results") or []]
 
     def _boxes(self, path, img):
+        self._check_trusted()
         out = self._call(path, png=self._png(img), timeout=600)
         return [tuple(float(v) for v in b[:5]) for b in out.get("results") or []]
 

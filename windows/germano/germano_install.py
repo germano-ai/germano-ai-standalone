@@ -1,4 +1,4 @@
-"""Installer di Germano AI 0.80 per Windows, senza console.
+"""Installer di Germano AI 0.90 per Windows, senza console.
 
 Si distribuisce come UN SOLO FILE, germano-<versione>.exe (germano-client-<versione>.exe per il client): un piccolo
 avviatore che estrae in una cartella temporanea l'interprete Python minimo e questo script, che a sua volta legge
@@ -39,7 +39,7 @@ Aggiornamenti silenziosi (0.70, come Google Chrome), avviati da Germano senza al
   con la sua dimensione), chiude Germano, la mette al posto di quella in uso in pochi secondi e riapre Germano; se
   la copia manca o e' incompleta installa per intero dall'archivio.
 
-Uso:  germano-0.80.exe [opzioni]           (installer in un solo file)
+Uso:  germano-0.90.exe [opzioni]           (installer in un solo file)
       Germano.exe --uninstall [opzioni]    (disinstallazione del programma installato)
 Opzioni: --silent (nessuna finestra)  --update (aggiornamento avviato da Germano: niente conferma, Germano si chiude
          e si riapre da solo)  --stage / --apply-staged (aggiornamento silenzioso in due tempi, vedi sopra)
@@ -172,9 +172,9 @@ def version():
         return str(SETUP["version"])
     try:
         with open(os.path.join(HERE, "VERSION"), encoding="utf-8-sig") as f:
-            return f.read().strip() or "0.80"
+            return f.read().strip() or "0.90"
     except OSError:
-        return "0.80"
+        return "0.90"
 
 
 def icon_file():
@@ -726,8 +726,9 @@ def write_data_readme(data):
             "output      Qui trovi i documenti anonimizzati, con la stessa struttura di cartelle.\r\n"
             "processed   Gli originali, spostati qui dopo l'elaborazione.\r\n"
             "failed      I documenti che non è stato possibile elaborare (il motivo è nella Dashboard).\r\n"
-            "extracted   Il Vault (deanonymize_vault.json: l'archivio delle corrispondenze che permette di\r\n"
-            "            ripristinare i dati originali) e, per ogni documento, l'elenco dei dati trovati.\r\n\r\n"
+            "extracted   Il Vault (deanonymize_vault.db, con la copia deanonymize_vault.json: l'archivio delle\r\n"
+            "            corrispondenze che permette di ripristinare i dati originali) e, per ogni documento,\r\n"
+            "            l'elenco dei dati trovati.\r\n\r\n"
             "ATTENZIONE: il Vault e le cartelle input e processed contengono dati personali in chiaro.\r\n"
             "Non condividerli e non sincronizzarli con servizi cloud; proteggi il disco (es. BitLocker).\r\n\r\n"
             "config.json contiene le impostazioni, daemon.log il registro del motore di anonimizzazione.\r\n"
@@ -740,8 +741,8 @@ def write_data_readme(data):
             "output      The anonymized documents, with the same folder structure.\r\n"
             "processed   The originals, moved here after processing.\r\n"
             "failed      Documents that could not be processed (the reason is shown in the Dashboard).\r\n"
-            "extracted   The Vault (deanonymize_vault.json: the mapping archive used to restore the original\r\n"
-            "            data) and, for each document, the list of data found.\r\n\r\n"
+            "extracted   The Vault (deanonymize_vault.db, with the copy deanonymize_vault.json: the mapping\r\n"
+            "            archive used to restore the original data) and, for each document, the list of data found.\r\n\r\n"
             "WARNING: the Vault and the input and processed folders contain personal data in clear text.\r\n"
             "Do not share them or sync them with cloud services; protect the disk (e.g. BitLocker).\r\n\r\n"
             "config.json holds the settings, daemon.log the anonymization engine log.\r\n"

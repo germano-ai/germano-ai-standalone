@@ -109,22 +109,53 @@ class Daemon:
         self._last_ping = 0.0
         self.data_lock = common.DataFolderLock()   # un solo motore per cartella dati (anche su SMB/NFS)
         self.owner = False                         # True solo per l'istanza che ha ottenuto la cartella dati
+        # file della cartella input/ in lavorazione (piu' di uno solo in modalita' Client, turno 26)
+        self._active = {}
+        self._state_lock = threading.RLock()       # stato, contatori ed elenchi su disco condivisi fra i file
 
     # ------------------------------------------------------------------ stato
     def should_stop(self):
         return self.stop_event.is_set() or os.path.exists(common.STOP_FLAG)
 
     def set_status(self, force=False, **kw):
-        self.status.update(kw)
-        now = time.time()
-        if force or now - self._status_ts > 0.5:
-            self._status_ts = now
-            st = dict(self.status)
-            st["updated"] = now
-            try:
-                common.atomic_write_json(common.STATUS_FILE, st)
-            except Exception:
-                pass
+        with self._state_lock:
+            self.status.update(kw)
+            now = time.time()
+            if force or now - self._status_ts > 0.5:
+                self._status_ts = now
+                st = dict(self.status)
+                st["updated"] = now
+                try:
+                    common.atomic_write_json(common.STATUS_FILE, st)
+                except Exception:
+                    pass
+
+    def _count(self, key):
+        with self._state_lock:
+            self.status[key] = self.status.get(key, 0) + 1
+
+    def _begin_file(self, rel):
+        with self._state_lock:
+            self._active[rel] = time.time()
+            self.set_status(state="working", current=self._current_label(), detail="avvio", force=True)
+
+    def _end_file(self, rel):
+        with self._state_lock:
+            self._active.pop(rel, None)
+            if self._active:
+                self.set_status(state="working", current=self._current_label(), force=True)
+            else:
+                self.set_status(state="idle", current=None, detail="", force=True)
+
+    def _current_label(self):
+        names = [r.replace("\\", "/") for r in sorted(self._active, key=self._active.get)]
+        return names[0] if len(names) == 1 else (f"{names[0]} (+{len(names) - 1})" if names else None)
+
+    def parallel_files(self):
+        """File della cartella input/ elaborati insieme. Motore locale: uno alla volta (i modelli occupano gia' tutti
+        i processori; dentro un file lavorano in parallelo NER, Privacy Filter, visione e OCR). Modalita' Client:
+        tre, perche' il lavoro avviene sul Germano Server e qui si aspetta soprattutto la rete (turno 26)."""
+        return 3 if getattr(self.engine, "is_remote", False) else 1
 
     def write_state(self, **extra):
         st = {"pid": os.getpid(), "port": self.port, "token": self.token, "version": VERSION,
@@ -276,24 +307,26 @@ class Daemon:
         raise last or PermissionError("file bloccato")
 
     def _record_failure(self, rel, reason):
-        data = common.read_json(common.FAILED_REASONS_FILE, {}) or {}
-        data[rel.replace("\\", "/")] = {"reason": reason, "time": time.time()}
-        if len(data) > 2000:
-            for k in sorted(data, key=lambda k: data[k].get("time", 0))[: len(data) - 2000]:
-                data.pop(k, None)
-        common.atomic_write_json(common.FAILED_REASONS_FILE, data)
+        with self._state_lock:
+            data = common.read_json(common.FAILED_REASONS_FILE, {}) or {}
+            data[rel.replace("\\", "/")] = {"reason": reason, "time": time.time()}
+            if len(data) > 2000:
+                for k in sorted(data, key=lambda k: data[k].get("time", 0))[: len(data) - 2000]:
+                    data.pop(k, None)
+            common.atomic_write_json(common.FAILED_REASONS_FILE, data)
 
     def _record_output(self, final, rel, mode, ctx, elapsed):
         """Indice documento pronto -> esito: la Dashboard mostra quanti dati sono stati oscurati."""
         try:
-            data = common.read_json(common.OUTPUTS_FILE, {}) or {}
-            key = os.path.relpath(final, common.OUTPUT_DIR).replace("\\", "/")
-            data[key] = {"source": rel.replace("\\", "/"), "mode": mode, "entities": len(ctx.audit),
-                         "notes": len(ctx.notes), "seconds": round(elapsed, 1), "time": time.time()}
-            if len(data) > 5000:
-                for k in sorted(data, key=lambda k: data[k].get("time", 0))[: len(data) - 5000]:
-                    data.pop(k, None)
-            common.atomic_write_json(common.OUTPUTS_FILE, data)
+            with self._state_lock:
+                data = common.read_json(common.OUTPUTS_FILE, {}) or {}
+                key = os.path.relpath(final, common.OUTPUT_DIR).replace("\\", "/")
+                data[key] = {"source": rel.replace("\\", "/"), "mode": mode, "entities": len(ctx.audit),
+                             "notes": len(ctx.notes), "seconds": round(elapsed, 1), "time": time.time()}
+                if len(data) > 5000:
+                    for k in sorted(data, key=lambda k: data[k].get("time", 0))[: len(data) - 5000]:
+                        data.pop(k, None)
+                common.atomic_write_json(common.OUTPUTS_FILE, data)
         except Exception as e:
             log(f"Impossibile aggiornare l'elenco dei documenti pronti: {e}")
 
@@ -329,7 +362,7 @@ class Daemon:
         cancel = CancelToken(deadline=time.time() + timeout, stop_check=self.should_stop)
         ctx = formats.Ctx(mode, settings, engine=self.engine, vault=self.vault, tag_map=tag_map, cancel=cancel,
                           progress=lambda d: self.set_status(detail=d))
-        self.set_status(state="working", current=rel.replace("\\", "/"), detail="avvio", force=True)
+        self._begin_file(rel)
         if mode == "restore":
             log(f"Rilevato file di ritorno dall'AI ({rel}): ripristino automatico dei dati veri...")
         else:
@@ -366,10 +399,10 @@ class Daemon:
             elapsed = time.time() - t0
             self._record_output(final, rel, mode, ctx, elapsed)
             if mode == "restore":
-                self.status["restored"] += 1
+                self._count("restored")
                 log(f"Completato ripristino dati veri: {os.path.relpath(final, common.OUTPUT_DIR)} ({elapsed:.1f}s).")
             else:
-                self.status["done"] += 1
+                self._count("done")
                 s2 = ""
                 if ctx.system2:
                     by = {}
@@ -401,7 +434,7 @@ class Daemon:
             log(f"Dettaglio errore:\n{detail}")
             fail_reason = _friendly_error(e, rel)
         finally:
-            self.set_status(state="idle", current=None, detail="", force=True)
+            self._end_file(rel)
         if fail_reason is not None:
             # Fuori dal blocco except: l'errore e i frame che trattiene sono gia' rilasciati, e con loro gli handle
             # che la libreria che ha fallito teneva aperti sul file (es. PDF danneggiato), che ora si puo' spostare.
@@ -427,10 +460,12 @@ class Daemon:
         self._engine_wait_until = time.time() + 20
         rel = os.path.relpath(path, common.INPUT_DIR)
         log(f"Motore remoto non disponibile ({str(err).rstrip('.')}): {rel} resta in input e verra' elaborato appena il server risponde.")
-        self.set_status(state="idle", current=None, detail="", force=True)
+        with self._state_lock:
+            if not self._active:
+                self.set_status(state="idle", current=None, detail="", force=True)
 
     def _fail(self, path, rel, reason):
-        self.status["failed"] += 1
+        self._count("failed")
         log(f"[ERRORE] Impossibile elaborare {rel}: {reason}")
         try:
             self._move_away(path, common.FAILED_DIR, rel)
@@ -581,33 +616,65 @@ class Daemon:
                 log(f"Errore lettura cartella input: {e}")
                 files = []
             self.set_status(queue=len(files))
-            for i, p in enumerate(files):
-                if self.should_stop() or time.time() < self._engine_wait_until:
-                    break
-                if not os.path.exists(p):
-                    continue
-                self.set_status(queue=len(files) - i)
-                self.reload_settings()
-                try:
-                    self.process_one(p)
-                except EngineUnavailable as e:
-                    self._engine_unavailable(p, e)
-                except Exception as e:
-                    # un singolo file problematico (es. percorso troppo lungo) non deve fermare il motore
-                    rel = os.path.relpath(p, common.INPUT_DIR)
-                    log(f"Dettaglio errore:\n{traceback.format_exc(limit=6)}")
-                    self._fail(p, rel, f"{type(e).__name__}: {e}")
-                    self.set_status(state="idle", current=None, detail="", force=True)
+            workers = self.parallel_files()
+            if workers <= 1:
+                for i, p in enumerate(files):
+                    if self.should_stop() or time.time() < self._engine_wait_until:
+                        break
+                    if not os.path.exists(p):
+                        continue
+                    self.set_status(queue=len(files) - i)
+                    self.reload_settings()
+                    self._process_guarded(p)
+            else:
+                self._process_concurrently(files, workers)
             self.set_status(queue=0)
             self.cleanup_empty_dirs()
             if not files:
                 self.stop_event.wait(1.0)
         log("Segnale di arresto ricevuto: chiusura sicura del demone.")
-        self.vault.flush()
+        self.vault.close()                         # ultime voci nel database del Vault e copia JSON allineata
         close = getattr(self.engine, "close", None)
         if close:
             close()                                # ferma il server locale del Sistema 2
         return 0
+
+    def _process_guarded(self, p):
+        try:
+            self.process_one(p)
+        except EngineUnavailable as e:
+            self._engine_unavailable(p, e)
+        except Exception as e:
+            # un singolo file problematico (es. percorso troppo lungo) non deve fermare il motore
+            rel = os.path.relpath(p, common.INPUT_DIR)
+            log(f"Dettaglio errore:\n{traceback.format_exc(limit=6)}")
+            self._fail(p, rel, f"{type(e).__name__}: {e}")
+            with self._state_lock:
+                if not self._active:
+                    self.set_status(state="idle", current=None, detail="", force=True)
+
+    def _process_concurrently(self, files, workers):
+        """Modalita' Client: fino a `workers` file insieme (le richieste partono in parallelo verso il Germano Server);
+        si smette di avviarne di nuovi se arriva l'arresto o se il server remoto non risponde."""
+        from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+        running = set()
+        queue = list(files)
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="input") as pool:
+            while queue or running:
+                while queue and len(running) < workers and not self.should_stop() \
+                        and time.time() >= self._engine_wait_until:
+                    p = queue.pop(0)
+                    if not os.path.exists(p):
+                        continue
+                    self.reload_settings()
+                    running.add(pool.submit(self._process_guarded, p))
+                    self.set_status(queue=len(queue) + len(running))
+                if not running:
+                    break
+                done, running = wait(running, timeout=1.0, return_when=FIRST_COMPLETED)
+                running = set(running)
+                if self.should_stop() or time.time() < self._engine_wait_until:
+                    queue = []                    # i file rimasti restano in input per il giro successivo
 
     def shutdown(self):
         self.stop_event.set()

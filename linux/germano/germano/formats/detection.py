@@ -16,16 +16,32 @@ def _xml_text(xml_bytes):
     return html.unescape(_TAG_STRIP.sub("", s))
 
 
-def _container_text(path, ext, max_chars, depth):
-    """Testo dei file contenuti in uno ZIP o in una busta .p7m."""
+def _container_text(path, ext, max_chars, depth, audio=None, headers=False):
+    """Testo dei file contenuti in un archivio (ZIP, TAR, GZ, 7Z, RAR...) o in una busta .p7m. Gli archivi si aprono
+    con gli stessi controlli di sicurezza dell'elaborazione (formats/archive.py): un file alla volta, con nomi neutri."""
     import tempfile
     from .. import common
+    from ..engine import CancelledError
     if depth > 2:
         return ""
     os.makedirs(common.WORK_TMP_DIR, exist_ok=True)
-    out = []
+    out, size = [], 0
+
+    def add(name, p):
+        nonlocal size
+        try:
+            t = sample_text(p, max_chars, depth + 1, audio, headers, label=name)
+        except CancelledError:
+            raise
+        except Exception as e:
+            from . import reraise_control
+            reraise_control(e)
+            return
+        if t and t.strip():
+            out.append(f"### {name}\n{t}" if headers else t)
+            size += len(t)
+
     with tempfile.TemporaryDirectory(dir=common.WORK_TMP_DIR) as d:
-        items = []
         if ext == ".p7m":
             from .p7m import extract_signed_content, _guess_ext
             with open(path, "rb") as f:
@@ -33,29 +49,26 @@ def _container_text(path, ext, max_chars, depth):
             inner = os.path.basename(path)[:-4]
             if not os.path.splitext(inner)[1]:
                 inner += _guess_ext(content)
-            items.append((inner, content))
-        else:
-            with zipfile.ZipFile(path) as z:
-                for info in z.infolist()[:500]:
-                    if info.is_dir() or info.flag_bits & 0x1 or info.file_size > _MAX_FILE:
-                        continue
-                    items.append((os.path.basename(info.filename), z.read(info)))
-        for i, (name, data) in enumerate(items):
-            p = os.path.join(d, f"{i}_{name}")
+            p = os.path.join(d, "0_" + common.safe_filename(inner, max_len=80))
             with open(p, "wb") as f:
-                f.write(data)
-            try:
-                out.append(sample_text(p, max_chars, depth + 1))
-            except Exception:
-                pass
-            if sum(len(x) for x in out) > max_chars:
-                break
-    return "\n".join(out)[:max_chars]
+                f.write(content)
+            add(inner, p)
+        else:
+            from .archive import sample_members
+            for name, p in sample_members(path, d, max_member_bytes=_MAX_FILE):
+                add(name, p)
+                if size > max_chars:
+                    break
+    return ("\n\n" if headers else "\n").join(out)[:max_chars]
 
 
-def sample_text(path, max_chars=3_000_000, depth=0):
-    from . import TEXT_EXTS, OOXML_EXTS, ODF_EXTS
+def sample_text(path, max_chars=3_000_000, depth=0, audio=None, headers=False, label=None):
+    """`audio`: funzione (percorso, nome) -> testo che trascrive un file audio; senza, i file audio non hanno testo.
+    `headers`: i file di un archivio sono preceduti da «### nome» (allegati dell'Harness)."""
+    from . import TEXT_EXTS, OOXML_EXTS, ODF_EXTS, ARCHIVE_EXTS, AUDIO_EXTS
     ext = os.path.splitext(path)[1].lower()
+    if ext in AUDIO_EXTS:
+        return audio(path, label or os.path.basename(path))[:max_chars] if audio is not None else ""
     if ext in TEXT_EXTS or ext in (".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".xml", ".html", ".htm", ".xhtml", ".eml"):
         with open(path, "rb") as f:
             data = f.read(_MAX_FILE)
@@ -98,8 +111,8 @@ def sample_text(path, max_chars=3_000_000, depth=0):
         from .rtf import rtf_plain_text
         with open(path, "rb") as f:
             return rtf_plain_text(f.read(_MAX_FILE))[:max_chars]
-    if ext == ".zip" or ext == ".p7m":
-        return _container_text(path, ext, max_chars, depth)
+    if ext in ARCHIVE_EXTS or ext == ".p7m":
+        return _container_text(path, ext, max_chars, depth, audio, headers)
     if ext in (".doc", ".xls", ".ppt"):
         from .legacy import _sniff
         kind = _sniff(path)

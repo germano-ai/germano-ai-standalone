@@ -449,6 +449,39 @@ def daemon_ready():
     return is_daemon_running() and os.path.exists(common.READY_FLAG) and bool(daemon_state().get("port"))
 
 
+# File fra server e motore per percorso (turno 26): stesso computer, stessa cartella dati. Prima ogni file viaggiava
+# in base64 dentro JSON nei due sensi (codifica, serializzazione, decodifica: ~4 copie in memoria per processo).
+def _stage_bytes(data, name):
+    """Scrive un contenuto in state/uploads e ne restituisce il percorso (da cancellare con remove_quietly)."""
+    os.makedirs(common.UPLOAD_DIR, exist_ok=True)
+    staged = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + common.safe_filename(name or "file.bin"))
+    with open(staged, "wb") as f:
+        f.write(data)
+    return staged
+
+
+def _take_output(res):
+    """Contenuto del file prodotto dal motore: dal percorso in state/tmp/out (poi cancellato) o dal base64."""
+    import base64
+    path = res.get("out_path")
+    if not path:
+        return base64.b64decode(res.get("data_b64") or "")
+    from germano.daemon_api import output_dir
+    real = os.path.realpath(path)
+    root = os.path.realpath(output_dir())
+    try:
+        inside = os.path.commonpath([real, root]) == root
+    except ValueError:
+        inside = False
+    if not inside:
+        raise RuntimeError("percorso del file prodotto non valido")
+    try:
+        with open(real, "rb") as f:
+            return f.read()
+    finally:
+        common.remove_quietly(real)
+
+
 def _daemon_error(r):
     """Messaggio d'errore restituito dal motore (es. in modalita' Client: Germano Server non raggiungibile)."""
     try:
@@ -824,6 +857,9 @@ def api_engine_transcribe():
     """Motore condiviso: trascrizione di un file audio per un Germano in modalita' Client. Il corpo e' il file;
     nome, lingua e durata massima arrivano nell'indirizzo. Il server non conserva ne' l'audio ne' il testo."""
     import base64
+    if (request.content_length or 0) > ENGINE_AUDIO_MAX:      # rifiutato prima di leggere il corpo
+        return jsonify({"error": _L("File audio troppo grande per il motore condiviso (massimo 200 MB).",
+                                    "Audio file too large for the shared engine (at most 200 MB).")}), 413
     data = request.get_data(cache=False)
     if not data:
         return jsonify({"error": _L("File audio mancante.", "Audio file missing.")}), 400
@@ -831,10 +867,14 @@ def api_engine_transcribe():
         return jsonify({"error": _L("File audio troppo grande per il motore condiviso (massimo 200 MB).",
                                     "Audio file too large for the shared engine (at most 200 MB).")}), 413
     settings = {k: request.args.get(k) for k in ("speech_language", "speech_max_minutes") if request.args.get(k)}
-    payload = {"filename": common.safe_filename(request.args.get("name") or "audio.bin", max_len=80),
-               "data_b64": base64.b64encode(data).decode("ascii"), "settings": settings}
+    name = common.safe_filename(request.args.get("name") or "audio.bin", max_len=80)
+    staged = _stage_bytes(data, name)
     del data
-    return _engine_forward("/internal/engine/transcribe", payload, timeout=6 * 3600)
+    try:
+        return _engine_forward("/internal/engine/transcribe", {"filename": name, "src_path": staged,
+                                                               "settings": settings}, timeout=6 * 3600)
+    finally:
+        common.remove_quietly(staged)
 
 
 @app.route("/api/engine/v1/<kind>", methods=["POST"])
@@ -842,6 +882,8 @@ def api_engine_image(kind):
     import base64
     if kind not in _ENGINE_KINDS:
         return jsonify({"error": _L("Analisi sconosciuta.", "Unknown analysis.")}), 404
+    if (request.content_length or 0) > 80 * 1024 * 1024:     # rifiutato prima di leggere il corpo
+        return jsonify({"error": _L("Immagine troppo grande.", "Image too large.")}), 413
     data = request.get_data(cache=False)
     if not data:
         return jsonify({"error": _L("Immagine mancante.", "Image missing.")}), 400
@@ -1410,6 +1452,7 @@ def api_clear_vault():
             Vault().clear()
         _cache.pop("stats", None)
         gglass.CACHE.clear()      # le etichette ripartono da 1: i testi protetti in cache non valgono piu'
+        gglass.MEDIA_CACHE.clear()
         return jsonify({"status": "success", "message": _L("Archivio corrispondenze azzerato.", "Mapping archive cleared.")})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -1510,20 +1553,18 @@ def api_anonymize_text():
 
 @app.route("/api/v1/anonymize", methods=["POST"])
 def api_anonymize_file():
-    import base64
     f = request.files.get("file")
     if f is None or not f.filename:
         return jsonify({"error": _L("Nessun file fornito. Usa multipart/form-data con la chiave 'file'.",
                                     "No file provided. Use multipart/form-data with the 'file' key.")}), 400
     name = common.safe_filename(f.filename)
-    data = f.read()
     cfg = common.load_config()
-    if cfg.get("enable_deanonymize", True):
-        tag_map = vault_reader.tag_map()
-        staged = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + name)
-        with open(staged, "wb") as fh:
-            fh.write(data)
-        try:
+    os.makedirs(common.UPLOAD_DIR, exist_ok=True)
+    staged = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_" + name)
+    f.save(staged)                       # su disco una volta sola: il motore lo legge da li' (turno 26)
+    try:
+        if cfg.get("enable_deanonymize", True):
+            tag_map = vault_reader.tag_map()
             if _is_return_file(staged, tag_map):
                 tmp_out = os.path.join(common.UPLOAD_DIR, uuid.uuid4().hex[:10] + "_r_" + name)
                 real = _restore_file_locally(staged, tmp_out, tag_map)
@@ -1531,16 +1572,16 @@ def api_anonymize_file():
                     out = fh.read()
                 common.remove_quietly(real)
                 return send_file(io.BytesIO(out), as_attachment=True, download_name=_restored_name(name, tmp_out, real))
-        finally:
-            common.remove_quietly(staged)
-    if not daemon_ready():
-        return jsonify({"error": _L("Il motore IA non e' pronto: avvialo dalla Dashboard e attendi il caricamento.",
-                                    "The AI engine is not ready: start it from the Dashboard and wait for it to load.")}), 503
-    try:
-        r = daemon_call("/internal/process_file", {"filename": name, "mode": "anonymize",
-                                                    "data_b64": base64.b64encode(data).decode("ascii")}, timeout=6 * 3600)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        if not daemon_ready():
+            return jsonify({"error": _L("Il motore IA non e' pronto: avvialo dalla Dashboard e attendi il caricamento.",
+                                        "The AI engine is not ready: start it from the Dashboard and wait for it to load.")}), 503
+        try:
+            r = daemon_call("/internal/process_file", {"filename": name, "mode": "anonymize", "src_path": staged,
+                                                        "return_path": True}, timeout=6 * 3600)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    finally:
+        common.remove_quietly(staged)
     if r.status_code != 200:
         try:
             msg = r.json().get("error")
@@ -1560,7 +1601,7 @@ def api_anonymize_file():
     except Exception:
         pass
     out_name = res.get("filename") or name
-    return send_file(io.BytesIO(base64.b64decode(res["data_b64"])), as_attachment=True, download_name=out_name)
+    return send_file(io.BytesIO(_take_output(res)), as_attachment=True, download_name=out_name)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -1576,17 +1617,19 @@ def _engine_attachment_text(name, data, op=None):
     """Allegati che richiedono il motore: i file audio (trascrizione offline del parlato) e gli archivi compressi
     (aperti in sicurezza, con gli eventuali audio interni). Restituisce (testo, motivo se non e' stato possibile).
     Il testo non e' ancora protetto: viene anonimizzato subito dopo, prima di mostrarlo o inviarlo."""
-    import base64
     if len(data) > STUDIO_ENGINE_ATTACH_MAX:
         return "", _L("file troppo grande come allegato (massimo 150 MB): usa la scheda Sanitizzazione manuale",
                       "file too large as an attachment (at most 150 MB): use the Manual Sanitization tab")
-    payload = {"filename": name, "data_b64": base64.b64encode(data).decode("ascii"), "max_chars": STUDIO_ATTACH_CHARS}
+    staged = _stage_bytes(data, name)
+    payload = {"filename": name, "src_path": staged, "max_chars": STUDIO_ATTACH_CHARS}
     if op:
         payload["op"] = op
     try:
         r = daemon_call("/internal/extract_text", payload, timeout=6 * 3600)
     except Exception:
         return "", _L("motore IA non raggiungibile", "AI engine unreachable")
+    finally:
+        common.remove_quietly(staged)
     if r.status_code != 200:
         return "", _daemon_error(r) or _L("lettura non riuscita", "could not be read")
     res = r.json()
@@ -2817,6 +2860,17 @@ def _harness_stream(run, ctx):
     except GeneratorExit:
         run.abort("client")        # la pagina si e' chiusa o ha interrotto la lettura: si ferma tutto
         raise
+    except Exception as e:
+        # Errore imprevisto (turno 26, rilievo del turno 25): prima il flusso si chiudeva senza nessun evento e la
+        # pagina restava in attesa. Ora arriva sempre un evento «error», con l'indicazione se qualcosa era gia' partito.
+        common.log(f"Harness: errore imprevisto ({type(e).__name__}: {e}).")
+        yield ev("error", status="error", transmitted=bool(run.transmitted), message=L(
+            f"Errore imprevisto di Germano ({type(e).__name__}): "
+            + ("la richiesta era gia' stata inviata al servizio di AI." if run.transmitted
+               else "nessun dato e' stato inviato al servizio di AI."),
+            f"Unexpected Germano error ({type(e).__name__}): "
+            + ("the request had already been sent to the AI service." if run.transmitted
+               else "no data was sent to the AI service.")))
     finally:
         gglass.RUNS.finish(run)
 
@@ -2931,7 +2985,9 @@ def api_remote_anonymize_file():
     if not daemon_ready():
         return _engine_blocked().response()
     name = common.safe_filename(f.filename)
-    payload = {"filename": name, "mode": "anonymize", "data_b64": base64.b64encode(data).decode("ascii")}
+    staged = _stage_bytes(data, name)            # al motore per percorso (turno 26), non in base64
+    del data
+    payload = {"filename": name, "mode": "anonymize", "src_path": staged, "return_path": True}
     if options is not None:
         payload["options"] = options
     try:
@@ -2939,6 +2995,8 @@ def api_remote_anonymize_file():
     except Exception as e:
         return jsonify({"status": "error", "message": _L(f"Motore IA non raggiungibile: {e}",
                                                          f"AI engine unreachable: {e}")}), 502
+    finally:
+        common.remove_quietly(staged)
     if r.status_code != 200:
         return jsonify({"status": "error", "message": _L(f"Elaborazione non riuscita: {_daemon_error(r)}",
                                                          f"Processing failed: {_daemon_error(r)}")}), \
@@ -2949,7 +3007,8 @@ def api_remote_anonymize_file():
     _session_log(entities)
     common.log(f"Sanitizzazione manuale: «{name}» per {g.remote_user or request.remote_addr} "
                f"({len(entities)} dati oscurati).")
-    body = {"status": "success", "filename": res.get("filename") or name, "data_b64": res.get("data_b64"),
+    body = {"status": "success", "filename": res.get("filename") or name,
+            "data_b64": base64.b64encode(_take_output(res)).decode("ascii"),
             "entity_count": len(entities), "labels": sorted({e["label"] for e in entities if e.get("label")}),
             "notes": res.get("notes") or [], "masking": masking}
     if masking == "numbered":
@@ -3108,41 +3167,109 @@ def _session_log(extracted):
         pass
 
 
-def _anonymize_payload(payload, kind):
+def _proxy_texts(texts, cfg):
+    """Testi della richiesta protetti dal motore. Quelli gia' protetti con le stesse impostazioni (la cronologia che
+    IDE e agenti rimandano a ogni turno) arrivano dalla cache: al motore va solo il testo nuovo (turno 26)."""
+    sig = gglass.settings_signature(cfg)
+    keys = [gglass.CACHE.key(t, sig) for t in texts]
+    results = [gglass.CACHE.get(k) for k in keys]
+    missing = [i for i, res in enumerate(results) if res is None]
+    if missing:
+        r = daemon_call("/internal/anonymize_texts", {"texts": [texts[i] for i in missing]}, timeout=1800)
+        if r.status_code == 503:   # es. modalita' Client con il Germano Server non raggiungibile
+            raise gproxy.ProxyBlock(f"Motore IA di Germano non disponibile ({_daemon_error(r)}): richiesta bloccata, "
+                                    "nessun dato inviato.", 503)
+        if r.status_code != 200:
+            raise gproxy.ProxyBlock(f"Anonimizzazione non riuscita ({r.status_code}): richiesta bloccata.", 500)
+        fresh = r.json().get("results") or []
+        if len(fresh) != len(missing):
+            raise gproxy.ProxyBlock("Risposta incompleta del motore IA: richiesta bloccata.", 500)
+        for i, res in zip(missing, fresh):
+            results[i] = res
+            gglass.CACHE.put(keys[i], res)
+    return results, len(texts) - len(missing)
+
+
+def _proxy_media(mime, data, fname, cfg):
+    """Allegato (immagine, PDF, documento) protetto dal motore; lo stesso allegato rimandato nella cronologia a ogni
+    turno non viene rielaborato (OCR, visione): cache per impronta del contenuto e impostazioni (turno 26)."""
     import base64
+    import hashlib
+    key = hashlib.sha256(data).hexdigest() + ":" + os.path.splitext(fname)[1].lower() + ":" + \
+        gglass.settings_signature(cfg)
+    hit = gglass.MEDIA_CACHE.get(key)
+    if hit is not None:
+        return hit
+    staged = _stage_bytes(data, fname)            # al motore per percorso, non in base64 (turno 26)
+    try:
+        r = daemon_call("/internal/process_file", {"filename": fname, "mode": "anonymize", "src_path": staged,
+                                                    "return_path": True}, timeout=3600)
+    finally:
+        common.remove_quietly(staged)
+    if r.status_code == 503:
+        raise gproxy.ProxyBlock(f"Motore IA di Germano non disponibile ({_daemon_error(r)}): richiesta bloccata, "
+                                "nessun dato inviato.", 503)
+    if r.status_code != 200:
+        raise gproxy.ProxyBlock(f"Allegato '{fname}' non anonimizzabile: richiesta bloccata.", 500)
+    res = r.json()
+    out = (_take_output(res), list(res.get("extracted_data") or []))
+    gglass.MEDIA_CACHE.put(key, out, len(out[0]))
+    return out
+
+
+def _propagate_words(text, prop):
+    """Occorrenze rimaste di dati rilevati altrove nella richiesta (altri testi, allegati) sostituite con la loro
+    etichetta: e' la propagazione che il motore fa fra i testi di una stessa chiamata, estesa ai testi presi dalla
+    cache e ai dati letti negli allegati."""
+    repl = [(a, b, label) for a, b, label, _g, _k in prop.find(text)]
+    if not repl:
+        return text
+    from germano.analyzer import apply_replacements
+    return apply_replacements(text, repl)
+
+
+def _anonymize_payload(payload, kind):
     job = gproxy.collect_payload(payload)
     if not job.texts and not job.media:
         return []
     if not daemon_ready():
         raise gproxy.ProxyBlock("Motore IA di Germano non attivo: richiesta bloccata per evitare l'invio di dati in chiaro. "
                                 "Avvia Germano dalla Dashboard (http://127.0.0.1:%d)." % PORT, 503)
+    cfg = common.load_config()
     extracted = []
-    if job.texts:
-        r = daemon_call("/internal/anonymize_texts", {"texts": job.texts}, timeout=1800)
-        if r.status_code == 503:   # es. modalita' Client con il Germano Server non raggiungibile
-            raise gproxy.ProxyBlock(f"Motore IA di Germano non disponibile ({_daemon_error(r)}): richiesta bloccata, "
-                                    "nessun dato inviato.", 503)
-        if r.status_code != 200:
-            raise gproxy.ProxyBlock(f"Anonimizzazione non riuscita ({r.status_code}): richiesta bloccata.", 500)
-        results = r.json().get("results") or []
-        if len(results) != len(job.texts):
-            raise gproxy.ProxyBlock("Risposta incompleta del motore IA: richiesta bloccata.", 500)
-        for setter, res in zip(job.setters, results):
-            setter(res["anonymized"])
-            extracted.extend(res.get("extracted_data") or [])
-    for mime, data, setter, fname in job.media:
-        r = daemon_call("/internal/process_file", {"filename": fname, "mode": "anonymize",
-                                                    "data_b64": base64.b64encode(data).decode("ascii")}, timeout=3600)
-        if r.status_code == 503:
-            raise gproxy.ProxyBlock(f"Motore IA di Germano non disponibile ({_daemon_error(r)}): richiesta bloccata, "
-                                    "nessun dato inviato.", 503)
-        if r.status_code != 200:
-            raise gproxy.ProxyBlock(f"Allegato '{fname}' non anonimizzabile: richiesta bloccata.", 500)
-        res = r.json()
-        setter(base64.b64decode(res["data_b64"]))
+    results, hits = _proxy_texts(job.texts, cfg) if job.texts else ([], 0)
+    for res in results:
         extracted.extend(res.get("extracted_data") or [])
+    media_out = []
+    for mime, data, setter, fname in job.media:
+        new_bytes, found = _proxy_media(mime, data, fname, cfg)
+        media_out.append((setter, new_bytes))
+        extracted.extend(found)
+    words = [(e.get("word"), e.get("label")) for e in extracted
+             if isinstance(e.get("word"), str) and isinstance(e.get("label"), str) and e.get("word").strip()]
+    prop = None
+    # testi tutti dalla stessa chiamata al motore: la propagazione l'ha gia' fatta lui
+    if words and (job.media or (hits and len(results) > 1)):
+        from germano.detect import Propagator
+        prop = Propagator()
+        for w, label in words:
+            prop.add(w, label, "PROXY", None)
+    for setter, res in zip(job.setters, results):
+        setter(_propagate_words(res["anonymized"], prop) if prop else res["anonymized"])
+    for setter, new_bytes in media_out:
+        setter(new_bytes)
     for fin in job.finalizers:
         fin()
+    if words:
+        # Controllo finale di non-uscita: nessun dato appena rilevato puo' restare in un campo non anonimizzato
+        leaks = gproxy.leak_check(payload, job, words)
+        if leaks:
+            where = ", ".join(sorted({p for p, _l in leaks}))[:300]
+            labels = ", ".join(sorted({lab for _p, lab in leaks}))[:200]
+            common.log(f"Proxy: controllo finale, dati rilevati ({labels}) rimasti in campi non anonimizzati ({where}): "
+                       "richiesta bloccata.")
+            raise gproxy.ProxyBlock(f"Blocco di sicurezza: dati personali ({labels}) in un campo della richiesta che "
+                                    f"Germano non puo' anonimizzare ({where}). Nessun dato inviato.", 422)
     return extracted
 
 

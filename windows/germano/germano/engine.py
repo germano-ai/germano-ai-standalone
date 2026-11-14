@@ -1,15 +1,23 @@
 """Motore IA: caricamento modelli locali, classificazione a blocchi con cache, OCR e visione artificiale.
 
-Le chiamate ai modelli PyTorch e a EasyOCR sono serializzate da un lock (i tokenizer "fast" di HuggingFace e EasyOCR
-non sono thread-safe e il demone serve in parallelo la cartella input/ e il Proxy API). L'Italian NER in ONNX Runtime
-(engine_onnx, stessi risultati del modello PyTorch) gira fuori dal lock: serializza solo la propria tokenizzazione.
-Il Privacy Filter si carica all'avvio se attivo nelle impostazioni, altrimenti alla prima richiesta che lo usa.
+Concorrenza (turno 26). Il demone serve insieme la cartella input/ (lavori in coda) e le richieste interattive (Proxy,
+Harness, API, motore condiviso con i client della rete). Ogni modello ha il proprio lock (i tokenizer «fast» di
+HuggingFace, EasyOCR e il rilevatore di volti di OpenCV non si possono usare da piu' thread insieme), quindi modelli
+diversi lavorano in parallelo: per esempio l'OCR di una scansione in coda e il Privacy Filter di una richiesta del
+Proxy. I lock del Privacy Filter e dell'OCR danno la precedenza alle richieste interattive: una richiesta del Proxy
+aspetta al massimo il lotto in corso, non l'intero documento in coda.
+L'Italian NER in ONNX Runtime (engine_onnx, stessi risultati del modello PyTorch) rilascia il GIL e gira in un thread a
+parte MENTRE il Privacy Filter elabora lo stesso lotto (misurato sul banco del turno 26: -11% sul tempo del testo,
+span identici). Il Privacy Filter si carica all'avvio se attivo nelle impostazioni, altrimenti alla prima richiesta
+che lo usa; all'avvio Italian NER e OCR si caricano in parallelo al Privacy Filter.
 """
+import contextlib
 import hashlib
 import os
 import threading
 import time
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 
 from . import common
 
@@ -49,6 +57,74 @@ class CancelToken:
 NO_CANCEL = CancelToken()
 
 
+# ------------------------------------------------------------------ precedenza delle richieste interattive
+_PRIORITY = threading.local()
+
+
+def is_interactive():
+    """True nel thread di una richiesta interattiva (API interna del demone: Proxy, Harness, motore condiviso)."""
+    return bool(getattr(_PRIORITY, "high", False))
+
+
+@contextlib.contextmanager
+def interactive_scope(high=True):
+    """Le chiamate al motore fatte in questo blocco passano davanti ai lavori della cartella input/."""
+    prev = getattr(_PRIORITY, "high", False)
+    _PRIORITY.high = bool(high)
+    try:
+        yield
+    finally:
+        _PRIORITY.high = prev
+
+
+class PriorityLock:
+    """Lock rientrante di un modello: chi aspetta per una richiesta interattiva entra prima di chi aspetta per un
+    lavoro in coda. Il lavoro in corso non viene interrotto: si attende al massimo un lotto (pochi secondi)."""
+
+    def __init__(self):
+        self._cv = threading.Condition(threading.Lock())
+        self._owner = None
+        self._count = 0
+        self._waiting_high = 0
+
+    def acquire(self, high=None):
+        me = threading.get_ident()
+        high = is_interactive() if high is None else bool(high)
+        with self._cv:
+            if self._owner == me:
+                self._count += 1
+                return True
+            if high:
+                self._waiting_high += 1
+                try:
+                    while self._owner is not None:
+                        self._cv.wait()
+                finally:
+                    self._waiting_high -= 1
+            else:
+                while self._owner is not None or self._waiting_high:
+                    self._cv.wait()
+            self._owner, self._count = me, 1
+            return True
+
+    def release(self):
+        with self._cv:
+            if self._owner != threading.get_ident():
+                raise RuntimeError("PriorityLock rilasciato da un thread che non lo possiede")
+            self._count -= 1
+            if not self._count:
+                self._owner = None
+                self._cv.notify_all()
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *exc):
+        self.release()
+        return False
+
+
 def make_chunks(text, size=CHUNK_CHARS, overlap=CHUNK_OVERLAP):
     """Divide il testo in blocchi sovrapposti. Restituisce (inizio, fine, keep_lo, keep_hi):
     di ogni blocco si tengono solo gli span che iniziano in [keep_lo, keep_hi), cosi' ogni zona
@@ -86,7 +162,15 @@ def make_chunks(text, size=CHUNK_CHARS, overlap=CHUNK_OVERLAP):
 class Engine:
     def __init__(self, log=common.log):
         self.log = log
-        self.lock = threading.RLock()
+        # un lock per modello (turno 26; prima un solo lock per tutti): modelli diversi lavorano in parallelo
+        self._pf_lock = PriorityLock()          # Privacy Filter (PyTorch) e il suo tokenizer
+        self._ita_pt_lock = threading.Lock()    # Italian NER in PyTorch (solo ripiego, senza ONNX Runtime)
+        self._ocr_lock = PriorityLock()         # EasyOCR
+        self._face_lock = threading.Lock()      # YuNet (OpenCV): setInputSize cambia lo stato del rilevatore
+        self._det_locks = {"sig": threading.Lock(), "plate": threading.Lock()}   # firme, targhe (YOLOS)
+        self._load_lock = threading.RLock()     # caricamento su richiesta dei modelli
+        self._cache_lock = threading.Lock()     # cache dei risultati per blocco di testo
+        self._ita_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="italian-ner")
         self.torch = None
         self.device = "cpu"
         self.precision = "fp32"
@@ -143,32 +227,30 @@ class Engine:
                  f"{'BF16' if dt == torch.bfloat16 else 'FP32'} - {why}.")
 
         self._pf_dtype = dt
+        # Italian NER (ONNX) e OCR si caricano in parallelo al Privacy Filter (turno 26: prima uno dopo l'altro)
+        ita_path = os.path.join(common.MODELS_DIR, "italian-ner-xxl")
+        ita_box, ocr_box = {}, {}
+        side = []
+        if os.path.isdir(ita_path) and os.listdir(ita_path):
+            side.append(threading.Thread(target=self._load_italian_onnx, args=(ita_path, threads, ita_box),
+                                         name="carica-italian-ner", daemon=True))
+        side.append(threading.Thread(target=self._load_ocr, args=(ocr_box,), name="carica-ocr", daemon=True))
+        for th in side:
+            th.start()
+        t_pf = time.time()
         if bool(settings.get("enable_model_velvet", True)):
             self._load_privacy_filter()
         else:
             self.pf = None
             self.precision = "fp32"
             self.log("Privacy Filter 1.5B disattivato nelle impostazioni: si carica alla prima richiesta che lo usa.")
+        for th in side:
+            th.join()
+        self.log(f"Modelli del testo e OCR pronti in {time.time() - t_pf:.0f}s (caricamento in parallelo).")
 
-        ita_path = os.path.join(common.MODELS_DIR, "italian-ner-xxl")
         if os.path.isdir(ita_path) and os.listdir(ita_path):
-            onnx_error = None
-            try:
-                from . import engine_onnx
-                t = time.time()
-                self.log("Caricamento modello specialistico Italian_NER_XXL_v2 (ONNX Runtime, stessi risultati di "
-                         "PyTorch)...")
-                clf = engine_onnx.OnnxTokenClassifier(ita_path, threads=threads)
-                # prova all'avvio: un modello che si apre ma non riconosce un nome evidente non e' utilizzabile
-                found = [e for e in clf.predict([SELF_TEST_TEXT])[0] if e.get("score", 0) >= ITA_MIN_SCORE]
-                if not found:
-                    raise RuntimeError("la prova del modello non ha riconosciuto nessun dato nel testo di controllo")
-                self.ita_onnx = clf
-                self.log(f"Italian NER pronto in {time.time() - t:.1f}s ({os.path.basename(clf.onnx_path)}, prova "
-                         f"superata: {len(found)} dati nel testo di controllo).")
-            except Exception as e:
-                onnx_error = e
-                self.ita_onnx = None
+            onnx_error = ita_box.get("error")
+            self.ita_onnx = ita_box.get("clf")
 
             # Dalla 0.80 i pacchetti contengono solo il modello ONNX (stessi pesi, 210 MB in meno); il modello
             # PyTorch (model.safetensors) resta un ripiego per chi esegue dai sorgenti e lo ha nella cartella.
@@ -219,18 +301,9 @@ class Engine:
             self.log(f"Avviso: trascrizione audio non disponibile ({e}).")
             self.speech = None
 
-        self.log("Caricamento motore OCR (EasyOCR locale)...")
-        try:
-            import easyocr
-            ocr_dir = os.path.join(common.MODELS_DIR, "easyocr")
-            self.ocr_reader = easyocr.Reader(
-                ["it", "en"], gpu=(self.device == "cuda"), verbose=False, download_enabled=False,
-                model_storage_directory=ocr_dir, user_network_directory=ocr_dir,
-            )
-            self.log("Motore OCR caricato.")
-        except Exception as e:
-            self.log(f"Avviso: OCR non disponibile ({e}).")
-            self.ocr_reader = None
+        self.ocr_reader = ocr_box.get("reader")
+        if self.ocr_reader is None:
+            self.log(f"Avviso: OCR non disponibile ({ocr_box.get('error')}).")
 
         self.info = {
             "device": self.device,
@@ -249,6 +322,39 @@ class Engine:
             "speech": self.speech.info() if self.speech is not None else {"available": False},
         }
 
+    def _load_italian_onnx(self, ita_path, threads, box):
+        """Thread di avvio: Italian NER in ONNX Runtime con la prova sul testo di controllo."""
+        try:
+            from . import engine_onnx
+            t = time.time()
+            self.log("Caricamento modello specialistico Italian_NER_XXL_v2 (ONNX Runtime, stessi risultati di "
+                     "PyTorch)...")
+            clf = engine_onnx.OnnxTokenClassifier(ita_path, threads=threads)
+            # prova all'avvio: un modello che si apre ma non riconosce un nome evidente non e' utilizzabile
+            found = [e for e in clf.predict([SELF_TEST_TEXT])[0] if e.get("score", 0) >= ITA_MIN_SCORE]
+            if not found:
+                raise RuntimeError("la prova del modello non ha riconosciuto nessun dato nel testo di controllo")
+            box["clf"] = clf
+            self.log(f"Italian NER pronto in {time.time() - t:.1f}s ({os.path.basename(clf.onnx_path)}, prova "
+                     f"superata: {len(found)} dati nel testo di controllo).")
+        except Exception as e:
+            box["error"] = e
+
+    def _load_ocr(self, box):
+        """Thread di avvio: EasyOCR (rilevatore CRAFT + riconoscitore per italiano e inglese)."""
+        self.log("Caricamento motore OCR (EasyOCR locale)...")
+        try:
+            import easyocr
+            t = time.time()
+            ocr_dir = os.path.join(common.MODELS_DIR, "easyocr")
+            box["reader"] = easyocr.Reader(
+                ["it", "en"], gpu=(self.device == "cuda"), verbose=False, download_enabled=False,
+                model_storage_directory=ocr_dir, user_network_directory=ocr_dir,
+            )
+            self.log(f"Motore OCR caricato in {time.time() - t:.1f}s.")
+        except Exception as e:
+            box["error"] = e
+
     # ------------------------------------------------------------------ audio
     def transcribe(self, path, settings=None, cancel=None, progress=None, extend=None):
         """Trascrizione offline del parlato di un file audio, con metadati e formato (vedi speech.SpeechEngine)."""
@@ -262,13 +368,14 @@ class Engine:
                 self.info["speech"] = self.speech.info()
 
     # ------------------------------------------------------------------ Sistema 2
-    def resolve_doubts(self, text, spans, settings, cancel=None):
+    def resolve_doubts(self, text, spans, settings, cancel=None, known=None):
         """Casi dubbi del Sistema 1 decisi nel contesto dal Sistema 2. Restituisce (span da oscurare, decisioni).
-        Senza Sistema 2 (spento, non installato, errori) tutti gli span restano: i dubbi restano oscurati."""
+        Senza Sistema 2 (spento, non installato, errori) tutti gli span restano: i dubbi restano oscurati.
+        `known`: firme di propagazione delle parole gia' oscurate nel documento (domande superflue, vedi Sistema 2)."""
         if self.system2 is None:
             return spans, []
         try:
-            kept, decisions = self.system2.resolve(text, spans, settings, cancel)
+            kept, decisions = self.system2.resolve(text, spans, settings, cancel, known=known)
         except CancelledError:
             raise
         except Exception as e:
@@ -278,6 +385,22 @@ class Engine:
             self.info["system2"] = self.system2.info()
         return kept, decisions
 
+    def resolve_doubts_many(self, items, settings, cancel=None, known=None):
+        """Come resolve_doubts per piu' testi insieme [(testo, span)]: i dubbi di tutti i testi vanno al Sistema 2 in
+        un'unica coda invece che un testo alla volta (turno 26). Restituisce [(span da oscurare, decisioni)]."""
+        if self.system2 is None:
+            return [(spans, []) for _t, spans in items]
+        try:
+            out = self.system2.resolve_many(items, settings, cancel, known=known)
+        except CancelledError:
+            raise
+        except Exception as e:
+            self.log(f"Avviso: Sistema 2 non riuscito ({type(e).__name__}: {e}): i casi dubbi restano oscurati.")
+            return [(spans, []) for _t, spans in items]
+        if self.info.get("system2") is not None:
+            self.info["system2"] = self.system2.info()
+        return out
+
     def close(self):
         """Chiusura ordinata (fine del demone): ferma il server locale del Sistema 2 e il processo vocale."""
         for part in (self.system2, self.speech):
@@ -286,6 +409,7 @@ class Engine:
                     part.stop()
                 except Exception:
                     pass
+        self._ita_pool.shutdown(wait=False)
 
     def _load_privacy_filter(self):
         """Carica il Privacy Filter (all'avvio o alla prima richiesta che lo usa). Solleva un'eccezione se non riesce:
@@ -324,7 +448,7 @@ class Engine:
         """Privacy Filter riattivato nelle impostazioni (o chiesto da un client) dopo un avvio senza: si carica ora."""
         if self.pf is not None or self.torch is None or not bool(settings.get("enable_model_velvet", True)):
             return
-        with self.lock:
+        with self._load_lock:
             if self.pf is None:
                 self._load_privacy_filter()
 
@@ -385,16 +509,17 @@ class Engine:
 
     # ------------------------------------------------------------------ inferenza testo
     def _run_pipe(self, pipe, texts, **kw):
+        """Da chiamare con il lock del modello `pipe` gia' acquisito."""
         try:
             out = pipe(texts, **kw)
         except Exception as e:
-            if self.device == "cuda":
-                # Fallback automatico su CPU (es. memoria GPU esaurita)
+            if self.device == "cuda" or str(getattr(pipe, "device", "")).startswith("cuda"):
+                # Fallback automatico su CPU (es. memoria GPU esaurita). Si sposta solo il modello di questo lock:
+                # l'altro passa alla CPU da solo al primo errore (spostarlo qui, mentre un altro thread lo usa, non
+                # sarebbe sicuro); i modelli caricati da ora in poi restano sulla CPU.
                 self.log("ATTENZIONE: errore GPU, passaggio automatico alla CPU.")
-                for p in (self.pf, self.ita):
-                    if p is not None:
-                        p.model = p.model.to("cpu")
-                        p.device = self.torch.device("cpu")
+                pipe.model = pipe.model.to("cpu")
+                pipe.device = self.torch.device("cpu")
                 self.device = "cpu"
             elif self.precision == "bf16" and pipe is self.pf:
                 # Operazione non disponibile in BF16 su questa CPU (es. testi con forme insolite): si passa a FP32
@@ -430,7 +555,7 @@ class Engine:
                 if not chunk.strip():
                     continue
                 key = hashlib.sha1((flags + "\x00" + chunk).encode("utf-8", "surrogatepass")).hexdigest()
-                with self.lock:
+                with self._cache_lock:
                     cached = self._cache.get(key)
                     if cached is not None:
                         self._cache.move_to_end(key)
@@ -444,17 +569,21 @@ class Engine:
             cancel.check()
             group = pending[i:i + batch]
             chunks = [g[4] for g in group]
+            ita_future = None
+            if use_ita and self.ita_onnx is not None:
+                # ONNX Runtime (C++, rilascia il GIL, sicuro fra thread) in parallelo al Privacy Filter sullo stesso
+                # lotto: stessi blocchi e stesso modello, quindi risultati identici a prima, in meno tempo
+                ita_future = self._ita_pool.submit(self.ita_onnx.predict, chunks)
             if use_pf:
-                with self.lock:
+                with self._pf_lock:
                     pf_out = self._run_pipe(self.pf, chunks, batch_size=PF_BATCH)
             else:
                 pf_out = [[] for _ in chunks]
 
-            if use_ita and self.ita_onnx is not None:
-                # Esecuzione nativa C++ ONNX Runtime (thread-safe, senza lock)
-                ita_out = self.ita_onnx.predict(chunks)
+            if ita_future is not None:
+                ita_out = ita_future.result()
             elif use_ita and self.ita is not None:
-                with self.lock:
+                with self._ita_pt_lock:
                     ita_out = self._run_pipe(self.ita, chunks, batch_size=len(chunks), stride=64)
             else:
                 ita_out = [[] for _ in chunks]
@@ -464,7 +593,7 @@ class Engine:
                     spans.append((int(r["start"]), int(r["end"]), str(r.get("entity_group", "PII")), float(r.get("score", 0.0)), 0))
                 for r in io or []:
                     spans.append((int(r["start"]), int(r["end"]), str(r.get("entity_group", "PII")), float(r.get("score", 0.0)), 1))
-                with self.lock:
+                with self._cache_lock:
                     self._cache[key] = spans
                     if len(self._cache) > self._cache_max:
                         self._cache.popitem(last=False)
@@ -482,7 +611,7 @@ class Engine:
             out.append((gs, e + offset, g, sc))
 
     def clear_cache(self):
-        with self.lock:
+        with self._cache_lock:
             self._cache.clear()
 
     # ------------------------------------------------------------------ OCR e visione
@@ -490,41 +619,43 @@ class Engine:
         """[(box4punti, testo, confidenza)] su immagine numpy RGB."""
         if self.ocr_reader is None:
             return []
-        with self.lock:
+        with self._ocr_lock:
             return self.ocr_reader.readtext(img_rgb, detail=1, paragraph=False)
 
     def _face_detector(self):
-        if self._face is None and "face" not in self._tried:
-            self._tried.add("face")
-            try:
-                import cv2
-                path = os.path.join(common.MODELS_DIR, "face-detection", "face_detection_yunet_2023mar.onnx")
-                if os.path.exists(path) and hasattr(cv2, "FaceDetectorYN"):
-                    self._face = cv2.FaceDetectorYN.create(path, "", (320, 320), 0.6, 0.3, 5000)
-            except Exception as e:
-                self.log(f"Avviso: rilevatore volti non disponibile ({e}).")
-        return self._face
+        with self._load_lock:
+            if self._face is None and "face" not in self._tried:
+                self._tried.add("face")
+                try:
+                    import cv2
+                    path = os.path.join(common.MODELS_DIR, "face-detection", "face_detection_yunet_2023mar.onnx")
+                    if os.path.exists(path) and hasattr(cv2, "FaceDetectorYN"):
+                        self._face = cv2.FaceDetectorYN.create(path, "", (320, 320), 0.6, 0.3, 5000)
+                except Exception as e:
+                    self.log(f"Avviso: rilevatore volti non disponibile ({e}).")
+            return self._face
 
     def _hf_detector(self, name, folder):
         attr = "_sig" if name == "sig" else "_plate"
-        if getattr(self, attr) is None and name not in self._tried:
-            self._tried.add(name)
-            try:
-                from transformers import pipeline
-                path = os.path.join(common.MODELS_DIR, folder)
-                if os.path.isdir(path) and os.listdir(path):
-                    setattr(self, attr, pipeline(
-                        "object-detection", model=path, device=self.device,
-                        model_kwargs={"dtype": self.torch.float32},
-                    ))
-            except Exception as e:
-                self.log(f"Avviso: modello {folder} non disponibile ({e}).")
-        return getattr(self, attr)
+        with self._load_lock:
+            if getattr(self, attr) is None and name not in self._tried:
+                self._tried.add(name)
+                try:
+                    from transformers import pipeline
+                    path = os.path.join(common.MODELS_DIR, folder)
+                    if os.path.isdir(path) and os.listdir(path):
+                        setattr(self, attr, pipeline(
+                            "object-detection", model=path, device=self.device,
+                            model_kwargs={"dtype": self.torch.float32},
+                        ))
+                except Exception as e:
+                    self.log(f"Avviso: modello {folder} non disponibile ({e}).")
+            return getattr(self, attr)
 
     def detect_faces(self, img_rgb):
         """Riquadri (x0, y0, x1, y1, score) dei volti, con margine del 15%."""
         import cv2
-        with self.lock:
+        with self._face_lock:
             det = self._face_detector()
             if det is None:
                 return []
@@ -546,7 +677,7 @@ class Engine:
         return out
 
     def _detect_objects(self, name, folder, pil_img, min_score):
-        with self.lock:
+        with self._det_locks[name]:
             det = self._hf_detector(name, folder)
             if det is None:
                 return []

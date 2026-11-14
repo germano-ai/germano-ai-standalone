@@ -97,14 +97,23 @@ class Ctx:
             return [[] for _ in texts]
         return self.engine.classify_many(texts, self.settings, self.cancel)
 
-    def resolve_doubts(self, text, spans):
-        """Sistema 2 sui casi dubbi del testo (solo con il motore locale; altrimenti i dubbi restano oscurati)."""
+    def resolve_doubts(self, text, spans, known=None):
+        """Sistema 2 sui casi dubbi del testo (solo con il motore locale; altrimenti i dubbi restano oscurati).
+        `known`: firme delle parole gia' oscurate nel documento (le loro occorrenze dubbie non si chiedono)."""
         resolve = getattr(self.engine, "resolve_doubts", None)
         if resolve is None or not spans:
             return spans
-        kept, decisions = resolve(text, spans, self.settings, self.cancel)
+        kept, decisions = resolve(text, spans, self.settings, self.cancel, known=known)
         self.system2.extend(decisions)
         return kept
+
+    def resolve_doubts_many(self, items, known=None):
+        """Sistema 2 sui dubbi di piu' testi insieme [(testo, span)] -> [(span da oscurare, decisioni)]. Le decisioni
+        NON vengono aggiunte a self.system2: le registra chi chiama, con l'unita' di testo a cui appartengono."""
+        many = getattr(self.engine, "resolve_doubts_many", None)
+        if many is None or not any(spans for _t, spans in items):
+            return [(spans, []) for _t, spans in items]
+        return many(items, self.settings, self.cancel, known=known)
 
     # -------------------------------------------------------------- servizio
     def audit_add(self, word, label, entity, score, status="confirmed"):

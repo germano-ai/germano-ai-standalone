@@ -432,11 +432,12 @@ def postprocess(raw, text, settings):
         if merged:
             prev = merged[-1]
             if sp.start < prev.end:
+                # Etichetta dello span "migliore" (prima le regole validate, poi il piu' lungo); lo stato invece non
+                # scende mai: basta una parte confermata perche' tutto lo span fuso resti confermato.
                 if _priority(sp) > _priority(prev):
                     prev.group, prev.label, prev.key = sp.group, sp.label, sp.key
                     prev.source = sp.source
                     prev.length_hint = sp.end - sp.start
-                    prev.status = sp.status
                 prev.end = max(prev.end, sp.end)
                 prev.score = max(prev.score, sp.score)
                 if sp.status == "confirmed":
@@ -481,7 +482,6 @@ def postprocess(raw, text, settings):
                 prev = again[-1]
                 if _priority(sp) > _priority(prev):
                     prev.group, prev.label, prev.key, prev.source = sp.group, sp.label, sp.key, sp.source
-                    prev.status = sp.status
                 prev.end = max(prev.end, sp.end)
                 if sp.status == "confirmed":
                     prev.status = "confirmed"

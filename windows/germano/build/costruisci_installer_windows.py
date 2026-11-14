@@ -1,11 +1,11 @@
 """Costruisce gli installer Windows IN UN SOLO FILE della release:
-  germano.ai-0.80/releases/windows/germano-0.80.exe          suite completa (runtime, modelli IA, interfaccia)
-  germano.ai-0.80/releases/windows/germano-client-0.80.exe   client leggero
+  germano.ai-0.90/releases/windows/germano-0.90.exe          suite completa (runtime, modelli IA, interfaccia)
+  germano.ai-0.90/releases/windows/germano-client-0.90.exe   client leggero
 partendo da sorgenti/windows/<edizione> (programma), dipendenze/windows/runtime-<edizione> (Python 3.11 con tutte
 le librerie e le DLL di Visual C++ accanto all'interprete: nessun ridistribuibile da installare), modelli/,
 dipendenze/windows/llama-server (llama.cpp per il Sistema 2, installato in runtime/llama) e dipendenze/windows/7zip
 (console di 7-Zip per gli archivi 7Z e RAR, installata in runtime/7zip) per la suite.
-ATTENZIONE: Windows non avvia eseguibili da 4 GB in su. La suite 0.80 e' vicina al limite (modelli compresi): la
+ATTENZIONE: Windows non avvia eseguibili da 4 GB in su. La suite (dalla 0.80) e' vicina al limite (modelli compresi): la
 costruzione si ferma con un errore se l'installer lo supera, invece di produrre un file che non partirebbe.
 Germano.exe (l'unico programma) viene creato qui da build_exe.py e messo solo nell'installer: i sorgenti restano
 senza binari.
@@ -45,7 +45,7 @@ import crea_version_json  # noqa: E402
 
 WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # oltre, Windows rifiuta di avviare l'eseguibile
 
-RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-0.80
+RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-0.90
 SOURCES = os.path.join(RELEASE, "sorgenti", "windows")
 DEPS = os.path.join(RELEASE, "dipendenze", "windows")
 MODELS = os.path.join(RELEASE, "modelli")

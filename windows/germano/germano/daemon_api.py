@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import common, formats
 from .analyzer import Unit, apply_replacements
-from .engine import CancelledError, CancelToken
+from .engine import CancelledError, CancelToken, interactive_scope
 from .remote_engine import API_VERSION, TEXT_SETTINGS, EngineUnavailable
 from .vault import contains_tags, restore_text
 
@@ -24,6 +24,64 @@ EXTRACT_MAX_CHARS = 3_000_000
 
 class EngineDelegated(Exception):
     """Questo computer usa a sua volta un motore remoto: non puo' condividere il proprio (niente catene)."""
+
+
+# ------------------------------------------------------------------ file per percorso (turno 26)
+# Server e demone girano sullo stesso computer e condividono la cartella dati: un file grande passa per percorso
+# (state/uploads -> state/tmp) invece che in base64 dentro JSON, che costava ~4 copie in memoria per parte e la
+# codifica/decodifica di ogni byte. Il base64 resta per compatibilita'. Si accettano solo percorsi dentro le cartelle
+# temporanee di Germano (mai un file qualsiasi del disco, anche se l'API e' gia' protetta dal token).
+def output_dir():
+    return os.path.join(common.WORK_TMP_DIR, "out")
+
+
+def _inside(path, roots):
+    real = os.path.realpath(path)
+    for root in roots:
+        try:
+            if os.path.commonpath([real, os.path.realpath(root)]) == os.path.realpath(root):
+                return real
+        except ValueError:                       # unita' diverse (Windows)
+            continue
+    return None
+
+
+def local_input(path):
+    """Percorso di un file d'ingresso preparato dal server: solo in state/uploads o state/tmp, solo file regolari."""
+    real = _inside(path, (common.UPLOAD_DIR, common.WORK_TMP_DIR)) if isinstance(path, str) and path else None
+    if real is None or not os.path.isfile(real):
+        raise ValueError("percorso del file non consentito")
+    return real
+
+
+def _stage_input(body, dest, missing_msg="contenuto del file non valido (base64)"):
+    """Scrive in `dest` il file della richiesta: dal percorso locale (collegamento o copia) oppure dal base64."""
+    if body.get("src_path"):
+        real = local_input(body["src_path"])
+        try:
+            os.link(real, dest)                  # stesso disco: istantaneo, nessuna copia
+        except OSError:
+            import shutil
+            shutil.copyfile(real, dest)
+        return
+    try:
+        data = base64.b64decode(body.get("data_b64") or "", validate=False)
+    except Exception:
+        raise ValueError(missing_msg)
+    with open(dest, "wb") as f:
+        f.write(data)
+
+
+def _deliver_output(body, path):
+    """File prodotto: per percorso in state/tmp/out (il server lo legge e lo cancella) o in base64."""
+    if body.get("return_path"):
+        import uuid
+        os.makedirs(output_dir(), exist_ok=True)
+        dest = os.path.join(output_dir(), uuid.uuid4().hex[:12] + os.path.splitext(path)[1][:16])
+        os.replace(path, dest)
+        return {"out_path": dest}
+    with open(path, "rb") as f:
+        return {"data_b64": base64.b64encode(f.read()).decode("ascii")}
 
 
 # ------------------------------------------------------------------ motore condiviso (modalita' Server)
@@ -91,11 +149,16 @@ def handle_engine_transcribe(daemon, body):
     """Motore condiviso: trascrizione di un file audio per un Germano in modalita' Client. Il file resta solo per
     la durata della richiesta in state/tmp; non viene salvato nulla, il Vault non viene toccato."""
     eng = _local_engine(daemon)
-    try:
-        data = base64.b64decode(body.get("data_b64") or "", validate=True)
-    except Exception:
-        raise ValueError("file audio non valido")
-    if not data or len(data) > ENGINE_MAX_AUDIO:
+    data = None
+    if body.get("src_path"):
+        size = os.path.getsize(local_input(body["src_path"]))
+    else:
+        try:
+            data = base64.b64decode(body.get("data_b64") or "", validate=True)
+        except Exception:
+            raise ValueError("file audio non valido")
+        size = len(data)
+    if not size or size > ENGINE_MAX_AUDIO:
         raise ValueError("file audio mancante o troppo grande")
     raw = body.get("settings") if isinstance(body.get("settings"), dict) else {}
     settings = {k: common._validate_value(k, raw.get(k, daemon.settings.get(k)), common.DEFAULT_SETTINGS[k])
@@ -104,9 +167,12 @@ def handle_engine_transcribe(daemon, body):
     ctx = _ctx(daemon, "anonymize", op=body.get("op"))
     with ctx.tempdir() as d:
         src = os.path.join(d, name)
-        with open(src, "wb") as f:
-            f.write(data)
-        del data
+        if data is None:
+            _stage_input(body, src)
+        else:
+            with open(src, "wb") as f:
+                f.write(data)
+            del data
         from .speech import SpeechError
         try:
             res = eng.transcribe(src, settings, ctx.cancel, extend=ctx.extend_deadline)
@@ -151,10 +217,6 @@ def handle_extract_text(daemon, body):
     """Testo di un allegato per l'Harness: documenti e archivi come nell'anteprima, file audio trascritti dal
     motore (anche dentro gli archivi). Il testo NON e' ancora protetto: il server lo passa subito ad anonymize_texts
     e non lo mostra ne' lo invia prima. Nessun dato viene salvato."""
-    try:
-        data = base64.b64decode(body.get("data_b64") or "", validate=False)
-    except Exception:
-        raise ValueError("contenuto del file non valido (base64)")
     name = common.safe_filename(body.get("filename") or "allegato.bin", max_len=100)
     try:
         max_chars = max(1000, min(int(body.get("max_chars") or 200_000), EXTRACT_MAX_CHARS))
@@ -165,9 +227,7 @@ def handle_extract_text(daemon, body):
     kind = "audio" if ext in formats.AUDIO_EXTS else ("archive" if ext in formats.ARCHIVE_EXTS else "document")
     with ctx.tempdir() as d:
         src = os.path.join(d, name)
-        with open(src, "wb") as f:
-            f.write(data)
-        del data
+        _stage_input(body, src)
         try:
             text = formats.extract_text(src, ctx, max_chars)
         except formats.ProcessingError as e:
@@ -229,10 +289,6 @@ def handle_text(daemon, body):
 
 
 def handle_file(daemon, body):
-    try:
-        data = base64.b64decode(body.get("data_b64") or "", validate=False)
-    except Exception:
-        raise ValueError("contenuto del file non valido (base64)")
     name = common.safe_filename(body.get("filename") or "file.bin")
     mode = body.get("mode", "auto")
     # opzioni di un client della rete (Remote Control, Germano Client): valgono solo per questo file
@@ -246,8 +302,7 @@ def handle_file(daemon, body):
         os.makedirs(src_dir)
         os.makedirs(out_dir)
         src = os.path.join(src_dir, name)
-        with open(src, "wb") as f:
-            f.write(data)
+        _stage_input(body, src)
         if mode == "auto":
             mode = "anonymize"
             if daemon.settings.get("enable_deanonymize", True) and tm:
@@ -259,18 +314,16 @@ def handle_file(daemon, body):
         ctx = _ctx(daemon, mode, tm, settings=settings if mode == "anonymize" else None, op=body.get("op"))
         ctx.label_override = label if mode == "anonymize" else None
         out = formats.process_file(src, os.path.join(out_dir, name), ctx)
-        with open(out, "rb") as f:
-            new_data = f.read()
+        result = {"filename": os.path.basename(out), "mode": mode}
+        result.update(_deliver_output(body, out))
     daemon.vault.flush()
-    return {
-        "filename": os.path.basename(out),
-        "mode": mode,
-        "data_b64": base64.b64encode(new_data).decode("ascii"),
+    result.update({
         "extracted_data": ctx.audit if mode == "anonymize" else [],
         "system2": ctx.system2 if mode == "anonymize" else [],
         "notes": ctx.notes,
         "reports": ctx.reports,          # estrazione degli archivi e trascrizioni audio (per il registro di audit)
-    }
+    })
+    return result
 
 
 def start_api(daemon):
@@ -328,6 +381,12 @@ def start_api(daemon):
             reload = getattr(daemon, "reload_settings", None)
             if reload:
                 reload()     # impostazioni attuali anche subito dopo un cambio (es. profilo PA/PD, opzioni dei client)
+            # Corsia preferenziale (turno 26): le richieste dell'API (Proxy, Harness, API, client della rete) passano
+            # davanti ai documenti della cartella input/ sui modelli condivisi (Privacy Filter, OCR, Sistema 2)
+            with interactive_scope():
+                self._dispatch(body)
+
+        def _dispatch(self, body):
             try:
                 if self.path == "/internal/anonymize_texts":
                     self._json(200, handle_texts(daemon, body))

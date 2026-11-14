@@ -198,21 +198,22 @@ def process_ooxml(in_path, out_path, ctx):
             elif name in rels:
                 new_data[name] = etree.tostring(rels[name], xml_declaration=True, encoding="UTF-8", standalone=True)
 
-        # Immagini incorporate, documenti annidati, miniature
+        # Immagini incorporate (a finestre: un'unica analisi del testo letto dall'OCR per finestra), documenti
+        # annidati, miniature
+        def _image_done(name, nb, err):
+            if err is not None:
+                ctx.note(f"immagine incorporata non elaborata ({os.path.basename(name)}): {err}")
+            elif nb is not None:
+                new_data[name] = nb
+        from .images import ImageBatcher
+        batcher = ImageBatcher(ctx, _image_done)
         for info in infos:
             n = info.filename
             low = n.lower()
             ext = os.path.splitext(low)[1]
             if "/media/" in low and ext in _RASTER_EXTS and ctx.vision_enabled():
                 ctx.check()
-                from .images import anonymize_image_bytes
-                try:
-                    nb = anonymize_image_bytes(zin.read(n), ctx)
-                    if nb is not None:
-                        new_data[n] = nb
-                except Exception as e:
-                    reraise_control(e)
-                    ctx.note(f"immagine incorporata non elaborata ({os.path.basename(n)}): {e}")
+                batcher.add(n, zin.read(n))
             elif "/embeddings/" in low:
                 base = os.path.basename(n)
                 if is_supported(base) and ext not in (".bin",):
@@ -227,6 +228,7 @@ def process_ooxml(in_path, out_path, ctx):
                     ctx.note(f"Oggetto OLE incorporato non analizzabile ({base}): verificarne il contenuto manualmente.")
             elif low.startswith("docprops/thumbnail") and ctx.anonymize:
                 removed.add(n)
+        batcher.flush()
 
         if removed:
             _drop_parts(removed, new_data, zin, rels)

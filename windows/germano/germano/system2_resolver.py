@@ -23,6 +23,8 @@ chiave casuale per ogni avvio: nessun dato lascia il computer, nessuna porta ver
 """
 import ctypes
 import hashlib
+import heapq
+import itertools
 import json
 import math
 import os
@@ -37,7 +39,7 @@ import unicodedata
 import urllib.error
 import urllib.request
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 
 from . import common
 
@@ -45,7 +47,10 @@ from . import common
 # soglie; il 2B con gli stessi esempi ne rilascia fino a 22) ed e' il piu' rapido e leggero (circa 1 GB di RAM).
 MODEL_FOLDER = "qwen3.5-0.8b"       # in models/: GGUF + germano.json (nome, quantizzazione, impronta, licenza)
 SERVER_EXE = "llama-server.exe" if os.name == "nt" else "llama-server"
-SLOTS = 2                           # richieste in parallelo (llama-server: elaborazione a lotti continua)
+SLOTS = 2                           # richieste in parallelo (llama-server: elaborazione a lotti continua). Turno 26,
+#                                     misurato su 4 core: 2 slot ~ 1 slot (il prompt e' limitato dal calcolo); «--no-slots»
+#                                     nasconde solo l'endpoint di monitoraggio /slots (gli slot restano 2, -cb e' gia'
+#                                     attivo di serie): si lascia, non espone i prompt
 CTX_PER_SLOT = 2048                 # token per richiesta: istruzioni (~330) + contesto (~150) + risposta
 IDLE_SLEEP_S = 600                  # modello fuori dalla memoria dopo 10 minuti senza richieste
 START_TIMEOUT_S = 180
@@ -346,6 +351,79 @@ def _linux_parent_death():
         pass
 
 
+_PROPAGATED = object()      # dubbio non chiesto: la stessa parola e' oscurata altrove (resta oscurato)
+SKIP_REDUNDANT = True       # scarto delle domande superflue (False: si chiede ogni dubbio, come nella 0.80)
+
+
+def propagation_signature(text, sp, in_context=False):
+    """Token di uno span come li indicizza la propagazione del documento (detect.Propagator, dopo trim_span), oppure
+    None se la propagazione non lo userebbe (parola troppo corta, solo cifre, parola vuota, frammento). Con
+    in_context=True anche None se, in quel punto del testo, la propagazione non riconoscerebbe l'occorrenza (token
+    attaccati a quelli vicini, a capo o «|» fra le parole): in quei casi il Sistema 2 viene sempre interrogato."""
+    from . import detect
+    s, e = detect.trim_span(text, sp.start, sp.end, sp.label)
+    if e <= s or (sp.source != "regex" and detect.is_fragment(text, s, e)):
+        return None
+    prop = detect.Propagator()
+    prop.add(text[s:e], sp.label, sp.group, sp.key)
+    if not prop:
+        return None
+    sig = next(iter(prop.seen))[0]
+    if not in_context:
+        return sig
+    # finestra che inizia e finisce su uno spazio: i token coincidono con quelli del testo intero
+    w0 = max(0, s - 64)
+    if w0 > 0:
+        m = re.search(r"\s", text[w0:s])
+        if m is None:
+            return None
+        w0 += m.start()
+    w1 = min(len(text), e + 64)
+    if w1 < len(text):
+        m = None
+        for m in re.finditer(r"\s", text[e:w1]):
+            pass
+        if m is None:
+            return None
+        w1 = e + m.start()
+    for a, b, *_rest in prop.find(text[w0:w1]):
+        if w0 + a <= s and w0 + b >= e:
+            return sig
+    return None
+
+
+class _PriorityPool:
+    """Esecutore con precedenza (turno 26): i dubbi di una richiesta interattiva (Proxy, Harness, API) passano davanti a
+    quelli dei documenti della cartella input/ gia' in coda; a parita' di precedenza vale l'ordine di arrivo."""
+
+    def __init__(self, workers, name):
+        self._heap = []
+        self._seq = itertools.count()
+        self._cv = threading.Condition()
+        for i in range(workers):
+            threading.Thread(target=self._run, daemon=True, name=f"{name}-{i}").start()
+
+    def submit(self, priority, fn, *args):
+        fut = Future()
+        with self._cv:
+            heapq.heappush(self._heap, (priority, next(self._seq), fut, fn, args))
+            self._cv.notify()
+        return fut
+
+    def _run(self):
+        while True:
+            with self._cv:
+                while not self._heap:
+                    self._cv.wait()
+                _p, _s, fut, fn, args = heapq.heappop(self._heap)
+            if not fut.set_running_or_notify_cancel():
+                continue                                   # annullato mentre era in coda
+            try:
+                fut.set_result(fn(*args))
+            except BaseException as e:                     # noqa: BLE001 - riportato a chi aspetta
+                fut.set_exception(e)
+
+
 class System2Resolver:
     def __init__(self, log=common.log, threads=None):
         self.log = log
@@ -360,7 +438,7 @@ class System2Resolver:
         self._key = None
         self._job = None
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        self._pool = ThreadPoolExecutor(max_workers=SLOTS, thread_name_prefix="sistema2")
+        self._pool = _PriorityPool(SLOTS, "sistema2")
         self.stats = {"requests": 0, "cached": 0, "errors": 0, "starts": 0, "seconds": 0.0}
         self.last_error = None
 
@@ -563,33 +641,132 @@ class System2Resolver:
             return True
         return str(group or "") not in NEVER_RELEASE and decision.confidence >= threshold
 
-    def resolve(self, text, spans, settings, cancel=None, max_seconds=MAX_SECONDS_PER_TEXT):
+    def resolve(self, text, spans, settings, cancel=None, max_seconds=MAX_SECONDS_PER_TEXT, known=None):
         """Applica la politica del Sistema 2 agli span di un testo. Restituisce (span da oscurare, decisioni)."""
-        cands = [sp for sp in spans if sp.source != "regex"
-                 and (getattr(sp, "status", "confirmed") == "doubt" or sp.group in ESCALATE_GROUPS)]
+        return self.resolve_many([(text, spans)], settings, cancel, max_seconds, known)[0]
+
+    @staticmethod
+    def _candidate(sp):
+        return sp.source != "regex" and (getattr(sp, "status", "confirmed") == "doubt" or sp.group in ESCALATE_GROUPS)
+
+    def resolve_many(self, items, settings, cancel=None, max_seconds=MAX_SECONDS_PER_TEXT, known=None):
+        """Come resolve per piu' testi [(testo, span)] insieme (turno 26). I dubbi di tutti i testi entrano in un'unica
+        coda, in parallelo sugli slot di llama-server; le richieste interattive hanno la precedenza sui documenti in
+        coda. Prima ogni testo aspettava la fine del precedente. Restituisce [(span da oscurare, decisioni)].
+
+        Domande superflue (turno 26). Un dubbio rilasciato viene comunque oscurato dalla propagazione se la stessa
+        parola resta oscurata in un altro punto del documento: allora la risposta del modello non cambia il risultato.
+        Non si chiede quindi nulla per (1) le parole gia' oscurate da uno span confermato degli stessi testi o di una
+        parte del documento gia' analizzata (`known`: firme di propagazione), (2) le altre occorrenze di una parola appena
+        trattenuta (confermata, incerta, non decisa): le occorrenze della stessa parola si chiedono una dopo l'altra e ci
+        si ferma alla prima trattenuta. Un dubbio non chiesto resta SEMPRE oscurato: lo scarto non puo' lasciare in chiaro
+        nulla. Misurato sul corpus del turno 23: 61 domande superflue su 87 (il Sistema 2 esauriva i 180 secondi)."""
+        from concurrent.futures import FIRST_COMPLETED, wait
+        from .engine import is_interactive
+        cands = [(ti, sp) for ti, (_text, spans) in enumerate(items) for sp in spans if self._candidate(sp)]
         if not cands or not settings.get("enable_system2", True) or not self.available:
-            return spans, []
+            return [(spans, []) for _text, spans in items]
         threshold = RELEASE_P_NO.get(settings.get("compliance_mode", "PA"), RELEASE_P_NO["PA"])
-        deadline = time.time() + max_seconds
+        # tempo massimo: come prima, MAX_SECONDS_PER_TEXT per ogni testo con dubbi (mai un'attesa senza fine)
+        n_texts = len({ti for ti, _sp in cands})
+        deadline = time.time() + max_seconds * n_texts
         if cancel is not None and getattr(cancel, "deadline", None):
             deadline = min(deadline, cancel.deadline)
-        futures = [self._pool.submit(self.decide, text, sp.start, sp.end, sp.group, deadline) for sp in cands]
+        priority = 0 if is_interactive() else 1
+        # parole gia' oscurate di sicuro: span confermati (non dubbi) degli stessi testi + parti gia' analizzate
+        kept_sigs = set(known or ())
+        for text, spans in items:
+            for sp in spans:
+                if not self._candidate(sp):
+                    s = propagation_signature(text, sp)
+                    if s is not None:
+                        kept_sigs.add(s)
+        chains, order = {}, []          # firma -> occorrenze in ordine di testo; domande da fare subito
+        skipped = set()
+        for j, (ti, sp) in enumerate(cands):
+            s = propagation_signature(items[ti][0], sp, in_context=True) if SKIP_REDUNDANT else None
+            if s is None:
+                order.append(j)                            # la propagazione non la coprirebbe: si chiede sempre
+            elif s in kept_sigs:
+                skipped.add(j)
+            elif s in chains:
+                chains[s].append(j)
+            else:
+                chains[s] = [j]
+                order.append(j)
+        sig_of = {js[0]: s for s, js in chains.items()}
+        # Ordine del testo (non raggruppato per tipo di domanda): misurato sul banco del turno 26 (127 casi), llama.cpp
+        # riusa gia' istruzioni ed esempi in qualunque ordine (checkpoint ai confini dei messaggi + cache dei prompt in
+        # RAM), quindi il raggruppamento non accelera e cambierebbe solo l'ordine delle decisioni.
+        running = {}
+
+        def submit(j):
+            ti, sp = cands[j]
+            running[self._pool.submit(priority, self.decide, items[ti][0], sp.start, sp.end, sp.group, deadline)] = j
+
+        for j in sorted(order):
+            submit(j)
         decisions = {}
-        for sp, fut in zip(cands, futures):
-            try:
-                decisions[id(sp)] = fut.result(timeout=max(1.0, deadline - time.time() + REQUEST_TIMEOUT_S))
-            except Exception:
-                decisions[id(sp)] = None
-            if cancel is not None:
-                cancel.check()
+        try:
+            while running:
+                done, _rest = wait(list(running), timeout=max(1.0, deadline - time.time() + REQUEST_TIMEOUT_S),
+                                   return_when=FIRST_COMPLETED)
+                if not done:                               # tempo scaduto: i dubbi rimasti restano oscurati
+                    for f in list(running):
+                        f.cancel()
+                        decisions[running.pop(f)] = None
+                    break
+                for f in done:
+                    j = running.pop(f)
+                    try:
+                        d = f.result()
+                    except Exception:
+                        d = None
+                    decisions[j] = d
+                    s = sig_of.get(j)
+                    if s is None:
+                        continue
+                    rest = chains[s][chains[s].index(j) + 1:]
+                    if not rest:
+                        continue
+                    ti, sp = cands[j]
+                    if d is not None and self.releases(sp.group, d, threshold):
+                        sig_of[rest[0]] = s                # rilasciata: si chiede l'occorrenza successiva
+                        submit(rest[0])
+                    else:
+                        skipped.update(rest)               # trattenuta: le altre occorrenze sono comunque oscurate
+                if cancel is not None:
+                    cancel.check()
+        except BaseException:
+            for f in running:                              # annullamento: i dubbi ancora in coda non partono
+                f.cancel()
+            raise
+        for j in range(len(cands)):
+            if j not in decisions and j not in skipped:
+                decisions[j] = None                        # catena interrotta dal tempo massimo: resta oscurato
+        by_span = {(cands[j][0], id(cands[j][1])): decisions[j] for j in decisions}
+        by_span.update({(cands[j][0], id(cands[j][1])): _PROPAGATED for j in skipped})
+        return [self._apply(text, spans, by_span, ti, threshold) for ti, (text, spans) in enumerate(items)]
+
+    def _apply(self, text, spans, by_span, ti, threshold):
+        """Politica di rilascio sugli span di un testo, con il registro delle decisioni nell'ordine del testo."""
         kept, log = [], []
         for sp in spans:
-            if id(sp) not in decisions:
+            if (ti, id(sp)) not in by_span:
                 kept.append(sp)
                 continue
-            d = decisions[id(sp)]
+            d = by_span[(ti, id(sp))]
             entry = {"word": text[sp.start:sp.end], "entity": str(sp.group), "score": round(float(sp.score), 4),
                      "start": sp.start, "end": sp.end}
+            if d is _PROPAGATED:
+                sp.status = "s2_confirmed"
+                entry.update(decision="confermato", p_personale=None, rule="propagazione",
+                             reason="la stessa parola e' oscurata in un altro punto del documento: resta oscurata anche "
+                                    "qui (nessuna domanda al modello)")
+                kept.append(sp)
+                entry["ms"] = 0.0
+                log.append(entry)
+                continue
             if d is None:
                 entry.update(decision="non_deciso", p_personale=None, reason="Sistema 2 non disponibile o tempo scaduto: "
                              "resta oscurato")

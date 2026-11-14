@@ -6,12 +6,92 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [0.90] - 2026-11-14
+Germano AI v0.90 - **faster and parallel, with the same protection**. All measurements were taken on the real engine
+(test PC Intel i5-4570, 4 cores, 16 GB of RAM, no GPU) comparing 0.80 and 0.90 on the same files: same masked data,
+shorter times. The Proxy now also protects the tool arguments of AI agents, and the Linux and macOS packages are
+identical again to the Windows ones.
+
+### At a glance: 0.80 and 0.90 on the same files
+| Test | 0.80 | 0.90 |
+|---|---|---|
+| Digital PDF, 12 pages (36,600 characters) | 234.6 s | **132.0 s** (-44%, same 735 audit entries) |
+| System 2 on a document of 56 texts | 214.3 s, 75 questions to the model | **52.3 s**, 22 questions (same decisions) |
+| Vault with 100,000 entries: saving a new item | 308 ms | **1.6-2.6 ms** |
+| Vault with 100,000 entries: read by the server | 496 ms | **4.2 ms** |
+| Transcription of 284 s of recordings | 107-126 s | **66 s** (word error rate: 13.3% → 11.6%) |
+| Scanned page (faces, signatures, plates, OCR) | 29.6 s | **26.7 s** (-10%, same masked regions) |
+| Engine start (disk already cached) | 26.6 s | **24.2 s** (-8%) |
+| Labels in a 12-page PDF (alignment) | 1.61 s | **0.18 s** (identical positions) |
+| Proxy: history already seen / image already protected | 1.15 s / 1.58 s | **0.01 s / 0.01 s** |
+
+### Improved - Parallel engine
+- **Privacy Filter and Italian NER together** on the same text batch (the NER runs in ONNX Runtime on a separate
+  thread): 5 to 11% less time on text alone depending on the PC load, with identical results.
+- **One lock per model** instead of a single lock: Privacy Filter, Italian NER, OCR, faces, signatures and plates serve
+  different requests at the same time (for example the OCR of a queued scan and the text of a Proxy request).
+- **Fast lane**: interactive requests (Chatbot & AI Agents, Proxy, REST API, Remote Control and network clients) go
+  ahead of the `input` folder documents on the Privacy Filter, OCR and System 2, and wait at most for the batch in
+  progress. Test: three Proxy requests served in 4.7, 5.7 and 0.3 s while a 6-page PDF was being processed.
+- **Parallel loading**: Italian NER and OCR load while the Privacy Filter loads.
+- **Parallel vision**: faces, signatures, plates and OCR of an image or page work together.
+- **Scanned PDFs in windows of 8 pages and Office document images in batches**: the OCR text is analyzed in a single
+  call, with full model batches and data propagation across pages.
+- **PDF labels**: linear alignment instead of quadratic.
+
+### Improved - System 2 without redundant questions
+- When the same word stays masked elsewhere in the document, its doubtful occurrences are no longer asked to the local
+  model (propagation would mask them anyway): on the test corpus 61 of 87 questions (70%) could not change the
+  outcome. Coverage compared character by character with 0.80: 0 characters of difference on 56 texts. A question
+  that is not asked **always** stays masked.
+- The doubts of all the texts of a request share one queue, with priority to interactive requests; when the work is
+  interrupted, queued doubts are cancelled.
+
+### Improved - Vault, files and caches
+- **Vault on SQLite in WAL mode** (`extracted/deanonymize_vault.db`): only new entries are written and read, more than
+  100 times faster with a large Vault. `extracted/deanonymize_vault.json` stays, in the same format, as a portable copy
+  (at every save up to 5,000 entries, then every 5 minutes and when the engine closes); if it is replaced by hand its
+  entries are imported without losing the existing ones. Automatic migration on first start; network drives keep the
+  JSON only. An error writing the JSON copy no longer stops the work.
+- **Files between server and engine by path** instead of base64 inside JSON (REST API, Remote Control, Proxy,
+  attachments, shared transcription): less memory and no encoding for large files; oversized bodies are rejected
+  before reading on the shared engine.
+- **Proxy and attachment cache**: the history that IDEs and agents resend at every turn no longer goes back to the
+  engine (as already in Chatbot & AI Agents); already protected images and documents come from the cache (up to
+  256 MB, emptied together with the Vault).
+
+### Improved - Audio and Client mode
+- **Batched transcription**: from 60 seconds up, Whisper transcribes the speech segments in batches of 8
+  (`BatchedInferencePipeline`), with automatic fallback to the sequential mode; short recordings stay identical.
+- **Parallel Client mode**: up to three `input` folder files processed together on the Germano Server (test: 9 files
+  in 1.8 s).
+- **Germano Server check**: when connecting and then every 10 minutes the client sends the server a control sentence
+  with randomly chosen fake data; if the server does not recognize the name, it is not used and no data leaves.
+
+### Fixed - Proxy
+- Values under keys such as `name`, `id`, `status`, `detail`, `type`, `format` inside `tool_use.input`,
+  `function.arguments` and `functionCall.args` (Gemini) are now anonymized: the protocol envelope stays intact, tool
+  arguments are user content. Cited text of citations, `metadata`, `user` and participant names are anonymized too;
+  non-streaming responses restore tool arguments.
+- New **final no-exit check** (`leak_check`): if a just-detected item remains in a field that was not anonymized, the
+  request is blocked (`422`) and nothing is sent. "Canary" test on 1,000 random requests in 4 formats: 20/20 checks
+  passed (with 0.80 the test data left in clear in every format).
+- A non-text `"type"` in tool arguments made the Proxy fail.
+
+### Fixed - Other
+- Chatbot & AI Agents: an unexpected error reaches the page as an event, saying whether anything had been sent.
+- Linux and macOS sources identical again to Windows in all common files; the `.deb` and `.pkg` builders stop if a
+  tree is not aligned (`build/coerenza_sorgenti.py`). Germano Client interface aligned with the server one (audio,
+  archives, System 2 in the Glass Window). Complete `requirements.txt` (onnxruntime, faster-whisper, ctranslate2, av).
+- Documentation: README, guide, LEGGIMI and CHANGELOG updated to 0.90 (Markdown well formatted again: the 0.80 cleanup
+  had removed the spaces after bold text); `VERSION` → `0.90`.
+
 ## [0.80] - 2026-11-10
 Germano AI v0.80 - **Native Audio & Offline Speech-to-Text Transcription**, **Recursive Compressed Archive Extraction & Sanitization**, **Atomic Updater Size Verification**, and refined System 1 / System 2 triage.
 
 ### Added - Native Audio & Offline Transcription
 - Support for .mp3, .wav, .m4a, .ogg, .flac, .opus, .aac, .wma, .amr, .aiff files.
-- Local speech-to-text transcription powered by bundled **Whisper Small INT8**(240 MB) via CTranslate2 running in an isolated worker process: 100% offline, zero cloud data leakage.
+- Local speech-to-text transcription powered by bundled **Whisper Small INT8** (240 MB) via CTranslate2 running in an isolated worker process: 100% offline, zero cloud data leakage.
 - Extraction and redaction of audio metadata and ID3/Vorbis/MP4/WAV tags (title, artist, author, comments, GPS coordinates) into Vault tokens.
 - Sanitized output transcription <name>.trascrizione.txt generated with timestamped segments [hh:mm:ss]; original audio file is kept intact in processed.
 - Seamless audio attachments in Chatbot & AI Agents (drag & drop or clip icon) with live transcription into prompt composer.
@@ -20,7 +100,7 @@ Germano AI v0.80 - **Native Audio & Offline Speech-to-Text Transcription**, **Re
 - Safe recursive inspection and redaction for .zip, .tar, .tar.gz, .tgz, .gz, .bz2, .xz, .7z, .rar.
 - Format detection based on binary magic bytes rather than file extension.
 - Hardened sandbox extraction preventing Path Traversal (no file extracted using archive path, rejection of .. or absolute paths) and Decompression Bombs (200x max expansion ratio, 4 GB maximum size).
-- Bundled **7-Zip 26.06**integration for high-performance .7z and .rar streaming extraction.
+- Bundled **7-Zip 26.06** integration for high-performance .7z and .rar streaming extraction.
 - Automatic repacking preserving the exact internal folder hierarchy; .rar archives are safely repacked as .rar.zip.
 
 ### Improved - Glass Window Instant Abort
@@ -30,64 +110,64 @@ Germano AI v0.80 - **Native Audio & Offline Speech-to-Text Transcription**, **Re
 - Resolved byte-size mismatch in `version.json`: exact byte sizes and SHA256 hashes are computed directly from on-disk binaries atomically via crea_version_json.py, ensuring the Google Chrome-style silent background updater validates and applies updates reliably.
 
 ## [0.70] - 2026-11-01
-Germano AI v0.70 - New **AI Harness**architecture, real-time transparent **Glass Window**, integrated manual
+Germano AI v0.70 - New **AI Harness** architecture, real-time transparent **Glass Window**, integrated manual
 sanitization and **silent updates like Google Chrome**. The interface has been reworked and simplified: it looks and
 works in every respect like a modern AI harness, with the manual file sanitization tab next to it. The same interface is
 in the Dashboard, the Remote Control and Germano Client. Engine, models, Proxy, formats and working folders do not
 change.
 
 ### Added - AI Harness (new default tab)
-- Four tabs at the top: **AI Harness**(default), **Manual Sanitization & Vault**, **Settings**, **Guide**;
+- Four tabs at the top: **AI Harness** (default), **Manual Sanitization & Vault**, **Settings**, **Guide**;
   dark theme (`#0b0f19`, `#0f172a`, `#1e293b`, `#334155`, accents `#38bdf8` and `#818cf8`).
 - Conversations in the sidebar (new, search, grouped by date, rename, delete; kept in the window profile, never in the
   cloud, or only for the session), instructions for the assistant, export to Markdown.
-- **Streamed**answers with Markdown (headings, lists, tables, quotes), **syntax highlighting**and a **Copy code**button; restored data highlighted with the source tag, «Show tags»; indicators for total time, first token, input and
+- **Streamed** answers with Markdown (headings, lists, tables, quotes), **syntax highlighting** and a **Copy code** button; restored data highlighted with the source tag, «Show tags»; indicators for total time, first token, input and
   output tokens, masked and restored data; Copy, Regenerate, Edit actions.
-- A composer that grows with the text (**Enter**sends, **Shift+Enter**adds a new line), attachments with the
-  paperclip or by **dragging them**(up to 12), protection and profile indicator.
+- A composer that grows with the text (**Enter** sends, **Shift+Enter** adds a new line), attachments with the
+  paperclip or by **dragging them** (up to 12), protection and profile indicator.
 - **Model picker at the bottom right**, with search: only the detected, usable AIs can be selected (turn 21 rule), the
   others stay greyed out with the reason and, when available, the protected alternative. Destinations: *Protection only*
-  (copy of the protected text), local models of **Ollama, LM Studio and Jan**(one option per installed model),
-  **Claude Code**run without tools, services via API (OpenAI, Anthropic, Meta Muse, Kimi, DeepSeek, Qwen, Mistral, Grok,
+  (copy of the protected text), local models of **Ollama, LM Studio and Jan** (one option per installed model),
+  **Claude Code** run without tools, services via API (OpenAI, Anthropic, Meta Muse, Kimi, DeepSeek, Qwen, Mistral, Grok,
   Perplexity, Gemini, OpenRouter, Groq) with the computer's key or one entered in the picker. Automatic detection every
   12 seconds and when the window comes back to the foreground.
 - The engine starts by itself on the first send; until it is ready the request is blocked (no data leaves).
 
 ### Added - Glass Window (Transparent Inspection)
-- A **Glass Window**button (also Ctrl+Shift+G) that opens a frosted-glass side panel (`backdrop-filter: blur(16px)`)
+- A **Glass Window** button (also Ctrl+Shift+G) that opens a frosted-glass side panel (`backdrop-filter: blur(16px)`)
   with the request status, a timer, the selector of the session's requests and the five phases in real time: **original
-  text entered**, **Germano privacy filter and Vault mappings**(categories, highlighted text, original → tag →
-  confidence table, timings and cache), **actual text sent to the model**, **raw HTTP / CLI payload**(address, headers
+  text entered**, **Germano privacy filter and Vault mappings** (categories, highlighted text, original → tag →
+  confidence table, timings and cache), **actual text sent to the model**, **raw HTTP / CLI payload** (address, headers
   with keys always masked, JSON body; for Claude Code command, variables, standard input and the HTTP payload captured by
-  the Proxy) and the **real-time answer stream**before restoration (with raw SSE frames on request).
+  the Proxy) and the **real-time answer stream** before restoration (with raw SSE frames on request).
 - **Stop operation**: immediately closes the connection to the AI service (socket shutdown) or terminates the CLI with
   all its processes; message «Operation stopped by the user via Glass Window: no further data was transmitted or
   received.». Closing the page or the connection also stops the execution on the server.
-- **Review before sending**(optional): Germano stops after the protection and shows the exact payload; it leaves only
-  with **Send now**, or **Block sending**. **Preview while typing**with the Glass Window open, without sending anything.
+- **Review before sending** (optional): Germano stops after the protection and shows the exact payload; it leaves only
+  with **Send now**, or **Block sending**. **Preview while typing** with the Glass Window open, without sending anything.
 
 ### Added - Manual sanitization, Remote Control and Germano Client
-- The **Manual Sanitization & Vault**tab gathers the batch work of 0.60 (four `input`, `output`, `processed`,
+- The **Manual Sanitization & Vault** tab gathers the batch work of 0.60 (four `input`, `output`, `processed`,
   `failed` boxes like a file manager, documents table, requeue, CSV), manual text sanitization and the mapping archive.
-- **Remote Control and Germano Client**have the same interface: AI Harness with picker and Glass Window (server AIs),
-  **Manual Sanitization**with files dragged in and returned anonymized in their format and restoration of a file
+- **Remote Control and Germano Client** have the same interface: AI Harness with picker and Glass Window (server AIs),
+  **Manual Sanitization** with files dragged in and returned anonymized in their format and restoration of a file
   returned by an AI (only with the device's mappings), Settings (AIs and keys, processing options locked by the PA
   profile, tool connection; in the Client also server and updates), Guide. The Client relays the Harness events as a
   stream and stopping also closes the connection to the server. Clear notice when the server is an older version.
 
 ### Added - Silent updates, like Google Chrome
 - **On by default**, with no banners or windows: only when the system reports an Internet connection, Germano reads
-  `https://download.germano.ai/version.json`, **downloads in the background at low priority**(background-mode thread),
-  checks the installer's size and structure and on Windows **prepares the new version**next to the one in use
+  `https://download.germano.ai/version.json`, **downloads in the background at low priority** (background-mode thread),
+  checks the installer's size and structure and on Windows **prepares the new version** next to the one in use
   (`Germano AI.nuovo`, installer `--update --silent --stage` at minimum priority) while Germano stays open.
-- At the **next start**the launcher applies the prepared update in a few seconds (`--apply-staged`: marker and per-file
+- At the **next start** the launcher applies the prepared update in a few seconds (`--apply-staged`: marker and per-file
   size check, then a quick folder swap) and Germano opens already updated; if anything goes wrong the version in use
-  stays. Whoever wants it right away only finds a discreet **«Restart to update»**at the top (and a dot on the Settings
+  stays. Whoever wants it right away only finds a discreet **«Restart to update»** at the top (and a dot on the Settings
   tab).
-- **Settings › Updates**like `chrome://settings/help`: «Germano AI is up to date (v0.70)» with the time of the last
+- **Settings › Updates** like `chrome://settings/help`: «Germano AI is up to date (v0.70)» with the time of the last
   check, «Downloading the update in the background…» with the bar, «Restart Germano to apply the update», «Check now» and
   the options. On macOS and Linux the package is downloaded the same way and opened when the user decides.
-- **Germano Client**updates itself the same way (`client_updater.py`, standard library only): silent download and
+- **Germano Client** updates itself the same way (`client_updater.py`, standard library only): silent download and
   update at the next start, with the server address and the session unchanged.
 
 ### Added - APIs
@@ -99,7 +179,7 @@ change.
   devices (device options respected, PA lock included).
 
 ### Security
-- Claude Code from the Harness: **no text among the arguments**(CLIs installed with npm are `.cmd` files run by
+- Claude Code from the Harness: **no text among the arguments** (CLIs installed with npm are `.cmd` files run by
   `cmd.exe`, where a free argument could become a command): request and instructions go only through standard input.
   Local profile `--restricted --tools "" --strict-mcp-config --disable-slash-commands --no-session-persistence`, profile
   for the clients `--bare`; the CLI traffic goes through the Germano Proxy, which captures its payload for the Glass
@@ -122,18 +202,18 @@ change.
 - Guide, README, LEGGIMI and CHANGELOG updated; `VERSION` → `0.70`.
 
 ## [0.60] - 2026-10-25
-Germano becomes a **real desktop application**, distributed as **single-file installers**for Windows, macOS and
-Linux that contain everything needed and **download nothing from the Internet**. One program, **`Germano`**(`Germano.exe` on Windows, `Germano.app` on macOS, the "Germano AI" menu entry on Linux): no black console window, no
+Germano becomes a **real desktop application**, distributed as **single-file installers** for Windows, macOS and
+Linux that contain everything needed and **download nothing from the Internet**. One program, **`Germano`** (`Germano.exe` on Windows, `Germano.app` on macOS, the "Germano AI" menu entry on Linux): no black console window, no
 browser with an address bar or tabs, and the **red X closes everything**. The internal architecture is unchanged (same
 Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
 
 ### Added - Single-file installers
 - **Windows**: `germano-0.60.exe` (suite, ~2.8 GB) and `germano-client-0.60.exe` (~22 MB). The suite installer **asks
-  for administrator permission right away**(UAC prompt as soon as it opens, with Germano's name and icon) and **always**allows access from the local network: no checkbox to tick, a single Windows Firewall rule for Germano's Python, private
+  for administrator permission right away** (UAC prompt as soon as it opens, with Germano's name and icon) and **always** allows access from the local network: no checkbox to tick, a single Windows Firewall rule for Germano's Python, private
   and domain networks only (the open rules of versions 0.51/0.52 are removed). The program is still installed for the
   current user into `%LOCALAPPDATA%\Programs\…` (automatic updates ask for no permission), with Desktop and Start menu
   shortcuts, an entry in Settings › Apps and working folders in `Documents\Germano AI`; at the end the window closes and
-  **Germano opens by itself**, with the user's normal permissions, with no instruction pages. The **uninstaller**(Settings › Apps) asks for permission at start to remove the firewall rule and removes the program, shortcuts, the
+  **Germano opens by itself**, with the user's normal permissions, with no instruction pages. The **uninstaller** (Settings › Apps) asks for permission at start to remove the firewall rule and removes the program, shortcuts, the
   Settings › Apps entry and the technical files (optionally the working folders and the Vault too). The client asks for
   no permission and has its own shortcuts ("Germano AI Client"), so both editions can live on the same computer. The
   runtime includes the Microsoft Visual C++ DLLs: no redistributable to install.
@@ -154,30 +234,30 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
 ### Added - Desktop application
 - **`Germano.exe`**, the only executable on Windows: a GUI launcher (no console) that starts the bundled runtime
   (`runtime\pythonw.exe`) on the window manager `germano_desktop.py`.
-- One name for both editions: in the **full suite**it opens the **unified Dashboard**(offline Standalone, LAN Server,
-  Client mode); in the **light client**it opens the client panel (`client_ui.py`: find server, status, server AIs,
+- One name for both editions: in the **full suite** it opens the **unified Dashboard** (offline Standalone, LAN Server,
+  Client mode); in the **light client** it opens the client panel (`client_ui.py`: find server, status, server AIs,
   «ask a server AI», «protect text/files»).
 - **Dedicated app window**: Microsoft Edge in app mode on Windows, the system WebKit on macOS, Qt WebEngine (bundled)
   on Linux; isolated profile, no tabs and no address bar.
-- **Full shutdown with the red X**: the manager cleanly stops **only**Germano's processes (Flask server + AI daemon),
+- **Full shutdown with the red X**: the manager cleanly stops **only** Germano's processes (Flask server + AI daemon),
   with no orphan processes and without touching other system processes.
 
 ### Added - Remote Control: Germano from any browser on the network, with nothing to install
 - With Server mode on, any PC, tablet or smartphone on the local network opens `http://<server-IP>:8181/` (the
   `/remote` page, mobile-friendly and bilingual) and finds: the **server's AIs**, discovered automatically, the
-  **protected chat**(prompt and up to 12 attachments anonymized by the server before leaving, answer with the data
-  restored and the exact text received by the AI), **Protect and restore**for any AI (restoration on the device), the
-  **processing options**and the Proxy addresses for the device's tools.
-- **AI services via API**through Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen,
+  **protected chat** (prompt and up to 12 attachments anonymized by the server before leaving, answer with the data
+  restored and the exact text received by the AI), **Protect and restore** for any AI (restoration on the device), the
+  **processing options** and the Proxy addresses for the device's tools.
+- **AI services via API** through Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen,
   Mistral, Grok (xAI), Perplexity (Sonar), Google Gemini, OpenAI, Anthropic, OpenRouter, Groq and the server's local
   models (Ollama, LM Studio). The user's API key (used only for that request, never stored by the server) or the
   server's key, if the administrator shares this computer's AIs. The server runs its CLIs for the clients only when
   verified and without tools (Claude Code): agents that would run commands or modify files on the server are never run,
   and the Remote Control shows the protected alternative.
-- The **Proxy**also forwards to the service named in the path: `http://<server>:8181/p/<service>/v1` (e.g.
+- The **Proxy** also forwards to the service named in the path: `http://<server>:8181/p/<service>/v1` (e.g.
   `/p/deepseek/v1`, `/p/moonshot/v1`, `/p/meta/v1`), so Kimi Code, Mistral Vibe, Qwen Code, OpenCode and the SDKs go
   through Germano.
-- **Germano Client**uses the same interface (served by the client, which forwards to the server): the same
+- **Germano Client** uses the same interface (served by the client, which forwards to the server): the same
   capabilities as the browser, plus finding the server on the network and launching the PC's CLIs protected. New
   commands: `client login`, `client logout`, `client options`; `client ask` also with the services (`--model`, `--key`).
 
@@ -185,7 +265,7 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
 - By default network access needs **no credentials**. In the server's Dashboard (Settings › Network access › User
   management) the administrator creates the users and enables sign-in with **user name and password**, for the browser
   (sign-in screen, `HttpOnly` and `SameSite=Strict` session cookie) and for Germano Client (`client login`).
-- Passwords stored only as a **PBKDF2-SHA256**hash (600,000 iterations, random salt) in `config.json`; random 256-bit
+- Passwords stored only as a **PBKDF2-SHA256** hash (600,000 iterations, random salt) in `config.json`; random 256-bit
   sessions kept on the server only as a SHA-256 hash, valid 30 days from the last use, closed when the password changes
   or the user is deleted; 5 wrong attempts in 10 minutes block the address for 10 minutes; the same response time for
   existing and non-existing users. Without credentials, network requests get `401`. From the server computer
@@ -211,7 +291,7 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
   Trae, Zed, OpenCode, Goose, Cline, Kilo Code, Amp, Droid, Crush, llama.cpp and Jan, besides the ones already known.
 - Detection also reads the PATH saved in the registry (CLIs installed after Germano started) and also works on macOS
   and Linux (executables without extension, apps in `/Applications`).
-- **"Send to" only towards the detected AIs**(AI Studio, Remote Control and Germano Client): only the installed CLIs and
+- **"Send to" only towards the detected AIs** (AI Studio, Remote Control and Germano Client): only the installed CLIs and
   apps, the installed models of a running Ollama or LM Studio (one option per model) and, in the Remote Control, the
   services via API with a key (the server's, or entered on the device with " Enter the key") can be chosen; the other
   entries stay visible **greyed out and not selectable**, with the reason ("not detected", "not running", "no model
@@ -223,14 +303,14 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
   undetected local model anyway (409); `client ask` with a local model and no `--model` uses the first installed one.
 
 ### Added - Windows Server and virtual machines
-- **Windows Server 2019, 2022 and 2025**(Standard and Datacenter) and **virtual machines**(VMware, Hyper-V, Proxmox
+- **Windows Server 2019, 2022 and 2025** (Standard and Datacenter) and **virtual machines** (VMware, Hyper-V, Proxmox
   VE / KVM, VirtualBox, AWS, Azure, Google Cloud). The installer checks the real Windows version and reports: «Germano
   AI requires 64-bit Windows 10, Windows 11 or Windows Server 2019 or higher».
-- **Without Microsoft Edge or Chrome**(Windows Server 2019, Server Core) Germano does not open Internet Explorer, which
+- **Without Microsoft Edge or Chrome** (Windows Server 2019, Server Core) Germano does not open Internet Explorer, which
   cannot show the Dashboard: a notice shows the addresses to open and with OK Germano stays active as a server without a
   window (with Cancel it closes). The same happens if the window does not open (e.g. corporate policies), instead of
   closing. Edge installed for the user is recognized too.
-- **Windowless mode**for servers, VMs and scheduled tasks: `Germano.exe --no-browser` (or `--headless`,
+- **Windowless mode** for servers, VMs and scheduled tasks: `Germano.exe --no-browser` (or `--headless`,
   `GERMANO_HEADLESS=1`), `--mode=server` for a single start, `Germano.exe --stop` to stop it; the local and network
   addresses (Remote Control, Proxy) and the network warnings go to the log and the console, no dialogs. Reopened from
   the shortcut while it runs without a window, Germano only opens a window on the same Dashboard (no second server).
@@ -247,7 +327,7 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
   classified as «Public», a firewall rule that is missing, disabled or for another program, and Group Policy ignoring
   local rules. The Remote Control addresses list first the adapter that reaches the network (virtual adapters too) and
   leave out the automatic 169.254.x.x addresses.
-- **Shared data folder**(SMB/NFS, virtual disks): an operating-system lock on the data folder, a second engine (even
+- **Shared data folder** (SMB/NFS, virtual disks): an operating-system lock on the data folder, a second engine (even
   from another computer) is refused with a clear message: the Vault never has two writers.
 - Self-contained runtime verified: Visual C++ 2015-2022 DLLs included (`vcruntime140`, `vcruntime140_1`, `msvcp140`,
   `msvcp140_1`, `msvcp140_2`, `vcomp140`, `concrt140` and the others) and the dependencies of all 408 runtime binaries
@@ -257,20 +337,20 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
 - From the network (Proxy, Remote Control, shared AIs) restoration uses **only the tags of the request itself**: a
   device can no longer get back the data of other documents in the Vault (e.g. by asking an AI to «repeat
   [PERSONA_1]»). Requests made from the server computer keep using the whole Vault.
-- Removed the **shared token**for the network clients (`lan_token`, «New token»): replaced by open access or user
+- Removed the **shared token** for the network clients (`lan_token`, «New token»): replaced by open access or user
   management. The `/g/<token>/` Base URL prefix stays, with the session's personal token.
 
 ### Changed - Dashboard: work folders preview
 - The "Elaborazione dei documenti" (document processing) section (drop area and pending / ready / failed counters) is
   replaced by a **file-manager-style preview**: four boxes `input`, `output`, `processed` and `failed` with the folder's
-  **full path**above each one and the files they contain, updated in real time (newly arrived files highlighted, the
+  **full path** above each one and the files they contain, updated in real time (newly arrived files highlighted, the
   file being processed at the top of `input`, the reason for failed files with "Queue again").
-- Documents are dragged straight onto the **input**box ("Drag files here into the input folder"); a click on a box or
+- Documents are dragged straight onto the **input** box ("Drag files here into the input folder"); a click on a box or
   on its path opens the folder in File Explorer (Finder on macOS, the file manager on Linux). Texts in Italian and
   English.
 
 ### Changed - Updates
-- Only source: **https://download.germano.ai/**(`version.json`, or else the file listing). No more Google Drive and no
+- Only source: **https://download.germano.ai/** (`version.json`, or else the file listing). No more Google Drive and no
   SHA-256 digest: files on the official server are considered trustworthy, only the completeness of the download is
   checked.
 - Windows: the new version's installer is downloaded into the user's technical folder and, with "Install now" or at
@@ -298,57 +378,57 @@ Python + Flask engine, local daemon, offline AI models, OCR, API Proxy).
   built into the Dashboard.
 
 ## [0.52-alpha] - 2026-10-24
-Germano now works in four **operating modes**, chosen on first launch and changeable at any time: **Standalone**(default, everything on this computer), **Server**(offers the engine and the proxy to the other office PCs),
-**Client**(hands the model computation over to a Germano Server on the network) or **Server + Client**. Every element
+Germano now works in four **operating modes**, chosen on first launch and changeable at any time: **Standalone** (default, everything on this computer), **Server** (offers the engine and the proxy to the other office PCs),
+**Client** (hands the model computation over to a Germano Server on the network) or **Server + Client**. Every element
 of the Dashboard has a hover tooltip. Runtime and models are unchanged from 0.51; it works offline on a freshly
 installed Windows 11.
 
 ### Added - Bilingual interface (Italian/English)
 - The whole Dashboard and the offline Guide are **bilingual**. At startup the language is taken from the URL
   (`?lang=it|en`), then from the saved choice, finally from the browser language (Italian if it starts with `it`,
-  otherwise English). The **IT /  EN flags**at the top switch instantly, tooltips included; the choice is
+  otherwise English). The **IT /  EN flags** at the top switch instantly, tooltips included; the choice is
   remembered and shared between Dashboard and Guide. The tags used in documents (`[PERSONA]`, …) and the *Activity
   log* messages stay in Italian. Server messages shown in the interface follow the `X-Germano-Lang` header.
 
 ### Added - Server AIs shared with the clients
-- The Germano Server can **run its own AI CLIs for the clients**(e.g. Claude Code): new endpoints
+- The Germano Server can **run its own AI CLIs for the clients** (e.g. Claude Code): new endpoints
   `GET /api/harness/v1/tools` (list of the server's AIs and which can be used remotely) and
   `POST /api/harness/v1/run` (non-interactive execution, always through the Proxy: only anonymized text leaves towards
   the AI, the answer comes back with the real data). A client without that CLI locally uses it with `client ask`;
-  `client models` shows the catalog. Sharing is **off by default**and is enabled in *Settings › Network access*
+  `client models` shows the catalog. Sharing is **off by default** and is enabled in *Settings › Network access*
   (`share_ai_tools`), because it uses the server's account and credentials. Graphical tools (Antigravity, Cursor,
   Claude Desktop, Windsurf) are listed as not usable remotely, with the reason. Client mode and the remote engine also
   accept the server address in short form (`192.168.1.10`) or as a Base URL with token copied from the Dashboard, with
   understandable network messages.
 
 ### Added - Operating mode at startup
-- **Welcome dialog**on the first Dashboard launch: three checkboxes — **[x] Standalone**(default), **[ ] Server**,
-  **[ ] Client**— each one explained; Server and Client can be selected together. The dialog states that the mode
+- **Welcome dialog** on the first Dashboard launch: three checkboxes — **[x] Standalone** (default), **[ ] Server**,
+  **[ ] Client** — each one explained; Server and Client can be selected together. The dialog states that the mode
   *can always be changed at any time in the Settings* («Questa modalità è sempre modificabile in qualsiasi momento
   nelle Impostazioni»). Closing it without choosing confirms Standalone and it is not shown again.
-- New **Impostazioni**(Settings) button and mode indicator in the top bar (green = Server, blue = Client, orange =
-  attention, e.g. server unreachable); in Advanced mode the **Sistema › Rete e modalità operativa**panel summarizes
+- New **Impostazioni** (Settings) button and mode indicator in the top bar (green = Server, blue = Client, orange =
+  attention, e.g. server unreachable); in Advanced mode the **Sistema › Rete e modalità operativa** panel summarizes
   network listening, the connection to the server and the token.
 - The mode **applies immediately, without restarting Germano**: the Dashboard always and only listens on
   `127.0.0.1`; the Server part adds and removes, live, a second network listener (`0.0.0.0`, or the `bind_host` IP)
-  and the UDP discovery. In **Standalone**and **Client**no Germano port is open to the network. Server and Client
+  and the UDP discovery. In **Standalone** and **Client** no Germano port is open to the network. Server and Client
   start the engine by themselves; changing the Client part restarts the engine with the right type (local or remote).
-- With the Server part active, the Settings show the IP addresses, the client token (with **Nuovo token**— new
+- With the Server part active, the Settings show the IP addresses, the client token (with **Nuovo token** — new
   token — which immediately invalidates the previous one) and the auto-discovery status.
-- **`Germano.exe`**now sets `GERMANO_MODE=server`: it forces Server mode for that run only, without changing
+- **`Germano.exe`** now sets `GERMANO_MODE=server`: it forces Server mode for that run only, without changing
   the saved choice (the Dashboard says so). `GERMANO_HOST=0.0.0.0` remains supported.
 - Changing the mode, the token and searching for servers are reserved to the computer itself (`/api/mode`,
   `/api/mode/token`, `/api/remote/servers`, never from the network) and honor `lock_settings`: with settings locked by
   the administrator the mode cannot be changed, the interface preferences can.
 
 ### Added - Client mode (remote engine)
-- New `germano/remote_engine.py`: in Client mode the daemon **does not load the models**(a few MB of memory instead
+- New `germano/remote_engine.py`: in Client mode the daemon **does not load the models** (a few MB of memory instead
   of several GB) and sends the Germano Server only the texts and images to analyze; it receives positions,
   categories and scores. **Vault, tags, files and restoration stay on this computer**: the server keeps nothing from
   the clients and does not log their file names. The server applies the client's settings (models and threshold), so
   the result matches the local engine's.
 - The server is found automatically through UDP discovery (a GPU server is preferred) or its address is entered in
-  the Settings, with a **Cerca server in rete**(search the network) button. The server token is mandatory.
+  the Settings, with a **Cerca server in rete** (search the network) button. The server token is mandatory.
 - **Fail-safe**: if the server does not answer Germano sends nothing, the proxy and the Studio block the request with
   a clear message (HTTP 503) and documents stay in the `input` folder (not among the failed ones) until the server is
   back; processing then resumes by itself. Optional: fall back to the local engine if no server answers at startup
@@ -364,15 +444,15 @@ installed Windows 11.
   Settings (`enable_tooltips`).
 
 ### Added - LAN Server mode
-- **LAN auto-discovery**(`germano/discovery.py`): a lightweight UDP responder on port **8182**answers
+- **LAN auto-discovery** (`germano/discovery.py`): a lightweight UDP responder on port **8182** answers
   `GERMANO_DISCOVERY_PING` pings with the server's info (service, version, port, name, shared engine status) — never
   the token, never personal data. `GET /api/discovery` returns the same over HTTP. The default Dashboard port is now
   **8181**.
-- **Tiered security for network access**(nothing changes for `127.0.0.1`-only use):
+- **Tiered security for network access** (nothing changes for `127.0.0.1`-only use):
   - from the network, read-only and without a token: Dashboard, `/api/status`, `/api/ai/detect`, `/api/discovery`;
   - from the network, with a **shared token**: the proxy to the AIs (`/v1/messages`, `/v1/chat/completions`, …),
     `POST /api/studio/send` and the shared engine (`/api/engine/v1/…`). The token travels in the `X-Germano-Auth`
-    header **or**as a `/g/<token>` Base URL prefix (so it works with any CLI, unmodified). Without a valid token
+    header **or** as a `/g/<token>` Base URL prefix (so it works with any CLI, unmodified). Without a valid token
     access is always denied;
   - **server computer only**: engine control, settings, mode, files, the mapping archive and de-anonymization
     (`/api/v1/deanonymize_*`). Real data is never exposed to the network.
@@ -388,7 +468,7 @@ installed Windows 11.
 - **Kimi, DeepSeek and Qwen Integration**: added to the local detection catalog (`ai_detect.py`) on both server and client. In AI Studio they are available directly as forwarding targets; in the *AI Agents and API* tab, 1-click preset buttons allow instantly setting the OpenAI target to: OpenAI, DeepSeek (`api.deepseek.com`), Kimi (`api.moonshot.cn`), Qwen (`dashscope.aliyuncs.com`), and Ollama.
 
 ### Fixed - from the client/server test campaign of 24/10
-- **Privacy: damaged Office and OpenDocument files are no longer marked «ready» with personal data in clear.**If an
+- **Privacy: damaged Office and OpenDocument files are no longer marked «ready» with personal data in clear.** If an
   internal text part (e.g. `word/document.xml`, `styles.xml`) cannot be read, the file goes to *Non riusciti*
   (failed) with the reason, instead of being copied to the output without anonymization.
 - A damaged or truncated PDF stayed stuck forever in the `input` folder (with a copy in `failed` and no reason): it
@@ -401,17 +481,17 @@ installed Windows 11.
   showed as completed and the Dashboard stayed on «Documenti in arrivo».
 - `GET /api/ai/detect` requested from the network returns the names and versions of the AIs but not their
   installation paths (they revealed the server's Windows user name).
-- **Network auto-discovery**(Client mode and Germano Client): on a PC without a local server the search stopped
+- **Network auto-discovery** (Client mode and Germano Client): on a PC without a local server the search stopped
   right away, at the first «port unreachable» notice Windows returns for the ping to 127.0.0.1, and often missed the
   LAN servers. It now listens for answers for the whole expected time; answers with an invalid port are discarded.
 - `Germano.exe` uses Windows line endings (CRLF), like `Germano.exe`.
 
 ### Added - Germano Client v0.01 (separate product)
-- New **`germano_client`**application (separate folder), very lightweight: it **contains no models**(28 MB of
+- New **`germano_client`** application (separate folder), very lightweight: it **contains no models** (28 MB of
   runtime). It finds the server on the LAN by itself (UDP broadcast), falling back to `client_config.json` or a
   command-line parameter, and routes local CLIs (Claude Code, Codex, Aider, Gemini CLI) to the server's proxy by
   setting `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` with the `/g/<token>` prefix.
-- **`START_CLIENT.bat`**launcher with an interactive menu and `discover`, `status`, `launch <cli>`, `send`,
+- **`START_CLIENT.bat`** launcher with an interactive menu and `discover`, `status`, `launch <cli>`, `send`,
   `config` commands. Documentation in `README.md` and `README.en.md`.
 
 ## [0.51-alpha] - 2026-10-22
@@ -420,20 +500,20 @@ engine (`germano/`), a completely redesigned Dashboard and automatic updates. Ru
 unchanged: it works offline on a freshly installed Windows 11.
 
 ### Added - New Dashboard
-- Redesigned interface, light and sober, with the official logo. **Semplice / Avanzata**(Simple / Advanced)
+- Redesigned interface, light and sober, with the official logo. **Semplice / Avanzata** (Simple / Advanced)
   selector; in Advanced Mode four tabs: *Elaborazione* (Processing), *Agenti AI e API* (AI agents and API),
   *Filtri e modelli* (Filters and models), *Sistema e registro* (System and log). The Dashboard labels are in Italian.
 - **Batch work**: add files or whole folders (drag & drop or *Seleziona file* / *Seleziona cartella*), **Apri cartella
-  input**and **Apri cartella output**buttons (File Explorer), *In attesa* / *Pronti* / *Non riusciti* (pending /
+  input** and **Apri cartella output** buttons (File Explorer), *In attesa* / *Pronti* / *Non riusciti* (pending /
   ready / failed) counters, batch progress and final summary, a notice with *Avvia elaborazione* (start processing)
   when documents are waiting and the engine is paused.
-- **Documenti**table with *Pronti*, *In attesa*, *Non riusciti* and *Originali* (Advanced) tabs, a filter by name,
+- **Documenti** table with *Pronti*, *In attesa*, *Non riusciti* and *Originali* (Advanced) tabs, a filter by name,
   folder or reason, and *Apri* (open), *Mostra nella cartella* (show in folder) and *Scarica* (download) actions.
   Failed documents show the reason and can be queued again one by one or all together (**Rimetti in coda**);
-  **Esporta elenco**saves the table as CSV for Excel (`;` separator, protected against formula injection).
+  **Esporta elenco** saves the table as CSV for Excel (`;` separator, protected against formula injection).
 - For every processed document the mode, the number of redacted items and the time are recorded
   (`state/outputs.json`) and shown in the table.
-- **Agenti AI e API**tab: Proxy addresses to copy (OpenAI `/v1` and Anthropic formats), a table showing where to set
+- **Agenti AI e API** tab: Proxy addresses to copy (OpenAI `/v1` and Anthropic formats), a table showing where to set
   them in Claude Code, Codex CLI, Cursor, Antigravity, Windsurf, OpenCode, Continue, Aider and the OpenAI and
   Anthropic SDKs, target services and REST API examples with `curl.exe`.
 - *Sistema e registro* tab: working folder paths with *Apri* (open) and *Copia percorso* (copy path) buttons, update
@@ -442,26 +522,26 @@ unchanged: it works offline on a freshly installed Windows 11.
   executables or scripts), `POST /api/retry_failed`, `GET /api/update/status`, `POST /api/update/check|download|install`.
 
 ### Added - Dual mode and AI Studio
-- The Dashboard now has a main switch **Anonimizza file**(Anonymize files) / **Studio AI**(the choice is
+- The Dashboard now has a main switch **Anonimizza file** (Anonymize files) / **Studio AI** (the choice is
   remembered).
-- **Anonymize files**: at the top of the view, a grid of **folder cards**(pending, ready, errors, originals,
-  vault/extracted) with live counters; clicking a card opens that folder in File Explorer. A **live stats**strip:
+- **Anonymize files**: at the top of the view, a grid of **folder cards** (pending, ready, errors, originals,
+  vault/extracted) with live counters; clicking a card opens that folder in File Explorer. A **live stats** strip:
   files processed/total in the batch, redacted PII, documents per minute, CPU and RAM usage, with a progress bar.
 - **AI Studio**: you write a prompt and attach files; the text and the attachments' content are **anonymized by the
-  local engine before**being forwarded to an AI. If the engine is not running the request is blocked and **no data
+  local engine before** being forwarded to an AI. If the engine is not running the request is blocked and ** no data
   leaves the computer**. The conversation always shows *what* is sent (already with the labels) and the list of
   redacted items; a button copies the protected text.
-- **Rileva AI**(Detect AI): a button that finds the AIs and CLIs installed on the computer (Claude Code, Claude
+- **Rileva AI** (Detect AI): a button that finds the AIs and CLIs installed on the computer (Claude Code, Claude
   Desktop, Antigravity, Gemini CLI, Codex, Aider, Cursor, Windsurf, Ollama, LM Studio) by reading the file system and
   local ports (no process started, no network): a chip with a green check for the ready ones and a target selector.
   Detection is not limited to `PATH` (Claude Code and Antigravity install outside `PATH`).
-- **Configurazione Granulare**(Granular configuration): a button in the Studio that opens a drawer with the *protection
+- **Configurazione Granulare** (Granular configuration): a button in the Studio that opens a drawer with the *protection
   profile*, *analysis models* (sensitivity included) and *data categories* panels, to tune what gets redacted on the fly.
 - New local APIs: `GET /api/ai/detect` (list of installed AIs, cached for 30 s, `?refresh=1` to rescan) and
   `POST /api/studio/send` (protects prompt and attachments and returns the text ready to send, with the redacted items).
 
 ### Added - Automatic updates
-- **Only when Windows reports that the PC is connected to the Internet**(Network List Manager: the check sends no
+- **Only when Windows reports that the PC is connected to the Internet** (Network List Manager: the check sends no
   packets), 20 seconds after startup and then every 6 hours, Germano opens `https://download.germano.ai`, the single
   reference for new versions, which points to the public Google Drive folder holding the packages, and looks there for
   the most recent `GermanoAI_Release_v<version>.zip`. On a disconnected PC no connection attempt is made.
@@ -477,14 +557,14 @@ unchanged: it works offline on a freshly installed Windows 11.
 
 ### Fixed - Data loss and privacy
 - **DOCX files destroyed by anonymization**: 0.50 rewrote every paragraph with `paragraph.text = ...`, wiping bold
-  text, fonts, hyperlinks and **the pictures**of the document; the author stayed in the metadata. Word, Excel and
+  text, fonts, hyperlinks and **the pictures** of the document; the author stayed in the metadata. Word, Excel and
   PowerPoint files are now edited directly in their XML: only personal text changes, everything else stays identical.
 - **Document parts never analyzed**: footnotes, text boxes, nested tables, comments (and their authors), tracked
   changes, content controls, grouped shapes and PowerPoint SmartArt, speaker notes, charts, ODT headers/footers
   (`styles.xml`), metadata (author, last modified by, title), preview thumbnails.
 - **Italian NER model blind beyond ~512 tokens**: on long texts it detected nothing after the first lines (test: 0
   entities on 5,500 characters, 7 after the fix). The text is now split into overlapping chunks.
-- **Scanned PDFs with a digital stamp**(typical in public administrations: a protocol number printed on a scan): no
+- **Scanned PDFs with a digital stamp** (typical in public administrations: a protocol number printed on a scan): no
   OCR, so the content stayed readable. OCR now runs whenever the page images carry little digital text.
 - **"Searchable" scans**: only the invisible text layer was removed while the image stayed visible. The pixels
   underneath are now blanked as well.
@@ -502,7 +582,7 @@ unchanged: it works offline on a freshly installed Windows 11.
 - **Restore with wrong data**: non-numbered tags (`[PERSONA]`) were replaced with the last name seen. Only numbered
   tags are restored now; with the switch off, the vault no longer stores real data.
 - **ANSI texts**: TXT/CSV files encoded as Windows-1252 lost their accented letters (`errors="ignore"`).
-- **HTML comments**turned into visible text after anonymization.
+- **HTML comments** turned into visible text after anonymization.
 - Images were re-exported at 72 dpi (loss of resolution), only the first page of multi-page TIFFs was kept, EXIF
   rotation of photos was not applied and GPS metadata was preserved.
 - Originals in `processed/` could be overwritten by a file with the same name.
@@ -545,7 +625,7 @@ unchanged: it works offline on a freshly installed Windows 11.
 - Office conversions run in a separate process, with macros disabled and a timeout.
 
 ### Added
-- **Native RTF**without Microsoft Word (Windows 11 24H2 no longer even ships WordPad).
+- **Native RTF** without Microsoft Word (Windows 11 24H2 no longer even ships WordPad).
 - **Signed `.p7m` files (CAdES)**: the inner document is extracted and anonymized (e.g. `fattura.xml.p7m`).
 - `.doc`/`.ppt`/`.xls` files that are actually renamed RTF, DOCX, HTML or XML are recognized without Office;
   conversion through LibreOffice when Microsoft Office is not installed.

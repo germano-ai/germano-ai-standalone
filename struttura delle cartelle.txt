@@ -2,14 +2,14 @@
 GERMANO AI — STRUTTURA DELLE CARTELLE PER OGNI RELEASE (v0.60+)
 ================================================================================
 
-Questa è la struttura ufficiale e tassativa da adottare per la release 0.60
-e per tutte le release future di Germano AI.
+Questa è la struttura ufficiale e tassativa adottata dalla release 0.60 e da tutte
+le release successive di Germano AI. Release corrente: 0.90 (14 novembre 2026).
 
 --------------------------------------------------------------------------------
 ALBERATURA DELLE CARTELLE
 --------------------------------------------------------------------------------
 
-germano.ai-0.70/
+germano.ai-0.90/
 ├── sorgenti/
 │   ├── macos/
 │   │   ├── germano/
@@ -26,15 +26,16 @@ germano.ai-0.70/
 │   ├── linux/
 │   └── windows/
 └── releases/
+    ├── version.json
     ├── macos/
-    │   ├── germano-0.70.pkg
-    │   └── germano-client-0.70.pkg
+    │   ├── germano-0.90.pkg
+    │   └── germano-client-0.90.pkg
     ├── linux/
-    │   ├── germano-0.70.deb
-    │   └── germano-client-0.70.deb
+    │   ├── germano-0.90.deb
+    │   └── germano-client-0.90.deb
     └── windows/
-        ├── germano-0.70.exe
-        └── germano-client-0.70.exe
+        ├── germano-0.90.exe
+        └── germano-client-0.90.exe
 
 
 --------------------------------------------------------------------------------
@@ -43,32 +44,42 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
 
 1. sorgenti/
    - Scopo: Contiene SOLO ed ESCLUSIVAMENTE ciò che è codice sorgente e asset
-     pubblicabili pubblicamente su GitHub.
+     pubblicabili pubblicamente su GitHub (germano-ai/germano-ai-standalone).
    - Contenuto:
      * Script Python (.py), file di configurazione puliti (.json), launcher
      * Template HTML della Dashboard e del pannello client
      * Fogli di stile CSS, asset grafici (loghi SVG, favicon ICO)
-     * Documentazione tecnica, file README.md, CHANGELOG.md e guide offline
+     * Documentazione: README.md / README.en.md, CHANGELOG.md / CHANGELOG.en.md,
+       LEGGIMI_v0.90.md, guida offline GUIDA_OFFLINE.html (identica in tutte le copie)
    - Regola vincolante: NESSUN modello di intelligenza artificiale pesante, nessun
-     file binario proprietario di terze parti, nessun installer o eseguibile compilato.
+     file binario proprietario di terze parti, nessun installer o eseguibile compilato,
+     nessuna cache (__pycache__, .pyc).
    - Suddivisione:
-     * sorgenti/windows/germano/        -> Suite completa per Windows
+     * sorgenti/windows/germano/        -> Suite completa per Windows (RIFERIMENTO)
      * sorgenti/windows/germano-client/ -> Client leggero per Windows
      * sorgenti/linux/germano/          -> Suite completa per Linux
      * sorgenti/linux/germano-client/   -> Client leggero per Linux
      * sorgenti/macos/germano/          -> Suite completa per macOS
      * sorgenti/macos/germano-client/   -> Client leggero per macOS
+   - Coerenza: i file comuni degli alberi Linux e macOS devono essere identici a
+     quelli Windows (si modifica la copia windows e si sincronizza con
+     «file inutili/sincronizza_sorgenti_linux_mac.py»); il controllo è
+     sorgenti/windows/germano/build/coerenza_sorgenti.py, che i costruttori dei
+     pacchetti .deb e .pkg eseguono prima di ogni costruzione.
 
 2. modelli/
-   - Scopo: Archivio centralizzato dei modelli di Intelligenza Artificiale locali
-     utilizzati dalla suite completa per l'elaborazione offline dei documenti.
+   - Scopo: Archivio centralizzato degli 8 modelli di Intelligenza Artificiale
+     locali della suite completa (elaborazione 100% offline).
    - Contenuto:
-     * openai/privacy-filter (pesi neurali per l'intercettazione dei dati personali)
-     * Modelli NER (Named Entity Recognition per identificazione entità)
-     * Pesi neurali per OCR (EasyOCR, librerie di riconoscimento caratteri)
-     * Modello YuNet Face DNN (biometria facciale, rilevamento volti e targhe)
-     * Pattern di validazione crittografica e regex (Codici Fiscali, IBAN, ecc.)
-   - Nota: I modelli sono condivisi per la generazione dei pacchetti standalone.
+     * privacy-filter (Velvet Privacy Filter, dati personali nel testo)
+     * italian-ner-xxl (NER italiano, ONNX)
+     * easyocr (riconoscimento dei caratteri)
+     * face-detection (YuNet), signature-detection e plate-detection (YOLOS)
+     * whisper-small (trascrizione audio, CTranslate2 INT8)
+     * qwen3.5-0.8b (Sistema 2, GGUF Q8_0 per llama.cpp)
+   - Nella 0.90 «modelli» è una giunzione NTFS verso germano.ai-0.80/modelli
+     (stessi file, nessuna copia): NON cancellare la cartella della 0.80 senza
+     prima sostituire la giunzione con una copia reale.
 
 3. dipendenze/
    - Scopo: Raccoglie tutti i componenti di supporto necessari per consentire il
@@ -76,54 +87,57 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
    - Suddivisione per sistema operativo:
      * dipendenze/windows/:
        - vc_redist.x64.exe (Microsoft Visual C++ Redistributable 64-bit)
-       - Runtime Python portabile incorporato
-       - Librerie C++ / DLL native per l'elaborazione PDF/immagini
+       - runtime-germano e runtime-germano-client (Python 3.11 portabile con le
+         librerie e le DLL di Visual C++ accanto all'interprete)
+       - llama-server (llama.cpp per il Sistema 2) e 7zip (archivi 7Z e RAR)
      * dipendenze/linux/:
-       - Runtime Python 3.11+ e librerie native precompilate per Linux
-       - Pacchetti di supporto OCR e librerie grafiche di sistema
+       - Python 3.11 portabile, wheel x86_64, librerie X11 per Qt, llama.cpp, 7-Zip
      * dipendenze/macos/:
-       - Runtime Python 3.11+ e binari universali (Apple Silicon / Intel)
-       - Librerie native per la gestione documentale su macOS
+       - Python 3.11 portabile e wheel (Apple Silicon e Intel), llama.cpp, 7-Zip
+   - Nella 0.90 «dipendenze» è una giunzione NTFS verso germano.ai-0.80/dipendenze
+     (i costruttori leggono soltanto). Attenzione: build/scarica_dipendenze.py
+     lanciato dalla 0.90 scriverebbe nelle dipendenze della 0.80.
 
 4. releases/
    - Scopo: Cartella di distribuzione contenente esclusivamente i singoli installer
-     monolitici e autosufficienti pronti all'uso per l'utente finale.
+     monolitici e autosufficienti pronti all'uso per l'utente finale, più
+     version.json (indice per download.germano.ai con dimensione e SHA-256 di ogni
+     pacchetto, creato da build/crea_version_json.py dai file su disco).
    - Regola fondamentale: Zero dipendenze da Internet all'installazione. L'applicazione
      deve funzionare al primo colpo anche su sistemi operativi appena installati ("vanilla"):
-     * Windows (Windows 11 Vanilla):
-       - releases/windows/germano-0.70.exe
-         Installer unico autoestraente della suite completa. Si installa nello
-         spazio utente (%LOCALAPPDATA%\Programs\Germano AI) senza privilegi di
-         amministratore (Zero UAC), crea il collegamento Desktop e imposta le
-         cartelle di lavoro protette in Documenti\Germano AI.
-       - releases/windows/germano-client-0.70.exe
-         Installer unico del client leggero (~22-26 MB, senza modelli pesanti).
-     * Linux (Ubuntu 26 / Debian Vanilla):
-       - releases/linux/germano-0.70.deb
-         Pacchetto nativo Debian/Ubuntu autosufficiente. Si installa pulito,
-         configura la voce di menu desktop Germano.desktop e la cartella in
-         ~/Documents/Germano AI.
-       - releases/linux/germano-client-0.70.deb
+     * Windows (Windows 10/11, Windows Server 2019+):
+       - releases/windows/germano-0.90.exe
+         Installer unico autoestraente della suite completa. Si installa per
+         l'utente corrente (%LOCALAPPDATA%\Programs\Germano AI); appena si apre
+         chiede i permessi di amministratore solo per la regola del firewall
+         (accesso dalla rete locale), crea i collegamenti e le cartelle di lavoro
+         in Documenti\Germano AI. Deve restare sotto i 4 GB (limite di Windows).
+       - releases/windows/germano-client-0.90.exe
+         Installer unico del client leggero (~22 MB, senza modelli, nessun UAC).
+     * Linux (Ubuntu 26.04 / Debian):
+       - releases/linux/germano-0.90.deb
+         Pacchetto nativo Debian/Ubuntu autosufficiente in /opt/germano, con la
+         voce di menu e il comando germano-ai.
+       - releases/linux/germano-client-0.90.deb
          Pacchetto nativo Debian/Ubuntu per il client leggero.
-     * macOS (macOS Sonoma/Sequoia Vanilla - Apple Silicon & Intel):
-       - releases/macos/germano-0.70.pkg
-         Pacchetto guidato nativo macOS (.pkg). Installa Germano.app in
-         ~/Applications o /Applications e predispone ~/Documents/Germano AI
-         senza richiedere permessi root o sudo.
-       - releases/macos/germano-client-0.70.pkg
+     * macOS (Apple Silicon per la suite, Apple Silicon e Intel per il client):
+       - releases/macos/germano-0.90.pkg
+         Pacchetto nativo macOS (.pkg). «Installa solo per me» mette Germano.app in
+         ~/Applications senza password di amministratore.
+       - releases/macos/germano-client-0.90.pkg
          Pacchetto nativo macOS per il client leggero.
 
 --------------------------------------------------------------------------------
 NOTE ARCHITETTURALI GENERALI
 --------------------------------------------------------------------------------
-- Cartelle utente di lavoro: input, output, processed, failed, vault ed extracted
-  risiedono sempre nella directory personale dell'utente (Documenti / Documents),
-  garantendo compatibilità totale con i permessi UAC di sistema ed evitando
-  sincronizzazioni cloud accidentali di dati in chiaro.
-- Aggiornamenti: Puntano direttamente all'endpoint ufficiale sicuro
-  https://download.germano.ai/ senza dipendenze da Google Drive e senza verifiche
-  crittografiche manuali.
-- Interfaccia: Finestra applicativa dedicata a schermo intero o finestra singola,
-  senza finestre nere di terminale e senza browser generici; la X rossa chiude
-  interamente il software e arresta tutti i processi in background.
+- Cartelle utente di lavoro: input, output, processed, failed ed extracted
+  risiedono sempre nella directory personale dell'utente (Documenti / Documents).
+  Il Vault è in extracted: deanonymize_vault.db (SQLite in modalità WAL, dalla 0.90)
+  con la copia portabile deanonymize_vault.json.
+- Aggiornamenti: puntano direttamente all'endpoint ufficiale
+  https://download.germano.ai/ (version.json caricato PER ULTIMO, dopo i pacchetti),
+  senza dipendenze da Google Drive.
+- Interfaccia: Finestra applicativa dedicata, senza finestre nere di terminale e
+  senza browser generici; la X rossa chiude interamente il software e arresta
+  tutti i processi in background.
 ================================================================================

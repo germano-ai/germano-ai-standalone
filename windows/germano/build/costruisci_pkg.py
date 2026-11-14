@@ -1,6 +1,6 @@
 """Costruisce i pacchetti di installazione macOS (.pkg) AUTOSUFFICIENTI (nessun download all'installazione):
-  germano.ai-0.80/releases/macos/germano-0.80.pkg          suite completa (Apple Silicon)
-  germano.ai-0.80/releases/macos/germano-client-0.80.pkg   client leggero (Apple Silicon e Intel)
+  germano.ai-0.90/releases/macos/germano-0.90.pkg          suite completa (Apple Silicon)
+  germano.ai-0.90/releases/macos/germano-client-0.90.pkg   client leggero (Apple Silicon e Intel)
 partendo da sorgenti/macos/<edizione>, dipendenze/macos (Python portabile + librerie per macOS) e modelli/.
 
 Il .pkg e' un «product archive» scritto direttamente, senza gli strumenti di Apple (pkgbuild/productbuild), quindi
@@ -614,6 +614,10 @@ def xar_read(path):
 def build(edition):
     ed = EDITIONS[edition]
     src = os.path.join(RELEASE, "sorgenti", "macos", edition)
+    # Cancello di coerenza (turno 26): i file comuni dell'albero macOS devono essere identici a quelli di Windows
+    import coerenza_sorgenti
+    n_common = coerenza_sorgenti.verify(RELEASE, edition, "macos")
+    print(f"   sorgenti macos/{edition} allineati a windows/{edition} ({n_common} file comuni identici)", flush=True)
     version = open(os.path.join(src, "VERSION"), encoding="utf-8-sig").read().strip()
     out = os.path.join(RELEASE, "releases", "macos", ed["file"].format(v=version))
     t0 = time.time()

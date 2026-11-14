@@ -335,6 +335,44 @@ class AnonCache:
 CACHE = AnonCache()
 
 
+class MediaCache(AnonCache):
+    """Allegati gia' protetti (immagini, PDF, documenti rimandati nella cronologia del Proxy a ogni turno): stessa
+    politica della cache dei testi, con un tetto anche sulla memoria occupata (turno 26)."""
+
+    def __init__(self, maxsize=128, ttl=3600, max_bytes=256 * 1024 * 1024):
+        super().__init__(maxsize, ttl)
+        self.max_bytes = max_bytes
+        self._sizes = {}
+
+    def put(self, k, value, size=0):
+        size = int(size or 0)
+        if size > self.max_bytes // 4:
+            return                                   # un solo allegato enorme non svuota la cache
+        with self._lock:
+            self._d[k] = (time.time(), value)
+            self._d.move_to_end(k)
+            self._sizes[k] = size
+            while len(self._d) > self.maxsize or sum(self._sizes.values()) > self.max_bytes:
+                old, _ = self._d.popitem(last=False)
+                self._sizes.pop(old, None)
+
+    def get(self, k):
+        hit = super().get(k)
+        if hit is None:
+            with self._lock:
+                if k not in self._d:
+                    self._sizes.pop(k, None)
+        return hit
+
+    def clear(self):
+        with self._lock:
+            self._d.clear()
+            self._sizes.clear()
+
+
+MEDIA_CACHE = MediaCache()
+
+
 def settings_signature(cfg, options=None):
     """Impronta delle impostazioni che cambiano il risultato del motore (modelli, categorie, soglia, mascheramento)."""
     keys = sorted(k for k in cfg if k.startswith(("enable_model", "enable_regex", "censor_")) or

@@ -6,7 +6,7 @@ from email import policy
 
 from .. import common
 from ..analyzer import Unit, apply_replacements
-from . import is_supported, process_bytes, transform_filename
+from . import is_supported, process_bytes, reraise_control, transform_filename
 
 _HEADERS = {
     "from", "to", "cc", "bcc", "reply-to", "sender", "return-path", "delivered-to", "x-original-to",
@@ -25,6 +25,11 @@ def _ext_for(part):
         "image/tiff": ".tif", "image/bmp": ".bmp", "image/webp": ".webp", "text/csv": ".csv",
         "application/zip": ".zip", "application/rtf": ".rtf", "text/rtf": ".rtf", "text/xml": ".xml",
         "application/xml": ".xml", "message/rfc822": ".eml",
+        "application/x-7z-compressed": ".7z", "application/vnd.rar": ".rar", "application/x-rar-compressed": ".rar",
+        "application/gzip": ".gz", "application/x-gzip": ".gz", "application/x-tar": ".tar",
+        "audio/mpeg": ".mp3", "audio/mp3": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a", "audio/ogg": ".ogg", "audio/flac": ".flac", "audio/x-flac": ".flac",
+        "audio/opus": ".opus", "audio/aac": ".aac", "audio/amr": ".amr",
     }.get(ct, ".bin")
 
 
@@ -134,6 +139,7 @@ def _process_attachment(part, ctx, person):
             common.log(f"Email: allegato elaborato ({base}).")
             return
         except Exception as e:
+            reraise_control(e)      # arresto, tempo scaduto o motore remoto assente: non e' un difetto dell'allegato
             reason = str(e)
     else:
         reason = "formato non supportato"

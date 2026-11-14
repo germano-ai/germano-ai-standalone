@@ -7,6 +7,7 @@ from ..analyzer import Unit, apply_replacements
 from . import is_supported, process_bytes, ProcessingError, reraise_control
 
 ZOOM = 2.0
+PAGE_WINDOW = 8      # pagine anonimizzate insieme (testo letto dall'OCR analizzato in un'unica chiamata)
 _SEP = -1.0e9
 _DENSITY_OCR = 12.0  # caratteri digitali ogni 10.000 pt^2 di immagine sotto i quali la pagina si considera scansione
 
@@ -290,18 +291,37 @@ def _process_doc(doc, ctx, fitz):
             ap(apply_replacements(u.text, r))
 
     # --- Passo 2: censura pagina per pagina -------------------------------------------------------
+    # Anonimizzazione a finestre di PAGE_WINDOW pagine (turno 26): per ogni pagina livello testo + visione/OCR, poi
+    # UN'UNICA analisi del testo letto dall'OCR di tutta la finestra (lotti pieni per i modelli e propagazione dei dati
+    # fra le pagine scansionate), infine rimozioni ed etichette pagina per pagina. Memoria limitata: delle pagine si
+    # tengono solo i riquadri, le immagini vengono scartate subito dopo la visione.
     total_regions = 0
-    for pno in range(n_pages):
-        ctx.check()
-        ctx.report(f"pagina {pno + 1}/{n_pages}")
-        page = doc[pno]
-        text, boxes, sizes = page_data[pno]
-        repls = page_repls.get(pno) or []
-        if ctx.anonymize:
-            total_regions += _anonymize_page(page, fitz, ctx, text, boxes, sizes, repls)
-        else:
-            _restore_page(page, fitz, text, boxes, sizes, repls)
-        page_data[pno] = None
+    if ctx.anonymize:
+        for w0 in range(0, n_pages, PAGE_WINDOW):
+            states = []
+            for pno in range(w0, min(n_pages, w0 + PAGE_WINDOW)):
+                ctx.check()
+                ctx.report(f"pagina {pno + 1}/{n_pages}")
+                text, boxes, sizes = page_data[pno]
+                states.append(_prepare_page(doc[pno], fitz, ctx, text, boxes, sizes, page_repls.get(pno) or []))
+            scanned = [st for st in states if st["scan"] is not None]
+            if scanned:
+                from .images import regions_from_scans
+                ctx.report(f"analisi del testo letto (pagine {w0 + 1}-{w0 + len(states)}/{n_pages})")
+                for st, regions in zip(scanned, regions_from_scans(ctx, [(st["scan"], st["ocr_areas"])
+                                                                         for st in scanned])):
+                    st["regions"] = regions
+            for st in states:
+                ctx.check()
+                total_regions += _finish_page(st, fitz, ctx)
+                page_data[st["pno"]] = None
+    else:
+        for pno in range(n_pages):
+            ctx.check()
+            ctx.report(f"pagina {pno + 1}/{n_pages}")
+            text, boxes, sizes = page_data[pno]
+            _restore_page(doc[pno], fitz, text, boxes, sizes, page_repls.get(pno) or [])
+            page_data[pno] = None
 
     # --- Passo 3: campi modulo, commenti, link, segnalibri, metadati -----------------------------
     for pno in range(n_pages):
@@ -368,6 +388,17 @@ def _process_doc(doc, ctx, fitz):
 
 
 def _anonymize_page(page, fitz, ctx, text, boxes, sizes, repls):
+    """Una pagina da sola (stesso risultato di una finestra di una pagina)."""
+    st = _prepare_page(page, fitz, ctx, text, boxes, sizes, repls)
+    if st["scan"] is not None:
+        from .images import regions_from_scans
+        st["regions"] = regions_from_scans(ctx, [(st["scan"], st["ocr_areas"])])[0]
+    return _finish_page(st, fitz, ctx)
+
+
+def _prepare_page(page, fitz, ctx, text, boxes, sizes, repls):
+    """Prima fase di una pagina: riquadri di rimozione del livello testo e, se servono, visione e OCR sull'immagine
+    della pagina (la cui analisi del testo avviene dopo, insieme alle altre pagine della finestra)."""
     img_rects = []
     try:
         for info in page.get_image_info():
@@ -412,9 +443,10 @@ def _anonymize_page(page, fitz, ctx, text, boxes, sizes, repls):
     has_text = bool(text.strip())
     vision = bool(img_rects) or not has_text
     need_ocr = bool(ctx.settings.get("enable_ocr", True)) and _needs_ocr(page, text, boxes, big_imgs)
-    n_regions = 0
+    st = {"pno": page.number, "page": page, "text": text, "boxes": boxes, "redact_rects": redact_rects,
+          "removed": removed, "labels_later": labels_later, "scan": None, "ocr_areas": None, "regions": []}
     if ctx.vision_enabled() and (vision or need_ocr):
-        from .images import find_regions
+        from .images import scan_image
         if need_ocr and has_text:
             common.log("Pagina con scansione e testo digitale parziale: OCR attivato anche sull'immagine.")
         elif need_ocr:
@@ -430,10 +462,19 @@ def _anonymize_page(page, fitz, ctx, text, boxes, sizes, repls):
                 pr = fitz.Rect(br) * m
                 pr.normalize()
                 ocr_areas.append((pr.x0, pr.y0, pr.x1, pr.y1))
-        regions = find_regions(ctx, img, allow_plates=bool(img_rects) or not has_text, allow_ocr=need_ocr,
-                               ocr_areas=ocr_areas)
+        st["scan"] = scan_image(ctx, img, allow_plates=bool(img_rects) or not has_text, allow_ocr=need_ocr)
+        st["ocr_areas"] = ocr_areas
+        del img                                          # l'immagine della pagina non serve piu'
+    return st
+
+
+def _finish_page(st, fitz, ctx):
+    """Seconda fase: riquadri della visione e dell'OCR, rimozione definitiva, etichette nello spazio liberato."""
+    page, redact_rects = st["page"], st["redact_rects"]
+    n_regions = 0
+    if st["scan"] is not None:
         text_rects = list(redact_rects)
-        for x0, y0, x1, y1, label in regions:
+        for x0, y0, x1, y1, label in st["regions"]:
             r = _pix_to_page(page, fitz, x0, y0, x1, y1)
             if r.is_empty or not r.is_valid:
                 continue
@@ -464,13 +505,76 @@ def _anonymize_page(page, fitz, ctx, text, boxes, sizes, repls):
             graphics=fitz.PDF_REDACT_LINE_ART_NONE,
             text=fitz.PDF_REDACT_TEXT_REMOVE,
         )
-    if labels_later:
-        _place_labels(page, fitz, text, boxes, removed, labels_later)
+    if st["labels_later"]:
+        _place_labels(page, fitz, st["text"], st["boxes"], st["removed"], st["labels_later"])
     return n_regions
 
 
 def _is_sep(boxes, i):
     return boxes[4 * i] <= _SEP / 2
+
+
+def _char_mapping(text, boxes, in_removed, new_text, new_boxes):
+    """Corrispondenza carattere originale -> carattere della pagina riletta dopo le rimozioni.
+
+    Prima del turno 26: SequenceMatcher carattere per carattere sull'intera pagina, costo quadratico (secondi su una
+    pagina fitta). Ora: (1) testi uguali, il caso normale -> corrispondenza diretta, lineare; (2) testi diversi ->
+    confronto riga per riga e, solo per le righe cambiate, carattere per carattere. Le rimozioni NON dipendono da
+    qui (sono gia' applicate): questa corrispondenza decide solo dove scrivere le etichette nello spazio liberato."""
+    from difflib import SequenceMatcher
+
+    def lines_of(chars_text, bxs, skip):
+        lines, cur, cur_idx = [], [], []
+        for i, ch in enumerate(chars_text):
+            if _is_sep(bxs, i):
+                if cur:
+                    lines.append(("".join(cur), cur_idx))
+                    cur, cur_idx = [], []
+                continue
+            if skip is not None and skip(i):
+                continue
+            cur.append(ch)
+            cur_idx.append(i)
+        if cur:
+            lines.append(("".join(cur), cur_idx))
+        return lines
+
+    a_lines = lines_of(text, boxes, in_removed)
+    b_lines = lines_of(new_text, new_boxes, None)
+    a_flat = [i for _s, idx in a_lines for i in idx]
+    b_flat = [j for _s, idx in b_lines for j in idx]
+    a_str = "".join(s for s, _ in a_lines)
+    b_str = "".join(s for s, _ in b_lines)
+    if a_str == b_str:                                   # stessi caratteri nello stesso ordine: uno a uno
+        return dict(zip(a_flat, b_flat))
+    mapping = {}
+    sm = SequenceMatcher(None, [s for s, _ in a_lines], [s for s, _ in b_lines], autojunk=False)
+    for tag, a0, a1, b0, b1 in sm.get_opcodes():
+        if tag == "equal":
+            for k in range(a1 - a0):
+                mapping.update(zip(a_lines[a0 + k][1], b_lines[b0 + k][1]))
+        elif tag == "replace" or (a1 > a0 and b1 > b0):
+            ai = [i for _s, idx in a_lines[a0:a1] for i in idx]
+            bj = [j for _s, idx in b_lines[b0:b1] for j in idx]
+            sub = SequenceMatcher(None, "".join(s for s, _ in a_lines[a0:a1]),
+                                  "".join(s for s, _ in b_lines[b0:b1]), autojunk=False)
+            for blk in sub.get_matching_blocks():
+                for t in range(blk.size):
+                    mapping[ai[blk.a + t]] = bj[blk.b + t]
+    return mapping
+
+
+def _char_mapping_full(text, boxes, in_removed, new_text, new_boxes):
+    """Corrispondenza della 0.80 (SequenceMatcher sull'intera pagina): resta per i collaudi di confronto."""
+    from difflib import SequenceMatcher
+    orig_idx = [i for i in range(len(text)) if not _is_sep(boxes, i) and not in_removed(i)]
+    new_idx = [j for j in range(len(new_text)) if not _is_sep(new_boxes, j)]
+    mapping = {}
+    sm = SequenceMatcher(None, "".join(text[i] for i in orig_idx), "".join(new_text[j] for j in new_idx), autojunk=False)
+    for blk in sm.get_matching_blocks():
+        for t in range(blk.size):
+            mapping[orig_idx[blk.a + t]] = new_idx[blk.b + t]
+    return mapping
 
 
 def _place_labels(page, fitz, text, boxes, removed, items):
@@ -480,7 +584,6 @@ def _place_labels(page, fitz, text, boxes, removed, items):
     del primo glifo rimosso. Invece di usare le coordinate originali, si rilegge la pagina e si misura il vuoto
     tra il carattere precedente e quello successivo; l'etichetta viene poi inserita senza rimuovere altro testo."""
     from bisect import bisect_right
-    from difflib import SequenceMatcher
 
     removed = sorted(removed)
     starts = [a for a, _ in removed]
@@ -490,13 +593,7 @@ def _place_labels(page, fitz, text, boxes, removed, items):
         return k >= 0 and removed[k][0] <= i < removed[k][1]
 
     new_text, new_boxes, _sizes = extract_chars(page, fitz)
-    orig_idx = [i for i in range(len(text)) if not _is_sep(boxes, i) and not in_removed(i)]
-    new_idx = [j for j in range(len(new_text)) if not _is_sep(new_boxes, j)]
-    mapping = {}
-    sm = SequenceMatcher(None, "".join(text[i] for i in orig_idx), "".join(new_text[j] for j in new_idx), autojunk=False)
-    for blk in sm.get_matching_blocks():
-        for t in range(blk.size):
-            mapping[orig_idx[blk.a + t]] = new_idx[blk.b + t]
+    mapping = _char_mapping(text, boxes, in_removed, new_text, new_boxes)
 
     n = len(text)
     placed = 0

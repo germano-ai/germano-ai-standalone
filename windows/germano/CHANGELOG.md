@@ -5,12 +5,97 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.90] - 2026-11-14
+Germano AI v0.90 - **più veloce e in parallelo, a parità di protezione**. Le misure sono state prese sul motore vero
+(PC di collaudo Intel i5-4570, 4 core, 16 GB di RAM, nessuna GPU) confrontando 0.80 e 0.90 sugli stessi file: stessi
+dati oscurati, tempi più brevi. Il Proxy protegge ora anche gli argomenti degli strumenti degli agenti AI e i pacchetti
+Linux e macOS tornano identici a quelli Windows.
+
+### In sintesi: 0.80 e 0.90 sugli stessi file
+| Prova | 0.80 | 0.90 |
+|---|---|---|
+| PDF digitale di 12 pagine (36.600 caratteri) | 234,6 s | **132,0 s** (-44%, stesse 735 voci di audit) |
+| Sistema 2 su un documento di 56 testi | 214,3 s, 75 domande al modello | **52,3 s**, 22 domande (stesse decisioni) |
+| Vault con 100.000 voci: salvataggio di un dato nuovo | 308 ms | **1,6-2,6 ms** |
+| Vault con 100.000 voci: lettura da parte del server | 496 ms | **4,2 ms** |
+| Trascrizione di 284 s di registrazioni | 107-126 s | **66 s** (parole sbagliate: 13,3% → 11,6%) |
+| Pagina scansionata (volti, firme, targhe, OCR) | 29,6 s | **26,7 s** (-10%, stesse regioni oscurate) |
+| Avvio del motore (disco già in cache) | 26,6 s | **24,2 s** (-8%) |
+| Etichette in un PDF di 12 pagine (allineamento) | 1,61 s | **0,18 s** (posizioni identiche) |
+| Proxy: cronologia già vista / immagine già protetta | 1,15 s / 1,58 s | **0,01 s / 0,01 s** |
+
+### Migliorato - Motore in parallelo
+- **Privacy Filter e Italian NER insieme** sullo stesso lotto di testo (il NER gira in ONNX Runtime in un thread a
+  parte): dal 5 all'11% in meno sul solo testo secondo il carico del PC, con risultati identici.
+- **Un lock per modello** al posto di un lock unico: Privacy Filter, Italian NER, OCR, volti, firme e targhe servono
+  richieste diverse nello stesso momento (per esempio l'OCR di una scansione in coda e il testo di una richiesta del
+  Proxy).
+- **Corsia preferenziale (Fast-Lane)**: le richieste interattive (Chatbot e Agenti AI, Proxy, API REST, Remote Control
+  e client della rete) passano davanti ai documenti della cartella `input` su Privacy Filter, OCR e Sistema 2 e
+  aspettano al massimo il lotto in corso. Collaudo: tre richieste del Proxy servite in 4,7, 5,7 e 0,3 s mentre un PDF
+  di 6 pagine era in elaborazione.
+- **Caricamento in parallelo**: Italian NER e OCR si caricano mentre si carica il Privacy Filter.
+- **Visione in parallelo**: volti, firme, targhe e OCR di un'immagine o di una pagina lavorano insieme.
+- **PDF scansionati a finestre di 8 pagine e immagini dei documenti Office a lotti**: il testo letto dall'OCR viene
+  analizzato in un'unica chiamata, con lotti pieni per i modelli e propagazione dei dati fra le pagine.
+- **Etichette nei PDF**: allineamento lineare al posto di quello quadratico.
+
+### Migliorato - Sistema 2 senza domande superflue
+- Se la stessa parola resta oscurata in un altro punto del documento, le sue occorrenze dubbie non vengono più chieste
+  al modello locale (la propagazione le oscurerebbe comunque): sul corpus di prova 61 domande su 87 (il 70%) non
+  potevano cambiare l'esito. Copertura confrontata carattere per carattere con la 0.80: 0 caratteri di differenza su
+  56 testi. Un dubbio non chiesto resta **sempre** oscurato.
+- I dubbi di tutti i testi di una richiesta vanno in un'unica coda, con precedenza alle richieste interattive; se il
+  lavoro viene interrotto, i dubbi in coda vengono annullati.
+
+### Migliorato - Vault, file e cache
+- **Vault su SQLite in modalità WAL** (`extracted/deanonymize_vault.db`): si scrivono e si leggono solo le voci nuove,
+  oltre 100 volte più veloce con un Vault grande. `extracted/deanonymize_vault.json` resta, nello stesso formato, come
+  copia portabile (a ogni salvataggio fino a 5.000 voci, poi ogni 5 minuti e alla chiusura del motore); se viene
+  sostituito a mano le sue voci vengono importate senza perdere quelle esistenti. Migrazione automatica al primo
+  avvio; sui dischi di rete resta il solo JSON. Un errore nella copia JSON non ferma più il lavoro.
+- **File fra server e motore per percorso** invece che in base64 dentro JSON (API REST, Remote Control, Proxy,
+  allegati, trascrizione condivisa): meno memoria e nessuna codifica per i file grandi; i corpi troppo grandi vengono
+  rifiutati prima della lettura sul motore condiviso.
+- **Cache del Proxy e degli allegati**: la cronologia che IDE e agenti rimandano a ogni turno non torna al motore (come
+  già in Chatbot e Agenti AI); immagini e documenti già protetti arrivano dalla cache (fino a 256 MB, svuotata insieme
+  al Vault).
+
+### Migliorato - Audio e modalità Client
+- **Trascrizione a lotti**: dai 60 secondi in su Whisper trascrive i segmenti di parlato a lotti di 8
+  (`BatchedInferencePipeline`), con ripiego automatico sul modo in serie; le registrazioni brevi restano identiche.
+- **Modalità Client in parallelo**: fino a tre file della cartella `input` elaborati insieme sul Germano Server
+  (collaudo: 9 file in 1,8 s).
+- **Verifica del Germano Server**: all'aggancio e poi ogni 10 minuti il client manda al server una frase di controllo
+  con dati finti scelti a caso; se il server non riconosce il nome, non viene usato e nessun dato esce.
+
+### Risolto - Proxy
+- I valori sotto chiavi come `name`, `id`, `status`, `detail`, `type`, `format` dentro `tool_use.input`,
+  `function.arguments` e `functionCall.args` (Gemini) vengono ora anonimizzati: la busta del protocollo resta intatta,
+  gli argomenti degli strumenti sono contenuto dell'utente. Anonimizzati anche il testo citato delle citazioni,
+  `metadata`, `user` e il nome dei partecipanti; le risposte non in streaming ripristinano gli argomenti degli
+  strumenti.
+- Nuovo **controllo finale di non-uscita** (`leak_check`): se un dato appena rilevato resta in un campo non
+  anonimizzato, la richiesta viene bloccata (`422`) e non parte nulla. Collaudo «del canarino» su 1.000 richieste
+  casuali in 4 formati: 20/20 controlli superati (con la 0.80 i dati di prova uscivano in chiaro in tutti i formati).
+- Un argomento con `"type"` non testuale mandava in errore il Proxy.
+
+### Risolto - Altro
+- Chatbot e Agenti AI: un errore imprevisto arriva alla pagina come evento, con l'indicazione se qualcosa era già
+  stato inviato.
+- Sorgenti Linux e macOS di nuovo identici a quelli Windows in tutti i file comuni; i costruttori dei pacchetti `.deb`
+  e `.pkg` si fermano se un albero non è allineato (`build/coerenza_sorgenti.py`). Interfaccia del Germano Client
+  allineata a quella del server (audio, archivi, Sistema 2 nella Glass Window). `requirements.txt` completi
+  (onnxruntime, faster-whisper, ctranslate2, av).
+- Documentazione: README, guida, LEGGIMI e CHANGELOG aggiornati alla 0.90 (Markdown di nuovo ben formattato: la
+  pulizia della 0.80 aveva tolto gli spazi dopo i grassetti); `VERSION` → `0.90`.
+
 ## [0.80] - 2026-11-10
-Germano AI v0.80 - **Supporto nativo audio e trascrizione offline**, **apertura e bonifica ricorsiva di archivi compressi**, **correzione e allineamento atomico degli aggiornamenti silenziosi**e perfezionamento del triage Sistema 1 / Sistema 2.
+Germano AI v0.80 - **Supporto nativo audio e trascrizione offline**, **apertura e bonifica ricorsiva di archivi compressi**, **correzione e allineamento atomico degli aggiornamenti silenziosi** e perfezionamento del triage Sistema 1 / Sistema 2.
 
 ### Aggiunto - Modulo Audio & Trascrizione Vocale Offline
 - Supporto per file audio .mp3, .wav, .m4a, .ogg, .flac, .opus, .aac, .wma, .amr, .aiff.
-- Trascrizione locale automatica del parlato tramite modello integrato **Whisper Small INT8**(240 MB) eseguito con runtime CTranslate2 su worker dedicato: elaborazione 100% offline, nessun dato trasmesso al cloud.
+- Trascrizione locale automatica del parlato tramite modello integrato **Whisper Small INT8** (240 MB) eseguito con runtime CTranslate2 su worker dedicato: elaborazione 100% offline, nessun dato trasmesso al cloud.
 - Estrazione e bonifica dei metadati e dei tag ID3/Vorbis/MP4/WAV (titolo, artista, autore, commenti, coordinate geografiche) con memorizzazione nel Vault.
 - Generazione della trascrizione bonificata <nome>.trascrizione.txt nella cartella output con marcatura oraria dei segmenti [hh:mm:ss]; il file audio originale viene preservato intatto nella cartella processed.
 - Supporto diretto per allegati audio in Chatbot e Agenti AI (drag & drop o icona graffetta) con trascrizione contestuale prima dell'invio.
@@ -19,7 +104,7 @@ Germano AI v0.80 - **Supporto nativo audio e trascrizione offline**, **apertura 
 - Apertura, ispezione e bonifica ricorsiva per archivi .zip, .tar, .tar.gz, .tgz, .gz, .bz2, .xz, .7z, .rar.
 - Riconoscimento del formato tramite magic bytes binari per la massima sicurezza.
 - Architettura di decompressione sicura con protezione anti Path Traversal (nessun file estratto con il percorso originale, rifiuto di percorsi con .. o assoluti) e anti Decompression Bomb (limite ratio 200x e tetto massimo 4 GB).
-- Integrazione di **7-Zip 26.06**in streaming protetto per i formati .7z e .rar.
+- Integrazione di **7-Zip 26.06** in streaming protetto per i formati .7z e .rar.
 - Ricostruzione automatica dell'archivio bonificato nella cartella di destinazione con la medesima alberatura interna; gli archivi .rar vengono ricomposti ed esportati in formato aperto .rar.zip.
 
 ### Migliorato - Glass Window e Interruzione Istantanea
@@ -29,52 +114,52 @@ Germano AI v0.80 - **Supporto nativo audio e trascrizione offline**, **apertura 
 - Risolto il disallineamento byte in `version.json`: le dimensioni e gli hash SHA256 vengono ora calcolati direttamente dai binari su disco in modo atomico tramite crea_version_json.py, garantendo che l'updater automatico in background stile Chrome convalidi e applichi gli aggiornamenti senza rifiutarli.
 
 ## [0.70] - 2026-11-01
-Germano AI v0.70 - Nuova architettura **Harness AI**, **Glass Window**trasparente in tempo reale, sanitizzazione
+Germano AI v0.70 - Nuova architettura **Harness AI**, **Glass Window** trasparente in tempo reale, sanitizzazione
 manuale integrata e **aggiornamenti silenziosi stile Google Chrome**. L'interfaccia è stata rivista e semplificata: si
 presenta in tutto e per tutto come un harness AI moderno, con sopra la scheda per la sanitizzazione manuale dei file. La
 stessa interfaccia è nella Dashboard, nel Remote Control e in Germano Client. Motore, modelli, Proxy, formati e cartelle
 di lavoro non cambiano.
 
 ### Aggiunto - Chatbot e Agenti AI (nuova scheda predefinita)
-- Quattro schede in alto: **Chatbot e Agenti AI**(predefinita), **Sanitizzazione Manuale & Vault**, **Impostazioni**,
+- Quattro schede in alto: **Chatbot e Agenti AI** (predefinita), **Sanitizzazione Manuale & Vault**, **Impostazioni**,
   **Guida**; tema scuro (`#0b0f19`, `#0f172a`, `#1e293b`, `#334155`, accenti `#38bdf8` e `#818cf8`).
 - Conversazioni nella barra laterale (nuova, ricerca, raggruppate per data, rinomina, elimina; conservate nel profilo
   della finestra, mai nel cloud, oppure solo per la sessione), istruzioni per l'assistente, esportazione in Markdown.
-- Risposte in **streaming**con Markdown (titoli, elenchi, tabelle, citazioni), **evidenziazione della sintassi**e
+- Risposte in **streaming** con Markdown (titoli, elenchi, tabelle, citazioni), **evidenziazione della sintassi** e
   pulsante **Copia codice**; dati ripristinati evidenziati con l'etichetta di origine, «Mostra etichette»; indicatori di
   tempo totale, primo token, token in ingresso e in uscita, dati oscurati e ripristinati; azioni Copia, Rigenera,
   Modifica.
-- Riquadro di scrittura che cresce con il testo (**Invio**invia, **Maiusc+Invio**va a capo), allegati con la
-  graffetta o **trascinandoli**(fino a 12), indicatore della protezione e del profilo.
+- Riquadro di scrittura che cresce con il testo (**Invio** invia, **Maiusc+Invio** va a capo), allegati con la
+  graffetta o **trascinandoli** (fino a 12), indicatore della protezione e del profilo.
 - **Selettore del modello in basso a destra**, con ricerca: solo le AI rilevate e utilizzabili sono selezionabili
   (regola del turno 21), le altre restano in grigio con il motivo e, quando c'è, l'alternativa protetta. Destinazioni:
-  *Solo protezione* (copia del testo protetto), modelli locali di **Ollama, LM Studio e Jan**(un'opzione per modello
-  installato), **Claude Code**eseguita senza strumenti, servizi via API (OpenAI, Anthropic, Meta Muse, Kimi, DeepSeek,
+  *Solo protezione* (copia del testo protetto), modelli locali di **Ollama, LM Studio e Jan** (un'opzione per modello
+  installato), **Claude Code** eseguita senza strumenti, servizi via API (OpenAI, Anthropic, Meta Muse, Kimi, DeepSeek,
   Qwen, Mistral, Grok, Perplexity, Gemini, OpenRouter, Groq) con la chiave del computer o una inserita nel selettore.
   Rilevamento automatico ogni 12 secondi e al ritorno in primo piano.
 - Il motore si avvia da solo al primo invio; finché non è pronto la richiesta viene bloccata (nessun dato esce).
 
 ### Aggiunto - Glass Window (Ispezione Trasparente)
-- Pulsante **Glass Window**(anche Ctrl+Maiusc+G) che apre un pannello laterale in vetro smerigliato
+- Pulsante **Glass Window** (anche Ctrl+Maiusc+G) che apre un pannello laterale in vetro smerigliato
   (`backdrop-filter: blur(16px)`) con lo stato della richiesta, il cronometro, il selettore delle richieste della
   sessione e le cinque fasi in tempo reale: **testo originale inserito**, **filtro di privacy Germano e corrispondenze
-  del Vault**(categorie, testo evidenziato, tabella originale → etichetta → affidabilità, tempi e cache), **testo
-  effettivo inviato al modello**, **payload HTTP / CLI grezzo**(indirizzo, intestazioni con le chiavi sempre oscurate,
+  del Vault** (categorie, testo evidenziato, tabella originale → etichetta → affidabilità, tempi e cache), ** testo
+  effettivo inviato al modello**, **payload HTTP / CLI grezzo** (indirizzo, intestazioni con le chiavi sempre oscurate,
   corpo JSON; per Claude Code comando, variabili, standard input e payload HTTP catturato dal Proxy) e **stream in tempo
-  reale della risposta**prima del ripristino (con i frame SSE grezzi a richiesta).
+  reale della risposta** prima del ripristino (con i frame SSE grezzi a richiesta).
 - **Interrompi operazione**: chiude subito la connessione con il servizio di AI (chiusura del socket) o termina la CLI
   con tutti i suoi processi; messaggio «Operazione interrotta dall'utente tramite Glass Window: nessun dato ulteriore è
   stato trasmesso o ricevuto.». Anche chiudere la pagina o la connessione ferma l'esecuzione sul server.
-- **Revisione prima dell'invio**(facoltativa): Germano si ferma dopo la protezione e mostra il payload esatto; parte
-  solo con **Invia ora**, oppure **Blocca invio**. **Anteprima mentre scrivi**con la Glass Window aperta, senza inviare
+- **Revisione prima dell'invio** (facoltativa): Germano si ferma dopo la protezione e mostra il payload esatto; parte
+  solo con **Invia ora**, oppure **Blocca invio**. **Anteprima mentre scrivi** con la Glass Window aperta, senza inviare
   nulla.
 
 ### Aggiunto - Sanitizzazione manuale, Remote Control e Germano Client
-- La scheda **Sanitizzazione Manuale & Vault**raccoglie il lavoro in blocco della 0.60 (quattro riquadri `input`,
+- La scheda **Sanitizzazione Manuale & Vault** raccoglie il lavoro in blocco della 0.60 (quattro riquadri `input`,
   `output`, `processed`, `failed` come un file manager, tabella dei documenti, rimetti in coda, CSV), la
   sanitizzazione manuale di un testo e l'archivio delle corrispondenze.
-- **Remote Control e Germano Client**hanno la stessa interfaccia: Harness AI con selettore e Glass Window (AI del
-  server), **Sanitizzazione manuale**con file trascinati e restituiti anonimizzati nel loro formato e ripristino di un
+- **Remote Control e Germano Client** hanno la stessa interfaccia: Harness AI con selettore e Glass Window (AI del
+  server), **Sanitizzazione manuale** con file trascinati e restituiti anonimizzati nel loro formato e ripristino di un
   file restituito da un'AI (solo con le corrispondenze del dispositivo), Impostazioni (AI e chiavi, opzioni di
   elaborazione bloccate con il profilo PA, collegamento degli strumenti; nel Client anche server e aggiornamenti),
   Guida. Il Client inoltra in streaming gli eventi dell'Harness e l'interruzione chiude anche la connessione verso il
@@ -82,19 +167,19 @@ di lavoro non cambiano.
 
 ### Aggiunto - Aggiornamenti silenziosi, come Google Chrome
 - **Attivi di default**, senza banner né finestre: solo quando il sistema segnala la connessione a Internet, Germano
-  legge `https://download.germano.ai/version.json`, **scarica in background a bassa priorità**(thread in modalità
-  background), controlla dimensione e struttura dell'installer e su Windows **prepara la nuova versione**accanto a
+  legge `https://download.germano.ai/version.json`, **scarica in background a bassa priorità** (thread in modalità
+  background), controlla dimensione e struttura dell'installer e su Windows **prepara la nuova versione** accanto a
   quella in uso (`Germano AI.nuovo`, installer `--update --silent --stage` a priorità minima) mentre Germano resta
   aperto.
-- Al **successivo avvio**il lanciatore applica l'aggiornamento preparato in pochi secondi (`--apply-staged`: verifica
+- Al **successivo avvio** il lanciatore applica l'aggiornamento preparato in pochi secondi (`--apply-staged`: verifica
   del contrassegno e delle dimensioni di ogni file, poi scambio rapido delle cartelle) e Germano si apre già aggiornato;
-  se qualcosa non va resta la versione in uso. Chi vuole subito trova solo un discreto **«Riavvia per aggiornare»**in
+  se qualcosa non va resta la versione in uso. Chi vuole subito trova solo un discreto **«Riavvia per aggiornare»** in
   alto (e un puntino sulla scheda Impostazioni).
-- **Impostazioni › Aggiornamenti**come `chrome://settings/help`: «Germano AI è aggiornato (v0.70)» con l'ora
+- **Impostazioni › Aggiornamenti** come `chrome://settings/help`: «Germano AI è aggiornato (v0.70)» con l'ora
   dell'ultimo controllo, «Download dell'aggiornamento in background…» con la barra, «Riavvia Germano per applicare
   l'aggiornamento», «Controlla ora» e le opzioni. Su macOS e Linux il pacchetto si scarica allo stesso modo e si apre
   quando lo decide l'utente.
-- **Germano Client**si aggiorna allo stesso modo (`client_updater.py`, solo libreria standard): download silenzioso e
+- **Germano Client** si aggiorna allo stesso modo (`client_updater.py`, solo libreria standard): download silenzioso e
   aggiornamento al successivo avvio, con l'indirizzo del server e la sessione invariati.
 
 ### Aggiunto - API
@@ -106,7 +191,7 @@ di lavoro non cambiano.
   dispositivi della rete (opzioni del dispositivo rispettate, blocco PA compreso).
 
 ### Sicurezza
-- Claude Code dall'Harness: **nessun testo tra gli argomenti**(le CLI installate con npm sono file `.cmd` eseguiti da
+- Claude Code dall'Harness: **nessun testo tra gli argomenti** (le CLI installate con npm sono file `.cmd` eseguiti da
   `cmd.exe`, dove un argomento libero potrebbe diventare un comando): richiesta e istruzioni passano solo dallo standard
   input. Profilo locale `--restricted --tools "" --strict-mcp-config --disable-slash-commands --no-session-persistence`,
   profilo per i client `--bare`; il traffico della CLI passa dal Proxy di Germano, che ne cattura il payload per la Glass
@@ -131,20 +216,20 @@ di lavoro non cambiano.
 - Guida, README, LEGGIMI e CHANGELOG aggiornati; `VERSION` → `0.70`.
 
 ## [0.60] - 2026-10-25
-Germano diventa una **vera applicazione desktop**, distribuita con **installer in un solo file**per Windows, macOS e
-Linux che contengono tutto il necessario e **non scaricano nulla da Internet**. Un solo programma, **`Germano`**(`Germano.exe` su Windows, `Germano.app` su macOS, voce di menu «Germano AI» su Linux): niente finestra nera del
+Germano diventa una **vera applicazione desktop**, distribuita con **installer in un solo file** per Windows, macOS e
+Linux che contengono tutto il necessario e **non scaricano nulla da Internet**. Un solo programma, **`Germano`** (`Germano.exe` su Windows, `Germano.app` su macOS, voce di menu «Germano AI» su Linux): niente finestra nera del
 terminale, niente browser con barra degli indirizzi o schede, e la **X rossa chiude tutto**. L'architettura interna non
 cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Proxy API).
 
 ### Aggiunto - Installer in un solo file
 - **Windows**: `germano-0.60.exe` (suite, ~2,8 GB) e `germano-client-0.60.exe` (~22 MB). L'installer della suite
-  **chiede subito i permessi di amministratore**(richiesta UAC appena si apre, con nome e icona di Germano) e consente
-  **sempre**l'accesso dalla rete locale: nessuna casella da spuntare, una sola regola del firewall di Windows per il
+  **chiede subito i permessi di amministratore** (richiesta UAC appena si apre, con nome e icona di Germano) e consente
+  **sempre** l'accesso dalla rete locale: nessuna casella da spuntare, una sola regola del firewall di Windows per il
   Python di Germano, solo reti private e di dominio (le regole aperte delle versioni 0.51/0.52 vengono tolte). Il
   programma si installa comunque per l'utente corrente in `%LOCALAPPDATA%\Programs\…` (gli aggiornamenti automatici non
   chiedono permessi), con collegamenti sul Desktop e nel menu Start, voce in Impostazioni › App e cartelle di lavoro in
   `Documenti\Germano AI`; alla fine la finestra si chiude e **Germano si apre da solo**, con i permessi normali
-  dell'utente, senza pagine di istruzioni. Il **disinstallatore**(Impostazioni › App) chiede i permessi all'avvio per
+  dell'utente, senza pagine di istruzioni. Il **disinstallatore** (Impostazioni › App) chiede i permessi all'avvio per
   togliere la regola del firewall e rimuove programma, collegamenti, voce in Impostazioni › App e file tecnici (a scelta
   anche cartelle di lavoro e Vault). Il client non chiede permessi e ha collegamenti propri («Germano AI Client»), così
   le due edizioni possono stare sullo stesso computer. Il runtime include le DLL di Microsoft Visual C++: nessun
@@ -168,29 +253,29 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
 ### Aggiunto - Applicazione desktop
 - **`Germano.exe`**, unico eseguibile su Windows: lanciatore grafico (nessuna console) che avvia il runtime incluso
   (`runtime\pythonw.exe`) sul gestore della finestra `germano_desktop.py`.
-- Un solo nome per entrambe le edizioni: nella **suite completa**apre la **Dashboard unificata**(Standalone offline,
-  Server LAN, modalità Client); nel **client leggero**apre il pannello del client (`client_ui.py`: cerca server,
+- Un solo nome per entrambe le edizioni: nella **suite completa** apre la **Dashboard unificata** (Standalone offline,
+  Server LAN, modalità Client); nel **client leggero** apre il pannello del client (`client_ui.py`: cerca server,
   stato, AI del server, «chiedi a un'AI del server», «proteggi testo/file»).
 - **Finestra applicativa dedicata**: Microsoft Edge in modalità app su Windows, WebKit di sistema su macOS, Qt WebEngine
   (incluso nel pacchetto) su Linux; profilo isolato, senza schede né barra degli indirizzi.
-- **Chiusura totale con la X rossa**: il gestore ferma in modo pulito **solo**i processi di Germano (server Flask +
+- **Chiusura totale con la X rossa**: il gestore ferma in modo pulito **solo** i processi di Germano (server Flask +
   demone IA), senza processi orfani e senza toccare altri processi del sistema.
 
 ### Aggiunto - Remote Control: Germano da qualsiasi browser della rete, senza installare nulla
 - Con la modalità Server attiva, qualsiasi PC, tablet o smartphone della rete locale apre
-  `http://<IP-del-server>:8181/` (pagina `/remote`, mobile e bilingue) e trova: le **AI del server**rilevate
-  automaticamente, la **chat protetta**(prompt e fino a 12 allegati anonimizzati dal server prima di uscire, risposta
-  con i dati ripristinati e il testo esatto ricevuto dall'AI), **Proteggi e ripristina**per qualsiasi AI (ripristino
-  sul dispositivo), le **opzioni di elaborazione**e gli indirizzi del Proxy per gli strumenti del dispositivo.
-- **Servizi di AI via API**attraverso Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen,
+  `http://<IP-del-server>:8181/` (pagina `/remote`, mobile e bilingue) e trova: le **AI del server** rilevate
+  automaticamente, la **chat protetta** (prompt e fino a 12 allegati anonimizzati dal server prima di uscire, risposta
+  con i dati ripristinati e il testo esatto ricevuto dall'AI), **Proteggi e ripristina** per qualsiasi AI (ripristino
+  sul dispositivo), le **opzioni di elaborazione** e gli indirizzi del Proxy per gli strumenti del dispositivo.
+- **Servizi di AI via API** attraverso Germano: Meta Muse (Muse Wonder, Muse Spark), Kimi (Moonshot AI), DeepSeek, Qwen,
   Mistral, Grok (xAI), Perplexity (Sonar), Google Gemini, OpenAI, Anthropic, OpenRouter, Groq e i modelli locali del
   server (Ollama, LM Studio). Chiave API dell'utente (usata solo per quella richiesta, mai salvata dal server) oppure
   quella del server, se l'amministratore condivide le AI di questo computer. Le CLI del server si eseguono per i client solo se verificate e
   senza strumenti (Claude Code): gli agenti che eseguirebbero comandi o modificherebbero file sul server non vengono mai
   eseguiti, e il Remote Control indica l'alternativa protetta.
-- Il **Proxy**inoltra anche ai servizi indicati nel percorso: `http://<server>:8181/p/<servizio>/v1` (es. `/p/deepseek/v1`,
+- Il **Proxy** inoltra anche ai servizi indicati nel percorso: `http://<server>:8181/p/<servizio>/v1` (es. `/p/deepseek/v1`,
   `/p/moonshot/v1`, `/p/meta/v1`), cosi' Kimi Code, Mistral Vibe, Qwen Code, OpenCode e gli SDK passano da Germano.
-- **Germano Client**usa la stessa interfaccia (servita dal client, che inoltra al server): stesse capacità del browser,
+- **Germano Client** usa la stessa interfaccia (servita dal client, che inoltra al server): stesse capacità del browser,
   piu' la ricerca del server in rete e l'avvio protetto delle CLI del PC. Nuovi comandi: `client login`, `client logout`,
   `client options`; `client ask` anche con i servizi (`--model`, `--key`).
 
@@ -198,7 +283,7 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
 - Di base dalla rete si accede **senza credenziali**. Nella Dashboard del server (Impostazioni › Accesso dalla rete ›
   Gestione utenti) l'amministratore crea gli utenti e attiva l'accesso con **utente e password**, per il browser
   (schermata di accesso, cookie di sessione `HttpOnly` e `SameSite=Strict`) e per Germano Client (`client login`).
-- Password salvate solo come impronta **PBKDF2-SHA256**(600.000 iterazioni, sale casuale) in `config.json`; sessioni
+- Password salvate solo come impronta **PBKDF2-SHA256** (600.000 iterazioni, sale casuale) in `config.json`; sessioni
   casuali a 256 bit conservate sul server solo come impronta SHA-256, valide 30 giorni dall'ultimo uso, chiuse cambiando
   la password o eliminando l'utente; 5 tentativi sbagliati in 10 minuti bloccano l'indirizzo per 10 minuti; tempi di risposta uguali
   per utenti esistenti e inesistenti. Senza credenziali le richieste dalla rete ricevono `401`. Dal computer del server
@@ -224,7 +309,7 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
   Trae, Zed, OpenCode, Goose, Cline, Kilo Code, Amp, Droid, Crush, llama.cpp e Jan, oltre a quelle gia' note.
 - Il rilevamento legge anche il PATH salvato nel registro (CLI installate dopo l'avvio di Germano) e funziona anche su
   macOS e Linux (eseguibili senza estensione, app in `/Applications`).
-- **«Invia a» solo verso le AI rilevate**(Studio AI, Remote Control e Germano Client): si scelgono solo le CLI e le
+- **«Invia a» solo verso le AI rilevate** (Studio AI, Remote Control e Germano Client): si scelgono solo le CLI e le
   applicazioni installate, i modelli installati di Ollama e LM Studio in esecuzione (un'opzione per modello) e, nel
   Remote Control, i servizi via API con una chiave (del server, oppure inserita sul dispositivo con « Inserisci la
   chiave»); le altre voci restano visibili **in grigio, non selezionabili**, con il motivo («non rilevato», «non in
@@ -237,14 +322,14 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
   un modello locale non rilevato (409); `client ask` con un modello locale senza `--model` usa il primo installato.
 
 ### Aggiunto - Windows Server e macchine virtuali
-- **Windows Server 2019, 2022 e 2025**(Standard e Datacenter) e **macchine virtuali**(VMware, Hyper-V, Proxmox VE /
+- **Windows Server 2019, 2022 e 2025** (Standard e Datacenter) e **macchine virtuali** (VMware, Hyper-V, Proxmox VE /
   KVM, VirtualBox, AWS, Azure, Google Cloud). L'installer controlla la versione vera di Windows e avvisa: «Germano AI
   richiede Windows 10, Windows 11 o Windows Server 2019 o superiori a 64 bit».
-- **Senza Microsoft Edge né Chrome**(Windows Server 2019, Server Core) Germano non apre Internet Explorer, che non sa
+- **Senza Microsoft Edge né Chrome** (Windows Server 2019, Server Core) Germano non apre Internet Explorer, che non sa
   mostrare la Dashboard: un avviso indica gli indirizzi da aprire e con OK Germano resta attivo come server senza
   finestra (con Annulla si chiude). Lo stesso se la finestra non si apre (es. criteri aziendali), invece di chiudersi.
   Riconosciuto anche Edge installato per l'utente.
-- **Modalità senza finestra**per server, VM e attività pianificate: `Germano.exe --no-browser` (o `--headless`,
+- **Modalità senza finestra** per server, VM e attività pianificate: `Germano.exe --no-browser` (o `--headless`,
   `GERMANO_HEADLESS=1`), `--mode=server` per un solo avvio, `Germano.exe --stop` per arrestarlo; gli indirizzi locali e
   di rete (Remote Control, Proxy) e gli avvisi di rete vanno nel registro e nella console, nessun dialogo. Riaperto dal
   collegamento mentre gira senza finestra, Germano apre solo una finestra sulla stessa Dashboard (nessun secondo server).
@@ -261,7 +346,7 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
   rete classificata come «Pubblica», una regola del firewall mancante, disattivata o per un altro programma, e i criteri
   di gruppo che ignorano le regole locali. Gli indirizzi del Remote Control mettono per primo quello della scheda verso
   la rete (anche schede virtuali) ed escludono gli indirizzi automatici 169.254.x.x.
-- **Cartella dati condivisa**(SMB/NFS, dischi virtuali): blocco del sistema operativo sulla cartella dati, un secondo
+- **Cartella dati condivisa** (SMB/NFS, dischi virtuali): blocco del sistema operativo sulla cartella dati, un secondo
   motore (anche da un altro computer) viene rifiutato con un messaggio chiaro: il Vault non ha mai due scrittori.
 - Runtime autosufficiente verificato: DLL di Visual C++ 2015-2022 incluse (`vcruntime140`, `vcruntime140_1`,
   `msvcp140`, `msvcp140_1`, `msvcp140_2`, `vcomp140`, `concrt140` e le altre) e dipendenze di tutti i 408 binari del
@@ -271,20 +356,20 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
 - Dalla rete (Proxy, Remote Control, AI condivise) il ripristino usa **solo le etichette della richiesta stessa**: un
   dispositivo non può più farsi restituire i dati di altri documenti del Vault (es. chiedendo a un'AI di «ripetere
   [PERSONA_1]»). Le richieste fatte dal computer del server continuano a usare l'intero Vault.
-- Rimosso il **token condiviso**per i client della rete (`lan_token`, «Nuovo token»): sostituito dall'accesso libero o
+- Rimosso il **token condiviso** per i client della rete (`lan_token`, «Nuovo token»): sostituito dall'accesso libero o
   dalla gestione utenti. Il prefisso `/g/<token>/` del Base URL resta, con il token personale della sessione.
 
 ### Modificato - Dashboard: anteprima delle cartelle di lavoro
 - Al posto della sezione «Elaborazione dei documenti» (area di trascinamento e contatori In attesa / Pronti / Non
   riusciti) c'è un'**anteprima in stile file manager**: quattro riquadri `input`, `output`, `processed` e `failed` con
-  il **percorso completo**della cartella sopra ognuno e i file che contengono, aggiornati in tempo reale (i file appena
+  il **percorso completo** della cartella sopra ognuno e i file che contengono, aggiornati in tempo reale (i file appena
   arrivati evidenziati, quello in elaborazione in cima a `input`, il motivo dei non riusciti con «Rimetti in coda»).
-- I documenti si trascinano direttamente sul riquadro **input**(«Trascina i file qui nella cartella di input»); un clic
+- I documenti si trascinano direttamente sul riquadro **input** («Trascina i file qui nella cartella di input»); un clic
   su un riquadro o sul suo percorso apre la cartella in Esplora file (Finder su macOS, il file manager su Linux). Testi
   in italiano e in inglese.
 
 ### Modificato - Aggiornamenti
-- Unica fonte: **https://download.germano.ai/**(`version.json`, in mancanza l'elenco dei file). Niente più Google Drive
+- Unica fonte: **https://download.germano.ai/** (`version.json`, in mancanza l'elenco dei file). Niente più Google Drive
   e nessuna impronta SHA-256: i file del server ufficiale sono considerati attendibili, si controlla solo che il
   download sia completo.
 - Windows: l'installer della nuova versione si scarica nella cartella tecnica dell'utente e, con «Installa ora» o al
@@ -313,51 +398,51 @@ cambia (stesso motore Python + Flask, demone locale, modelli IA offline, OCR, Pr
 
 ## [0.52-alpha] - 2026-10-24
 Germano lavora ora in quattro **modalità operative**, scelte alla prima apertura e modificabili in qualsiasi momento:
-**Standalone**(predefinita, tutto su questo computer), **Server**(offre motore e Proxy agli altri PC dell'ufficio),
-**Client**(affida il calcolo dei modelli a un Germano Server della rete) oppure **Server + Client**. Ogni elemento
+**Standalone** (predefinita, tutto su questo computer), **Server** (offre motore e Proxy agli altri PC dell'ufficio),
+**Client** (affida il calcolo dei modelli a un Germano Server della rete) oppure **Server + Client**. Ogni elemento
 della Dashboard ha un suggerimento al passaggio del mouse. Runtime e modelli invariati rispetto alla 0.51; funziona
 offline su Windows 11 appena installato.
 
 ### Aggiunto - Interfaccia bilingue (italiano/inglese)
 - Tutta la Dashboard e la Guida offline sono **bilingui**. All'avvio la lingua è scelta dall'indirizzo (`?lang=it|en`),
   poi dalla scelta salvata, infine dalla lingua del browser (italiano se inizia per `it`, altrimenti inglese).
-  Le **bandierine  IT /  EN**in alto cambiano lingua all'istante, tooltip compresi; la scelta è ricordata e
+  Le **bandierine  IT /  EN** in alto cambiano lingua all'istante, tooltip compresi; la scelta è ricordata e
   condivisa tra Dashboard e Guida. Le etichette usate nei documenti (`[PERSONA]`, …) e i messaggi del *Registro
   attività* restano in italiano. I messaggi del server verso l'interfaccia seguono l'intestazione `X-Germano-Lang`.
 
 ### Aggiunto - AI del Server condivise con i client
-- Il Germano Server può **eseguire per i client le proprie CLI di AI**(es. Claude Code): nuovi endpoint
+- Il Germano Server può **eseguire per i client le proprie CLI di AI** (es. Claude Code): nuovi endpoint
   `GET /api/harness/v1/tools` (elenco delle AI del server e di quali sono usabili da remoto) e
   `POST /api/harness/v1/run` (esecuzione non interattiva, sempre attraverso il Proxy: verso l'AI esce solo testo
   anonimizzato, la risposta torna con i dati reali). Un client senza quella CLI in locale la usa con `client ask`;
-  `client models` mostra il catalogo. La condivisione è **disattivata per impostazione predefinita**e si attiva in
+  `client models` mostra il catalogo. La condivisione è **disattivata per impostazione predefinita** e si attiva in
   *Impostazioni › Accesso dalla rete* (`share_ai_tools`), perché usa l'account e le credenziali del server. Gli
   strumenti grafici (Antigravity, Cursor, Claude Desktop, Windsurf) sono elencati come non utilizzabili da remoto con
   il motivo. La modalità Client e il motore remoto accettano l'indirizzo del server anche in forma breve
   (`192.168.1.10`) o come Base URL con token copiato dalla Dashboard, con messaggi di rete comprensibili.
 
 ### Aggiunto - Modalità operativa all'avvio
-- **Finestra di benvenuto**alla prima apertura della Dashboard: tre caselle — **[x] Standalone**(predefinita),
-  **[ ] Server**, **[ ] Client**— con la spiegazione di ciascuna; Server e Client si possono scegliere insieme.
+- **Finestra di benvenuto** alla prima apertura della Dashboard: tre caselle — **[x] Standalone** (predefinita),
+  **[ ] Server**, **[ ] Client** — con la spiegazione di ciascuna; Server e Client si possono scegliere insieme.
   La finestra ricorda che *«Questa modalità è sempre modificabile in qualsiasi momento nelle Impostazioni»*.
   Chiudendola senza scegliere si conferma Standalone e non viene più riproposta.
-- Nuovo pulsante **Impostazioni**e indicatore della modalità nella barra in alto (verde = Server, blu = Client,
+- Nuovo pulsante **Impostazioni** e indicatore della modalità nella barra in alto (verde = Server, blu = Client,
   arancione = attenzione, es. server non raggiungibile); in Avanzata, il riquadro **Sistema › Rete e modalità
-  operativa**riassume ascolto in rete, collegamento al server e token.
+  operativa** riassume ascolto in rete, collegamento al server e token.
 - La modalità **si applica subito, senza riavviare Germano**: la Dashboard ascolta sempre e solo su `127.0.0.1`; la
   parte Server aggiunge e toglie dal vivo un secondo ascolto sulla rete (`0.0.0.0`, o l'IP di `bind_host`) e il
-  rilevamento UDP. In **Standalone**e in **Client**nessuna porta di Germano è aperta verso la rete. Server e
+  rilevamento UDP. In **Standalone** e in **Client** nessuna porta di Germano è aperta verso la rete. Server e
   Client avviano il motore da soli; cambiando la parte Client il motore si riavvia con il tipo giusto (locale o remoto).
 - Con la parte Server attiva le Impostazioni mostrano indirizzi IP, token per i client (con **Nuovo token**, che
   invalida subito il precedente) e stato del rilevamento automatico.
-- **`Germano.exe`**ora imposta `GERMANO_MODE=server`: forza la modalità Server solo per quell'avvio, senza
+- **`Germano.exe`** ora imposta `GERMANO_MODE=server`: forza la modalità Server solo per quell'avvio, senza
   modificare la scelta salvata (la Dashboard lo segnala). Resta compatibile `GERMANO_HOST=0.0.0.0`.
 - Il cambio di modalità, il token e la ricerca dei server sono riservati al computer stesso (`/api/mode`,
   `/api/mode/token`, `/api/remote/servers`, mai dalla rete) e rispettano `lock_settings`: con le impostazioni
   bloccate dall'amministratore la modalità non si cambia, le preferenze dell'interfaccia sì.
 
 ### Aggiunto - Modalità Client (motore remoto)
-- Nuovo `germano/remote_engine.py`: in modalità Client il demone **non carica i modelli**(pochi MB di memoria
+- Nuovo `germano/remote_engine.py`: in modalità Client il demone **non carica i modelli** (pochi MB di memoria
   invece di alcuni GB) e invia al Germano Server soltanto i testi e le immagini da analizzare; riceve posizioni,
   categorie e punteggi. **Vault, etichette, file e ripristino restano su questo computer**: il server non conserva
   nulla dei client e non ne registra i nomi dei file. Il server applica le impostazioni del client (modelli e
@@ -379,14 +464,14 @@ offline su Windows 11 appena installato.
   Attivi per impostazione predefinita, si disattivano nelle Impostazioni (`enable_tooltips`).
 
 ### Aggiunto - Modalità Server LAN
-- **Rilevamento automatico sulla LAN**(`germano/discovery.py`): un leggero responder UDP sulla porta **8182**risponde ai ping `GERMANO_DISCOVERY_PING` con le informazioni del server (servizio, versione, porta, nome, stato del
+- **Rilevamento automatico sulla LAN** (`germano/discovery.py`): un leggero responder UDP sulla porta **8182** risponde ai ping `GERMANO_DISCOVERY_PING` con le informazioni del server (servizio, versione, porta, nome, stato del
   motore condiviso) — mai il token, mai dati personali. Anche `GET /api/discovery` restituisce le stesse informazioni.
   La porta predefinita della Dashboard è ora **8181**.
-- **Sicurezza a livelli per l'accesso di rete**(il modello non cambia per chi usa solo `127.0.0.1`):
+- **Sicurezza a livelli per l'accesso di rete** (il modello non cambia per chi usa solo `127.0.0.1`):
   - dalla rete, in sola lettura e senza token: Dashboard, `/api/status`, `/api/ai/detect`, `/api/discovery`;
   - dalla rete, con **token condiviso**: il Proxy verso le AI (`/v1/messages`, `/v1/chat/completions`, …),
     `POST /api/studio/send` e il motore condiviso (`/api/engine/v1/…`). Il token si passa nell'intestazione
-    `X-Germano-Auth` **oppure**nel Base URL come prefisso `/g/<token>` (così funziona con qualunque CLI, senza
+    `X-Germano-Auth` **oppure** nel Base URL come prefisso `/g/<token>` (così funziona con qualunque CLI, senza
     modificarla). Senza un token valido l'accesso è sempre negato;
   - **solo dal computer del server**: controllo del motore, impostazioni, modalità, file, archivio delle
     corrispondenze e de-anonimizzazione (`/api/v1/deanonymize_*`). I dati reali non sono mai esposti alla rete.
@@ -402,7 +487,7 @@ offline su Windows 11 appena installato.
 - **Integrazione Kimi, DeepSeek e Qwen**: aggiunti al catalogo di rilevamento locale (`ai_detect.py`) sia sul server che sul client. Nello Studio AI sono disponibili direttamente come destinazioni di inoltro; nella scheda *Agenti AI e API* sono presenti pulsanti di pre-configurazione rapida a 1 clic per impostare come target OpenAI: OpenAI, DeepSeek (`api.deepseek.com`), Kimi (`api.moonshot.cn`), Qwen (`dashscope.aliyuncs.com`) e Ollama.
 
 ### Corretto - dal collaudo client/server del 24/10
-- **Privacy: documenti Office e OpenDocument danneggiati non vengono piu' segnati «Pronti» con i dati in chiaro.**Se una parte interna con testo (es. `word/document.xml`, `styles.xml`) non e' leggibile, il file va tra i
+- **Privacy: documenti Office e OpenDocument danneggiati non vengono piu' segnati «Pronti» con i dati in chiaro.** Se una parte interna con testo (es. `word/document.xml`, `styles.xml`) non e' leggibile, il file va tra i
   *Non riusciti* con il motivo, invece di essere copiato in uscita senza anonimizzazione.
 - Un PDF danneggiato o troncato restava bloccato per sempre nella cartella `input` (con una copia in `failed` e
   senza motivo): ora finisce tra i *Non riusciti* con un messaggio chiaro.
@@ -414,18 +499,18 @@ offline su Windows 11 appena installato.
   risultava mai completato e la Dashboard restava su «Documenti in arrivo».
 - `GET /api/ai/detect` chiesto dalla rete restituisce nomi e versioni delle AI ma non i percorsi di installazione
   (rivelavano il nome utente di Windows del server).
-- **Rilevamento automatico in rete**(modalità Client e Germano Client): su un PC senza un server locale la ricerca si
+- **Rilevamento automatico in rete** (modalità Client e Germano Client): su un PC senza un server locale la ricerca si
   interrompeva subito, al primo avviso «porta irraggiungibile» che Windows restituisce per il ping a 127.0.0.1, e
   spesso non trovava i server della LAN. Ora ascolta le risposte per tutto il tempo previsto; vengono scartate anche
   le risposte con una porta non valida.
 - `Germano.exe` usa i fine riga di Windows (CRLF), come `Germano.exe`.
 
 ### Aggiunto - Germano Client v0.01 (prodotto separato)
-- Nuova applicazione **`germano_client`**(cartella a parte), leggerissima: **non contiene modelli**(28 MB di
+- Nuova applicazione **`germano_client`** (cartella a parte), leggerissima: **non contiene modelli** (28 MB di
   runtime). Trova il server sulla LAN da solo (broadcast UDP) con ripiego su `client_config.json` o parametro
   da riga di comando, e incanala le CLI locali (Claude Code, Codex, Aider, Gemini CLI) verso il Proxy del server
   impostando `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` con il prefisso `/g/<token>`.
-- Lanciatore **`START_CLIENT.bat`**con menu interattivo e comandi `discover`, `status`, `launch <cli>`, `send`,
+- Lanciatore **`START_CLIENT.bat`** con menu interattivo e comandi `discover`, `status`, `launch <cli>`, `send`,
   `config`. Documentazione in `README.md` e `README.en.md`.
 
 ## [0.51-alpha] - 2026-10-22
@@ -437,12 +522,12 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 - Interfaccia ridisegnata, chiara e sobria, con il logo ufficiale. Selettore **Semplice / Avanzata**; in Modalità
   Avanzata quattro schede: *Elaborazione*, *Agenti AI e API*, *Filtri e modelli*, *Sistema e registro*.
 - **Lavoro in blocco**: aggiunta di file o di intere cartelle (trascinamento oppure *Seleziona file* /
-  *Seleziona cartella*), pulsanti **Apri cartella input**e **Apri cartella output**(Esplora file), contatori
+  *Seleziona cartella*), pulsanti **Apri cartella input** e **Apri cartella output** (Esplora file), contatori
   *In attesa* / *Pronti* / *Non riusciti*, avanzamento del lotto e riepilogo finale, avviso con *Avvia elaborazione*
   quando ci sono documenti in attesa e il motore è in pausa.
-- Tabella **Documenti**con schede *Pronti*, *In attesa*, *Non riusciti* e *Originali* (in Avanzata), filtro per
+- Tabella **Documenti** con schede *Pronti*, *In attesa*, *Non riusciti* e *Originali* (in Avanzata), filtro per
   nome, cartella o motivo e azioni *Apri*, *Mostra nella cartella*, *Scarica*. I documenti non riusciti mostrano il
-  motivo e si rimettono in coda singolarmente o tutti insieme (**Rimetti in coda**); **Esporta elenco**salva la
+  motivo e si rimettono in coda singolarmente o tutti insieme (**Rimetti in coda**); **Esporta elenco** salva la
   tabella in CSV per Excel (separatore `;`, protezione dalla formula injection).
 - Per ogni documento elaborato vengono registrati modalità, numero di dati oscurati e tempo (`state/outputs.json`),
   visibili nella tabella.
@@ -455,13 +540,13 @@ modelli invariati: funziona offline su Windows 11 appena installato.
   eseguibili o script), `POST /api/retry_failed`, `GET /api/update/status`, `POST /api/update/check|download|install`.
 
 ### Aggiunto - Doppia modalità e Studio AI
-- La Dashboard ha ora un commutatore principale **Anonimizza file**/ **Studio AI**(la scelta è ricordata).
-- **Anonimizza file**: in cima alla vista, una griglia di **card delle cartelle**(In attesa, Pronti, Errori,
+- La Dashboard ha ora un commutatore principale **Anonimizza file**/ **Studio AI** (la scelta è ricordata).
+- **Anonimizza file**: in cima alla vista, una griglia di **card delle cartelle** (In attesa, Pronti, Errori,
   Originali, Vault/estratti) con i contatori in tempo reale; cliccando una card si apre quella cartella in Esplora
   file. Striscia di **statistiche live**: file elaborati/totali del lotto, PII oscurate, documenti al minuto,
   uso di CPU e RAM, con barra di avanzamento.
 - **Studio AI**: si scrive un prompt e si allegano file; il testo e il contenuto degli allegati vengono
-  **anonimizzati dal motore locale prima**di essere inoltrati a un'AI. Se il motore non è attivo la richiesta è
+  **anonimizzati dal motore locale prima** di essere inoltrati a un'AI. Se il motore non è attivo la richiesta è
   bloccata e **nessun dato lascia il computer**. La conversazione mostra sempre *cosa* viene inviato (già con le
   etichette) e l'elenco dei dati oscurati; pulsante per copiare il testo protetto.
 - **Rileva AI**: pulsante che individua le AI e le CLI installate sul computer (Claude Code, Claude Desktop,
@@ -474,7 +559,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
   e `POST /api/studio/send` (protegge prompt e allegati e restituisce il testo pronto da inviare, con i dati oscurati).
 
 ### Aggiunto - Aggiornamenti automatici
-- **Solo quando Windows segnala che il PC è connesso a Internet**(Network List Manager: la verifica non invia
+- **Solo quando Windows segnala che il PC è connesso a Internet** (Network List Manager: la verifica non invia
   pacchetti in rete), 20 secondi dopo l'avvio e poi ogni 6 ore, Germano apre `https://download.germano.ai`, unico
   riferimento per le nuove versioni, che rimanda alla cartella pubblica di Google Drive con i pacchetti, e vi cerca lo ZIP
   `GermanoAI_Release_v<versione>.zip` più recente. Su un PC scollegato non avviene alcun tentativo di connessione.
@@ -490,14 +575,14 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 
 ### Corretto - Perdita di dati e privacy
 - **DOCX distrutti dall'anonimizzazione**: la v0.50 riscriveva ogni paragrafo con `paragraph.text = ...`, cancellando
-  grassetti, font, collegamenti e **le immagini**del documento; l'autore restava nei metadati. Ora Word, Excel e
+  grassetti, font, collegamenti e **le immagini** del documento; l'autore restava nei metadati. Ora Word, Excel e
   PowerPoint vengono modificati direttamente nell'XML: cambia solo il testo personale, il resto resta identico.
 - **Parti di documento mai analizzate**: note a piè di pagina, caselle di testo, tabelle annidate, commenti (e i loro
   autori), revisioni, controlli contenuto, forme raggruppate e SmartArt di PowerPoint, note del relatore, grafici,
   intestazioni/piè di pagina ODT (`styles.xml`), metadati (autore, ultimo modificatore, titolo), miniature di anteprima.
 - **Modello Italian NER cieco oltre ~512 token**: sui testi lunghi non rilevava nulla dopo le prime righe (test: 0
   entità su 5.500 caratteri, 7 dopo la correzione). Ora il testo è diviso in blocchi sovrapposti.
-- **PDF scansionati con timbro digitale**(tipici della PA: protocollo stampato su una scansione): niente OCR, quindi
+- **PDF scansionati con timbro digitale** (tipici della PA: protocollo stampato su una scansione): niente OCR, quindi
   il contenuto restava leggibile. Ora l'OCR si attiva quando le immagini della pagina hanno poco testo digitale.
 - **Scansioni "ricercabili"**: veniva rimosso solo il livello di testo invisibile, l'immagine restava visibile. Ora i
   pixel sottostanti vengono oscurati.
@@ -514,7 +599,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 - **Ripristino con dati sbagliati**: le etichette non numerate (`[PERSONA]`) venivano sostituite con l'ultimo nome
   visto. Ora si ripristinano solo le etichette numerate; con lo switch spento il vault non salva più i dati reali.
 - **Testi ANSI**: TXT/CSV in codifica Windows-1252 perdevano le lettere accentate (`errors="ignore"`).
-- **Commenti HTML**trasformati in testo visibile dopo l'anonimizzazione.
+- **Commenti HTML** trasformati in testo visibile dopo l'anonimizzazione.
 - Le immagini venivano riesportate a 72 dpi (perdita di risoluzione), solo la prima pagina dei TIFF multipagina,
   senza correggere la rotazione EXIF delle foto e mantenendo i metadati GPS.
 - Gli originali in `processed/` potevano essere sovrascritti da un file omonimo.
@@ -556,7 +641,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 - Conversioni Office in un processo separato, con macro disattivate e timeout.
 
 ### Aggiunto
-- **RTF nativo**senza Microsoft Word (su Windows 11 24H2 non c'è più nemmeno WordPad).
+- **RTF nativo** senza Microsoft Word (su Windows 11 24H2 non c'è più nemmeno WordPad).
 - **File firmati `.p7m` (CAdES)**: estrazione e anonimizzazione del documento interno (es. `fattura.xml.p7m`).
 - `.doc`/`.ppt`/`.xls` che sono in realtà RTF, DOCX, HTML o XML rinominati vengono riconosciuti senza Office;
   conversione tramite LibreOffice se Microsoft Office non è presente.
@@ -590,7 +675,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 
 ## [0.50-alpha] - 2026-10-20
 ### Architettura Standalone & Compatibilità Windows 11 Vanilla (100% Offline)
-- **Zero-Admin Native C++ Runtime Bundling**: Estratte e integrate direttamente in `runtime/` e `runtime/Lib/site-packages/torch/lib/` tutte le 12 librerie dinamiche ufficiali a 64-bit del Microsoft Visual C++ Redistributable (`concrt140.dll`, `msvcp140.dll`, `msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`, `vcamp140.dll`, `vccorlib140.dll`, `vcomp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `vcruntime140_threads.dll`) insieme alle librerie di sistema `pywin32` (`pythoncom311.dll`, `pywintypes311.dll`). Questo risolve definitivamente gli errori `ImportError: DLL load failed` / `WinError 126` su installazioni **Windows 11 Vanilla**appena formattate, anche quando l'utente avvia `Germano.exe` senza privilegi di Amministratore (UAC).
+- **Zero-Admin Native C++ Runtime Bundling**: Estratte e integrate direttamente in `runtime/` e `runtime/Lib/site-packages/torch/lib/` tutte le 12 librerie dinamiche ufficiali a 64-bit del Microsoft Visual C++ Redistributable (`concrt140.dll`, `msvcp140.dll`, `msvcp140_1.dll`, `msvcp140_2.dll`, `msvcp140_atomic_wait.dll`, `msvcp140_codecvt_ids.dll`, `vcamp140.dll`, `vccorlib140.dll`, `vcomp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `vcruntime140_threads.dll`) insieme alle librerie di sistema `pywin32` (`pythoncom311.dll`, `pywintypes311.dll`). Questo risolve definitivamente gli errori `ImportError: DLL load failed` / `WinError 126` su installazioni **Windows 11 Vanilla** appena formattate, anche quando l'utente avvia `Germano.exe` senza privilegi di Amministratore (UAC).
 - **Configurazione `python311._pth` Isolata**: Aggiornato il file di path del runtime embedded per includere `..`, `Lib` e `Lib\site-packages` con `import site` attivo, garantendo la risoluzione deterministica dei moduli indipendentemente dalla working directory o da installazioni Python di sistema preesistenti.
 - **Launcher `Germano.exe` Riprogettato**: Riscritto lo script di avvio con codifica UTF-8 (`chcp 65001`), variabili d'ambiente rigorose per l'isolamento offline (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, `HF_HUB_DISABLE_TELEMETRY=1`, `EASYOCR_MODULE_PATH`), pre-flight check dell'interprete embedded e verifica opzionale non bloccante delle librerie VC++.
 
@@ -609,7 +694,7 @@ modelli invariati: funziona offline su Windows 11 appena installato.
   6. `models/plate-detection` (**YOLOS-Small License Plate Detector FP16**, `58.5 MB`): Rilevamento visivo e oscuramento delle targhe automobilistiche (`[TARGA]`) nelle fotografie e perizie.
 
 ### Nuove Funzionalità e Bugfix Backend (`daemon.py` & `server.py`)
-- **Hot-Reload Dinamico della Configurazione (`reload_settings`)**: Il demone in background ora controlla il timestamp di modifica di `config.json` ad ogni ciclo e ad ogni richiesta API. Cambiare profilo (`PA` / `PD`), soglia IA o filtri selettivi nella Dashboard applica le modifiche **in tempo reale**senza dover riavviare il demone e ricaricare i modelli in RAM.
+- **Hot-Reload Dinamico della Configurazione (`reload_settings`)**: Il demone in background ora controlla il timestamp di modifica di `config.json` ad ogni ciclo e ad ogni richiesta API. Cambiare profilo (`PA` / `PD`), soglia IA o filtri selettivi nella Dashboard applica le modifiche **in tempo reale** senza dover riavviare il demone e ricaricare i modelli in RAM.
 - **Correzione Elaborazione Immagini Raster in `process_pdf`**: Risolto l'errore `RuntimeError: is no PDF` durante l'applicazione delle annotazioni di censura (`add_redact_annot` / `apply_redactions`) su file immagine (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.tiff`, `.webp`) convertendo il buffer in PDF in-memory durante la fase di redazione e riesportando l'immagine nel suo formato nativo originale a fine elaborazione.
 - **Miglioramento Precisione NLP & Unione Token BPE**:
   - Rimossi gli spazi iniziali/finali inclusi dal tokenizzatore BPE di GPT-2 (`privacy-filter`), evitando che la sostituzione mangi gli spazi tra le parole (es. `"Il signor[PERSONA]"` -> `"Il signor [PERSONA]"`).
@@ -627,42 +712,42 @@ modelli invariati: funziona offline su Windows 11 appena installato.
 
 ### Nuova Interfaccia Grafica Web (100% Offline, Slider Semplice/Avanzata & Zero CDN)
 - **Slider Superiore ` Modalità Semplice` / ` Modalità Avanzata`**:
-  - **Modalità Semplice ("A prova di errore", Zero Gergo Tecnico)**: Interfaccia guidata pensata per chiunque, priva di termini tecnici (niente parole come *"Demone"*, *"PID"*, *"OCR"*, *"Regex"*, *"Threshold"* o *"Proxy"*). Pulsante principale immediato (`▶ ATTIVA GERMANO` / `■ FERMA GERMANO`) con **Auto-Start intelligente**(se l'utente trascina un file o clicca su *"Proteggi Testo"* mentre il programma è in pausa, Germano si attiva da solo automaticamente).
+  - **Modalità Semplice ("A prova di errore", Zero Gergo Tecnico)**: Interfaccia guidata pensata per chiunque, priva di termini tecnici (niente parole come *"Demone"*, *"PID"*, *"OCR"*, *"Regex"*, *"Threshold"* o *"Proxy"*). Pulsante principale immediato (`▶ ATTIVA GERMANO` / `■ FERMA GERMANO`) con **Auto-Start intelligente** (se l'utente trascina un file o clicca su *"Proteggi Testo"* mentre il programma è in pausa, Germano si attiva da solo automaticamente).
   - **Modalità Avanzata con Controllo Totale dei 6 Modelli IA (+ RegEx) e delle 18 Singole Funzionalità/Categorie**:
     - **Blocco 1 — 7 Interruttori per i Singoli Modelli e Motori Locali**:
-      1.  **Velvet Privacy Filter 1.5B FP16**(`enable_model_velvet`)
-      2.  **DeepMount00 Italian NER XXL v2 (58 Classi)**(`enable_model_italian_ner`)
-      3.  **EasyOCR (CRAFT + Latin G2)**(`enable_ocr`)
-      4.  **YuNet Biometria Volti (OpenCV 5 DNN)**(`enable_faces`)
-      5.  **YOLOS-Tiny Signature Detector (Firme Autografe)**(`enable_signatures`)
-      6.  **YOLOS-Small License Plate Detector (Targhe in Foto)**(`enable_plate_vision`)
-      7.  **Motore RegEx Italiano Deterministico**(`enable_regex`)
+      1.  **Velvet Privacy Filter 1.5B FP16** (`enable_model_velvet`)
+      2.  **DeepMount00 Italian NER XXL v2 (58 Classi)** (`enable_model_italian_ner`)
+      3.  **EasyOCR (CRAFT + Latin G2)** (`enable_ocr`)
+      4.  **YuNet Biometria Volti (OpenCV 5 DNN)** (`enable_faces`)
+      5.  **YOLOS-Tiny Signature Detector (Firme Autografe)** (`enable_signatures`)
+      6.  **YOLOS-Small License Plate Detector (Targhe in Foto)** (`enable_plate_vision`)
+      7.  **Motore RegEx Italiano Deterministico** (`enable_regex`)
     - **Blocco 2 — 18 Grandi Schede Checkbox per le Singole Funzionalità e Categorie di Dati**:
-      1.  **Nomi Propri e Cognomi**(`censor_person` → `[PERSONA_N]`)
-      2.  **Professioni, Avvocati, Notai e Titoli**(`censor_profession` → `[PROFESSIONE/TITOLO_N]`)
-      3.  **Indirizzi Fisici, Vie, CAP e Luoghi**(`censor_address` → `[INDIRIZZO_N]`)
-      4.  **Dati Catastali e Immobiliari (Foglio, Particella, Subalterno)**(`censor_cadastre` → `[CATASTO_N]`)
-      5.  **Codici Fiscali e Partite IVA**(`censor_cf_iva` → `[COD.FISCALE/P.IVA_N]`)
-      6.  **Email e Caselle PEC**(`censor_email` → `[EMAIL_N]`)
-      7.  **Telefoni, Cellulari e IMEI**(`censor_phone` → `[TELEFONO_N]`)
-      8.  **IBAN, Carte, Conti e Banche**(`censor_account` → `[CONTO/CARTA_N]`)
-      9.  **Importi Monetari, Valute e Tassi Mutuo**(`censor_financial` → `[IMPORTO/FINANZA_N]`)
-      10.  **Date di Nascita, Età, Scadenze e Orari**(`censor_date` → `[DATA_N]`)
-      11.  **Aziende, Ragioni Sociali, Società ed Enti**(`censor_org` → `[AZIENDA/ENTE_N]`)
-      12.  **Targhe Testuali, CIE, Passaporti e Patenti**(`censor_plates_docs` → `[TARGA/DOCUMENTO_N]`)
-      13.  **Malattie, Diagnosi e Cartelle Cliniche (Art. 9 GDPR)**(`censor_medical` → `[DATO_SANITARIO_N]`)
-      14.  **Farmaci, Terapie, Dosaggi e Posologia**(`censor_medicine` → `[FARMACO/TERAPIA_N]`)
-      15.  **Tribunali, Sentenze e Procedimenti (Art. 10 GDPR)**(`censor_legal` → `[DATO_GIUDIZIARIO_N]`)
-      16.  **Stato Civile e Regime Patrimoniale**(`censor_civil_status` → `[STATO_CIVILE_N]`)
-      17.  **Password, PIN e Chiavi Segrete**(`censor_secret` → `[SEGRETO_N]`)
-      18.  **Indirizzi IP, MAC e Link Web (URL)**(`censor_url` → `[URL_N]`)
+      1.  **Nomi Propri e Cognomi** (`censor_person` → `[PERSONA_N]`)
+      2.  **Professioni, Avvocati, Notai e Titoli** (`censor_profession` → `[PROFESSIONE/TITOLO_N]`)
+      3.  **Indirizzi Fisici, Vie, CAP e Luoghi** (`censor_address` → `[INDIRIZZO_N]`)
+      4.  **Dati Catastali e Immobiliari (Foglio, Particella, Subalterno)** (`censor_cadastre` → `[CATASTO_N]`)
+      5.  **Codici Fiscali e Partite IVA** (`censor_cf_iva` → `[COD.FISCALE/P.IVA_N]`)
+      6.  **Email e Caselle PEC** (`censor_email` → `[EMAIL_N]`)
+      7.  **Telefoni, Cellulari e IMEI** (`censor_phone` → `[TELEFONO_N]`)
+      8.  **IBAN, Carte, Conti e Banche** (`censor_account` → `[CONTO/CARTA_N]`)
+      9.  **Importi Monetari, Valute e Tassi Mutuo** (`censor_financial` → `[IMPORTO/FINANZA_N]`)
+      10.  **Date di Nascita, Età, Scadenze e Orari** (`censor_date` → `[DATA_N]`)
+      11.  **Aziende, Ragioni Sociali, Società ed Enti** (`censor_org` → `[AZIENDA/ENTE_N]`)
+      12.  **Targhe Testuali, CIE, Passaporti e Patenti** (`censor_plates_docs` → `[TARGA/DOCUMENTO_N]`)
+      13.  **Malattie, Diagnosi e Cartelle Cliniche (Art. 9 GDPR)** (`censor_medical` → `[DATO_SANITARIO_N]`)
+      14.  **Farmaci, Terapie, Dosaggi e Posologia** (`censor_medicine` → `[FARMACO/TERAPIA_N]`)
+      15.  **Tribunali, Sentenze e Procedimenti (Art. 10 GDPR)** (`censor_legal` → `[DATO_GIUDIZIARIO_N]`)
+      16.  **Stato Civile e Regime Patrimoniale** (`censor_civil_status` → `[STATO_CIVILE_N]`)
+      17.  **Password, PIN e Chiavi Segrete** (`censor_secret` → `[SEGRETO_N]`)
+      18.  **Indirizzi IP, MAC e Link Web (URL)** (`censor_url` → `[URL_N]`)
     - Pulsanti rapidi di preset: *" Tutto Attivo (Profilo PA / GDPR)"*, *" Solo Dati Essenziali"*, *" Deseleziona Tutto"*.
 - **Sistema Automatico di De-Anonimizzazione ("Rimetti a posto automaticamente i dati veri nel ritorno dall'AI")**:
   - **Switch Globale in Testata**: Permette di attivare/disattivare il ripristino automatico dei dati originali senza alcun passaggio manuale e senza mai accedere a cartelle esterne al programma.
   - **Vault Persistente delle Corrispondenze (`extracted/deanonymize_vault.json`)**: Ogni entità nascosta viene sostituita con un tag univoco numerato (`[PERSONA_1]`, `[PERSONA_2]`, `[EMAIL_1]`, `[INDIRIZZO_1]`) e salvata localmente nel Vault.
-  - **Proxy API Bidirezionale Automatico per Harness AI (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`)**: Integrazione nativa trasparente con **Google Antigravity**, **OpenAI Codex CLI**, **Cursor**, **Windsurf**, **Claude Code**e **OpenCode**. Il Proxy anonimizza i messaggi e i file in uscita verso il Cloud e **rimette automaticamente al loro posto tutti i dati veri**nelle risposte e negli argomenti `tool_calls` (`write_file`, `edit_file`, `apply_patch`) di ritorno dall'AI, incluso il supporto **Streaming SSE con buffer di ricomposizione (`StreamTagBuffer`)**per i tag spezzati tra più token.
+  - **Proxy API Bidirezionale Automatico per Harness AI (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`)**: Integrazione nativa trasparente con **Google Antigravity**, **OpenAI Codex CLI**, **Cursor**, **Windsurf**, **Claude Code** e **OpenCode**. Il Proxy anonimizza i messaggi e i file in uscita verso il Cloud e **rimette automaticamente al loro posto tutti i dati veri** nelle risposte e negli argomenti `tool_calls` (`write_file`, `edit_file`, `apply_patch`) di ritorno dall'AI, incluso il supporto **Streaming SSE con buffer di ricomposizione (`StreamTagBuffer`)** per i tag spezzati tra più token.
   - **Riconoscimento Automatico nella Cartella Interna `input/` e Dropzone**: Caricando un file o incollando un testo contenente etichette del Vault nella Dropzone o nella cartella `input/`, Germano lo riconosce automaticamente e ripristina i dati originali.
-- **Eliminazione Totale Dipendenze CDN Esterne**: Rimossi tutti i riferimenti a `cdnjs.cloudflare.com` (FontAwesome) e `fonts.googleapis.com` (Google Fonts) da `templates/index.html` e `static/style.css`. Tutte le icone sono ora **SVG/ vettoriali native**e la tipografia utilizza lo stack nativo di Windows 11 (`Segoe UI Variable Display`, `Cascadia Mono`, `Consolas`).
+- **Eliminazione Totale Dipendenze CDN Esterne**: Rimossi tutti i riferimenti a `cdnjs.cloudflare.com` (FontAwesome) e `fonts.googleapis.com` (Google Fonts) da `templates/index.html` e `static/style.css`. Tutte le icone sono ora **SVG/ vettoriali native** e la tipografia utilizza lo stack nativo di Windows 11 (`Segoe UI Variable Display`, `Cascadia Mono`, `Consolas`).
 - **Pulsante e Manuale Offline Completo Bilingue (`/guide` & `GUIDA_OFFLINE.html`)**: Aggiunto nella testata della dashboard il pulsante *"Guida & Docs"* che apre la guida offline bilingue (italiano e inglese commutabile all'istante). La guida illustra dapprima i concetti base a prova di errore della Modalità Semplice e il funzionamento delle 5 cartelle interne (`input`, `output`, `processed`, `failed`, `extracted`), prosegue con i controlli dettagliati della Modalità Avanzata (i 7 modelli IA locali e le 18 categorie granulari), e contiene le specifiche complete delle API REST e le istruzioni passo-passo per il Proxy con Google Antigravity, OpenAI Codex CLI, Cursor, Windsurf e Claude Code.
 
 ### Pre-Distribution Bug Audit & Certificazione Windows 11 Home 100% Offline (Air-Gapped)

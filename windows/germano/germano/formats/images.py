@@ -6,43 +6,100 @@
 """
 import io
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from .. import common
 from ..analyzer import Unit
 
 MIN_SIDE = 48
 _ALLOWED_TIFF_COMPRESSION = {"tiff_lzw", "group4", "tiff_adobe_deflate", "raw", "packbits", "jpeg"}
+# Volti, firme, targhe e OCR di un'immagine sono modelli indipendenti (ognuno con il proprio lock nel motore): girano
+# in parallelo (turno 26; prima uno dopo l'altro). Con il motore remoto (modalita' Client) partono insieme le quattro
+# richieste al Germano Server.
+PARALLEL_VISION = True
+_POOL = []
+_POOL_LOCK = threading.Lock()
+
+
+def _pool():
+    with _POOL_LOCK:
+        if not _POOL:
+            _POOL.append(ThreadPoolExecutor(max_workers=4, thread_name_prefix="visione"))
+        return _POOL[0]
+
+
+def scan_image(ctx, img_rgb, allow_plates=True, allow_ocr=True):
+    """Prima fase: i modelli di visione sull'immagine, senza analisi del testo ne' voci di audit.
+    Restituisce {"faces": [...], "signatures": [...], "plates": [...], "ocr": [...] | None}."""
+    s = ctx.settings
+    eng = ctx.engine
+    tasks = []
+    if s.get("enable_faces", True):
+        tasks.append(("faces", eng.detect_faces, img_rgb))
+    if s.get("enable_signatures", True) or (allow_plates and s.get("enable_plate_vision", True)):
+        from PIL import Image
+        if s.get("enable_signatures", True):
+            tasks.append(("signatures", eng.detect_signatures, Image.fromarray(img_rgb)))
+        if allow_plates and s.get("enable_plate_vision", True):
+            tasks.append(("plates", eng.detect_plates, Image.fromarray(img_rgb)))
+    if allow_ocr and s.get("enable_ocr", True) and eng.ocr_reader is not None:
+        tasks.append(("ocr", eng.ocr, img_rgb))
+    out = {"faces": [], "signatures": [], "plates": [], "ocr": None}
+    if not PARALLEL_VISION or len(tasks) < 2:
+        for kind, fn, arg in tasks:
+            out[kind] = fn(arg)
+        return out
+    from ..engine import interactive_scope, is_interactive
+    high = is_interactive()
+
+    def run(fn, arg):
+        with interactive_scope(high):            # la precedenza della richiesta vale anche nei thread della visione
+            return fn(arg)
+    futures = [(kind, _pool().submit(run, fn, arg)) for kind, fn, arg in tasks]
+    first_error = None
+    for kind, fut in futures:                    # si aspettano tutti; il primo errore (nell'ordine di prima) risale
+        try:
+            out[kind] = fut.result()
+        except BaseException as e:               # noqa: BLE001
+            if first_error is None:
+                first_error = e
+    if first_error is not None:
+        raise first_error
+    return out
+
+
+def regions_from_scans(ctx, items):
+    """Seconda fase per una o piu' immagini [(scansione, ocr_areas)]: voci di audit della visione (immagine per
+    immagine, nell'ordine volti, firme, targhe) e UNA sola analisi del testo letto dall'OCR di tutte le immagini
+    (lotto unico: piu' veloce e con la propagazione dei dati fra le pagine). Restituisce le regioni di ogni immagine."""
+    out, segs_all, owners = [], [], []
+    for k, (scan, areas) in enumerate(items):
+        regions = []
+        for kind, label, word, entity in (("faces", "[VOLTO]", "[VOLTO OSCURATO]", "BIOMETRIC_FACE"),
+                                          ("signatures", "[FIRMA]", "[FIRMA AUTOGRAFA]", "SIGNATURE"),
+                                          ("plates", "[TARGA]", "[TARGA VEICOLO]", "LICENSE_PLATE")):
+            for x0, y0, x1, y1, sc in scan.get(kind) or []:
+                regions.append((x0, y0, x1, y1, label))
+                ctx.audit_add(word, label, entity, sc)
+        out.append(regions)
+        if scan.get("ocr") is not None:
+            for seg in _ocr_segments(scan["ocr"], areas):
+                segs_all.append(seg)
+                owners.append(k)
+    if segs_all:
+        for k, regs in zip(owners, _regions_per_segment(ctx, segs_all)):
+            out[k].extend(regs)
+    return out
 
 
 def find_regions(ctx, img_rgb, allow_plates=True, allow_ocr=True, ocr_areas=None):
     """Regioni da oscurare (x0, y0, x1, y1, etichetta) in coordinate pixel.
     `ocr_areas`: se indicato, l'OCR considera solo il testo che cade in queste aree (pixel)."""
-    s = ctx.settings
-    eng = ctx.engine
-    regions = []
-    if eng is None or not ctx.anonymize:
-        return regions
-    if s.get("enable_faces", True):
-        for x0, y0, x1, y1, sc in eng.detect_faces(img_rgb):
-            regions.append((x0, y0, x1, y1, "[VOLTO]"))
-            ctx.audit_add("[VOLTO OSCURATO]", "[VOLTO]", "BIOMETRIC_FACE", sc)
-    pil = None
-    if s.get("enable_signatures", True):
-        from PIL import Image
-        pil = Image.fromarray(img_rgb)
-        for x0, y0, x1, y1, sc in eng.detect_signatures(pil):
-            regions.append((x0, y0, x1, y1, "[FIRMA]"))
-            ctx.audit_add("[FIRMA AUTOGRAFA]", "[FIRMA]", "SIGNATURE", sc)
-    if allow_plates and s.get("enable_plate_vision", True):
-        if pil is None:
-            from PIL import Image
-            pil = Image.fromarray(img_rgb)
-        for x0, y0, x1, y1, sc in eng.detect_plates(pil):
-            regions.append((x0, y0, x1, y1, "[TARGA]"))
-            ctx.audit_add("[TARGA VEICOLO]", "[TARGA]", "LICENSE_PLATE", sc)
-    if allow_ocr and s.get("enable_ocr", True) and eng.ocr_reader is not None:
-        regions.extend(ocr_regions(ctx, img_rgb, ocr_areas))
-    return regions
+    if ctx.engine is None or not ctx.anonymize:
+        return []
+    scan = scan_image(ctx, img_rgb, allow_plates, allow_ocr)
+    return regions_from_scans(ctx, [(scan, ocr_areas)])[0]
 
 
 def _in_areas(box, areas):
@@ -89,9 +146,8 @@ def _span_x(text, s, e, x0, x1):
     return max(x0, x0 + left), min(x1, x0 + right)
 
 
-def ocr_regions(ctx, img_rgb, areas=None):
-    """Legge il testo con l'OCR, lo analizza e restituisce i riquadri delle sole parti personali."""
-    results = ctx.engine.ocr(img_rgb)
+def _ocr_segments(results, areas=None):
+    """Righe lette dall'OCR [(riquadro, testo)], solo quelle che cadono nelle aree indicate (se ce ne sono)."""
     segs = []
     for box, text, _conf in results or []:
         if not text or not text.strip():
@@ -102,12 +158,16 @@ def ocr_regions(ctx, img_rgb, areas=None):
         if areas is not None and not _in_areas(bb, areas):
             continue
         segs.append((bb, text))
-    if not segs:
-        return []
+    return segs
+
+
+def _regions_per_segment(ctx, segs):
+    """Analizza il testo delle righe OCR (una sola chiamata) e restituisce, riga per riga, i riquadri dei dati."""
     units = [Unit(t, ocr=True) for _, t in segs]
     res = ctx.analyze(units)
-    regions = []
+    out = []
     for ((x0, y0, x1, y1), text), reps in zip(segs, res):
+        regions = []
         n = max(1, len(text))
         for s, e, label in reps:
             if (e - s) >= n * 0.6:
@@ -116,7 +176,16 @@ def ocr_regions(ctx, img_rgb, areas=None):
                 rx0, rx1 = _span_x(text, s, e, x0, x1)   # posizione stimata, con margine di sicurezza
             pad_y = (y1 - y0) * 0.08
             regions.append((rx0, y0 - pad_y, rx1, y1 + pad_y, label))
-    return regions
+        out.append(regions)
+    return out
+
+
+def ocr_regions(ctx, img_rgb, areas=None):
+    """Legge il testo con l'OCR, lo analizza e restituisce i riquadri delle sole parti personali."""
+    segs = _ocr_segments(ctx.engine.ocr(img_rgb), areas)
+    if not segs:
+        return []
+    return [r for regions in _regions_per_segment(ctx, segs) for r in regions]
 
 
 def draw_regions(img, regions):
@@ -154,11 +223,12 @@ def _back_to_mode(img, orig_mode):
     return img
 
 
-def _anonymize_frames(im, ctx, single_transpose=True):
+def _prepare_frames(im, ctx, single_transpose=True):
+    """Prima fase: fotogrammi da modificare e visione su ciascuno (l'analisi del testo letto avviene dopo)."""
     from PIL import ImageOps
     import numpy as np
     n = getattr(im, "n_frames", 1) or 1
-    frames, total = [], 0
+    frames = []
     for i in range(n):
         ctx.check()
         if n > 1:
@@ -169,14 +239,36 @@ def _anonymize_frames(im, ctx, single_transpose=True):
             fr = ImageOps.exif_transpose(im) if single_transpose else im.copy()
         orig_mode = fr.mode
         work = fr.convert("RGBA") if _has_alpha(fr) else fr.convert("RGB")
-        regions = []
-        if min(work.size) >= MIN_SIDE:
-            regions = find_regions(ctx, np.array(work.convert("RGB")))
-        if regions:
-            draw_regions(work, regions)
-            total += len(regions)
-        frames.append(_back_to_mode(work, orig_mode))
-    return frames, total
+        scan = None
+        if min(work.size) >= MIN_SIDE and ctx.engine is not None and ctx.anonymize:
+            scan = scan_image(ctx, np.array(work.convert("RGB")))
+        frames.append({"work": work, "mode": orig_mode, "scan": scan, "regions": [],
+                       "pixels": work.size[0] * work.size[1]})
+    return frames
+
+
+def _analyze_frames(ctx, frames):
+    """Testo letto dall'OCR di tutti i fotogrammi indicati (anche di immagini diverse): un'unica analisi."""
+    todo = [f for f in frames if f["scan"] is not None]
+    if todo:
+        for f, regions in zip(todo, regions_from_scans(ctx, [(f["scan"], None) for f in todo])):
+            f["regions"] = regions
+
+
+def _finish_frames(frames):
+    out, total = [], 0
+    for f in frames:
+        if f["regions"]:
+            draw_regions(f["work"], f["regions"])
+            total += len(f["regions"])
+        out.append(_back_to_mode(f["work"], f["mode"]))
+    return out, total
+
+
+def _anonymize_frames(im, ctx, single_transpose=True):
+    frames = _prepare_frames(im, ctx, single_transpose)
+    _analyze_frames(ctx, frames)
+    return _finish_frames(frames)
 
 
 def _save_frames(frames, dest, fmt, info):
@@ -233,8 +325,9 @@ def process_image(in_path, out_path, ctx):
     return None
 
 
-def anonymize_image_bytes(data, ctx):
-    """Per le immagini incorporate nei documenti: nuovi bytes oppure None se nulla da cambiare."""
+def _prepare_bytes(data, ctx):
+    """Immagine incorporata: stato della prima fase, oppure None se non c'e' nulla da fare (illeggibile, troppo
+    piccola). Gli errori della visione risalgono a chi chiama."""
     from PIL import Image
     try:
         im = Image.open(io.BytesIO(data))
@@ -248,13 +341,74 @@ def anonymize_image_bytes(data, ctx):
             has_meta = bool(im.info.get("exif")) or bool(im.getexif()) or bool(im.info.get("xmp"))
         except Exception:
             has_meta = False
-        fmt = im.format
-        info = dict(im.info)
-        frames, total = _anonymize_frames(im, ctx)
-        if not total and not has_meta:
-            return None
-        buf = io.BytesIO()
-        _save_frames(frames, buf, fmt, info)
-        return buf.getvalue()
+        return {"fmt": im.format, "info": dict(im.info), "has_meta": has_meta,
+                "frames": _prepare_frames(im, ctx)}
     finally:
         im.close()
+
+
+def _encode_prepared(st):
+    frames, total = _finish_frames(st["frames"])
+    if not total and not st["has_meta"]:
+        return None
+    buf = io.BytesIO()
+    _save_frames(frames, buf, st["fmt"], st["info"])
+    return buf.getvalue()
+
+
+def anonymize_image_bytes(data, ctx):
+    """Per le immagini incorporate nei documenti: nuovi bytes oppure None se nulla da cambiare."""
+    st = _prepare_bytes(data, ctx)
+    if st is None:
+        return None
+    _analyze_frames(ctx, st["frames"])
+    return _encode_prepared(st)
+
+
+class ImageBatcher:
+    """Immagini incorporate di un documento (DOCX/XLSX/PPTX, ODF) elaborate a finestre (turno 26): visione immagine
+    per immagine, poi UN'UNICA analisi del testo letto dall'OCR di tutta la finestra (prima: una per immagine), infine
+    le immagini modificate. Memoria limitata: al massimo `window` immagini o `max_pixels` pixel alla volta.
+    `on_result(chiave, bytes_nuovi | None, errore | None)` viene chiamato per ogni immagine, nell'ordine di arrivo."""
+
+    def __init__(self, ctx, on_result, window=8, max_pixels=40_000_000):
+        self.ctx, self.on_result = ctx, on_result
+        self.window, self.max_pixels = window, max_pixels
+        self._pending, self._pixels = [], 0
+
+    def add(self, key, data):
+        from . import reraise_control
+        try:
+            st = _prepare_bytes(data, self.ctx)
+        except Exception as e:
+            reraise_control(e)
+            self.on_result(key, None, e)
+            return
+        if st is None:
+            self.on_result(key, None, None)
+            return
+        self._pending.append((key, st))
+        self._pixels += sum(f["pixels"] for f in st["frames"])
+        if len(self._pending) >= self.window or self._pixels >= self.max_pixels:
+            self.flush()
+
+    def flush(self):
+        from . import reraise_control
+        pending, self._pending, self._pixels = self._pending, [], 0
+        if not pending:
+            return
+        try:
+            _analyze_frames(self.ctx, [f for _k, st in pending for f in st["frames"]])
+        except Exception as e:
+            reraise_control(e)
+            for key, _st in pending:
+                self.on_result(key, None, e)
+            return
+        for key, st in pending:
+            try:
+                nb = _encode_prepared(st)
+            except Exception as e:
+                reraise_control(e)
+                self.on_result(key, None, e)
+                continue
+            self.on_result(key, nb, None)

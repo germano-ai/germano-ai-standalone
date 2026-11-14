@@ -1,4 +1,4 @@
-"""Germano Client v0.80 - pannello locale (si apre in una finestra app dedicata, via germano_desktop.py).
+"""Germano Client v0.90 - pannello locale (si apre in una finestra app dedicata, via germano_desktop.py).
 
 E' LO STESSO Remote Control del Germano Server (remote/remote.html, remote.js, remote.css, harness.js, harness.css:
 copie identiche di quelli del server), servito qui su 127.0.0.1: le sue richieste (/api/remote/v1/..., /api/auth/...,

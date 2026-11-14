@@ -1,4 +1,4 @@
-/* Germano AI 0.70 - Remote Control: lo stesso codice gira nel browser di qualsiasi dispositivo della rete locale
+/* Germano AI 0.90 - Remote Control: lo stesso codice gira nel browser di qualsiasi dispositivo della rete locale
    (pagina /remote del Germano Server) e in Germano Client (che lo serve in locale e inoltra le richieste al server).
    Stesso paradigma della Dashboard: Harness AI (static/harness.js, con la Glass Window), Sanitizzazione manuale,
    Impostazioni, Guida. Tutto il testo ricevuto dal server viene inserito come testo (mai come HTML). */
@@ -559,12 +559,24 @@
         return new Blob([bytes], { type: 'application/octet-stream' });
     }
 
+    // Dalla 0.80: le registrazioni audio tornano come trascrizione, gli archivi compressi tornano ricomposti
+    function slowKind(f) {
+        const n = (f && f.name) || '';
+        if (/\.(mp3|wav|m4a|ogg|oga|opus|flac|aac|wma|amr|aiff?|m4b|mka|weba)$/i.test(n)) return 'audio';
+        if (/\.(zip|tar|tgz|tbz2?|txz|gz|bz2|xz|7z|rar)$/i.test(n)) return 'archive';
+        return '';
+    }
+
     async function anonymizeFiles(files) {
         const box = $('rcFileResults');
         for (const f of files) {
             const row = el('div', { class: 'rc-file-res' }, el('span', { class: 'rc-file-res-main' },
                 el('span', { class: 'rc-file-res-name', text: f.name }),
-                el('span', { class: 'rc-file-res-sub', text: T('Protezione in corso sul Germano Server…', 'Protecting on the Germano Server…') })));
+                el('span', { class: 'rc-file-res-sub', text: slowKind(f) === 'audio'
+                    ? T('Trascrizione e protezione in corso sul Germano Server… (circa un terzo della durata della registrazione)', 'Transcribing and protecting on the Germano Server… (about one third of the recording length)')
+                    : (slowKind(f) === 'archive'
+                        ? T('Apertura sicura dell\'archivio e protezione di ogni file sul Germano Server…', 'Opening the archive safely and protecting each file on the Germano Server…')
+                        : T('Protezione in corso sul Germano Server…', 'Protecting on the Germano Server…')) })));
             box.prepend(row);
             const fd = new FormData();
             fd.append('file', f, f.name);
@@ -607,7 +619,12 @@
             return;
         }
         const blob = await response.blob();
-        downloadBlob(blob, f.name.startsWith('ripristinato_') ? f.name : 'ripristinato_' + f.name);
+        // il server indica il nome quando l'estensione cambia (es. un archivio RAR, non ricreabile, torna come ZIP)
+        let outName = f.name.startsWith('ripristinato_') ? f.name : 'ripristinato_' + f.name;
+        const cd = response.headers.get('Content-Disposition') || '';
+        const m = /filename\*=UTF-8''([^;]+)/i.exec(cd) || /filename="?([^";]+)"?/i.exec(cd);
+        if (m) { try { outName = decodeURIComponent(m[1]); } catch (e) { outName = m[1]; } }
+        downloadBlob(blob, outName);
         $('rcRestoreFileInfo').textContent = T('✅ File ripristinato e scaricato.', '✅ File restored and downloaded.');
     }
 
