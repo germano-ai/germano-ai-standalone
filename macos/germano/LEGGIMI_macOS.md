@@ -1,7 +1,7 @@
-# Germano AI 0.96 — Suite completa per macOS
+# Germano AI 0.97 — Suite completa per macOS
 
 ## Installazione
-Scarica **`germano-0.96.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
+Scarica **`germano-0.97.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
 **macOS 14 Sonoma** o successivo: PyTorch non è più pubblicato per i Mac Intel, che usano il client leggero) e fai
 doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, gli 8 modelli IA, llama.cpp per il
 Sistema 2 e 7-Zip per gli archivi) e non scarica nulla.
@@ -30,6 +30,13 @@ questo computer filtrate da Germano e la Glass Window, sanitizzazione manuale di
 profilo PA). Di base l'accesso è libero; con la gestione utenti (Impostazioni › Modalità e rete › Accesso dalla rete)
 servono utente e password. Alla prima attivazione macOS può chiedere di consentire le connessioni in entrata a Python:
 rispondi **Consenti**.
+
+## Novità della 0.97: sforzo di ragionamento per Qwen e per tutti i modelli
+Nel selettore **Parametri** lo **Sforzo di ragionamento** (`reasoning_effort`: `none`, `low`, `medium`, `high`,
+`xhigh`, `max`) è ora disponibile su **tutti i 19 servizi API cloud e modelli locali** (Qwen, Qwen Token Plan /
+Qwen4-Max, GLM, OpenAI, Anthropic via `output_config.effort`, Gemini, DeepSeek, Grok, Kimi, OpenRouter, Mistral,
+Meta, Perplexity, Groq, Ollama, LM Studio, Jan), oltre alle CLI Claude Code e Antigravity, con step-down e fallback
+automatico su HTTP 400 se un modello non accetta un livello superiore.
 
 ## Novità della 0.96: selettore dei parametri per ogni AI
 Accanto al selettore del modello in basso a destra nella chat compare il pulsante **Parametri**, adattato all'AI

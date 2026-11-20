@@ -1,5 +1,5 @@
 'use strict';
-/* Germano AI 0.96 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
+/* Germano AI 0.97 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
    (cartelle di lavoro, documenti, testo), Impostazioni (modalita' e rete, protezione, AI e chiavi, Proxy e API, sistema,
    aggiornamenti silenziosi) e Guida offline. */
 

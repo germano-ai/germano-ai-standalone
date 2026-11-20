@@ -6,6 +6,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [0.97] - 2026-11-20
+
+### Added
+- **Reasoning effort (`reasoning_effort`) for Qwen and all models:** in the *Parameters* selector of the protected chat (**Dashboard**, **Remote Control** and **Germano Client**), **Reasoning effort** now appears as the first control across **all 19 cloud API services and local model servers** (Qwen, Qwen Token Plan / Qwen4-Max, Qwen Coding Plan, GLM / Z.ai, OpenAI, Anthropic, Google Gemini, DeepSeek, Grok / xAI, OpenRouter, Kimi / Moonshot, Meta Muse, Mistral, Perplexity, Groq, Ollama, LM Studio, Jan), in addition to **Claude Code** and **Antigravity CLI (`agy`)**.
+- **Full tier range (`none`, `low`, `medium`, `high`, `xhigh`, `max`):** all OpenAI-compatible services (cloud and local) expose every tier from `none` (off) up to `xhigh` and `max`; for **Anthropic API**, the chosen tier (`low`…`max`) is sent natively as `output_config: {"effort": ...}` alongside `thinking` / `thinking_budget`; for **Qwen** and **GLM**, it complements `enable_thinking` (`on`/`off`), omitting `reasoning_effort` when `enable_thinking` is explicitly set to `off`.
+
+### Improved
+- **Resilient HTTP 400 step-down & fallback (`chat` and `stream_chat`):** if a model or endpoint rejects a higher effort tier than it supports (e.g. `max` on a model supporting up to `xhigh` or `high`), Germano automatically steps down to the highest supported tier (`max` → `xhigh`/`high`, `xhigh` → `high`) before omitting the field; the same resilient handling now applies to both streaming and non-streaming requests and covers `output_config`.
+- **Clearer UI labels:** in the parameters popover, `reasoning_effort = none` is displayed as *none · off* / *none · disattivo* (distinct from *none · text only* for CLI tools).
+
+### Verified
+- Automated tests across all 19 services (`param_schema_for`, `validate_params`, `_apply_params`, `_adapt_400_body`, step-down `max`/`xhigh`/`high`/omit, Qwen/Anthropic/Ollama payloads, anti-injection) and 6-tree coherence (`4/4`, `164` `.py` files, IT/EN guide parity across `15/15` chapters).
+
 ## [0.96] - 2026-11-20
 
 ### Added

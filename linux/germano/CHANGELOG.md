@@ -5,6 +5,19 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.97] - 2026-11-20
+
+### Aggiunto
+- **Sforzo di ragionamento (`reasoning_effort`) per Qwen e per tutti i modelli:** nel selettore *Parametri* della chat protetta (**Dashboard**, **Remote Control** e **Germano Client**), lo **Sforzo di ragionamento** compare ora come primo controllo su **tutti i 19 servizi API cloud e modelli locali** (Qwen, Qwen Token Plan / Qwen4-Max, Qwen Coding Plan, GLM / Z.ai, OpenAI, Anthropic, Google Gemini, DeepSeek, Grok / xAI, OpenRouter, Kimi / Moonshot, Meta Muse, Mistral, Perplexity, Groq, Ollama, LM Studio, Jan), oltre alle CLI **Claude Code** e **Antigravity (`agy`)**.
+- **Gamma completa di livelli (`none`, `low`, `medium`, `high`, `xhigh`, `max`):** per tutti i servizi compatibili OpenAI (cloud e locali) sono disponibili tutti i livelli da `none` (disattivo) fino a `xhigh` e `max`; per **Anthropic API** il livello selezionato (`low`…`max`) viene inviato nativamente come `output_config: {"effort": ...}` (affiancato a `thinking` / `thinking_budget`); per **Qwen** e **GLM** affianca `enable_thinking` (`on`/`off`), omettendo `reasoning_effort` se `enable_thinking` è impostato esplicitamente su `off`.
+
+### Migliorato
+- **Fallback e step-down resiliente su HTTP 400 (`chat` e `stream_chat`):** se un modello o un endpoint rifiuta un livello di effort superiore a quello supportato (ad es. `max` su un modello che accetta fino a `xhigh` o `high`), Germano scala automaticamente al livello inferiore supportato (`max` → `xhigh`/`high`, `xhigh` → `high`) prima di omettere il campo; la stessa gestione resiliente vale ora sia per lo streaming sia per le chiamate sincrone e include `output_config`.
+- **Etichette UI chiare:** nel selettore parametri il valore `none` di `reasoning_effort` viene mostrato come *none · disattivo* / *none · off* (distinto da *none · solo testo* degli strumenti CLI).
+
+### Verificato
+- Collaudi automatici sui 19 servizi (`param_schema_for`, `validate_params`, `_apply_params`, `_adapt_400_body`, step-down `max`/`xhigh`/`high`/omit, coerenza Qwen/Anthropic/Ollama, anti-injection) e coerenza dei 6 alberi (`4/4`, `164` file `.py`, parità guida IT/EN `15/15` capitoli).
+
 ## [0.96] - 2026-11-20
 
 ### Aggiunto

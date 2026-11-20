@@ -1,4 +1,4 @@
-/* Germano AI 0.96 - Harness AI e Glass Window.
+/* Germano AI 0.97 - Harness AI e Glass Window.
    Componente condiviso dalla Dashboard (index.html), dal Remote Control (/remote) e dal pannello di Germano Client:
    stessa interfaccia ovunque, stesse rotte del server (/api/harness/v2/*), che applica le regole di chi chiede
    (questo computer o un dispositivo della rete).
@@ -1370,9 +1370,12 @@
         paramValueLabel(key, v) {
             const en = this.lang === 'en';
             if (v === 'default') return key === 'tools_mode' ? (en ? 'default · CLI tools' : 'default · strumenti CLI') : this.T('paramsDefault');
+            if (v === 'none') {
+                if (key === 'tools_mode') return en ? 'none · text only' : 'none · solo testo';
+                if (key === 'reasoning_effort') return en ? 'none · off' : 'none · disattivo';
+            }
             const map = {
                 restricted: en ? 'restricted · safe' : 'restricted · sicuro',
-                none: en ? 'none · text only' : 'none · solo testo',
                 enabled: en ? 'Enabled' : 'Attivo', disabled: en ? 'Disabled' : 'Disattivo',
                 on: en ? 'On' : 'Attivo', off: en ? 'Off' : 'Disattivo',
             };

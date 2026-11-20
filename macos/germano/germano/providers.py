@@ -89,13 +89,15 @@ class Interrupted(Exception):
     """Streaming interrotto dall'utente (Glass Window): la connessione e' stata chiusa di proposito."""
 
 
-# Parametri dei servizi (0.95 turno 31): whitelist per famiglia di servizio. reasoning_effort per i servizi che lo
-# documentano (OpenAI, OpenRouter, xAI, Gemini, DeepSeek); thinking/thinking_budget per Anthropic; enable_thinking
-# per Qwen e GLM. temperature, top_p e max_tokens per tutti (con il fallback resiliente su HTTP 400 di stream_chat
-# se un endpoint terzo rifiuta un campo opzionale).
-_REASONING_SERVICES = frozenset({"openai", "openrouter", "xai", "gemini", "deepseek"})
+# Parametri dei servizi: reasoning_effort (sforzo di ragionamento) disponibile per TUTTI i servizi cloud e locali
+# (OpenAI-compatible: none/low/medium/high/xhigh/max; Anthropic: output_config.effort low/medium/high/xhigh/max).
+# In piu' thinking/thinking_budget per Anthropic e enable_thinking per Qwen e GLM; temperature, top_p e max_tokens per
+# tutti (con fallback resiliente su HTTP 400 in chat/stream_chat: step-down automatico se un modello non accetta
+# max/xhigh, oppure rimozione del campo opzionale se il servizio non lo supporta).
 _THINKING_SERVICES = frozenset({"anthropic"})
 _ENABLE_THINKING_SERVICES = frozenset({"qwen", "qwen-token", "qwen-coding", "zai", "zai-coding"})
+_EFFORT_VALUES_OPENAI = ("default", "none", "low", "medium", "high", "xhigh", "max")
+_EFFORT_VALUES_ANTHROPIC = ("default", "low", "medium", "high", "xhigh", "max")
 # limiti di validazione lato server (il selettore UI usa i range min/max dello schema, piu' stretti per max_tokens)
 _PARAM_RANGES = {"temperature": (0.0, 2.0), "top_p": (0.0, 1.0), "max_tokens": (1, 65536),
                  "thinking_budget": (1024, 32000)}
@@ -108,22 +110,25 @@ def param_schema_for(service_id):
     spec = get(sid)
     if not spec:
         return {"service": sid, "fields": []}
-    fields = [
-        {"key": "temperature", "type": "number", "min": 0.0, "max": 2.0, "step": 0.1, "default": None,
-         "it": "Temperatura", "en": "Temperature",
-         "note_it": "Vuoto = predefinito del modello (0.0–2.0).", "note_en": "Empty = model default (0.0–2.0)."},
-        {"key": "max_tokens", "type": "int", "min": 256, "max": 32768, "step": 1, "default": None,
-         "it": "Token massimi", "en": "Max tokens",
-         "note_it": "Vuoto = predefinito del modello (256–32768).", "note_en": "Empty = model default (256–32768)."},
-        {"key": "top_p", "type": "number", "min": 0.0, "max": 1.0, "step": 0.05, "default": None,
-         "it": "Top-p", "en": "Top-p",
-         "note_it": "Vuoto = predefinito del modello (0.0–1.0).", "note_en": "Empty = model default (0.0–1.0)."},
-    ]
-    if sid in _REASONING_SERVICES:
-        fields.append({"key": "reasoning_effort", "type": "enum", "values": ["default", "low", "medium", "high"],
+    is_anthropic_only = not spec.get("openai") and bool(spec.get("anthropic"))
+    fields = []
+    if is_anthropic_only:
+        fields.append({"key": "reasoning_effort", "type": "enum", "values": list(_EFFORT_VALUES_ANTHROPIC),
                        "default": "default", "it": "Sforzo di ragionamento", "en": "Reasoning effort",
-                       "note_it": "reasoning_effort (low, medium, high), se il modello lo supporta.",
-                       "note_en": "reasoning_effort (low, medium, high), when the model supports it."})
+                       "note_it": "output_config.effort (low, medium, high, xhigh, max), se il modello lo supporta.",
+                       "note_en": "output_config.effort (low, medium, high, xhigh, max), when the model supports it."})
+    else:
+        fields.append({"key": "reasoning_effort", "type": "enum", "values": list(_EFFORT_VALUES_OPENAI),
+                       "default": "default", "it": "Sforzo di ragionamento", "en": "Reasoning effort",
+                       "note_it": "reasoning_effort (none, low, medium, high, xhigh, max), se il modello lo supporta "
+                                  "(fallback automatico se un livello alto non e' ammesso).",
+                       "note_en": "reasoning_effort (none, low, medium, high, xhigh, max), when the model supports it "
+                                  "(automatic step-down or omit if a higher tier is unsupported)."})
+    if sid in _ENABLE_THINKING_SERVICES:
+        fields.append({"key": "enable_thinking", "type": "enum", "values": ["default", "on", "off"],
+                       "default": "default", "it": "Ragionamento", "en": "Thinking",
+                       "note_it": "enable_thinking per Qwen/GLM (on = attivo, off = disattivo).",
+                       "note_en": "enable_thinking for Qwen/GLM (on = enabled, off = disabled)."})
     if sid in _THINKING_SERVICES:
         fields.append({"key": "thinking", "type": "enum", "values": ["default", "enabled", "disabled"],
                        "default": "default", "it": "Ragionamento esteso", "en": "Extended thinking",
@@ -136,11 +141,17 @@ def param_schema_for(service_id):
                        "it": "Budget di ragionamento", "en": "Thinking budget",
                        "note_it": "budget_tokens (1024–32000): max_tokens sara' almeno budget + 1.",
                        "note_en": "budget_tokens (1024–32000): max_tokens will be at least budget + 1."})
-    if sid in _ENABLE_THINKING_SERVICES:
-        fields.append({"key": "enable_thinking", "type": "enum", "values": ["default", "on", "off"],
-                       "default": "default", "it": "Ragionamento", "en": "Thinking",
-                       "note_it": "enable_thinking per Qwen/GLM (on = attivo, off = disattivo).",
-                       "note_en": "enable_thinking for Qwen/GLM (on = enabled, off = disabled)."})
+    fields.extend([
+        {"key": "temperature", "type": "number", "min": 0.0, "max": 2.0, "step": 0.1, "default": None,
+         "it": "Temperatura", "en": "Temperature",
+         "note_it": "Vuoto = predefinito del modello (0.0–2.0).", "note_en": "Empty = model default (0.0–2.0)."},
+        {"key": "max_tokens", "type": "int", "min": 256, "max": 32768, "step": 1, "default": None,
+         "it": "Token massimi", "en": "Max tokens",
+         "note_it": "Vuoto = predefinito del modello (256–32768).", "note_en": "Empty = model default (256–32768)."},
+        {"key": "top_p", "type": "number", "min": 0.0, "max": 1.0, "step": 0.05, "default": None,
+         "it": "Top-p", "en": "Top-p",
+         "note_it": "Vuoto = predefinito del modello (0.0–1.0).", "note_en": "Empty = model default (0.0–1.0)."},
+    ])
     return {"service": sid, "fields": fields}
 
 
@@ -189,9 +200,12 @@ def validate_params(service_id, raw):
 
 def _apply_params(body, fmt, params, max_tokens):
     """Applica i parametri gia' validati al corpo JSON della richiesta. Con thinking attivo (Anthropic) max_tokens
-    deve superare budget_tokens e temperature/top_p non si inviano (specifica Anthropic)."""
+    deve superare budget_tokens e temperature/top_p non si inviano (specifica Anthropic). Su Anthropic reasoning_effort
+    viaggia come output_config.effort; sui servizi OpenAI-compatible come reasoning_effort."""
     mt = params.get("max_tokens", max_tokens)
     if fmt == "anthropic":
+        if "reasoning_effort" in params:
+            body["output_config"] = {"effort": params["reasoning_effort"]}
         thinking = params.get("thinking")
         if thinking == "enabled":
             budget = params.get("thinking_budget", 1024)
@@ -210,11 +224,52 @@ def _apply_params(body, fmt, params, max_tokens):
         for k in ("temperature", "top_p"):
             if k in params:
                 body[k] = params[k]
-        if "reasoning_effort" in params:
+        if "reasoning_effort" in params and (params.get("enable_thinking") != "off" or params["reasoning_effort"] == "none"):
             body["reasoning_effort"] = params["reasoning_effort"]
         if "enable_thinking" in params:
             body["enable_thinking"] = params["enable_thinking"] == "on"
     return body
+
+
+def _step_down_effort(cur, detail_low):
+    """Se il servizio rifiuta un livello di effort alto ma l'errore cita un livello inferiore ammesso, scala al
+    livello inferiore invece di togliere subito l'effort (es. max -> xhigh su qwen4-max, xhigh -> high su altri)."""
+    if cur == "max":
+        if "xhigh" in detail_low:
+            return "xhigh"
+        if "high" in detail_low:
+            return "high"
+    elif cur == "xhigh":
+        if "high" in detail_low:
+            return "high"
+    return None
+
+
+def _adapt_400_body(body, fmt, detail):
+    """Fallback resiliente su HTTP 400: rinomina max_tokens -> max_completion_tokens (OpenAI), scala un livello
+    di reasoning_effort / output_config.effort non ammesso al livello inferiore supportato, oppure toglie i campi
+    opzionali citati nell'errore. Restituisce il nuovo payload o None se non c'e' nulla da adattare."""
+    d_low = (detail or "").lower()
+    if fmt == "openai" and "max_tokens" in body and "max_tokens" in d_low and "max_completion_tokens" not in body:
+        nxt = dict(body, max_completion_tokens=body["max_tokens"])
+        del nxt["max_tokens"]
+        return nxt
+    if fmt == "openai" and "reasoning_effort" in body and ("reasoning_effort" in d_low or "effort" in d_low):
+        nxt_eff = _step_down_effort(body["reasoning_effort"], d_low)
+        if nxt_eff and nxt_eff != body["reasoning_effort"]:
+            return dict(body, reasoning_effort=nxt_eff)
+        return {k: v for k, v in body.items() if k != "reasoning_effort"}
+    if fmt == "anthropic" and "output_config" in body and ("output_config" in d_low or "effort" in d_low):
+        cur = (body.get("output_config") or {}).get("effort")
+        nxt_eff = _step_down_effort(cur, d_low)
+        if nxt_eff and nxt_eff != cur:
+            return dict(body, output_config={"effort": nxt_eff})
+        return {k: v for k, v in body.items() if k != "output_config"}
+    drop = [k for k in ("stream_options", "enable_thinking", "thinking", "top_p", "temperature")
+            if k in body and k in d_low]
+    if drop:
+        return {k: v for k, v in body.items() if k not in drop}
+    return None
 
 
 def get(service_id):
@@ -314,15 +369,27 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
         raise ServiceError("serve la chiave API del servizio")
     params = validate_params(service_id, params)
     http = _http_local if spec.get("local") else _http
+    def _post_sync(url, payload, headers, fmt):
+        cur = payload
+        for _ in range(4):
+            try:
+                resp = http.post(url, json=cur, headers=headers, timeout=TIMEOUT)
+            except requests.RequestException as e:
+                raise ServiceError(f"{spec['name']} non raggiungibile ({e.__class__.__name__})") from None
+            if resp.status_code == 400:
+                nxt = _adapt_400_body(cur, fmt, (resp.text or "")[:2000])
+                if nxt is not None:
+                    cur = nxt
+                    continue
+            return resp
+        return resp
+
     if spec.get("openai"):
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         body = _apply_params({"model": model, "messages": messages, "stream": False}, "openai", params, max_tokens)
-        try:
-            r = http.post(_base(spec, "openai") + "/chat/completions", json=body, headers=headers, timeout=TIMEOUT)
-        except requests.RequestException as e:
-            raise ServiceError(f"{spec['name']} non raggiungibile ({e.__class__.__name__})") from None
+        r = _post_sync(_base(spec, "openai") + "/chat/completions", body, headers, "openai")
         if r.status_code >= 400:
             raise ServiceError(f"{spec['name']} ha risposto con errore {r.status_code}: {_error_text(r)}")
         try:
@@ -341,10 +408,7 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
     if system:
         body["system"] = system
     _apply_params(body, "anthropic", params, max_tokens)
-    try:
-        r = http.post(_base(spec, "anthropic") + "/messages", json=body, headers=headers, timeout=TIMEOUT)
-    except requests.RequestException as e:
-        raise ServiceError(f"{spec['name']} non raggiungibile ({e.__class__.__name__})") from None
+    r = _post_sync(_base(spec, "anthropic") + "/messages", body, headers, "anthropic")
     if r.status_code >= 400:
         raise ServiceError(f"{spec['name']} ha risposto con errore {r.status_code}: {_error_text(r)}")
     try:
@@ -452,23 +516,17 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
             raise ServiceError(f"{spec['name']} non raggiungibile ({e.__class__.__name__})") from None
 
     r = post(body)
-    # Fallback resiliente (turno 31): alcuni endpoint terzi rifiutano un campo opzionale (stream_options,
-    # reasoning_effort, enable_thinking, thinking, top_p, temperature) o il nome max_tokens (OpenAI lo ha rinominato
-    # max_completion_tokens). Si toglie/rinomina SOLO cio' che il messaggio d'errore cita e si riprova (max 2 volte);
-    # se l'errore resta, il motivo arriva chiaro all'utente.
+    # Fallback resiliente: rinomina max_tokens -> max_completion_tokens (OpenAI), scala reasoning_effort /
+    # output_config.effort al livello inferiore ammesso oppure toglie i campi opzionali citati nell'errore 400.
     retries = 0
-    while r.status_code == 400 and retries < 2:
+    while r.status_code == 400 and retries < 3:
         detail = (r.text or "")[:2000]
         r.close()
         if stopped():
             raise Interrupted()
-        drop = [k for k in ("stream_options", "reasoning_effort", "enable_thinking", "thinking", "top_p",
-                            "temperature") if k in body and k in detail]
-        if fmt == "openai" and "max_tokens" in body and "max_tokens" in detail and "max_completion_tokens" not in body:
-            body = dict(body, max_completion_tokens=body["max_tokens"])
-            del body["max_tokens"]
-        elif drop:
-            body = {k: v for k, v in body.items() if k not in drop}
+        nxt = _adapt_400_body(body, fmt, detail)
+        if nxt is not None:
+            body = nxt
         else:
             raise ServiceError(f"{spec['name']} ha risposto con errore 400: {detail[:300]}")
         retries += 1

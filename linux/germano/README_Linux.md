@@ -1,11 +1,11 @@
-# Germano AI 0.96 — Suite completa per Linux
+# Germano AI 0.97 — Suite completa per Linux
 
 ## Installazione
-Scarica **`germano-0.96.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-0.97.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure da terminale:
 
 ```bash
-sudo apt install ./germano-0.96.deb
+sudo apt install ./germano-0.97.deb
 ```
 
 Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, gli 8 modelli IA,
@@ -36,6 +36,13 @@ automatica, 8182/udp solo dalla rete locale.
 
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
 fuori dalla sessione grafica dell'utente.
+
+## Novità della 0.97: sforzo di ragionamento per Qwen e per tutti i modelli
+Nel selettore **Parametri** lo **Sforzo di ragionamento** (`reasoning_effort`: `none`, `low`, `medium`, `high`,
+`xhigh`, `max`) è ora disponibile su **tutti i 19 servizi API cloud e modelli locali** (Qwen, Qwen Token Plan /
+Qwen4-Max, GLM, OpenAI, Anthropic via `output_config.effort`, Gemini, DeepSeek, Grok, Kimi, OpenRouter, Mistral,
+Meta, Perplexity, Groq, Ollama, LM Studio, Jan), oltre alle CLI Claude Code e Antigravity, con step-down e fallback
+automatico su HTTP 400 se un modello non accetta un livello superiore.
 
 ## Novità della 0.96: selettore dei parametri per ogni AI
 Accanto al selettore del modello in basso a destra nella chat compare il pulsante **Parametri**, adattato all'AI
