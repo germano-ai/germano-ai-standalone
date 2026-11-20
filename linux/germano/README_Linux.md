@@ -1,11 +1,11 @@
-# Germano AI 0.95 — Suite completa per Linux
+# Germano AI 0.96 — Suite completa per Linux
 
 ## Installazione
-Scarica **`germano-0.95.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-0.96.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure da terminale:
 
 ```bash
-sudo apt install ./germano-0.95.deb
+sudo apt install ./germano-0.96.deb
 ```
 
 Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, gli 8 modelli IA,
@@ -36,6 +36,14 @@ automatica, 8182/udp solo dalla rete locale.
 
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
 fuori dalla sessione grafica dell'utente.
+
+## Novità della 0.96: selettore dei parametri per ogni AI
+Accanto al selettore del modello in basso a destra nella chat compare il pulsante **Parametri**, adattato all'AI
+scelta: per **Claude Code** modelli rapidi, `--effort` (`low`…`max`), modalità permessi, *Salta i permessi*
+(`--dangerously-skip-permissions`, solo locale), strumenti CLI, `--max-turns` e `--fallback-model`; per
+**Antigravity CLI** `--effort` (strumenti sempre bloccati); per i servizi API e i modelli locali `temperature`,
+`max_tokens`, `top_p`, `reasoning_effort`, `thinking`/budget ed `enable_thinking`. Tutto visibile nella Glass
+Window; dalla rete le opzioni locali sono rifiutate con 403. Guida riorganizzata nei 15 capitoli (capitolo 2).
 
 ## Novità della 0.95: Server MCP e UTCP
 Germano entra nei flussi di lavoro come strumento: **Server MCP** su `http://127.0.0.1:8181/mcp` (anche `/mcp/sse`

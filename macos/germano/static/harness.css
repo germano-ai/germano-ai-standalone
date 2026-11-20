@@ -1,4 +1,4 @@
-/* Germano AI 0.95 - Harness AI e Glass Window (componente condiviso: Dashboard, Remote Control, Germano Client).
+/* Germano AI 0.96 - Harness AI e Glass Window (componente condiviso: Dashboard, Remote Control, Germano Client).
    Tema scuro, nessuna risorsa esterna. Variabili di base condivise anche da style.css e remote.css. */
 :root {
     --bg: #0b0f19;
@@ -582,6 +582,69 @@
 .hx-picker-foot { padding: 8px 12px; border-top: 1px solid var(--line-soft); display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--faint); }
 .hx-small-note { font-size: 11.5px; color: var(--faint); }
 
+/* ------------------------------------------------------------------ selettore dei parametri (turno 31, accanto al selettore del modello) */
+.hx-params-picker { position: relative; min-width: 0; flex: none; }
+.hx-params-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 230px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(11, 15, 25, 0.55);
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.hx-params-btn:hover, .hx-params-btn[aria-expanded="true"] { border-color: rgba(56, 189, 248, 0.55); background: rgba(56, 189, 248, 0.08); }
+.hx-params-btn.is-danger { border-color: rgba(251, 191, 36, 0.5); }
+.hx-params-btn .hx-icon-svg { width: 14px; height: 14px; flex: none; }
+.hx-params-label { white-space: nowrap; }
+.hx-params-badge { font-size: 10.5px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 1px 6px;
+                   max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hx-params-warn { display: inline-flex; align-items: center; color: var(--warn); flex: none; }
+.hx-params-warn .hx-icon-svg { width: 13px; height: 13px; }
+.hx-params-pop {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+    width: min(400px, 92vw);
+    max-height: min(520px, 66vh);
+    display: flex;
+    flex-direction: column;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: rgba(15, 23, 42, 0.97);
+    backdrop-filter: blur(16px);
+    box-shadow: var(--shadow-lg);
+    z-index: 41;
+    overflow: hidden;
+    animation: hx-pop 0.18s var(--ease);
+    transform-origin: bottom right;
+}
+.hx-params-body { padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.hx-params-body::-webkit-scrollbar { width: 9px; }
+.hx-params-body::-webkit-scrollbar-thumb { background: #263248; border-radius: 9px; border: 2px solid transparent; background-clip: padding-box; }
+.hx-params-sec { display: flex; flex-direction: column; gap: 6px; }
+.hx-params-k { font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+.hx-params-models { display: flex; flex-wrap: wrap; gap: 5px; }
+.hx-params-model { border: 1px solid var(--line); background: rgba(11, 15, 25, 0.6); color: var(--text-2); border-radius: 7px; padding: 3px 8px;
+                   font-size: 11.5px; font-family: var(--mono); cursor: pointer; }
+.hx-params-model:hover { border-color: rgba(56, 189, 248, 0.5); color: var(--text); }
+.hx-params-model.is-active { border-color: rgba(56, 189, 248, 0.55); background: rgba(56, 189, 248, 0.12); color: var(--text); }
+.hx-params-field select, .hx-params-field input[type="number"], .hx-params-field input[type="text"] { width: 100%; }
+.hx-params-field.is-danger > span:first-child { color: #fde68a; }
+.hx-params-danger { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; font-size: 10px; font-weight: 700; color: var(--warn);
+                    border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 5px; padding: 0 5px; vertical-align: middle; }
+.hx-params-danger .hx-icon-svg { width: 10px; height: 10px; }
+.hx-params-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+.hx-params-switch input { accent-color: var(--warn); width: 16px; height: 16px; margin: 0; }
+.hx-params-foot { padding: 8px 12px; border-top: 1px solid var(--line-soft); display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--faint); }
+.hx-params-target { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
 /* ================================================================== GLASS WINDOW */
 .hx-glass {
     position: relative;
@@ -699,6 +762,7 @@
 .gw-headers span:nth-child(even) { color: var(--text-2); overflow-wrap: anywhere; }
 .gw-note { font-size: 11.5px; color: var(--muted); }
 .gw-note.ok { color: #6ee7b7; }
+.gw-note.warn { color: #fde68a; border: 1px solid rgba(251, 191, 36, 0.4); background: var(--warn-soft); border-radius: 8px; padding: 6px 8px; }
 .gw-foot { padding: 10px 16px 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 11.5px; color: var(--muted); }
 .gw-foot label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .gw-foot input { accent-color: var(--accent); margin: 0; }
@@ -804,7 +868,20 @@
     .hx-toggle .hx-toggle-text { display: none; }
     .hx-hint .hx-hint-keys { display: none; }
     .hx-picker-btn { max-width: 170px; }
+    .hx-params-label { display: none; }
+    .hx-params-btn { max-width: 150px; padding: 0 8px; }
+    .hx-params-badge { max-width: 96px; }
+    /* header compatto: solo icone, altrimenti a 360-390 px la barra allarga il layout viewport e tutta la
+       pagina finisce in scala ridotta (con overflow orizzontale e click fuori bersaglio) */
+    .hx-head-actions .hx-chip-btn > span { display: none; }
+    .hx-head-actions .hx-chip-btn { padding: 0 9px; }
+    .hx-glass-btn > span[data-t="glass"] { display: none; }
+    .hx-glass-btn { padding: 0 10px; }
     .gw-pipeline { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+}
+@media (max-width: 400px) {
+    .hx-params-badge { display: none; }   /* a 360 px restano l'icona e l'indicatore di sicurezza */
+    .hx-picker-btn { max-width: 130px; }
 }
 @media (prefers-reduced-motion: reduce) {
     .hx *, .hx *::before, .hx *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }

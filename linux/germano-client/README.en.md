@@ -2,7 +2,7 @@
 
  *Leggi questo documento in altre lingue: [Italiano](README.md)*
 
-**Version 0.95** (November 14, 2026): `client mcp` and `client utcp` to use the MCP server and the UTCP manual of Germano Server 0.95 from the network PCs; panel aligned with the 0.95 server. What's new in the suite [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.en.md).
+**Version 0.96** (November 20, 2026): new per-AI parameters selector in the Chatbot & AI Agents panel (`effort`, `temperature`, `max_tokens`, `top_p`, `reasoning_effort`, `thinking`, `enable_thinking`), reorganized guide and panel aligned with Germano Server 0.96. What's new in the suite [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.en.md).
 
 **Germano AI Client** is the lightweight companion application (about 22 MB on Windows) built to connect any workstation (laptop, standard office PC) to a **Germano Server** running on your local network (LAN).
 
@@ -59,13 +59,13 @@ It requires no heavy AI models or dedicated GPUs on your local machine: all comp
 The official Client installers are single files on **[download.germano.ai](https://download.germano.ai/)** and bundle their own Python with all libraries: installation downloads nothing from the Internet. The client creates no working folders in Documents: its settings (server address, session, options) stay in the user's technical folder.
 
 ### Windows (10 / 11 and Windows Server 2019 or later, 64-bit, also in a virtual machine)
-1. **Download:** download `germano-client-0.95.exe` (about 22 MB).
+1. **Download:** download `germano-client-0.96.exe` (about 22 MB).
 2. **Installation:** double-click the installer. It installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI Client` **without administrator privileges (no UAC prompt)**, with Desktop and Start menu shortcuts and the entry in Settings > Apps. The client settings are in `%LOCALAPPDATA%\Germano AI Client`.
 3. **Launch:** at the end of the installation the client opens by itself; afterwards use the **Germano AI Client** shortcut on the Desktop or in the Start menu (dedicated window, no terminal; its name differs from the suite's, so both editions can live on the same computer).
 4. **Uninstall:** Settings > Apps > Installed apps > Germano AI Client.
 
 ### macOS (Apple Silicon and Intel, macOS 11 or later)
-1. **Download:** download `germano-client-0.95.pkg`.
+1. **Download:** download `germano-client-0.96.pkg`.
 2. **Installation:** double-click the package and, when choosing the destination, **Install for me only**: the app goes into `~/Applications/Germano AI Client/Germano.app` **with no administrator password** (with "Install for all users of this computer" it goes into `/Applications/Germano AI Client` and macOS asks for the password). The settings are in `~/Library/Application Support/Germano AI Client`.
 3. **Launch:** open **Germano** from Launchpad or from Applications > Germano AI Client.
 4. **Uninstall:** drag the `Germano AI Client` folder to the Trash.
@@ -73,12 +73,12 @@ The official Client installers are single files on **[download.germano.ai](https
 The package is not signed by Apple yet: if macOS blocks it, go to **System Settings > Privacy & Security** and choose **Open Anyway**.
 
 ### Linux (Ubuntu / Debian 64-bit)
-1. **Download:** download `germano-client-0.95.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later.
-2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-client-0.95.deb` (administrator password, as for any system package). The program goes into `/opt/germano-client`, with the **Germano AI Client** entry in the applications menu and the `germano-ai-client` command; the settings are in `~/.local/state/germano-client`.
+1. **Download:** download `germano-client-0.96.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later.
+2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-client-0.96.deb` (administrator password, as for any system package). The program goes into `/opt/germano-client`, with the **Germano AI Client** entry in the applications menu and the `germano-ai-client` command; the settings are in `~/.local/state/germano-client`.
 3. **Launch:** from the applications menu.
 4. **Uninstall:** `sudo apt remove germano-ai-client`.
 
-**Requirements:** a Germano Server in Server mode on the same local network, version 0.70 or later (0.95 recommended: with a 0.60 server only the command line can be used).
+**Requirements:** a Germano Server in Server mode on the same local network, version 0.70 or later (0.96 recommended: with a 0.60 server only the command line can be used).
 
 ---
 

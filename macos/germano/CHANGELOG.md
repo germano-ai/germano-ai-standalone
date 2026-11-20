@@ -5,6 +5,22 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.96] - 2026-11-20
+
+### Aggiunto
+- **Selettore dei parametri del modello (Dashboard, Remote Control e Germano Client):** accanto al selettore AI/modelli in basso a destra compare un secondo pulsante compatto (*Parametri*) con riepilogo dei valori attivi, indicatore di avviso quando sono attive opzioni avanzate della CLI, scelte rapide del modello sincronizzate col selettore esistente, persistenza per destinazione (`localStorage`) e *Ripristina predefiniti*.
+- **Parametri per Claude Code CLI (`cli:claude-code`):** modelli rapidi (`default`, `opus`, `sonnet`, `haiku`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5` + campo libero), sforzo di ragionamento (`--effort`: `low`, `medium`, `high`, `xhigh`, `max`), modalità permessi (`restricted` predefinito sicuro, `default`, `acceptEdits`, `plan`, `dontAsk`, `bypassPermissions`), *Salta i permessi* (`--dangerously-skip-permissions`, solo locale), strumenti CLI (`none` / `default`, solo locale), turni massimi (`--max-turns` 1–50) e modello di riserva (`--fallback-model`).
+- **Parametri per Antigravity CLI (`cli:agy`):** sforzo di ragionamento (`--effort`), mantenendo sempre gli strumenti bloccati (`toolPermission: "strict"`).
+- **Parametri per servizi API e modelli locali:** `temperature` (0.0–2.0), `max_tokens` (256–32768 UI / fino a 65536 server), `top_p` (0.0–1.0), `reasoning_effort` (OpenAI, OpenRouter, xAI, Gemini, DeepSeek), `thinking` + `thinking_budget` (Anthropic, adeguando `max_tokens` e omettendo `temperature`/`top_p` quando attivo), `enable_thinking` (Qwen, GLM). Fallback resiliente su HTTP 400 per campi opzionali non accettati dal provider (inclusa rinomina `max_tokens` → `max_completion_tokens` su OpenAI).
+- **Trasparenza e sicurezza:** `param_schema` esposto in `GET /api/harness/v2/targets`; validazione stretta lato server in `POST /api/harness/v2/run` (whitelist rigorosa, nessuna command injection; dalla LAN le opzioni locali non compaiono nello schema e vengono respinte con `403`, i valori non validi con `400`). Nella Glass Window compaiono la riga di comando/JSON completa, il riepilogo *Parametri usati* e l'avviso quando il profilo sicuro della CLI è disattivato.
+
+### Migliorato
+- **Documentazione offline e online riorganizzata:** rimosse le premesse lunghe e i riferimenti a singole versioni/novità dalla guida, organizzando ogni argomento nel proprio capitolo (15 capitoli in parità IT/EN).
+- **Interfaccia mobile della Dashboard e popover:** risolto lo scorrimento orizzontale dell'intestazione sotto i 390 px (pulsanti compatti a sole icone ≤720 px) e aggiunto il posizionamento automatico (`clampPop`) per mantenere i popover dei selettori sempre dentro lo schermo.
+
+### Verificato
+- Collaudi automatici backend dei parametri e della sicurezza: **127/127** superati; non-regressione assistente AI: **72/72**; interfaccia in Edge headless IT/EN (1280/390/360 px): **40/40** (0 errori console); coerenza 6 alberi (`4/4`, 164 file `.py` compilati senza errori).
+
 ## [0.95] - 2026-11-14
 Germano AI v0.95 - **Server MCP e UTCP: Germano nei flussi di lavoro in ingresso e in uscita**. Claude Desktop, Claude
 Code, Google Antigravity, Cursor, Windsurf, Visual Studio Code, Gemini CLI, n8n, agenti e script usano Germano come

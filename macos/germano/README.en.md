@@ -2,7 +2,7 @@
 
  *Leggi questo documento in altre lingue: [Italiano](README.md)*
 
-**Version 0.95** (November 14, 2026): MCP server and UTCP — Germano in input workflows (anonymization, inspection, leak checks) and output workflows (data restoration), for Claude, Antigravity, Cursor, n8n and agents. See [What's new in 0.95](#whats-new-in-095-mcp-server-and-utcp-germano-in-workflows) and the [CHANGELOG](CHANGELOG.en.md).
+**Version 0.96** (November 20, 2026): dedicated per-AI parameters selector (quick models, `effort`, local-only `skip permissions`, `thinking`, `reasoning_effort`, `temperature`, `max_tokens`), reorganized offline and online guide and mobile UI improvements. See [What's new in 0.96](#whats-new-in-096-per-ai-parameters-selector-and-reorganized-guide) and the [CHANGELOG](CHANGELOG.en.md).
 
 *<span style="color: #007bff; font-weight: bold;">Use Case 1</span>: You simply have a large number of documents to anonymize on your computer or server or NAS. Germano works in standalone mode and returns the anonymized documents; it supports many formats and is highly configurable. You simply copy the folder containing the files into input and receive the anonymized files in the output folder. Germano maintains the original directory and subfolder structure. Germano anonymizes text, prompts and faces and is compatible with the GDPR; Germano is a local and offline Windows application (does not require internet access to work).*
 
@@ -26,6 +26,20 @@ Germano opens on the **Chatbot & AI Agents** tab, where you talk to the AI you p
  **Productivity Tip:** the protection engine starts by itself on the first send or when you add documents; while it is off no data leaves. You can add files *while the software is already working*: they are queued without restarting anything. **Export list** saves the list of ready or failed documents as CSV (for Excel), and the **«Manual text sanitization»** box anonymizes a text on the fly to paste into any AI (and restores the answer).
 
  **[DOWNLOAD GERMANO AI STANDALONE](https://download.germano.ai)**
+
+---
+
+## What's new in 0.96: per-AI parameters selector and reorganized guide
+
+Next to the model picker at the bottom right of the protected chat (**Dashboard**, **Remote Control** and **Germano Client**), a **dedicated parameters selector** dynamically adapts to the selected AI:
+
+- **Claude Code:** quick models (`default`, `opus`, `sonnet`, `haiku`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5` + custom field), reasoning effort (`--effort`: `low`, `medium`, `high`, `xhigh`, `max`), permission mode (`restricted` safe default, `default`, `acceptEdits`, `plan`, `dontAsk`, `bypassPermissions`), **Skip permissions** (`--dangerously-skip-permissions`, local computer only), CLI tools (`none`/`default`, local only), max turns (`--max-turns`) and fallback model (`--fallback-model`).
+- **Antigravity CLI (`agy`):** reasoning effort (`--effort`), keeping tools strictly blocked (`strict`).
+- **API services and local models:** `temperature`, `max_tokens`, `top_p`, `reasoning_effort` (OpenAI, OpenRouter, xAI, Gemini, DeepSeek), `thinking` + `thinking_budget` (Anthropic) and `enable_thinking` (Qwen, GLM), with resilient fallback if an endpoint rejects an optional field.
+- **Security and transparency:** local-only advanced options (`skip_permissions`, unlocking permissions/tools) are absent from the network schema and rejected with `403`; the **Glass Window** always shows the applied parameters, exact CLI/JSON payload and any security warning.
+- **Cleaner documentation:** offline and online guide reorganized across all 15 chapters without front-loaded preambles; improved mobile header and popover clamping.
+
+Details and tests in the [CHANGELOG](CHANGELOG.en.md); usage guide in chapter 2 of the Guide.
 
 ---
 
@@ -89,12 +103,12 @@ All official installers are single ready-to-use files on **[download.germano.ai]
 
 | System | Full suite | Lightweight client |
 |---|---|---|
-| Windows 10/11 and Windows Server 2019/2022/2025 64-bit (also in a virtual machine) | `germano-0.95.exe` | `germano-client-0.95.exe` |
-| macOS | `germano-0.95.pkg` (Apple Silicon, macOS 14 or later) | `germano-client-0.95.pkg` (Apple Silicon and Intel, macOS 11 or later) |
-| Linux Ubuntu/Debian 64-bit | `germano-0.95.deb` | `germano-client-0.95.deb` |
+| Windows 10/11 and Windows Server 2019/2022/2025 64-bit (also in a virtual machine) | `germano-0.96.exe` | `germano-client-0.96.exe` |
+| macOS | `germano-0.96.pkg` (Apple Silicon, macOS 14 or later) | `germano-client-0.96.pkg` (Apple Silicon and Intel, macOS 11 or later) |
+| Linux Ubuntu/Debian 64-bit | `germano-0.96.deb` | `germano-client-0.96.deb` |
 
 ### Windows (10 / 11 64-bit)
-1. **Download:** download `germano-0.95.exe`.
+1. **Download:** download `germano-0.96.exe`.
 2. **Installation:** double-click the installer. **As soon as it opens it asks for administrator permission** (Windows UAC prompt: choose **Yes**): it is needed to allow access from the local network, always enabled, with a Windows Firewall rule that only applies to Germano's Python and only to private and domain networks (Server LAN mode). The program installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI`, with the Desktop and Start menu shortcuts, the entry in Settings > Apps and the working folders in `Documents\Germano AI`; at the end the installer window closes and **Germano AI opens by itself**, with the user's normal permissions. The Microsoft Visual C++ libraries are already included: nothing else to install.
 3. **Launch:** **Germano AI** shortcut on the Desktop or in the Start menu (dedicated window, no black terminal windows).
 4. **Uninstall:** Settings > Apps > Installed apps > Germano AI (it asks for administrator permission to remove the firewall rule); you can choose whether to keep the working folders and the Vault.
@@ -107,7 +121,7 @@ All official installers are single ready-to-use files on **[download.germano.ai]
 The full suite installer is about 3.8 GB (it contains all the AI models): on the first double-click Microsoft Defender scans it, so the window may take a few seconds to appear. The installer is not digitally signed yet: if "Windows protected your PC" appears, choose **More info > Run anyway**.
 
 ### macOS
-1. **Download:** download `germano-0.95.pkg`. The full suite requires a Mac with **Apple Silicon** (M1 or later) and **macOS 14 Sonoma** or later, because PyTorch is no longer published for Intel Macs; on Intel Macs use the lightweight client `germano-client-0.95.pkg`.
+1. **Download:** download `germano-0.96.pkg`. The full suite requires a Mac with **Apple Silicon** (M1 or later) and **macOS 14 Sonoma** or later, because PyTorch is no longer published for Intel Macs; on Intel Macs use the lightweight client `germano-client-0.96.pkg`.
 2. **Installation:** double-click the package. When choosing the destination select **Install for me only**: `Germano.app` goes into `~/Applications` **with no administrator password**. With "Install for all users of this computer" it goes into `/Applications` and macOS asks for the password. At the end Germano opens by itself.
 3. **Launch:** open **Germano** (`Germano.app`) from Launchpad or the Applications folder. On first launch it creates the working folders in `~/Documents/Germano AI` (in `~/Germano AI` if Documents is synced with iCloud).
 4. **Uninstall:** drag `Germano.app` to the Trash; the working folders stay where they are.
@@ -115,8 +129,8 @@ The full suite installer is about 3.8 GB (it contains all the AI models): on the
 The package is not signed by Apple yet: if macOS blocks it, go to **System Settings > Privacy & Security** and choose **Open Anyway**.
 
 ### Linux (Ubuntu / Debian 64-bit)
-1. **Download:** download `germano-0.95.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later (Ubuntu 22.04 or later, Debian 12 or later).
-2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-0.95.deb` in a terminal. As with any system package, the administrator password is required. The program goes into `/opt/germano`, with the **Germano AI** entry in the applications menu and the `germano-ai` command; no other packages are needed.
+1. **Download:** download `germano-0.96.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later (Ubuntu 22.04 or later, Debian 12 or later).
+2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-0.96.deb` in a terminal. As with any system package, the administrator password is required. The program goes into `/opt/germano`, with the **Germano AI** entry in the applications menu and the `germano-ai` command; no other packages are needed.
 3. **Launch:** from the applications menu. On first launch it creates the working folders in `Documents/Germano AI` (the Documents folder in the system language).
 4. **Uninstall:** `sudo apt remove germano-ai`; the working folders stay where they are.
 
@@ -267,7 +281,7 @@ By default Germano updates itself **silently**, with no windows or notices inter
 3. On Windows the installer prepares the new version right away, silently and at low priority, in a folder next to the program's one (`Germano AI.nuovo`), while Germano stays open and the version in use is not touched.
 4. At the **next start** the new version replaces the old one in a few seconds and Germano opens already updated. Whoever wants to apply it right away only finds a discreet **«Restart to update»** at the top. Working folders in `Documents\Germano AI`, the Vault (`extracted\deanonymize_vault.db` and the copy `deanonymize_vault.json`) and the preferences `config.json` stay intact; if anything goes wrong, the version in use stays.
 
-**Settings › Updates**, like Chrome's «About» page, shows the status: «Germano AI is up to date (v0.95)» with the time of the last check, «Downloading the update in the background…» with the progress bar, «Restart Germano to apply the update». On macOS and Linux the `.pkg` / `.deb` package is downloaded the same way and opened with the system installer when you decide. Germano Client updates itself the same way.
+**Settings › Updates**, like Chrome's «About» page, shows the status: «Germano AI is up to date (v0.96)» with the time of the last check, «Downloading the update in the background…» with the progress bar, «Restart Germano to apply the update». On macOS and Linux the `.pkg` / `.deb` package is downloaded the same way and opened with the system installer when you decide. Germano Client updates itself the same way.
 
 Options (in Settings or in `config.json`): `"auto_update": false` only reports the new version, `"check_updates": false` disables the check. No document or text data is sent during the check.
 
@@ -335,9 +349,9 @@ Every release has the same structure: `sorgenti/{windows,linux,macos}/{germano,g
 
 ```bash
 python -B build/coerenza_sorgenti.py                    # Linux and macOS sources identical to the Windows ones in common files
-python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-0.95.exe and germano-client-0.95.exe
-python -B build/costruisci_deb.py tutti                 # releases/linux/germano-0.95.deb and germano-client-0.95.deb
-python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-0.95.pkg and germano-client-0.95.pkg
+python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-0.96.exe and germano-client-0.96.exe
+python -B build/costruisci_deb.py tutti                 # releases/linux/germano-0.96.deb and germano-client-0.96.deb
+python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-0.96.pkg and germano-client-0.96.pkg
 python -B build/crea_version_json.py                    # releases/version.json: sizes and SHA-256 read from the files
 ```
 

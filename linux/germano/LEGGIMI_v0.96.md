@@ -1,7 +1,7 @@
-# Germano AI 0.95 — Suite completa per Windows
+# Germano AI 0.96 — Suite completa per Windows
 
 ## Installazione
-Scarica **`germano-0.95.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
+Scarica **`germano-0.96.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
 necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, gli 8 modelli IA) e non scarica
 nulla. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a
 consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows solo per il Python di
@@ -42,6 +42,15 @@ Modalità operative (si scelgono e si cambiano in qualsiasi momento in Impostazi
 
 Per chiudere **tutto** basta la **X rossa**: si fermano anche il server Flask e il motore IA, senza lasciare processi in
 memoria.
+
+## Novità della 0.96: selettore dei parametri per ogni AI
+Accanto al selettore del modello in basso a destra nella chat compare il pulsante **Parametri**, che si adatta
+all'AI scelta: per **Claude Code** modelli rapidi, sforzo di ragionamento (`--effort`: `low`…`max`), modalità
+permessi, *Salta i permessi* (`--dangerously-skip-permissions`, solo su questo computer), strumenti CLI, turni
+massimi e modello di riserva; per **Antigravity CLI** `--effort`; per servizi API e modelli locali `temperature`,
+`max_tokens`, `top_p`, `reasoning_effort`, `thinking`/budget (Anthropic) ed `enable_thinking` (Qwen/GLM). Le scelte
+si salvano per destinazione e compaiono sempre nella Glass Window; dalla rete le opzioni locali sono bloccate (403).
+La Guida è stata riorganizzata nei 15 capitoli senza premesse superflue in cima.
 
 ## Novità della 0.95: Server MCP e UTCP (Germano nei flussi di lavoro)
 Claude Desktop, Claude Code, Google Antigravity, Cursor, Windsurf, VS Code, Gemini CLI, n8n, agenti e script usano
@@ -141,7 +150,7 @@ App e file tecnici.
   correggerlo; nelle VM con NAT serve l'inoltro della porta TCP 8181 (o una scheda in modalità bridge).
 
 ## Client leggero per i colleghi
-Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.95.exe`** (circa 22 MB, senza
+Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.96.exe`** (circa 22 MB, senza
 modelli, nessun permesso di amministratore): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del
 client (collegamento **Germano AI Client**), che è lo stesso Remote Control del browser, con Chatbot e Agenti AI e Glass
 Window. Chi non vuole installare nulla apre direttamente nel browser `http://<IP-di-questo-PC>:8181/`.

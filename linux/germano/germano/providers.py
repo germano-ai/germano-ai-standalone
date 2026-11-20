@@ -81,8 +81,140 @@ class ServiceError(RuntimeError):
     status = 502
 
 
+class ParamsError(ValueError):
+    """Parametri del servizio non validi (whitelist, range): il server risponde 400."""
+
+
 class Interrupted(Exception):
     """Streaming interrotto dall'utente (Glass Window): la connessione e' stata chiusa di proposito."""
+
+
+# Parametri dei servizi (0.95 turno 31): whitelist per famiglia di servizio. reasoning_effort per i servizi che lo
+# documentano (OpenAI, OpenRouter, xAI, Gemini, DeepSeek); thinking/thinking_budget per Anthropic; enable_thinking
+# per Qwen e GLM. temperature, top_p e max_tokens per tutti (con il fallback resiliente su HTTP 400 di stream_chat
+# se un endpoint terzo rifiuta un campo opzionale).
+_REASONING_SERVICES = frozenset({"openai", "openrouter", "xai", "gemini", "deepseek"})
+_THINKING_SERVICES = frozenset({"anthropic"})
+_ENABLE_THINKING_SERVICES = frozenset({"qwen", "qwen-token", "qwen-coding", "zai", "zai-coding"})
+# limiti di validazione lato server (il selettore UI usa i range min/max dello schema, piu' stretti per max_tokens)
+_PARAM_RANGES = {"temperature": (0.0, 2.0), "top_p": (0.0, 1.0), "max_tokens": (1, 65536),
+                 "thinking_budget": (1024, 32000)}
+
+
+def param_schema_for(service_id):
+    """Schema dei parametri per il selettore dell'Harness: campi con etichette e note IT/EN, valori ammessi e
+    predefiniti (vuoto = predefinito del modello)."""
+    sid = str(service_id or "").strip().lower()
+    spec = get(sid)
+    if not spec:
+        return {"service": sid, "fields": []}
+    fields = [
+        {"key": "temperature", "type": "number", "min": 0.0, "max": 2.0, "step": 0.1, "default": None,
+         "it": "Temperatura", "en": "Temperature",
+         "note_it": "Vuoto = predefinito del modello (0.0–2.0).", "note_en": "Empty = model default (0.0–2.0)."},
+        {"key": "max_tokens", "type": "int", "min": 256, "max": 32768, "step": 1, "default": None,
+         "it": "Token massimi", "en": "Max tokens",
+         "note_it": "Vuoto = predefinito del modello (256–32768).", "note_en": "Empty = model default (256–32768)."},
+        {"key": "top_p", "type": "number", "min": 0.0, "max": 1.0, "step": 0.05, "default": None,
+         "it": "Top-p", "en": "Top-p",
+         "note_it": "Vuoto = predefinito del modello (0.0–1.0).", "note_en": "Empty = model default (0.0–1.0)."},
+    ]
+    if sid in _REASONING_SERVICES:
+        fields.append({"key": "reasoning_effort", "type": "enum", "values": ["default", "low", "medium", "high"],
+                       "default": "default", "it": "Sforzo di ragionamento", "en": "Reasoning effort",
+                       "note_it": "reasoning_effort (low, medium, high), se il modello lo supporta.",
+                       "note_en": "reasoning_effort (low, medium, high), when the model supports it."})
+    if sid in _THINKING_SERVICES:
+        fields.append({"key": "thinking", "type": "enum", "values": ["default", "enabled", "disabled"],
+                       "default": "default", "it": "Ragionamento esteso", "en": "Extended thinking",
+                       "note_it": "thinking: «enabled» invia budget_tokens; con «enabled» temperature e top_p non "
+                                  "vengono inviati (specifica Anthropic).",
+                       "note_en": "thinking: «enabled» sends budget_tokens; with «enabled» temperature and top_p "
+                                  "are not sent (Anthropic specification)."})
+        fields.append({"key": "thinking_budget", "type": "int", "min": 1024, "max": 32000, "step": 1,
+                       "default": None, "show_if": {"thinking": "enabled"},
+                       "it": "Budget di ragionamento", "en": "Thinking budget",
+                       "note_it": "budget_tokens (1024–32000): max_tokens sara' almeno budget + 1.",
+                       "note_en": "budget_tokens (1024–32000): max_tokens will be at least budget + 1."})
+    if sid in _ENABLE_THINKING_SERVICES:
+        fields.append({"key": "enable_thinking", "type": "enum", "values": ["default", "on", "off"],
+                       "default": "default", "it": "Ragionamento", "en": "Thinking",
+                       "note_it": "enable_thinking per Qwen/GLM (on = attivo, off = disattivo).",
+                       "note_en": "enable_thinking for Qwen/GLM (on = enabled, off = disabled)."})
+    return {"service": sid, "fields": fields}
+
+
+def validate_params(service_id, raw):
+    """Parametri validati con whitelist esatta di chiavi e valori e range sicuri (temperature 0.0–2.0, top_p
+    0.0–1.0, max_tokens 1–65536, thinking_budget 1024–32000). Restituisce solo i valori non predefiniti."""
+    if raw is None or raw == {}:
+        return {}
+    if not isinstance(raw, dict):
+        raise ParamsError("I parametri devono essere un oggetto JSON.")
+    sid = str(service_id or "").strip().lower()
+    if not get(sid):
+        raise ParamsError("servizio sconosciuto")
+    schema = {f["key"]: f for f in param_schema_for(sid)["fields"]}
+    out = {}
+    for key, value in raw.items():
+        f = schema.get(key)
+        if f is None:
+            raise ParamsError(f"Parametro sconosciuto per {sid}: «{str(key)[:40]}».")
+        if value is None or value == "":
+            continue
+        typ = f["type"]
+        if typ == "enum":
+            if not isinstance(value, str) or value not in f["values"]:
+                raise ParamsError(f"Valore non valido per «{key}»: «{str(value)[:40]}».")
+            if value == "default":
+                continue
+        elif typ == "int":
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ParamsError(f"«{key}» deve essere un intero.")
+            lo, hi = _PARAM_RANGES[key]
+            if not (lo <= value <= hi):
+                raise ParamsError(f"«{key}» deve essere tra {lo} e {hi}.")
+        elif typ == "number":
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ParamsError(f"«{key}» deve essere un numero.")
+            lo, hi = _PARAM_RANGES[key]
+            if not (lo <= value <= hi):
+                raise ParamsError(f"«{key}» deve essere tra {lo} e {hi}.")
+            value = float(value)
+        out[key] = value
+    if "thinking_budget" in out and out.get("thinking") != "enabled":
+        del out["thinking_budget"]
+    return out
+
+
+def _apply_params(body, fmt, params, max_tokens):
+    """Applica i parametri gia' validati al corpo JSON della richiesta. Con thinking attivo (Anthropic) max_tokens
+    deve superare budget_tokens e temperature/top_p non si inviano (specifica Anthropic)."""
+    mt = params.get("max_tokens", max_tokens)
+    if fmt == "anthropic":
+        thinking = params.get("thinking")
+        if thinking == "enabled":
+            budget = params.get("thinking_budget", 1024)
+            body["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            mt = max(mt, budget + 1)
+        elif thinking == "disabled":
+            body["thinking"] = {"type": "disabled"}
+        if thinking != "enabled":
+            for k in ("temperature", "top_p"):
+                if k in params:
+                    body[k] = params[k]
+        body["max_tokens"] = mt
+    else:
+        if "max_tokens" in params:
+            body["max_tokens"] = params["max_tokens"]
+        for k in ("temperature", "top_p"):
+            if k in params:
+                body[k] = params[k]
+        if "reasoning_effort" in params:
+            body["reasoning_effort"] = params["reasoning_effort"]
+        if "enable_thinking" in params:
+            body["enable_thinking"] = params["enable_thinking"] == "on"
+    return body
 
 
 def get(service_id):
@@ -169,9 +301,10 @@ def _error_text(r):
         return (r.text or "")[:300]
 
 
-def chat(service_id, model, messages, api_key="", max_tokens=4096):
+def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
     """Conversazione con il servizio (testo gia' anonimizzato). messages = [{"role": "user"|"assistant", "content"}].
-    Restituisce il testo della risposta; solleva ServiceError con un messaggio comprensibile."""
+    params: parametri validati (validate_params). Restituisce il testo della risposta; solleva ServiceError con un
+    messaggio comprensibile."""
     spec = get(service_id)
     if not spec:
         raise ServiceError("servizio sconosciuto")
@@ -179,12 +312,13 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096):
         raise ServiceError("indica il modello da usare (es. quello suggerito o uno dell'elenco del servizio)")
     if not spec.get("local") and not api_key:
         raise ServiceError("serve la chiave API del servizio")
+    params = validate_params(service_id, params)
     http = _http_local if spec.get("local") else _http
     if spec.get("openai"):
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        body = {"model": model, "messages": messages, "stream": False}
+        body = _apply_params({"model": model, "messages": messages, "stream": False}, "openai", params, max_tokens)
         try:
             r = http.post(_base(spec, "openai") + "/chat/completions", json=body, headers=headers, timeout=TIMEOUT)
         except requests.RequestException as e:
@@ -206,6 +340,7 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096):
             "messages": [m for m in messages if m.get("role") in ("user", "assistant")]}
     if system:
         body["system"] = system
+    _apply_params(body, "anthropic", params, max_tokens)
     try:
         r = http.post(_base(spec, "anthropic") + "/messages", json=body, headers=headers, timeout=TIMEOUT)
     except requests.RequestException as e:
@@ -218,12 +353,14 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096):
         raise ServiceError(f"risposta di {spec['name']} non riconosciuta") from None
 
 
-def build_request(service_id, model, messages, api_key="", max_tokens=4096, stream=True):
+def build_request(service_id, model, messages, api_key="", max_tokens=4096, stream=True, params=None):
     """Richiesta HTTP verso il servizio, con il testo GIA' anonimizzato: (url, intestazioni, corpo, formato).
-    E' la stessa che l'Harness mostra nella Glass Window prima dell'invio (con la chiave oscurata)."""
+    params: parametri validati (validate_params), applicati al corpo JSON. E' la stessa che l'Harness mostra nella
+    Glass Window prima dell'invio (con la chiave oscurata)."""
     spec = get(service_id)
     if not spec:
         raise ServiceError("servizio sconosciuto")
+    params = validate_params(service_id, params)
     if spec.get("openai"):
         headers = {"Content-Type": "application/json"}
         if api_key:
@@ -231,6 +368,7 @@ def build_request(service_id, model, messages, api_key="", max_tokens=4096, stre
         body = {"model": model, "messages": messages, "stream": bool(stream)}
         if stream:
             body["stream_options"] = {"include_usage": True}    # consumo di token alla fine dello streaming
+        _apply_params(body, "openai", params, max_tokens)
         return _base(spec, "openai") + "/chat/completions", headers, body, "openai"
     headers = {"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"}
     system = "\n\n".join(m["content"] for m in messages if m.get("role") == "system")
@@ -238,6 +376,7 @@ def build_request(service_id, model, messages, api_key="", max_tokens=4096, stre
             "messages": [m for m in messages if m.get("role") in ("user", "assistant")], "stream": bool(stream)}
     if system:
         body["system"] = system
+    _apply_params(body, "anthropic", params, max_tokens)
     return _base(spec, "anthropic") + "/messages", headers, body, "anthropic"
 
 
@@ -279,12 +418,13 @@ def _text_of(content):
 
 
 def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tokens=4096, raw_frames=False,
-                request=None):
+                request=None, params=None):
     """Conversazione in streaming con il servizio (testo gia' anonimizzato).
     emit(tipo, dato): "delta" (testo della risposta, ancora con le etichette), "thinking" (ragionamento esposto dal
     modello), "usage" ({"input_tokens", "output_tokens"}), "frame" (byte SSE grezzi, solo con raw_frames).
     cancel: oggetto con is_set() e bind_response(r) (glass.Run): l'interruzione chiude subito la connessione.
     request: la richiesta gia' costruita con build_request (quella mostrata nella Glass Window).
+    params: parametri validati (validate_params), usati solo quando la richiesta non e' gia' costruita.
     Restituisce {"answer", "usage"}; solleva ServiceError o Interrupted."""
     spec = get(service_id)
     if not spec:
@@ -293,7 +433,8 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
         raise ServiceError("indica il modello da usare (es. quello suggerito o uno dell'elenco del servizio)")
     if not spec.get("local") and not api_key:
         raise ServiceError("serve la chiave API del servizio")
-    url, headers, body, fmt = request or build_request(service_id, model, messages, api_key, max_tokens)
+    url, headers, body, fmt = request or build_request(service_id, model, messages, api_key, max_tokens,
+                                                       params=params)
     http = _http_local if spec.get("local") else _http
 
     def stopped():
@@ -311,14 +452,27 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
             raise ServiceError(f"{spec['name']} non raggiungibile ({e.__class__.__name__})") from None
 
     r = post(body)
-    if r.status_code == 400 and "stream_options" in body:
+    # Fallback resiliente (turno 31): alcuni endpoint terzi rifiutano un campo opzionale (stream_options,
+    # reasoning_effort, enable_thinking, thinking, top_p, temperature) o il nome max_tokens (OpenAI lo ha rinominato
+    # max_completion_tokens). Si toglie/rinomina SOLO cio' che il messaggio d'errore cita e si riprova (max 2 volte);
+    # se l'errore resta, il motivo arriva chiaro all'utente.
+    retries = 0
+    while r.status_code == 400 and retries < 2:
         detail = (r.text or "")[:2000]
         r.close()
-        if "stream_options" in detail or "include_usage" in detail:   # servizio che non accetta l'opzione
-            body = {k: v for k, v in body.items() if k != "stream_options"}
-            r = post(body)
+        if stopped():
+            raise Interrupted()
+        drop = [k for k in ("stream_options", "reasoning_effort", "enable_thinking", "thinking", "top_p",
+                            "temperature") if k in body and k in detail]
+        if fmt == "openai" and "max_tokens" in body and "max_tokens" in detail and "max_completion_tokens" not in body:
+            body = dict(body, max_completion_tokens=body["max_tokens"])
+            del body["max_tokens"]
+        elif drop:
+            body = {k: v for k, v in body.items() if k not in drop}
         else:
             raise ServiceError(f"{spec['name']} ha risposto con errore 400: {detail[:300]}")
+        retries += 1
+        r = post(body)
     if cancel is not None:
         cancel.bind_response(r)
     if r.status_code >= 400:

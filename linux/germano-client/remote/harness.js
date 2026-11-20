@@ -1,4 +1,4 @@
-/* Germano AI 0.95 - Harness AI e Glass Window.
+/* Germano AI 0.96 - Harness AI e Glass Window.
    Componente condiviso dalla Dashboard (index.html), dal Remote Control (/remote) e dal pannello di Germano Client:
    stessa interfaccia ovunque, stesse rotte del server (/api/harness/v2/*), che applica le regole di chi chiede
    (questo computer o un dispositivo della rete).
@@ -77,6 +77,16 @@
         keyNote: ['La chiave non viene salvata dal server: viaggia solo con le tue richieste e nella Glass Window compare oscurata.', 'The key is not saved by the server: it travels only with your requests and is masked in the Glass Window.'],
         model: ['Modello', 'Model'], modelPh: ['nome del modello (es. quello suggerito)', 'model name (e.g. the suggested one)'],
         modelOptional: ['Modello (facoltativo, es. sonnet)', 'Model (optional, e.g. sonnet)'], listModels: ['Elenca', 'List'],
+        // selettore dei parametri (turno 31): etichette e note dei campi arrivano dallo schema del server (IT/EN)
+        params: ['Parametri', 'Parameters'],
+        paramsTitle: ['Parametri del modello e della CLI (si adattano alla destinazione scelta)', 'Model and CLI parameters (they adapt to the chosen destination)'],
+        paramsReset: ['Ripristina predefiniti', 'Reset defaults'],
+        paramsNone: ['Nessun parametro per questa destinazione.', 'No parameters for this destination.'],
+        paramsDefault: ['predefinito', 'default'],
+        paramsEnable: ['Attiva', 'Enable'],
+        paramsLocalOnly: ['solo questo computer', 'this computer only'],
+        paramsAdvanced: ['opzione avanzata attiva', 'advanced option on'],
+        gwParams: ['Parametri usati', 'Parameters used'],
         notDetected: ['non rilevata', 'not detected'],
         protectOnly: ['Solo protezione', 'Protection only'],
         you: ['Tu', 'You'],
@@ -575,6 +585,15 @@
                 <button type="button" class="hx-mini" data-act="redetect">${svg('refresh')}<span data-t="redetect"></span></button></div>
             </div>
           </div>
+          <div class="hx-params-picker" data-ref="paramsPicker" hidden>
+            <button type="button" class="hx-params-btn" data-act="params" aria-haspopup="dialog" aria-expanded="false" data-t-title="paramsTitle" data-t-aria="paramsTitle" data-ref="paramsBtn">
+              ${svg('sliders')}<span class="hx-params-label" data-t="params"></span><span class="hx-params-badge" data-ref="paramsBadge" hidden></span><span class="hx-params-warn" data-ref="paramsWarn" data-t-title="paramsAdvanced" hidden>${svg('alert')}</span></button>
+            <div class="hx-params-pop" data-ref="paramsPop" role="dialog" aria-label="Parametri" hidden>
+              <div class="hx-params-body" data-ref="paramsBody"></div>
+              <div class="hx-params-foot"><span class="hx-params-target" data-ref="paramsTarget"></span>
+                <button type="button" class="hx-mini" data-act="params-reset">${svg('refresh')}<span data-t="paramsReset"></span></button></div>
+            </div>
+          </div>
           <button type="button" class="hx-send" data-ref="send" data-act="send" data-t-title="send" data-t-aria="send">${svg('send')}</button>
         </div>
       </div>
@@ -615,7 +634,7 @@
             r.querySelectorAll('[data-t-title]').forEach(el => { el.title = this.T(el.dataset.tTitle); });
             r.querySelectorAll('[data-t-aria]').forEach(el => { el.setAttribute('aria-label', this.T(el.dataset.tAria)); });
         }
-        setLang() { this.applyLang(); this.renderAll(); this.renderPicker(); this.renderGlass(); }
+        setLang() { this.applyLang(); this.renderAll(); this.renderPicker(); this.renderParamsButton(); if (!this.$paramsPop.hidden) this.renderParamsBody(); this.renderGlass(); }
 
         bind() {
             const r = this.root;
@@ -660,11 +679,14 @@
             this.$pickerSearch.addEventListener('keydown', e => this.pickerKey(e));
             document.addEventListener('mousedown', e => {
                 if (!this.$pickerPop.hidden && !this.$picker.contains(e.target)) this.closePicker();
+                if (!this.$paramsPop.hidden && !this.$paramsPicker.contains(e.target)) this.closeParams();
             });
             document.addEventListener('keydown', e => {
                 if (e.key === 'Escape' && !this.$pickerPop.hidden) { this.closePicker(); this.$pickerBtn.focus(); }
+                if (e.key === 'Escape' && !this.$paramsPop.hidden) { this.closeParams(); this.$paramsBtn.focus(); }
                 if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'G' || e.key === 'g') && this.visible()) { e.preventDefault(); this.toggleGlass(); }
             });
+            window.addEventListener('resize', () => { this.clampPop(this.$pickerPop); this.clampPop(this.$paramsPop); });
             // trascinamento di file sull'Harness
             let depth = 0;
             const hasFiles = e => Array.from(e.dataTransfer?.types || []).includes('Files');
@@ -715,6 +737,18 @@
                 case 'send': if (this.active) this.stop(); else this.submit(); break;
                 case 'stop': this.stop(); break;
                 case 'picker': this.togglePicker(); break;
+                case 'params': this.toggleParams(); break;
+                case 'params-reset': this.resetParams(this.currentTarget()); break;
+                case 'params-model': {
+                    const cur = this.currentTarget();
+                    if (cur) {
+                        this.setModel(cur, t.dataset.model === 'default' ? '' : t.dataset.model);
+                        this.renderPickerButton();
+                        this.renderParamsButton();
+                        this.renderParamsBody();
+                    }
+                    break;
+                }
                 case 'redetect': this.refreshTargets(true); break;
                 case 'clear-all': this.clearAll(); break;
                 case 'rename-conv': e.stopPropagation(); this.renameConv(t.dataset.conv); break;
@@ -1057,6 +1091,13 @@
                 if (force) this.toast(this.lang === 'en' ? 'AI detection updated.' : 'Rilevamento delle AI aggiornato.', 'info');
                 this.renderShield();
                 this.renderPickerButton();
+                this.renderParamsButton();
+                // il popover aperto si ricrea solo se schema o modelli della destinazione cambiano (mai mentre
+                // si sta scrivendo in un campo: il rilevamento automatico gira ogni 12 secondi)
+                if (!this.$paramsPop.hidden && this.paramsSchemaSig() !== this.paramsSig) {
+                    this.paramsSig = this.paramsSchemaSig();
+                    this.renderParamsBody();
+                }
             } catch (e) {
                 /* Germano non risponde: si riprova al prossimo giro */
             } finally {
@@ -1123,13 +1164,26 @@
             }
             this.$pickerName.textContent = name;
             this.$pickerBtn.title = t ? `${t.name}${t.model ? ' · ' + t.model : ''}` : this.T('pickTitle');
+            if (!this.$pickerPop.hidden) this.clampPop(this.$pickerPop);
+        }
+        // tiene il popover dentro lo schermo: sui telefoni il selettore non e' sul bordo destro e un popover
+        // largo quanto lo schermo finirebbe tagliato a sinistra (vale per modelli e parametri)
+        clampPop(pop) {
+            if (!pop || pop.hidden) return;
+            pop.style.right = '';
+            const r = pop.getBoundingClientRect();
+            const vw = document.documentElement.clientWidth;
+            if (r.left < 8) pop.style.right = `${Math.round(r.left - 8)}px`;
+            else if (r.right > vw - 8) pop.style.right = `${Math.round(r.right - vw + 8)}px`;
         }
         togglePicker() { if (this.$pickerPop.hidden) this.openPicker(); else this.closePicker(); }
         openPicker() {
+            this.closeParams();
             this.$pickerPop.hidden = false;
             this.$pickerBtn.setAttribute('aria-expanded', 'true');
             this.$pickerSearch.value = '';
             this.renderPicker();
+            this.clampPop(this.$pickerPop);
             this.refreshTargets(false);
             setTimeout(() => this.$pickerSearch.focus(), 20);
         }
@@ -1201,7 +1255,11 @@
             }
             this.$pickerDetail.innerHTML = html;
             const mi = this.$pickerDetail.querySelector('[data-model-input]');
-            if (mi && t) mi.addEventListener('change', () => { this.setModel(t, mi.value.trim()); this.renderPickerButton(); });
+            if (mi && t) mi.addEventListener('change', () => {
+                this.setModel(t, mi.value.trim());
+                this.renderPickerButton();
+                if (!this.$paramsPop.hidden) this.renderParamsBody();
+            });
             const ki = this.$pickerDetail.querySelector('[data-key-input]');
             if (ki) {
                 ki.addEventListener('focus', () => { if (ki.value === '••••••••') ki.value = ''; });
@@ -1240,6 +1298,7 @@
                 this.fetchedModels = this.fetchedModels || {};
                 this.fetchedModels[service] = data.models || [];
                 this.renderPickerDetail();
+                if (!this.$paramsPop.hidden) { this.paramsSig = this.paramsSchemaSig(); this.renderParamsBody(); }
                 this.toast(`${(data.models || []).length} ${this.lang === 'en' ? 'models available' : 'modelli disponibili'}`, 'success');
             } catch (e) { this.toast(this.T('netError'), 'error'); }
         }
@@ -1255,6 +1314,168 @@
             if (t.kind !== 'cloud' && t.kind !== 'cli') this.closePicker();
             else { const mi = this.$pickerDetail.querySelector('[data-model-input]'); if (mi && !mi.value) mi.focus(); }
             this.renderPickerButton();
+            this.renderParamsButton();
+            if (!this.$paramsPop.hidden) this.renderParamsBody();
+        }
+        // -------------------------------------------------------------- parametri del modello/CLI (turno 31)
+        // Il popover si adatta alla destinazione scelta con lo schema del server (target.param_schema): le scelte
+        // si salvano in localStorage per target.id e viaggiano come JSON nel campo «params» della richiesta.
+        paramsFor(t) {
+            if (!t) return {};
+            const all = load('local', this.o.convKey + '_params', {});
+            const p = all && typeof all === 'object' && !Array.isArray(all) ? all[t.id] : null;
+            return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+        }
+        saveParams(t, p) {
+            if (!t) return;
+            const all = load('local', this.o.convKey + '_params', {});
+            const map = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+            if (p && Object.keys(p).length) map[t.id] = p; else delete map[t.id];
+            save('local', this.o.convKey + '_params', map);
+        }
+        setParam(t, key, value) {
+            const p = Object.assign({}, this.paramsFor(t));
+            if (value === '' || value == null || value === 'default' || value === false) delete p[key];
+            else p[key] = value;
+            this.saveParams(t, p);
+            this.renderParamsButton();
+        }
+        resetParams(t) {
+            if (!t) return;
+            this.saveParams(t, {});
+            this.renderParamsButton();
+            if (!this.$paramsPop.hidden) this.renderParamsBody();
+        }
+        paramsDanger(p) {
+            return Boolean(p.skip_permissions || p.tools_mode === 'default'
+                || (p.permission_mode && p.permission_mode !== 'restricted'));
+        }
+        paramsBadgeText(t) {
+            const p = this.paramsFor(t);
+            const bits = [];
+            if (p.effort && p.effort !== 'default') bits.push('effort: ' + p.effort);
+            if (p.skip_permissions) bits.push('skip-perm');
+            if (p.permission_mode && p.permission_mode !== 'restricted') bits.push(p.permission_mode);
+            if (p.tools_mode === 'default') bits.push('tools');
+            if (p.max_turns) bits.push('turns ' + p.max_turns);
+            if (p.fallback_model) bits.push('fallback');
+            if (p.temperature != null && p.temperature !== '') bits.push('temp ' + p.temperature);
+            if (p.max_tokens) bits.push('tok ' + p.max_tokens);
+            if (p.top_p != null && p.top_p !== '') bits.push('top_p ' + p.top_p);
+            if (p.reasoning_effort && p.reasoning_effort !== 'default') bits.push('effort: ' + p.reasoning_effort);
+            if (p.thinking && p.thinking !== 'default') bits.push('thinking ' + p.thinking);
+            if (p.enable_thinking && p.enable_thinking !== 'default') bits.push('thinking ' + p.enable_thinking);
+            return bits.slice(0, 3).join(' · ') + (bits.length > 3 ? ' …' : '');
+        }
+        paramValueLabel(key, v) {
+            const en = this.lang === 'en';
+            if (v === 'default') return key === 'tools_mode' ? (en ? 'default · CLI tools' : 'default · strumenti CLI') : this.T('paramsDefault');
+            const map = {
+                restricted: en ? 'restricted · safe' : 'restricted · sicuro',
+                none: en ? 'none · text only' : 'none · solo testo',
+                enabled: en ? 'Enabled' : 'Attivo', disabled: en ? 'Disabled' : 'Disattivo',
+                on: en ? 'On' : 'Attivo', off: en ? 'Off' : 'Disattivo',
+            };
+            return map[v] || v;
+        }
+        renderParamsButton() {
+            const t = this.currentTarget();
+            const show = Boolean(t && (t.kind === 'cli' || t.kind === 'cloud' || t.kind === 'local'));
+            this.$paramsPicker.hidden = !show;
+            if (!show) { this.closeParams(); return; }
+            const badge = this.paramsBadgeText(t);
+            this.$paramsBadge.hidden = !badge;
+            this.$paramsBadge.textContent = badge;
+            const danger = this.paramsDanger(this.paramsFor(t));
+            this.$paramsWarn.hidden = !danger;
+            this.$paramsBtn.classList.toggle('is-danger', danger);
+            this.$paramsBtn.setAttribute('aria-expanded', String(!this.$paramsPop.hidden));
+            if (!this.$paramsPop.hidden) this.clampPop(this.$paramsPop);
+        }
+        toggleParams() { if (this.$paramsPop.hidden) this.openParams(); else this.closeParams(); }
+        paramsSchemaSig() {
+            const t = this.currentTarget();
+            return t ? `${t.id}|${JSON.stringify(t.param_schema || {})}|${JSON.stringify(t.models || [])}|${JSON.stringify((this.fetchedModels || {})[t.service] || [])}` : '';
+        }
+        openParams() {
+            this.closePicker();
+            this.$paramsPop.hidden = false;
+            this.$paramsBtn.setAttribute('aria-expanded', 'true');
+            this.paramsSig = this.paramsSchemaSig();
+            this.renderParamsBody();
+            this.clampPop(this.$paramsPop);
+        }
+        closeParams() {
+            if (this.$paramsPop.hidden) return;
+            this.$paramsPop.hidden = true;
+            this.$paramsBtn.setAttribute('aria-expanded', 'false');
+        }
+        renderParamsBody() {
+            if (this.$paramsPop.hidden) return;
+            const t = this.currentTarget();
+            if (!t) { this.$paramsBody.innerHTML = ''; return; }
+            const fields = (((t.param_schema || {}).fields) || []).filter(f => !(f.local_only && this.remote));
+            const p = this.paramsFor(t);
+            const hasModel = t.kind === 'cli' || t.kind === 'cloud' || (t.kind === 'local' && !t.model);
+            let html = '';
+            if (hasModel) {
+                const models = Array.from(new Set([...(t.models || []), ...((this.fetchedModels || {})[t.service] || [])]));
+                const cur = this.modelFor(t);
+                html += `<div class="hx-params-sec"><div class="hx-params-k">${esc(this.T(t.kind === 'cli' ? 'modelOptional' : 'model'))}</div>`;
+                if (models.length) {
+                    html += `<div class="hx-params-models">${models.map(m => `<button type="button" class="hx-params-model${(m === cur || (m === 'default' && !cur)) ? ' is-active' : ''}" data-act="params-model" data-model="${esc(m)}">${esc(m)}</button>`).join('')}</div>`;
+                }
+                html += `<span class="hx-row"><input type="text" data-params-model-input list="hx-pmodels-${esc(t.id)}" value="${esc(cur)}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off">
+                    ${t.kind === 'cloud' ? `<button type="button" class="hx-mini" data-act="list-models" data-service="${esc(t.service)}">${esc(this.T('listModels'))}</button>` : ''}</span>
+                    <datalist id="hx-pmodels-${esc(t.id)}">${models.map(m => `<option value="${esc(m)}">`).join('')}</datalist></div>`;
+            }
+            for (const f of fields) {
+                if (f.show_if && Object.entries(f.show_if).some(([k, v]) => p[k] !== v)) continue;
+                const label = esc(this.lang === 'en' ? (f.en || f.key) : (f.it || f.key));
+                const note = f['note_' + this.lang] ? `<span class="hx-small-note">${esc(f['note_' + this.lang])}</span>` : '';
+                const tag = f.danger ? `<span class="hx-params-danger">${svg('alert')}${esc(this.T('paramsLocalOnly'))}</span>` : '';
+                const val = p[f.key];
+                let control;
+                if (f.type === 'enum') {
+                    control = `<select data-param="${esc(f.key)}">${(f.values || []).map(v => `<option value="${esc(v)}"${(val == null ? f.default === v : val === v) ? ' selected' : ''}>${esc(this.paramValueLabel(f.key, v))}</option>`).join('')}</select>`;
+                } else if (f.type === 'bool') {
+                    control = `<span class="hx-params-switch"><input type="checkbox" data-param="${esc(f.key)}"${val ? ' checked' : ''}><span>${esc(this.T('paramsEnable'))}</span></span>`;
+                } else if (f.type === 'int' || f.type === 'number') {
+                    control = `<input type="number" data-param="${esc(f.key)}" min="${f.min}" max="${f.max}" step="${f.step || 1}" value="${val == null ? '' : esc(val)}" placeholder="${esc(this.T('paramsDefault'))}">`;
+                } else {
+                    control = `<input type="text" data-param="${esc(f.key)}" value="${esc(val || '')}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off"${hasModel ? ` list="hx-pmodels-${esc(t.id)}"` : ''}>`;
+                }
+                html += `<label class="hx-field hx-params-field${f.danger ? ' is-danger' : ''}"><span>${label}${tag}</span>${control}${note}</label>`;
+            }
+            if (!hasModel && !fields.length) html = `<div class="hx-small-note">${esc(this.T('paramsNone'))}</div>`;
+            this.$paramsBody.innerHTML = html;
+            this.$paramsTarget.textContent = t.name;
+            this.$paramsBody.querySelectorAll('[data-param]').forEach(el => el.addEventListener('change', () => this.onParamInput(t, el)));
+            const mi = this.$paramsBody.querySelector('[data-params-model-input]');
+            if (mi) mi.addEventListener('change', () => {
+                this.setModel(t, mi.value.trim() === 'default' ? '' : mi.value.trim());
+                this.renderPickerButton();
+                this.renderParamsButton();
+                this.renderParamsBody();
+            });
+        }
+        onParamInput(t, el) {
+            const key = el.dataset.param;
+            const f = (((t.param_schema || {}).fields) || []).find(x => x.key === key);
+            let v;
+            if (el.type === 'checkbox') v = el.checked;
+            else if (el.type === 'number') {
+                v = el.value === '' ? '' : Number(el.value);
+                if (v !== '' && !Number.isFinite(v)) v = '';
+                if (v !== '' && f) {
+                    if (f.type === 'int') v = Math.round(v);
+                    if (f.min != null && v < f.min) v = f.min;
+                    if (f.max != null && v > f.max) v = f.max;
+                    el.value = String(v);
+                }
+            } else v = el.value.trim();
+            this.setParam(t, key, v);
+            if (key === 'thinking') this.renderParamsBody();   // mostra/nasconde thinking_budget
         }
         // -------------------------------------------------------------- assistente di configurazione (solo suite)
         // Finestra montata su document.body: si apre dal selettore dei modelli e dalle Impostazioni (dove la vista
@@ -1535,6 +1756,11 @@
             fd.append('target', run.target.id);
             const model = run.model;
             if (model) fd.append('model', model);
+            if (run.target.kind !== 'protect') {
+                const params = this.paramsFor(run.target);
+                run.params = params;
+                if (Object.keys(params).length) fd.append('params', JSON.stringify(params));
+            }
             fd.append('prompt', text);
             if (run.conv.system) fd.append('system', run.conv.system);
             const hist = this.historyFor(run.conv, run.userMsg.id);
@@ -2039,9 +2265,15 @@
             let b4 = '';
             if (!run.payloads.length) b4 = `<div class="gw-note">${esc(run.done && run.done.protect_only ? this.T('gwNotSent') : this.T('gwWaitingPayload'))}</div>`;
             run.payloads.forEach((p, k) => {
+                // riepilogo dei parametri usati (turno 31): nel payload CLI e HTTP, con l'evidenza delle opzioni
+                // avanzate locali (permessi o strumenti sbloccati) quando il server le segnala.
+                const prm = p.params && Object.keys(p.params).length
+                    ? `<div class="gw-k">${esc(this.T('gwParams'))}</div><div class="gw-headers">${Object.entries(p.params).map(([a, v]) => `<span>${esc(a)}</span><span>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span>`).join('')}</div>` : '';
+                const wrn = p.warning ? `<div class="gw-note warn">⚠ ${esc(p.warning)}</div>` : '';
                 if (p.transport === 'cli') {
                     b4 += `<div class="gw-k">${esc(this.T('gwCli'))}<span class="gw-tag info">--${esc(p.profile || '')}</span></div>
                         <div class="gw-pre">${esc((p.argv || []).map(a => (a === '' ? '""' : /\s/.test(a) ? `"${a}"` : a)).join(' '))}</div>
+                        ${prm}${wrn}
                         <div class="gw-k">${esc(this.T('gwEnv'))}</div><div class="gw-headers">${Object.entries(p.env || {}).map(([a, v]) => `<span>${esc(a)}</span><span>${esc(v)}</span>`).join('')}</div>
                         <div class="gw-k">${esc(this.T('gwStdin'))}</div><div class="gw-pre">${highlightLabels(p.stdin || '')}</div>
                         ${p.via === 'direct' ? `<div class="gw-note">🌐 ${esc(this.T('gwDirect'))}</div>` : ''}
@@ -2056,6 +2288,7 @@
                     b4 += `${viaProxy ? `<div class="gw-k">${esc(this.T('gwViaProxy'))}</div>` : ''}
                         <div class="gw-line"><span class="gw-method">${esc(p.method || 'POST')}</span><b>${esc(p.url || '')}</b></div>
                         ${p.local_only ? `<div class="gw-note ok">🏠 ${esc(this.T('gwLocalOnly'))}</div>` : `<div class="gw-note">🌐 ${esc(this.T('gwCloud'))}</div>`}
+                        ${prm}${wrn}
                         <div class="gw-k">${esc(this.T('gwHeaders'))}</div><div class="gw-headers">${Object.entries(p.headers || {}).map(([a, v]) => `<span>${esc(a)}</span><span>${esc(v)}</span>`).join('')}</div>
                         <div class="gw-k">${esc(this.T('gwBody'))}<button type="button" data-act="gw-copy" data-what="payload" data-i="${k}">${esc(this.T('gwCopy'))}</button></div>
                         <div class="gw-pre json tall">${p._html}</div>`;

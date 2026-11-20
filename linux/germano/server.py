@@ -2460,9 +2460,6 @@ _LABEL_HINT = {
            "category and a number (like [CATEGORY_N]). Treat them as placeholders: when they are needed in the "
            "answer, repeat them exactly as they are, without changing, translating or inventing new ones."),
 }
-_CLAUDE_ALIASES = ("sonnet", "opus", "haiku")
-
-
 def _requester():
     return (request.remote_addr or "", g.get("remote_user"))
 
@@ -2483,7 +2480,7 @@ def _harness_targets(local, sharing, lang="it"):
     catalog = {s["id"]: s for s in ai_detect.CATALOG}
     out = [{"id": "protect", "kind": "protect", "enabled": True,
             "name": L("Solo protezione · copia il testo protetto", "Protection only · copy the protected text"),
-            "vendor": "Germano"}]
+            "vendor": "Germano", "param_schema": {"fields": []}}]
     runnable = set(harness.LOCAL_PROFILES) | set(harness.PROFILES)
     for tid in sorted(runnable):
         t = tools.get(tid) or {}
@@ -2500,9 +2497,15 @@ def _harness_targets(local, sharing, lang="it"):
             why = L("condivisione delle AI disattivata sul server", "sharing of the server AIs disabled")
         elif not local and prof.get("needs") and not os.environ.get(prof["needs"]):
             why = L(f"il server non ha la chiave {prof['needs']}", f"the server has no {prof['needs']} key")
+        models = list(harness.CLAUDE_MODELS) if tid == "claude-code" else []
+        if tid == "agy" and local and t.get("path"):
+            try:    # modelli rilevati da «agy models» (cache dell'assistente: mai attese qui)
+                models = [m["id"] for m in (gassist.agy_status(t["path"], refresh_if_stale=False).get("models") or [])]
+            except Exception:
+                models = []
         out.append({"id": f"cli:{tid}", "kind": "cli", "tool": tid, "name": t.get("name") or spec.get("name") or tid,
                     "vendor": spec.get("vendor"), "version": t.get("version"), "enabled": why is None, "reason": why,
-                    "models": list(_CLAUDE_ALIASES) if tid == "claude-code" else [], "model_optional": True,
+                    "models": models, "model_optional": True, "param_schema": harness.param_schema_for(tid, local),
                     "where": L("questo computer", "this computer") if local else L("server", "server")})
     ports = _listening_ports(det)
     installed = _local_models(det)
@@ -2516,21 +2519,25 @@ def _harness_targets(local, sharing, lang="it"):
             for m in models:
                 if gproviders.MODEL_RE.match(m):
                     out.append({"id": f"local:{sid}|{m}", "kind": "local", "service": sid, "model": m,
-                                "name": f"{name} · {m}", "vendor": name, "enabled": True})
+                                "name": f"{name} · {m}", "vendor": name, "enabled": True,
+                                "param_schema": gproviders.param_schema_for(sid)})
         elif ports.get(port) and models is None:
             out.append({"id": f"local:{sid}", "kind": "local", "service": sid, "model": None, "name": name,
-                        "vendor": name, "enabled": True, "model_required": True})
+                        "vendor": name, "enabled": True, "model_required": True,
+                        "param_schema": gproviders.param_schema_for(sid)})
         else:
             out.append({"id": f"local:{sid}", "kind": "local", "service": sid, "name": name, "vendor": name,
                         "enabled": False, "reason": (L("nessun modello installato", "no model installed")
-                                                     if ports.get(port) else L("non in esecuzione", "not running"))})
+                                                     if ports.get(port) else L("non in esecuzione", "not running")),
+                        "param_schema": gproviders.param_schema_for(sid)})
     for sid, spec in gproviders.SERVICES.items():
         if spec.get("local"):
             continue
         server_key = bool(gproviders.server_key(sid)) and (local or sharing)
         item = {"id": f"cloud:{sid}", "kind": "cloud", "service": sid, "name": spec["name"], "vendor": _short_name(spec["name"]),
                 "enabled": True, "key": "server" if server_key else "user", "models": list(spec.get("models", ())),
-                "model_required": True, "formats": [f for f in ("openai", "anthropic") if spec.get(f)]}
+                "model_required": True, "formats": [f for f in ("openai", "anthropic") if spec.get(f)],
+                "param_schema": gproviders.param_schema_for(sid)}
         if local and server_key:
             item["key_vars"] = list(spec.get("keys", ()))
         out.append(item)
@@ -2708,6 +2715,7 @@ def api_harness_run_v2():
     """Esegue una richiesta dell'Harness e restituisce un flusso NDJSON di eventi per la pagina e la Glass Window:
     start, original, phase, entities, sanitized, payload, gate (revisione), delta, thinking, usage, frame, cli,
     ping, done | aborted | error. Gli errori di validazione arrivano prima del flusso, come JSON con lo stato HTTP."""
+    from germano import harness
     cfg = common.load_config()
     local = _remote_is_local()
     sharing = bool(cfg.get("share_ai_tools"))
@@ -2719,6 +2727,7 @@ def api_harness_run_v2():
     review = request.form.get("review") in ("1", "true")
     raw_frames = request.form.get("raw_frames") in ("1", "true")
     label_hint = request.form.get("label_hint", "1") not in ("0", "false")
+    raw_params = (request.form.get("params") or "").strip()
     try:
         options = None if local else _client_options(request.form.get("options"), cfg)
         history = _harness_history(request.form.get("history"))
@@ -2728,6 +2737,31 @@ def api_harness_run_v2():
         if len(prompt) > STUDIO_MAX_PROMPT:
             raise _Refused(413, {"status": "error", "message": _L("Il testo e' troppo lungo.", "The text is too long.")})
         kind, dest = _validate_harness_target(target, model, local, sharing, cfg)
+        # Parametri del modello/CLI (turno 31): whitelist rigorosa; le opzioni locali (permessi, strumenti) sono
+        # vietate a chi arriva dalla rete (403), i valori non validi danno 400 prima di qualsiasi invio.
+        params_in = {}
+        if raw_params:
+            if len(raw_params) > 4000:
+                raise _Refused(400, {"status": "error", "message": _L("Parametri troppo lunghi.",
+                                                                      "Parameters too long.")})
+            try:
+                params_in = json.loads(raw_params)
+            except ValueError:
+                params_in = None
+            if not isinstance(params_in, dict):
+                raise _Refused(400, {"status": "error", "message": _L(
+                    "Parametri non validi: serve un oggetto JSON.", "Invalid parameters: a JSON object is needed.")})
+        try:
+            if kind == "cli":
+                params = harness.validate_params(dest["tool"], params_in, local)
+            elif kind in ("cloud", "local"):
+                params = gproviders.validate_params(dest["service"], params_in)
+            else:
+                params = {}
+        except harness.ParamsForbidden as e:
+            raise _Refused(403, {"status": "error", "message": str(e)})
+        except (harness.ParamsError, gproviders.ParamsError) as e:
+            raise _Refused(400, {"status": "error", "message": str(e)})
         if not daemon_ready():
             raise _engine_blocked()
         run = gglass.RUNS.register(_requester(), local, target, dest.get("model") or model)
@@ -2741,7 +2775,7 @@ def api_harness_run_v2():
     ctx = {"kind": kind, "dest": dest, "target": target, "model": dest.get("model") or model, "prompt": prompt,
            "system": system, "history": history, "files": file_items, "options": options, "review": review,
            "raw_frames": raw_frames, "label_hint": label_hint, "lang": lang, "cfg": cfg, "local": local,
-           "who": g.get("remote_user") or request.remote_addr}
+           "params": params, "who": g.get("remote_user") or request.remote_addr}
     return Response(_harness_stream(run, ctx), mimetype="application/x-ndjson",
                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no", "X-Germano-Run": run.id})
 
@@ -2893,17 +2927,28 @@ def _harness_stream(run, ctx):
                     "iniziane una nuova.", f"Conversation too long for {dest['name']} (at most {harness.MAX_PROMPT} "
                     "characters): start a new one."))
                 return
-            prof, argv = harness.command_line(dest["tool"], dest["info"]["path"], ctx["model"] or None, ctx["local"])
+            prof, argv = harness.command_line(dest["tool"], dest["info"]["path"], ctx["model"] or None, ctx["local"],
+                                              params=ctx.get("params"))
             if not prof:
                 yield ev("error", status="error", transmitted=False,
                          message=L("Modello non valido per la CLI.", "Invalid model for the CLI."))
                 return
             shown = [os.path.basename(argv[0])] + [gglass.cap(a, 2000) for a in argv[1:]]
+            prm = ctx.get("params") or {}
+            # trasparenza: con permessi o strumenti sbloccati (solo in locale) il profilo sicuro «restricted» e'
+            # disattivato per questa richiesta: la Glass Window lo evidenzia.
+            advanced = bool(prm.get("skip_permissions") or prm.get("tools_mode") == "default"
+                            or prm.get("permission_mode") not in (None, "restricted"))
+            warn = L("Opzioni avanzate attive su questo computer: per questa richiesta il profilo sicuro "
+                     "«restricted» e' disattivato (strumenti della CLI o permessi senza conferma).",
+                     "Advanced options active on this computer: for this request the safe «restricted» profile is "
+                     "off (CLI tools or permissions without prompts).") if advanced else None
             if prof.get("direct"):
                 yield ev("payload", transport="cli", via="direct", tool=dest["tool"], argv=shown,
                          env=harness.germano_env(prof, PORT, scope),
                          stdin=gglass.cap(harness.stdin_payload(prof, transcript).decode("utf-8")),
                          profile="isolato" if prof.get("isolate_home") else "sessione",
+                         params=prm or None, warning=warn,
                          note=L(f"La CLI invia il testo qui sopra, gia' protetto da Germano, direttamente a "
                                 f"{prof['direct']} con l'account di Antigravity: non passa dal Proxy, quindi le sue "
                                 "istruzioni interne (circa 10.000 token con la cartella di lavoro) non sono visibili qui. "
@@ -2917,15 +2962,19 @@ def _harness_stream(run, ctx):
             else:
                 yield ev("payload", transport="cli", via="germano", tool=dest["tool"], argv=shown,
                          env=harness.germano_env(prof, PORT, scope), stdin=gglass.cap(transcript),
-                         profile="restricted" if ctx["local"] else "bare",
+                         profile="restricted" if ctx["local"] and not advanced else
+                                 (L("avanzato", "advanced") if ctx["local"] else "bare"),
+                         params=prm or None, warning=warn,
                          note=L("La CLI invia la richiesta al Proxy di Germano, che la anonimizza di nuovo e la inoltra: "
                                 "il payload HTTP esatto compare qui appena parte.",
                                 "The CLI sends the request to the Germano Proxy, which anonymizes it again and forwards "
                                 "it: the exact HTTP payload appears here as soon as it leaves."))
         else:
-            url, headers, body, fmt = gproviders.build_request(dest["service"], dest["model"], messages, dest["key"])
+            url, headers, body, fmt = gproviders.build_request(dest["service"], dest["model"], messages, dest["key"],
+                                                               params=ctx.get("params"))
             yield ev("payload", transport="http", via="germano", format=fmt, method="POST", url=url,
                      headers=gglass.redact_headers(headers), body=gglass.cap_obj(body),
+                     params=ctx.get("params") or None,
                      local_only=bool(dest["spec"].get("local")))
         # ---------------------------------------------------------------- revisione manuale (facoltativa)
         if ctx["review"]:
@@ -2973,11 +3022,12 @@ def _harness_stream(run, ctx):
                 run.transmitted = True
                 if kind == "cli":
                     res = harness.stream_run(dest["tool"], dest["info"]["path"], transcript, PORT, push,
-                                             model=ctx["model"] or None, scope=scope, local=ctx["local"], cancel=run)
+                                             model=ctx["model"] or None, scope=scope, local=ctx["local"], cancel=run,
+                                             params=ctx.get("params"))
                 else:
                     res = gproviders.stream_chat(dest["service"], dest["model"], messages, dest["key"], push,
                                                  cancel=run, raw_frames=ctx["raw_frames"],
-                                                 request=(url, headers, body, fmt))
+                                                 request=(url, headers, body, fmt), params=ctx.get("params"))
                 q.put({"type": "_end", "result": res})
             except (harness.HarnessInterrupted, gproviders.Interrupted):
                 q.put({"type": "_end", "interrupted": True})

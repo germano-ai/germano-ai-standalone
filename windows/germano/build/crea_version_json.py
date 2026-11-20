@@ -1,4 +1,4 @@
-"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-0.95/releases/.
+"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-0.96/releases/.
 
 Per ogni piattaforma: nome del file, dimensione esatta e impronta SHA-256, calcolate DIRETTAMENTE dal file su disco
 in una sola lettura. Le chiavi «windows», «macos», «linux» sono quelle lette dall'updater della suite; le voci
@@ -39,10 +39,10 @@ DOWNLOAD_BASE = "https://download.germano.ai/"
 FILES = {"windows": "windows/germano-{v}.exe", "macos": "macos/germano-{v}.pkg", "linux": "linux/germano-{v}.deb",
          "windows-client": "windows/germano-client-{v}.exe", "macos-client": "macos/germano-client-{v}.pkg",
          "linux-client": "linux/germano-client-{v}.deb"}
-NOTES = ("Germano AI v{v} - Server MCP (Streamable HTTP, SSE e stdio) e UTCP: anonimizzazione, ispezione e controllo "
-         "delle fughe in ingresso, ripristino dei dati in uscita nei flussi di lavoro (Claude, Antigravity, Cursor, "
-         "n8n, agenti); manuale UTCP 1.0, OpenAPI 3.1 e API REST /api/v1; collegamento con 1 clic ai client MCP; "
-         "dalla rete solo con token e ripristino limitato ai dati della richiesta")
+NOTES = ("Germano AI v{v} - Nuovo selettore dei parametri per ogni AI (modelli rapidi, effort, skip permissions solo "
+         "locale, modalita' permessi, strumenti CLI, thinking/budget, reasoning effort, temperature e max tokens) "
+         "con trasparenza nella Glass Window, documentazione offline e online riorganizzata nei capitoli e "
+         "layout mobile migliorato per Dashboard e popover")
 SFX_MAGIC = b"GERMANO.SFX.0001"
 SFX_TRAILER = struct.Struct("<16sQQQQ")
 WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # Windows non avvia eseguibili da 4 GB in su

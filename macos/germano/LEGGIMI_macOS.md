@@ -1,7 +1,7 @@
-# Germano AI 0.95 — Suite completa per macOS
+# Germano AI 0.96 — Suite completa per macOS
 
 ## Installazione
-Scarica **`germano-0.95.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
+Scarica **`germano-0.96.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
 **macOS 14 Sonoma** o successivo: PyTorch non è più pubblicato per i Mac Intel, che usano il client leggero) e fai
 doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, gli 8 modelli IA, llama.cpp per il
 Sistema 2 e 7-Zip per gli archivi) e non scarica nulla.
@@ -30,6 +30,14 @@ questo computer filtrate da Germano e la Glass Window, sanitizzazione manuale di
 profilo PA). Di base l'accesso è libero; con la gestione utenti (Impostazioni › Modalità e rete › Accesso dalla rete)
 servono utente e password. Alla prima attivazione macOS può chiedere di consentire le connessioni in entrata a Python:
 rispondi **Consenti**.
+
+## Novità della 0.96: selettore dei parametri per ogni AI
+Accanto al selettore del modello in basso a destra nella chat compare il pulsante **Parametri**, adattato all'AI
+scelta: per **Claude Code** modelli rapidi, `--effort` (`low`…`max`), modalità permessi, *Salta i permessi*
+(`--dangerously-skip-permissions`, solo locale), strumenti CLI, `--max-turns` e `--fallback-model`; per
+**Antigravity CLI** `--effort` (strumenti sempre bloccati); per i servizi API e i modelli locali `temperature`,
+`max_tokens`, `top_p`, `reasoning_effort`, `thinking`/budget ed `enable_thinking`. Tutto visibile nella Glass
+Window; dalla rete le opzioni locali sono rifiutate con 403. Guida riorganizzata nei 15 capitoli (capitolo 2).
 
 ## Novità della 0.95: Server MCP e UTCP
 Germano entra nei flussi di lavoro come strumento: **Server MCP** su `http://127.0.0.1:8181/mcp` (anche `/mcp/sse`
