@@ -114,16 +114,16 @@ def param_schema_for(service_id):
     fields = []
     if is_anthropic_only:
         fields.append({"key": "reasoning_effort", "type": "enum", "values": list(_EFFORT_VALUES_ANTHROPIC),
-                       "default": "default", "it": "Sforzo di ragionamento", "en": "Reasoning effort",
-                       "note_it": "output_config.effort (low, medium, high, xhigh, max), se il modello lo supporta.",
-                       "note_en": "output_config.effort (low, medium, high, xhigh, max), when the model supports it."})
+                       "default": "max", "it": "Sforzo di ragionamento", "en": "Reasoning effort",
+                       "note_it": "output_config.effort (predefinito: max; scegli «auto · modello» per nessun override).",
+                       "note_en": "output_config.effort (default: max; pick «auto · model» for no override)."})
     else:
         fields.append({"key": "reasoning_effort", "type": "enum", "values": list(_EFFORT_VALUES_OPENAI),
-                       "default": "default", "it": "Sforzo di ragionamento", "en": "Reasoning effort",
-                       "note_it": "reasoning_effort (none, low, medium, high, xhigh, max), se il modello lo supporta "
-                                  "(fallback automatico se un livello alto non e' ammesso).",
-                       "note_en": "reasoning_effort (none, low, medium, high, xhigh, max), when the model supports it "
-                                  "(automatic step-down or omit if a higher tier is unsupported)."})
+                       "default": "xhigh", "it": "Sforzo di ragionamento", "en": "Reasoning effort",
+                       "note_it": "reasoning_effort (predefinito: xhigh; fallback/step-down automatico se un livello "
+                                  "non e' ammesso dal modello; scegli «auto · modello» per nessun override).",
+                       "note_en": "reasoning_effort (default: xhigh; automatic step-down or omit if unsupported by the "
+                                  "model; pick «auto · model» for no override)."})
     if sid in _ENABLE_THINKING_SERVICES:
         fields.append({"key": "enable_thinking", "type": "enum", "values": ["default", "on", "off"],
                        "default": "default", "it": "Ragionamento", "en": "Thinking",
@@ -155,29 +155,46 @@ def param_schema_for(service_id):
     return {"service": sid, "fields": fields}
 
 
+def _default_params(service_id):
+    """Parametri effettivi predefiniti per il servizio (Anthropic: reasoning_effort=max; altri: xhigh)."""
+    out = {}
+    for f in param_schema_for(service_id)["fields"]:
+        d = f.get("default")
+        if d is None or d == "" or d == "default":
+            continue
+        out[f["key"]] = d
+    return out
+
+
 def validate_params(service_id, raw):
     """Parametri validati con whitelist esatta di chiavi e valori e range sicuri (temperature 0.0–2.0, top_p
-    0.0–1.0, max_tokens 1–65536, thinking_budget 1024–32000). Restituisce solo i valori non predefiniti."""
-    if raw is None or raw == {}:
-        return {}
-    if not isinstance(raw, dict):
-        raise ParamsError("I parametri devono essere un oggetto JSON.")
+    0.0–1.0, max_tokens 1–65536, thinking_budget 1024–32000), partendo dai predefiniti dello schema
+    (reasoning_effort=max per Anthropic, xhigh per tutti gli altri). Passare «default» rimuove l'override."""
     sid = str(service_id or "").strip().lower()
     if not get(sid):
         raise ParamsError("servizio sconosciuto")
+    out = _default_params(sid)
+    if raw is None or raw == {}:
+        return out
+    if not isinstance(raw, dict):
+        raise ParamsError("I parametri devono essere un oggetto JSON.")
     schema = {f["key"]: f for f in param_schema_for(sid)["fields"]}
-    out = {}
     for key, value in raw.items():
         f = schema.get(key)
         if f is None:
             raise ParamsError(f"Parametro sconosciuto per {sid}: «{str(key)[:40]}».")
         if value is None or value == "":
+            out.pop(key, None)
             continue
         typ = f["type"]
         if typ == "enum":
             if not isinstance(value, str) or value not in f["values"]:
                 raise ParamsError(f"Valore non valido per «{key}»: «{str(value)[:40]}».")
             if value == "default":
+                if f.get("default") not in (None, "", "default"):
+                    out[key] = "default"
+                else:
+                    out.pop(key, None)
                 continue
         elif typ == "int":
             if isinstance(value, bool) or not isinstance(value, int):
@@ -203,9 +220,12 @@ def _apply_params(body, fmt, params, max_tokens):
     deve superare budget_tokens e temperature/top_p non si inviano (specifica Anthropic). Su Anthropic reasoning_effort
     viaggia come output_config.effort; sui servizi OpenAI-compatible come reasoning_effort."""
     mt = params.get("max_tokens", max_tokens)
+    eff = params.get("reasoning_effort")
+    if eff in (None, "", "default"):
+        eff = None
     if fmt == "anthropic":
-        if "reasoning_effort" in params:
-            body["output_config"] = {"effort": params["reasoning_effort"]}
+        if eff:
+            body["output_config"] = {"effort": eff}
         thinking = params.get("thinking")
         if thinking == "enabled":
             budget = params.get("thinking_budget", 1024)
@@ -224,8 +244,8 @@ def _apply_params(body, fmt, params, max_tokens):
         for k in ("temperature", "top_p"):
             if k in params:
                 body[k] = params[k]
-        if "reasoning_effort" in params and (params.get("enable_thinking") != "off" or params["reasoning_effort"] == "none"):
-            body["reasoning_effort"] = params["reasoning_effort"]
+        if eff and (params.get("enable_thinking") != "off" or eff == "none"):
+            body["reasoning_effort"] = eff
         if "enable_thinking" in params:
             body["enable_thinking"] = params["enable_thinking"] == "on"
     return body
@@ -254,12 +274,13 @@ def _adapt_400_body(body, fmt, detail):
         nxt = dict(body, max_completion_tokens=body["max_tokens"])
         del nxt["max_tokens"]
         return nxt
-    if fmt == "openai" and "reasoning_effort" in body and ("reasoning_effort" in d_low or "effort" in d_low):
+    eff_hint = "reasoning_effort" in d_low or "effort" in d_low or ("low" in d_low and "high" in d_low)
+    if fmt == "openai" and "reasoning_effort" in body and eff_hint:
         nxt_eff = _step_down_effort(body["reasoning_effort"], d_low)
         if nxt_eff and nxt_eff != body["reasoning_effort"]:
             return dict(body, reasoning_effort=nxt_eff)
         return {k: v for k, v in body.items() if k != "reasoning_effort"}
-    if fmt == "anthropic" and "output_config" in body and ("output_config" in d_low or "effort" in d_low):
+    if fmt == "anthropic" and "output_config" in body and ("output_config" in d_low or eff_hint):
         cur = (body.get("output_config") or {}).get("effort")
         nxt_eff = _step_down_effort(cur, d_low)
         if nxt_eff and nxt_eff != cur:

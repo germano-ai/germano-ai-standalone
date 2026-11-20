@@ -35,7 +35,7 @@ In the **Parameters** selector next to the model picker (**Dashboard**, **Remote
 
 - **All 18 OpenAI-compatible services (cloud and local):** Qwen (`qwen`, `qwen-token` / Qwen4-Max, `qwen-coding`), GLM / Z.ai, OpenAI, Google Gemini, DeepSeek, Grok / xAI, OpenRouter, Kimi / Moonshot, Meta Muse, Mistral, Perplexity, Groq, **Ollama**, **LM Studio** and **Jan** expose `reasoning_effort` with **`none`**, **`low`**, **`medium`**, **`high`**, **`xhigh`** and **`max`**.
 - **Anthropic API:** sends the chosen level (`low`…`max`) natively as `output_config: {"effort": ...}` alongside `thinking` and `thinking_budget`.
-- **Local CLIs (`Claude Code` and `Antigravity CLI`):** continue to support `--effort` (`low`…`max`) plus all protected local options.
+- **Maximum defaults (`max`/`xhigh` + local YOLO):** every model starts at maximum effort (`max` on Claude Code, Antigravity CLI and Anthropic; `xhigh` on Qwen and all 18 other cloud and local services); on this computer **Claude Code** and **Antigravity CLI (`agy`)** start in YOLO mode (`--dangerously-skip-permissions`, `--mode auto` on `agy`, always toggleable in the selector and always blocked with `403` from the network).
 - **Automatic HTTP 400 step-down & fallback:** if a model rejects a higher tier (e.g. `max` or `xhigh`), Germano automatically steps down to the highest supported tier (`xhigh` or `high`) or omits the optional field, in both streaming and synchronous calls.
 
 Details and tests in the [CHANGELOG](CHANGELOG.en.md); usage guide in chapter 2 of the Guide.

@@ -48,8 +48,11 @@ Nel pulsante **Parametri** accanto al selettore del modello, lo **Sforzo di ragi
 `none`, `low`, `medium`, `high`, `xhigh`, `max`) è ora disponibile su **tutti i 19 servizi API cloud e locali**
 (Qwen, Qwen Token Plan / Qwen4-Max, Qwen Coding Plan, GLM, OpenAI, Anthropic via `output_config.effort`, Gemini,
 DeepSeek, Grok, Kimi, OpenRouter, Mistral, Meta, Perplexity, Groq, Ollama, LM Studio, Jan), oltre a Claude Code e
-Antigravity CLI. Se un modello non accetta un livello alto, Germano scala automaticamente al livello inferiore
-ammesso oppure omette il campo opzionale senza interrompere la chat.
+Antigravity CLI. Di default ogni modello parte con sforzo massimo (`max` su Claude Code, Antigravity CLI e Anthropic; `xhigh` su
+Qwen e sugli altri servizi) e, su questo computer, Claude Code e Antigravity CLI partono in modalità YOLO
+(`--dangerously-skip-permissions`, sempre disattivabile nel selettore e sempre bloccata 403 dalla rete).
+Se un modello non accetta un livello alto, Germano scala automaticamente al livello inferiore ammesso oppure
+omette il campo opzionale senza interrompere la chat.
 
 ## Novità della 0.96: selettore dei parametri per ogni AI
 Accanto al selettore del modello in basso a destra nella chat compare il pulsante **Parametri**, che si adatta

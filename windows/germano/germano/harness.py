@@ -103,8 +103,10 @@ LOCAL_PROFILES = {
         "model_flag": "--model",
     },
 }
-# Impostazioni di sessione della CLI di Antigravity (mai salvate da agy): ogni strumento chiede conferma (strict) e
-# le regole negano comandi, file, indirizzi web e MCP anche nelle modalita' piu' permissive.
+# Impostazioni di sessione della CLI di Antigravity (mai salvate da agy):
+# - profilo sicuro (strict): ogni strumento chiede conferma e le regole negano comandi, file, indirizzi web e MCP;
+# - profilo YOLO locale (predefinito su questo computer, disattivabile nel selettore parametri): consente gli strumenti
+#   con approvazione automatica (--mode auto --dangerously-skip-permissions).
 AGY_SESSION_SETTINGS = {
     "toolPermission": "strict",
     "allowNonWorkspaceAccess": False,
@@ -116,19 +118,26 @@ AGY_SESSION_SETTINGS = {
     "permissions": {"deny": ["command(*)", "read_file(*)", "write_file(*)", "read_url(*)", "execute_url(*)",
                              "mcp(*)"]},
 }
-# Passi della CLI che non sono strumenti veri (fine del turno): tutti gli altri interrompono l'esecuzione.
+AGY_SESSION_SETTINGS_YOLO = {
+    "toolPermission": "auto",
+    "disableSlashCommands": True,
+    "showTips": False,
+    "showFeedbackSurvey": False,
+    "notifications": False,
+}
+# Passi della CLI che non sono strumenti veri (fine del turno): in modalita' strict tutti gli altri interrompono.
 AGY_ALLOWED_TOOLS = frozenset({"finish"})
 
 # Modelli e alias di Claude Code per il selettore dei parametri: «default» = nessuna scelta (il modello predefinito
 # della CLI, nessun flag --model). I nomi completi sono quelli suggeriti dalla documentazione di Anthropic.
 CLAUDE_MODELS = ("default", "opus", "sonnet", "haiku", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5")
-# Valori reali dei flag (verificati su claude.exe 2.1.326 e su agy.exe con --help e con il parsing degli argomenti):
-# --effort accetta low, medium, high, xhigh, max; --permission-mode accetta acceptEdits, auto, bypassPermissions,
-# manual, dontAsk, plan. «restricted» (profilo sicuro di Germano, --restricted) e «default» (comportamento
-# predefinito della CLI, nessun flag) NON sono valori di --permission-mode: si gestiscono a parte.
+# Valori reali dei flag (verificati su claude.exe e su agy.exe con --help):
+# --effort accetta low, medium, high, xhigh, max; Claude --permission-mode accetta acceptEdits, plan, dontAsk,
+# bypassPermissions; agy --mode accetta accept-edits, auto, plan.
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 CLAUDE_PERMISSION_MODES = ("acceptEdits", "plan", "dontAsk", "bypassPermissions")
 AGY_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+AGY_PERMISSION_MODES = ("auto", "accept-edits", "plan")
 
 # Perche' un'AI installata sul server non si puo' eseguire per i client (e con che cosa la si usa comunque protetta).
 _AGENT = ("agente che eseguirebbe comandi o modificherebbe file sul server: per sicurezza il server non lo esegue per "
@@ -238,37 +247,37 @@ def valid_model(model):
 
 def param_schema_for(tool_id, local=False):
     """Schema dei parametri per il selettore dell'Harness: campi con etichette e note IT/EN, valori ammessi e
-    predefiniti. I campi «local_only» (permessi e strumenti della CLI) esistono solo per chi usa questo computer:
-    dalla rete non compaiono proprio (e validate_params li rifiuta comunque se qualcuno li invia)."""
+    predefiniti effettivi. Su questo computer (local=True) Claude Code e Antigravity CLI partono in modalita'
+    massima (effort=max, skip_permissions=True, permessi/strumenti sbloccati, sempre disattivabili dal selettore).
+    Dalla rete (local=False) i campi «local_only» non compaiono mai e validate_params li rifiuta con 403."""
     fields = []
     if tool_id == "claude-code":
         fields = [
-            {"key": "effort", "type": "enum", "values": ["default"] + list(CLAUDE_EFFORTS), "default": "default",
+            {"key": "effort", "type": "enum", "values": ["default"] + list(CLAUDE_EFFORTS), "default": "max",
              "it": "Sforzo di ragionamento", "en": "Reasoning effort",
-             "note_it": "Passa --effort alla CLI (low, medium, high, xhigh, max).",
-             "note_en": "Passes --effort to the CLI (low, medium, high, xhigh, max)."},
+             "note_it": "Passa --effort alla CLI (predefinito: max; scegli «auto · modello» per nessun flag).",
+             "note_en": "Passes --effort to the CLI (default: max; pick «auto · model» for no flag)."},
             {"key": "permission_mode", "type": "enum",
-             "values": ["restricted", "default"] + list(CLAUDE_PERMISSION_MODES), "default": "restricted",
+             "values": ["restricted", "default"] + list(CLAUDE_PERMISSION_MODES), "default": "bypassPermissions",
              "local_only": True,
              "it": "Permessi", "en": "Permissions",
-             "note_it": "«restricted» e' il profilo sicuro di Germano (--restricted). «default» e' il comportamento "
-                        "predefinito della CLI; gli altri valori passano --permission-mode e disattivano "
-                        "--restricted.",
-             "note_en": "«restricted» is Germano's safe profile (--restricted). «default» is the CLI's own default "
-                        "behavior; the other values pass --permission-mode and turn --restricted off."},
-            {"key": "skip_permissions", "type": "bool", "default": False, "local_only": True, "danger": True,
-             "it": "Salta i permessi", "en": "Skip permissions",
-             "note_it": "--dangerously-skip-permissions: la CLI agisce senza chiedere conferma. Solo su questo "
-                        "computer, mai dalla rete; disattiva --restricted.",
-             "note_en": "--dangerously-skip-permissions: the CLI acts without asking for confirmation. This "
-                        "computer only, never from the network; turns --restricted off."},
-            {"key": "tools_mode", "type": "enum", "values": ["none", "default"], "default": "none",
+             "note_it": "Predefinito locale: bypassPermissions (yolo). Scegli «restricted» per riattivare il profilo "
+                        "chiuso (--restricted); «default» usa il comportamento base della CLI.",
+             "note_en": "Local default: bypassPermissions (yolo). Pick «restricted» to re-enable the safe profile "
+                        "(--restricted); «default» uses the CLI's built-in default."},
+            {"key": "skip_permissions", "type": "bool", "default": True, "local_only": True, "danger": True,
+             "it": "Salta i permessi (YOLO)", "en": "Skip permissions (YOLO)",
+             "note_it": "--dangerously-skip-permissions: attivo di default su questo computer (disattivabile qui). "
+                        "Mai consentito dalla rete (403).",
+             "note_en": "--dangerously-skip-permissions: enabled by default on this computer (toggle off here). "
+                        "Never allowed from the network (403)."},
+            {"key": "tools_mode", "type": "enum", "values": ["none", "default"], "default": "default",
              "local_only": True, "danger": True,
              "it": "Strumenti della CLI", "en": "CLI tools",
-             "note_it": "«none» = --tools \"\" (solo testo, predefinito sicuro). «default» sblocca gli strumenti "
-                        "della CLI e disattiva --restricted: solo su questo computer.",
-             "note_en": "«none» = --tools \"\" (text only, safe default). «default» unlocks the CLI tools and turns "
-                        "--restricted off: this computer only."},
+             "note_it": "«default» abilita gli strumenti della CLI su questo computer; «none» = --tools \"\" (solo "
+                        "testo). Dalla rete resta sempre solo testo.",
+             "note_en": "«default» enables CLI tools on this computer; «none» = --tools \"\" (text only). From the "
+                        "network it always stays text only."},
             {"key": "max_turns", "type": "int", "min": 1, "max": 50, "default": None,
              "it": "Turni massimi", "en": "Max turns",
              "note_it": "--max-turns (vuoto = nessun limite imposto da Germano).",
@@ -279,56 +288,86 @@ def param_schema_for(tool_id, local=False):
              "note_en": "--fallback-model: used when the main model is busy or unavailable."},
         ]
     elif tool_id == "agy":
-        # agy --help: --effort (low|medium|high|xhigh|max) e' l'unico parametro innocuo. --mode e
-        # --dangerously-skip-permissions sbloccherebbero gli strumenti: nell'Harness le AI rispondono solo con testo
-        # (toolPermission «strict» e regole che negano tutto), quindi non si espongono.
         fields = [
-            {"key": "effort", "type": "enum", "values": ["default"] + list(AGY_EFFORTS), "default": "default",
+            {"key": "effort", "type": "enum", "values": ["default"] + list(AGY_EFFORTS), "default": "max",
              "it": "Sforzo di ragionamento", "en": "Reasoning effort",
-             "note_it": "Passa --effort alla CLI Antigravity. Gli strumenti restano negati (toolPermission "
-                        "«strict»): nell'Harness le AI rispondono solo con testo.",
-             "note_en": "Passes --effort to the Antigravity CLI. Tools stay denied (toolPermission «strict»): in "
-                        "the Harness AIs answer with text only."},
+             "note_it": "Passa --effort alla CLI Antigravity (predefinito: max).",
+             "note_en": "Passes --effort to the Antigravity CLI (default: max)."},
+            {"key": "permission_mode", "type": "enum",
+             "values": ["strict", "default"] + list(AGY_PERMISSION_MODES), "default": "auto",
+             "local_only": True, "danger": True,
+             "it": "Modalita' esecuzione", "en": "Execution mode",
+             "note_it": "Predefinito locale: auto (--mode auto, YOLO). Scegli «strict» (e disattiva Salta i permessi) "
+                        "per negare tutti gli strumenti (solo testo).",
+             "note_en": "Local default: auto (--mode auto, YOLO). Pick «strict» (and turn off Skip permissions) to "
+                        "deny every tool (text only)."},
+            {"key": "skip_permissions", "type": "bool", "default": True, "local_only": True, "danger": True,
+             "it": "Salta i permessi (YOLO)", "en": "Skip permissions (YOLO)",
+             "note_it": "--dangerously-skip-permissions: attivo di default su questo computer. Attenzione: agy parla "
+                        "direttamente con Google senza Proxy; disattiva qui e scegli «strict» per la modalita' solo testo.",
+             "note_en": "--dangerously-skip-permissions: enabled by default on this computer. Note: agy talks directly "
+                        "to Google without the Proxy; turn off here and pick «strict» for text-only mode."},
         ]
     if not local:
         fields = [f for f in fields if not f.get("local_only")]
     return {"tool": tool_id, "fields": fields}
 
 
+def _default_params(tool_id, local=False):
+    """Parametri effettivi predefiniti per la CLI (per local=False esclude sempre tutti i campi local_only)."""
+    out = {}
+    for f in param_schema_for(tool_id, local=local)["fields"]:
+        d = f.get("default")
+        if d is None or d == "":
+            continue
+        out[f["key"]] = d
+    return out
+
+
 def validate_params(tool_id, raw, local=False):
     """Parametri validati con whitelist esatta di chiavi e valori, range numerici e _MODEL_RE per i nomi dei
-    modelli. Le opzioni locali (skip_permissions, permission_mode != «restricted», tools_mode != «none») sono
-    vietate dalla rete: ParamsForbidden (403). Restituisce solo i valori non predefiniti."""
+    modelli, partendo dai predefiniti effettivi dello schema (effort=max e YOLO in locale; solo effort=max dalla
+    rete). Idempotente: conserva esplicitamente gli override come effort='default' o skip_permissions=False cosi'
+    una seconda chiamata (es. in command_line/stream_run) non ripristina i predefiniti. Le opzioni locali sono
+    sempre vietate dalla rete: ParamsForbidden (403)."""
+    out = _default_params(tool_id, local=local)
     if raw is None or raw == {}:
-        return {}
+        return out
     if not isinstance(raw, dict):
         raise ParamsError("I parametri devono essere un oggetto JSON.")
     # schema COMPLETO (local=True): anche le opzioni locali vanno validate, per distinguerle da chiavi sconosciute
     # e per vietarle esplicitamente a chi arriva dalla rete (ParamsForbidden, non un generico «sconosciuto»).
     schema = {f["key"]: f for f in param_schema_for(tool_id, local=True)["fields"]}
-    out = {}
+    safe_local = {"skip_permissions": False, "tools_mode": "none",
+                  "permission_mode": "strict" if tool_id == "agy" else "restricted"}
     for key, value in raw.items():
         f = schema.get(key)
         if f is None:
             raise ParamsError(f"Parametro sconosciuto per {tool_id}: «{str(key)[:40]}».")
-        if value is None or value == "" or value == f.get("default"):
-            continue
         if f.get("local_only") and not local:
+            if value == safe_local.get(key) or value is None or value == "":
+                continue
             raise ParamsForbidden(f"«{key}» e' un'opzione di questo computer: dalla rete non e' consentita.")
+        if value is None or value == "":
+            out.pop(key, None)
+            continue
         typ = f["type"]
         if typ == "enum":
             if not isinstance(value, str) or value not in f["values"]:
                 raise ParamsError(f"Valore non valido per «{key}»: «{str(value)[:40]}».")
+            out[key] = value
         elif typ == "bool":
             if not isinstance(value, bool):
                 raise ParamsError(f"«{key}» deve essere vero o falso.")
+            out[key] = value
         elif typ == "int":
             if isinstance(value, bool) or not isinstance(value, int) or not (f["min"] <= value <= f["max"]):
                 raise ParamsError(f"«{key}» deve essere un intero tra {f['min']} e {f['max']}.")
+            out[key] = value
         elif typ == "model":
             if not isinstance(value, str) or not valid_model(value):
                 raise ParamsError(f"Nome del modello non valido per «{key}».")
-        out[key] = value
+            out[key] = value
     return out
 
 
@@ -421,10 +460,20 @@ def agy_workdir():
     return _agy_dir("work")
 
 
-def agy_settings_file():
-    """File delle impostazioni di sessione passato con --settings (contenuto fisso, riscritto a ogni esecuzione)."""
-    path = os.path.join(_agy_dir(), "session-settings.json")
-    data = json.dumps(AGY_SESSION_SETTINGS, indent=2).encode("utf-8")
+def agy_allow_tools(params, local=False):
+    """True se Antigravity CLI su questo computer ha strumenti/permessi sbloccati (modalita' YOLO locale)."""
+    if not local:
+        return False
+    prm = params or {}
+    return bool(prm.get("skip_permissions") or prm.get("permission_mode", "strict") != "strict")
+
+
+def agy_settings_file(allow_tools=False):
+    """File delle impostazioni di sessione passato con --settings (strict chiuso oppure yolo locale)."""
+    fname = "session-settings-yolo.json" if allow_tools else "session-settings.json"
+    cfg = AGY_SESSION_SETTINGS_YOLO if allow_tools else AGY_SESSION_SETTINGS
+    path = os.path.join(_agy_dir(), fname)
+    data = json.dumps(cfg, indent=2).encode("utf-8")
     try:
         with open(path, "rb") as f:
             if f.read() == data:
@@ -443,8 +492,7 @@ def command_line(tool_id, exe, model=None, local=False, params=None):
     """(profilo, argomenti) dell'esecuzione in streaming; profilo None se la CLI non e' eseguibile. Solo argomenti
     fissi, il file delle impostazioni di Germano, il modello validato e i parametri validati (whitelist): il testo
     passa dallo standard input. Con skip_permissions, permessi diversi da «restricted» o strumenti sbloccati (solo
-    in locale) --restricted viene omesso: la CLI reale lo rifiuta insieme a --dangerously-skip-permissions e a
-    bypassPermissions, e con gli strumenti sbloccati il profilo sicuro non avrebbe piu' senso."""
+    in locale) --restricted viene omesso; su agy in locale YOLO passa --mode auto e --dangerously-skip-permissions."""
     prof = profile(tool_id, local)
     if not prof or not prof.get("stream_args") or not valid_model(model):
         return None, []
@@ -452,6 +500,7 @@ def command_line(tool_id, exe, model=None, local=False, params=None):
     if model == "default":
         model = None
     args = list(prof["stream_args"])
+    allow_tools = False
     if tool_id == "claude-code":
         if local:
             skip = bool(params.get("skip_permissions"))
@@ -466,15 +515,23 @@ def command_line(tool_id, exe, model=None, local=False, params=None):
                 args.append("--dangerously-skip-permissions")
             elif mode not in ("restricted", "default"):
                 args += ["--permission-mode", mode]
-        if params.get("effort"):
+        if params.get("effort") not in (None, "", "default"):
             args += ["--effort", params["effort"]]
         if params.get("max_turns"):
             args += ["--max-turns", str(params["max_turns"])]
         if params.get("fallback_model"):
             args += ["--fallback-model", params["fallback_model"]]
-    elif tool_id == "agy" and params.get("effort"):
-        args += ["--effort", params["effort"]]
-    extra = [prof["settings_flag"], agy_settings_file()] if prof.get("settings_flag") else []
+    elif tool_id == "agy":
+        allow_tools = agy_allow_tools(params, local)
+        if local:
+            mode = params.get("permission_mode", "strict")
+            if mode in AGY_PERMISSION_MODES:
+                args += ["--mode", mode]
+            if params.get("skip_permissions"):
+                args.append("--dangerously-skip-permissions")
+        if params.get("effort") not in (None, "", "default"):
+            args += ["--effort", params["effort"]]
+    extra = [prof["settings_flag"], agy_settings_file(allow_tools=allow_tools)] if prof.get("settings_flag") else []
     return prof, [exe] + args + extra + ([prof["model_flag"], model] if model else [])
 
 
@@ -507,10 +564,10 @@ def _agy_forget(conv_id):
                 pass
 
 
-def _agy_event(obj, emit, parts, usage, st):
+def _agy_event(obj, emit, parts, usage, st, allow_tools=False):
     """Un evento di «agy --output-format stream-json» (init, step_update, result). Restituisce (risposta finale,
-    errore?) all'evento «result», altrimenti None. Se la CLI annuncia uno strumento (step_type «tool») che non e' tra
-    AGY_ALLOWED_TOOLS imposta st["blocked"]: chi chiama termina subito il processo."""
+    errore?) all'evento «result», altrimenti None. In modalita' strict (allow_tools=False), se la CLI annuncia uno
+    strumento che non e' tra AGY_ALLOWED_TOOLS imposta st["blocked"]: chi chiama termina subito il processo."""
     ev = obj.get("event")
     if obj.get("conversation_id") and not st.get("conv"):
         st["conv"] = str(obj["conversation_id"])[:64]
@@ -534,10 +591,12 @@ def _agy_event(obj, emit, parts, usage, st):
         elif stype == "tool":
             info = su.get("tool_info") if isinstance(su.get("tool_info"), dict) else {}
             name = str(su.get("tool_name") or info.get("name") or "?")[:80]
-            if name not in AGY_ALLOWED_TOOLS:
+            if not allow_tools and name not in AGY_ALLOWED_TOOLS:
                 st["blocked"] = name
                 emit("cli", json.dumps({"germano": "tool_blocked", "tool": name, "state": su.get("state")},
                                        ensure_ascii=False))
+            else:
+                emit("cli", json.dumps({"tool": name, "state": su.get("state")}, ensure_ascii=False)[:2000])
         elif stype and stype != "user_input":
             emit("cli", json.dumps({"step": stype, "state": su.get("state")}, ensure_ascii=False)[:2000])
         return None
@@ -565,9 +624,11 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
     Restituisce {"answer", "seconds", "usage"}; solleva HarnessError (o HarnessInterrupted se l'utente interrompe)."""
     if cancel is not None and cancel.is_set():
         raise HarnessInterrupted()
-    prof, args = command_line(tool_id, exe, model, local, params)
+    eff_params = validate_params(tool_id, params, local)
+    prof, args = command_line(tool_id, exe, model, local, eff_params)
     if not prof:
         raise HarnessError(f"{tool_id} non e' tra le CLI che Germano sa eseguire nell'Harness.")
+    allow_tools = agy_allow_tools(eff_params, local) if tool_id == "agy" else False
     needs = prof.get("needs")
     if needs and not os.environ.get(needs):
         raise HarnessError(f"Per condividere {tool_id} il server deve avere la variabile {needs} (la chiave API del "
@@ -631,7 +692,7 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                 if not isinstance(obj, dict):
                     continue
                 if agy:
-                    res = _agy_event(obj, emit, parts, usage, st)
+                    res = _agy_event(obj, emit, parts, usage, st, allow_tools=allow_tools)
                     if st["blocked"]:
                         _kill_tree(proc)      # strumento annunciato: si ferma tutto prima che venga usato
                         break

@@ -39,9 +39,9 @@ DOWNLOAD_BASE = "https://download.germano.ai/"
 FILES = {"windows": "windows/germano-{v}.exe", "macos": "macos/germano-{v}.pkg", "linux": "linux/germano-{v}.deb",
          "windows-client": "windows/germano-client-{v}.exe", "macos-client": "macos/germano-client-{v}.pkg",
          "linux-client": "linux/germano-client-{v}.deb"}
-NOTES = ("Germano AI v{v} - Sforzo di ragionamento (reasoning_effort: none, low, medium, high, xhigh, max) esteso "
-         "a Qwen e a tutti i servizi API cloud e modelli locali (incluso output_config.effort per Anthropic) con "
-         "fallback/step-down automatico su HTTP 400, nel selettore parametri accanto ai modelli")
+NOTES = ("Germano AI v{v} - Sforzo di ragionamento (reasoning_effort: none..xhigh/max) esteso a Qwen e a tutti i "
+         "modelli cloud, locali e CLI con predefiniti massimi (max/xhigh) e modalita' YOLO predefinita in locale "
+         "per Claude Code e Antigravity CLI (sempre disattivabile e bloccata 403 dalla rete), con step-down HTTP 400")
 SFX_MAGIC = b"GERMANO.SFX.0001"
 SFX_TRAILER = struct.Struct("<16sQQQQ")
 WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # Windows non avvia eseguibili da 4 GB in su

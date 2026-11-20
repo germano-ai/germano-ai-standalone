@@ -1317,14 +1317,36 @@
             this.renderParamsButton();
             if (!this.$paramsPop.hidden) this.renderParamsBody();
         }
-        // -------------------------------------------------------------- parametri del modello/CLI (turno 31)
-        // Il popover si adatta alla destinazione scelta con lo schema del server (target.param_schema): le scelte
-        // si salvano in localStorage per target.id e viaggiano come JSON nel campo «params» della richiesta.
+        // -------------------------------------------------------------- parametri del modello/CLI
+        // Il popover si adatta alla destinazione scelta con lo schema del server (target.param_schema): i valori
+        // predefiniti dello schema (effort massimo max/xhigh, YOLO locale sulle CLI) si applicano subito; le scelte
+        // diverse dal predefinito si salvano in localStorage per target.id e viaggiano come JSON nel campo «params».
+        schemaFields(t) {
+            return (((t && t.param_schema || {}).fields) || []).filter(f => !(f.local_only && this.remote));
+        }
+        defaultParams(t) {
+            const out = {};
+            for (const f of this.schemaFields(t)) {
+                const d = f.default;
+                if (d === undefined || d === null || d === '') continue;
+                out[f.key] = d;
+            }
+            return out;
+        }
         paramsFor(t) {
             if (!t) return {};
             const all = load('local', this.o.convKey + '_params', {});
             const p = all && typeof all === 'object' && !Array.isArray(all) ? all[t.id] : null;
             return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
+        }
+        effectiveParams(t) {
+            const eff = Object.assign({}, this.defaultParams(t), this.paramsFor(t));
+            const out = {};
+            for (const [k, v] of Object.entries(eff)) {
+                if (v === '' || v == null) continue;
+                out[k] = v;
+            }
+            return out;
         }
         saveParams(t, p) {
             if (!t) return;
@@ -1335,7 +1357,10 @@
         }
         setParam(t, key, value) {
             const p = Object.assign({}, this.paramsFor(t));
-            if (value === '' || value == null || value === 'default' || value === false) delete p[key];
+            const f = this.schemaFields(t).find(x => x.key === key);
+            const def = f ? f.default : undefined;
+            const isDef = value === def || ((def == null || def === '') && (value === '' || value == null));
+            if (isDef) delete p[key];
             else p[key] = value;
             this.saveParams(t, p);
             this.renderParamsButton();
@@ -1348,34 +1373,45 @@
         }
         paramsDanger(p) {
             return Boolean(p.skip_permissions || p.tools_mode === 'default'
-                || (p.permission_mode && p.permission_mode !== 'restricted'));
+                || (p.permission_mode && p.permission_mode !== 'restricted' && p.permission_mode !== 'strict'));
         }
         paramsBadgeText(t) {
-            const p = this.paramsFor(t);
+            const p = this.effectiveParams(t);
             const bits = [];
             if (p.effort && p.effort !== 'default') bits.push('effort: ' + p.effort);
-            if (p.skip_permissions) bits.push('skip-perm');
-            if (p.permission_mode && p.permission_mode !== 'restricted') bits.push(p.permission_mode);
+            if (p.skip_permissions) bits.push('yolo');
+            if (p.permission_mode && p.permission_mode !== 'restricted' && p.permission_mode !== 'strict'
+                && !(p.skip_permissions && (p.permission_mode === 'bypassPermissions' || p.permission_mode === 'auto'))) {
+                bits.push(p.permission_mode);
+            }
             if (p.tools_mode === 'default') bits.push('tools');
             if (p.max_turns) bits.push('turns ' + p.max_turns);
             if (p.fallback_model) bits.push('fallback');
+            if (p.reasoning_effort && p.reasoning_effort !== 'default') bits.push('effort: ' + p.reasoning_effort);
             if (p.temperature != null && p.temperature !== '') bits.push('temp ' + p.temperature);
             if (p.max_tokens) bits.push('tok ' + p.max_tokens);
             if (p.top_p != null && p.top_p !== '') bits.push('top_p ' + p.top_p);
-            if (p.reasoning_effort && p.reasoning_effort !== 'default') bits.push('effort: ' + p.reasoning_effort);
             if (p.thinking && p.thinking !== 'default') bits.push('thinking ' + p.thinking);
             if (p.enable_thinking && p.enable_thinking !== 'default') bits.push('thinking ' + p.enable_thinking);
             return bits.slice(0, 3).join(' · ') + (bits.length > 3 ? ' …' : '');
         }
         paramValueLabel(key, v) {
             const en = this.lang === 'en';
-            if (v === 'default') return key === 'tools_mode' ? (en ? 'default · CLI tools' : 'default · strumenti CLI') : this.T('paramsDefault');
+            if (v === 'default') {
+                if (key === 'tools_mode') return en ? 'default · CLI tools' : 'default · strumenti CLI';
+                if (key === 'effort' || key === 'reasoning_effort') return en ? 'auto · model' : 'auto · modello';
+                if (key === 'permission_mode') return 'default · CLI';
+                return this.T('paramsDefault');
+            }
             if (v === 'none') {
                 if (key === 'tools_mode') return en ? 'none · text only' : 'none · solo testo';
                 if (key === 'reasoning_effort') return en ? 'none · off' : 'none · disattivo';
             }
             const map = {
                 restricted: en ? 'restricted · safe' : 'restricted · sicuro',
+                strict: en ? 'strict · safe' : 'strict · sicuro',
+                auto: 'auto · yolo',
+                bypassPermissions: 'bypassPermissions · yolo',
                 enabled: en ? 'Enabled' : 'Attivo', disabled: en ? 'Disabled' : 'Disattivo',
                 on: en ? 'On' : 'Attivo', off: en ? 'Off' : 'Disattivo',
             };
@@ -1389,7 +1425,7 @@
             const badge = this.paramsBadgeText(t);
             this.$paramsBadge.hidden = !badge;
             this.$paramsBadge.textContent = badge;
-            const danger = this.paramsDanger(this.paramsFor(t));
+            const danger = this.paramsDanger(this.effectiveParams(t));
             this.$paramsWarn.hidden = !danger;
             this.$paramsBtn.classList.toggle('is-danger', danger);
             this.$paramsBtn.setAttribute('aria-expanded', String(!this.$paramsPop.hidden));
@@ -1417,8 +1453,8 @@
             if (this.$paramsPop.hidden) return;
             const t = this.currentTarget();
             if (!t) { this.$paramsBody.innerHTML = ''; return; }
-            const fields = (((t.param_schema || {}).fields) || []).filter(f => !(f.local_only && this.remote));
-            const p = this.paramsFor(t);
+            const fields = this.schemaFields(t);
+            const p = this.effectiveParams(t);
             const hasModel = t.kind === 'cli' || t.kind === 'cloud' || (t.kind === 'local' && !t.model);
             let html = '';
             if (hasModel) {
@@ -1760,7 +1796,7 @@
             const model = run.model;
             if (model) fd.append('model', model);
             if (run.target.kind !== 'protect') {
-                const params = this.paramsFor(run.target);
+                const params = this.effectiveParams(run.target);
                 run.params = params;
                 if (Object.keys(params).length) fd.append('params', JSON.stringify(params));
             }

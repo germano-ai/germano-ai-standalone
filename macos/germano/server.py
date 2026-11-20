@@ -2904,10 +2904,12 @@ def _harness_stream(run, ctx):
             # Le CLI non conservano la conversazione: istruzioni, turni precedenti e richiesta in un solo testo, che
             # passa dallo standard input (mai tra gli argomenti, vedi germano/harness.py).
             cli_prof = dest.get("profile") or {}
+            prm = ctx.get("params") or {}
+            agy_yolo = dest["tool"] == "agy" and harness.agy_allow_tools(prm, ctx["local"])
             lines = []
-            if cli_prof.get("no_tools_hint"):
-                # agy non ha un'opzione per togliere tutti gli strumenti: lo si chiede (testo visibile nella Glass
-                # Window) e Germano interrompe comunque la risposta al primo strumento annunciato.
+            if cli_prof.get("no_tools_hint") and not agy_yolo:
+                # In modalita' strict agy non ha un'opzione per togliere tutti gli strumenti: lo si chiede (visibile
+                # nella Glass Window) e Germano interrompe comunque la risposta al primo strumento annunciato.
                 sys_out = "\n\n".join(x for x in (L(
                     "Rispondi solo con testo, direttamente: non usare strumenti (file, comandi, browser, ricerche web, "
                     "MCP o sotto-agenti).", "Answer with text only, directly: do not use tools (files, commands, "
@@ -2928,37 +2930,54 @@ def _harness_stream(run, ctx):
                     "characters): start a new one."))
                 return
             prof, argv = harness.command_line(dest["tool"], dest["info"]["path"], ctx["model"] or None, ctx["local"],
-                                              params=ctx.get("params"))
+                                              params=prm)
             if not prof:
                 yield ev("error", status="error", transmitted=False,
                          message=L("Modello non valido per la CLI.", "Invalid model for the CLI."))
                 return
             shown = [os.path.basename(argv[0])] + [gglass.cap(a, 2000) for a in argv[1:]]
-            prm = ctx.get("params") or {}
-            # trasparenza: con permessi o strumenti sbloccati (solo in locale) il profilo sicuro «restricted» e'
-            # disattivato per questa richiesta: la Glass Window lo evidenzia.
-            advanced = bool(prm.get("skip_permissions") or prm.get("tools_mode") == "default"
-                            or prm.get("permission_mode") not in (None, "restricted"))
-            warn = L("Opzioni avanzate attive su questo computer: per questa richiesta il profilo sicuro "
-                     "«restricted» e' disattivato (strumenti della CLI o permessi senza conferma).",
-                     "Advanced options active on this computer: for this request the safe «restricted» profile is "
-                     "off (CLI tools or permissions without prompts).") if advanced else None
+            # trasparenza: con permessi o strumenti sbloccati (solo in locale) la Glass Window evidenzia la modalita' YOLO.
+            if dest["tool"] == "agy":
+                advanced = agy_yolo
+                warn = L("Modalita' YOLO attiva su questo computer (--dangerously-skip-permissions / strumenti "
+                         "abilitati): agy parla direttamente con Google senza Proxy. Per solo testo scegli «strict» e "
+                         "disattiva Salta i permessi nel selettore Parametri.",
+                         "YOLO mode active on this computer (--dangerously-skip-permissions / tools enabled): agy "
+                         "talks directly to Google without the Proxy. For text-only mode select «strict» and turn "
+                         "off Skip permissions in the Parameters selector.") if advanced else None
+            else:
+                advanced = bool(prm.get("skip_permissions") or prm.get("tools_mode") == "default"
+                                or prm.get("permission_mode") not in (None, "restricted"))
+                warn = L("Modalita' YOLO / opzioni avanzate attive su questo computer: il profilo chiuso «restricted» "
+                         "e' disattivato (strumenti della CLI o permessi senza conferma; traffico comunque protetto "
+                         "dal Proxy di Germano).",
+                         "YOLO mode / advanced options active on this computer: the safe «restricted» profile is off "
+                         "(CLI tools or permissions without prompts; traffic still goes through the Germano Proxy).") if advanced else None
             if prof.get("direct"):
+                agy_note = (
+                    L(f"La CLI invia il testo qui sopra, gia' protetto da Germano, direttamente a {prof['direct']} "
+                      "con l'account di Antigravity (senza Proxy), in modalita' locale YOLO con approvazione "
+                      "automatica degli strumenti.",
+                      f"The CLI sends the text above, already protected by Germano, directly to {prof['direct']} "
+                      "with the Antigravity account (without Proxy), in local YOLO mode with automatic tool approval.")
+                    if agy_yolo else
+                    L(f"La CLI invia il testo qui sopra, gia' protetto da Germano, direttamente a "
+                      f"{prof['direct']} con l'account di Antigravity: non passa dal Proxy, quindi le sue "
+                      "istruzioni interne (circa 10.000 token con la cartella di lavoro) non sono visibili qui. "
+                      "Germano la avvia senza le impostazioni dell'utente, in una cartella vuota, con tutti "
+                      "gli strumenti negati, e la ferma se prova comunque a usarne uno.",
+                      f"The CLI sends the text above, already protected by Germano, directly to "
+                      f"{prof['direct']} with the Antigravity account: it does not go through the Proxy, so "
+                      "its internal instructions (about 10,000 tokens with the working folder) are not visible "
+                      "here. Germano starts it without the user's settings, in an empty folder, with every "
+                      "tool denied, and stops it if it tries to use one anyway.")
+                )
                 yield ev("payload", transport="cli", via="direct", tool=dest["tool"], argv=shown,
                          env=harness.germano_env(prof, PORT, scope),
                          stdin=gglass.cap(harness.stdin_payload(prof, transcript).decode("utf-8")),
-                         profile="isolato" if prof.get("isolate_home") else "sessione",
-                         params=prm or None, warning=warn,
-                         note=L(f"La CLI invia il testo qui sopra, gia' protetto da Germano, direttamente a "
-                                f"{prof['direct']} con l'account di Antigravity: non passa dal Proxy, quindi le sue "
-                                "istruzioni interne (circa 10.000 token con la cartella di lavoro) non sono visibili qui. "
-                                "Germano la avvia senza le impostazioni dell'utente, in una cartella vuota, con tutti "
-                                "gli strumenti negati, e la ferma se prova comunque a usarne uno.",
-                                f"The CLI sends the text above, already protected by Germano, directly to "
-                                f"{prof['direct']} with the Antigravity account: it does not go through the Proxy, so "
-                                "its internal instructions (about 10,000 tokens with the working folder) are not visible "
-                                "here. Germano starts it without the user's settings, in an empty folder, with every "
-                                "tool denied, and stops it if it tries to use one anyway."))
+                         profile=L("yolo-locale", "local-yolo") if agy_yolo else
+                                 ("isolato" if prof.get("isolate_home") else "sessione"),
+                         params=prm or None, warning=warn, note=agy_note)
             else:
                 yield ev("payload", transport="cli", via="germano", tool=dest["tool"], argv=shown,
                          env=harness.germano_env(prof, PORT, scope), stdin=gglass.cap(transcript),
