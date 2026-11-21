@@ -1,4 +1,4 @@
-/* Germano AI 0.99 - Harness AI e Glass Window.
+/* Germano AI 1.00 - Harness AI e Glass Window.
    Componente condiviso dalla Dashboard (index.html), dal Remote Control (/remote) e dal pannello di Germano Client:
    stessa interfaccia ovunque, stesse rotte del server (/api/harness/v2/*), che applica le regole di chi chiede
    (questo computer o un dispositivo della rete).
@@ -60,7 +60,7 @@
         shieldOk: ['Protezione attiva', 'Protection on'], shieldStart: ['Motore in pausa: si avvia all\'invio', 'Engine paused: it starts when you send'],
         shieldStarting: ['Avvio del motore…', 'Starting the engine…'], shieldRemote: ['Motore del server non pronto', 'Server engine not ready'],
         profile: ['Profilo', 'Profile'],
-        pickTitle: ['Scegli il modello con cui parlare', 'Choose the model to talk to'],
+        pickTitle: ['Scegli l\'AI, il modello e i parametri', 'Choose the AI, model and parameters'],
         pickSearch: ['Cerca un modello o un servizio', 'Search a model or service'],
         pickNone: ['Scegli un modello', 'Choose a model'], pickDetecting: ['Rilevamento delle AI…', 'Detecting AIs…'],
         gProtect: ['Germano', 'Germano'], gCli: ['CLI su questo computer', 'CLIs on this computer'], gCliRemote: ['CLI del server', 'Server CLIs'],
@@ -465,6 +465,7 @@
             this.targetSig = '';
             this.modelSchemas = {};
             this.pendingSchemas = {};
+            this.expandedAdv = new Set();
             this.runs = [];
             this.glassRun = null;
             this.follow = true;
@@ -579,23 +580,19 @@
         </div>
         <div class="hx-bar-right">
           <div class="hx-picker" data-ref="picker">
-            <button type="button" class="hx-picker-btn" data-act="picker" aria-haspopup="listbox" aria-expanded="false" data-t-title="pickTitle" data-ref="pickerBtn">
-              <span class="hx-dot" data-ref="pickerDot"></span><span class="hx-picker-name" data-ref="pickerName"></span>${svg('chevron')}</button>
-            <div class="hx-picker-pop" data-ref="pickerPop" hidden>
+            <div class="hx-picker-dock" data-ref="pickerDock">
+              <button type="button" class="hx-picker-btn" data-act="picker" aria-haspopup="dialog" aria-expanded="false" data-t-title="pickTitle" data-ref="pickerBtn">
+                <span class="hx-dot" data-ref="pickerDot"></span><span class="hx-picker-name" data-ref="pickerName"></span>${svg('chevron')}</button>
+              <select class="hx-quick-select hx-quick-model" data-ref="quickModel" data-t-aria="model" hidden></select>
+              <select class="hx-quick-select hx-quick-effort" data-ref="quickEffort" data-t-aria="params" hidden></select>
+              <button type="button" class="hx-dock-warn" data-act="picker-adv" data-ref="paramsWarn" data-t-title="paramsAdvanced" data-t-aria="paramsAdvanced" hidden>${svg('alert')}</button>
+            </div>
+            <div class="hx-picker-pop" data-ref="pickerPop" role="dialog" data-t-aria="pickTitle" hidden>
               <div class="hx-picker-top"><input type="search" data-ref="pickerSearch" data-t-ph="pickSearch"></div>
               <ul class="hx-picker-list" role="listbox" data-ref="pickerList"></ul>
               <div class="hx-picker-detail" data-ref="pickerDetail"></div>
               <div class="hx-picker-foot"><span data-t="autoDetect"></span>
                 <button type="button" class="hx-mini" data-act="redetect">${svg('refresh')}<span data-t="redetect"></span></button></div>
-            </div>
-          </div>
-          <div class="hx-params-picker" data-ref="paramsPicker" hidden>
-            <button type="button" class="hx-params-btn" data-act="params" aria-haspopup="dialog" aria-expanded="false" data-t-title="paramsTitle" data-t-aria="paramsTitle" data-ref="paramsBtn">
-              ${svg('sliders')}<span class="hx-params-label" data-t="params"></span><span class="hx-params-badge" data-ref="paramsBadge" hidden></span><span class="hx-params-warn" data-ref="paramsWarn" data-t-title="paramsAdvanced" hidden>${svg('alert')}</span></button>
-            <div class="hx-params-pop" data-ref="paramsPop" role="dialog" aria-label="Parametri" hidden>
-              <div class="hx-params-body" data-ref="paramsBody"></div>
-              <div class="hx-params-foot"><span class="hx-params-target" data-ref="paramsTarget"></span>
-                <button type="button" class="hx-mini" data-act="params-reset">${svg('refresh')}<span data-t="paramsReset"></span></button></div>
             </div>
           </div>
           <button type="button" class="hx-send" data-ref="send" data-act="send" data-t-title="send" data-t-aria="send">${svg('send')}</button>
@@ -638,7 +635,7 @@
             r.querySelectorAll('[data-t-title]').forEach(el => { el.title = this.T(el.dataset.tTitle); });
             r.querySelectorAll('[data-t-aria]').forEach(el => { el.setAttribute('aria-label', this.T(el.dataset.tAria)); });
         }
-        setLang() { this.applyLang(); this.renderAll(); this.renderPicker(); this.renderParamsButton(); if (!this.$paramsPop.hidden) this.renderParamsBody(); this.renderGlass(); }
+        setLang() { this.applyLang(); this.renderAll(); this.renderPicker(); this.renderGlass(); }
 
         bind() {
             const r = this.root;
@@ -681,16 +678,37 @@
             });
             this.$pickerSearch.addEventListener('input', () => this.renderPicker());
             this.$pickerSearch.addEventListener('keydown', e => this.pickerKey(e));
+            this.$quickModel.addEventListener('change', () => {
+                const t = this.currentTarget();
+                if (!t) return;
+                if (this.$quickModel.value === '__custom__') {
+                    this.customModelFor = t.id;
+                    this.openPicker(true);
+                    const inp = this.$pickerList.querySelector(`[data-card-for="${CSS.escape(t.id)}"] [data-model-input]`);
+                    if (inp) inp.focus();
+                    return;
+                }
+                if (this.customModelFor === t.id) this.customModelFor = null;
+                this.setModel(t, this.$quickModel.value);
+                this.ensureModelSchema(t, this.$quickModel.value);
+                this.renderPickerButton();
+                if (!this.$pickerPop.hidden) this.refreshCard(t.id);
+            });
+            this.$quickEffort.addEventListener('change', () => {
+                const t = this.currentTarget();
+                const key = this.$quickEffort.dataset.effortKey;
+                if (!t || !key) return;
+                this.setParam(t, key, this.$quickEffort.value);
+                if (!this.$pickerPop.hidden) this.refreshCard(t.id);
+            });
             document.addEventListener('mousedown', e => {
                 if (!this.$pickerPop.hidden && !this.$picker.contains(e.target)) this.closePicker();
-                if (!this.$paramsPop.hidden && !this.$paramsPicker.contains(e.target)) this.closeParams();
             });
             document.addEventListener('keydown', e => {
                 if (e.key === 'Escape' && !this.$pickerPop.hidden) { this.closePicker(); this.$pickerBtn.focus(); }
-                if (e.key === 'Escape' && !this.$paramsPop.hidden) { this.closeParams(); this.$paramsBtn.focus(); }
                 if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'G' || e.key === 'g') && this.visible()) { e.preventDefault(); this.toggleGlass(); }
             });
-            window.addEventListener('resize', () => { this.clampPop(this.$pickerPop); this.clampPop(this.$paramsPop); });
+            window.addEventListener('resize', () => { this.clampPop(this.$pickerPop); });
             // trascinamento di file sull'Harness
             let depth = 0;
             const hasFiles = e => Array.from(e.dataTransfer?.types || []).includes('Files');
@@ -741,21 +759,16 @@
                 case 'send': if (this.active) this.stop(); else this.submit(); break;
                 case 'stop': this.stop(); break;
                 case 'picker': this.togglePicker(); break;
-                case 'params': this.toggleParams(); break;
-                case 'params-reset': this.resetParams(this.currentTarget()); break;
-                case 'params-model': {
-                    const cur = this.currentTarget();
-                    if (cur) {
-                        const nm = t.dataset.model === 'default' ? '' : t.dataset.model;
-                        this.customModelFor = null;
-                        this.setModel(cur, nm);
-                        this.ensureModelSchema(cur, nm);
-                        this.renderPickerButton();
-                        this.renderPickerDetail();
-                        this.renderParamsButton();
-                        this.paramsSig = this.paramsSchemaSig();
-                        this.renderParamsBody();
-                    }
+                case 'picker-adv': this.openPicker(true); break;
+                case 'toggle-adv': {
+                    e.stopPropagation();
+                    if (t.dataset.targetId) this.toggleAdv(t.dataset.targetId);
+                    break;
+                }
+                case 'params-reset': {
+                    const tid = t.dataset.targetId;
+                    const target = tid ? (this.targets || []).find(x => x.id === tid) : this.currentTarget();
+                    this.resetParams(target);
                     break;
                 }
                 case 'redetect': this.refreshTargets(true); break;
@@ -781,7 +794,7 @@
                 }
                 case 'gw-copy': this.copyGlass(t.dataset.what, t); break;
                 case 'key-save': this.saveKeyForm(t.dataset.service); break;
-                case 'key-remove': this.setKey(t.dataset.service, ''); this.renderPicker(); this.openKeyForm(t.dataset.service); break;
+                case 'key-remove': this.setKey(t.dataset.service, ''); this.ensureSelection(false); this.renderPicker(); this.openKeyForm(t.dataset.service); break;
                 case 'list-models': this.listModels(t.dataset.service); break;
                 case 'model-set': break;
                 default: break;
@@ -1095,19 +1108,20 @@
                         if (fresh.length) this.toast((this.lang === 'en' ? 'Detected automatically: ' : 'Rilevata in automatico: ') + fresh.slice(0, 3).map(t => t.name).join(', '), 'success');
                     }
                     this.ensureSelection(Boolean(prev));
-                    const editingPicker = !this.$pickerPop.hidden && this.$pickerDetail.contains(document.activeElement);
-                    if (this.$pickerPop.hidden || force) this.renderPicker();
-                    else if (!editingPicker) this.renderPickerDetail();
+                    const activeEl = document.activeElement;
+                    const editingPicker = !this.$pickerPop.hidden && activeEl && (this.$pickerList.contains(activeEl) || this.$pickerDetail.contains(activeEl));
+                    if (this.$pickerPop.hidden || force || !editingPicker) this.renderPicker();
                 }
                 if (force) this.toast(this.lang === 'en' ? 'AI detection updated.' : 'Rilevamento delle AI aggiornato.', 'info');
                 this.renderShield();
                 this.renderPickerButton();
-                this.renderParamsButton();
-                // il popover aperto si ricrea solo se schema o modelli della destinazione cambiano (mai mentre
-                // si sta scrivendo in un campo: il rilevamento automatico gira ogni 12 secondi)
-                if (!this.$paramsPop.hidden && this.paramsSchemaSig() !== this.paramsSig) {
-                    this.paramsSig = this.paramsSchemaSig();
-                    this.renderParamsBody();
+                const agyPending = (this.targets || []).some(t => t.id === 'cli:agy' && t.enabled && !(t.models && t.models.length));
+                if (agyPending && (this.agyRetries || 0) < 4) {
+                    this.agyRetries = (this.agyRetries || 0) + 1;
+                    clearTimeout(this.agyRetryTimer);
+                    this.agyRetryTimer = setTimeout(() => this.refreshTargets(false), 1200);
+                } else if (!agyPending) {
+                    this.agyRetries = 0;
                 }
             } catch (e) {
                 /* Germano non risponde: si riprova al prossimo giro */
@@ -1170,21 +1184,105 @@
             saved[t.id] = m;
             save('local', this.o.convKey + '_models', saved);
         }
+        isConfigurableTarget(t) {
+            return Boolean(t && this.usable(t) && (t.kind === 'cli' || t.kind === 'cloud' || t.kind === 'local'));
+        }
+        hasModelPicker(t) {
+            return Boolean(t && (t.kind === 'cli' || t.kind === 'cloud' || (t.kind === 'local' && !t.model)));
+        }
+        modelLabelFor(t, m) {
+            if (!m) return '';
+            return (t && t.model_labels && t.model_labels[m]) ? t.model_labels[m] : m;
+        }
+        primaryEffortField(t, model) {
+            if (!t) return null;
+            const fields = this.schemaFields(t, model);
+            const p = this.effectiveParams(t, model);
+            for (const key of ['effort', 'reasoning_effort', 'thinking', 'enable_thinking']) {
+                const f = fields.find(x => x.key === key && x.type === 'enum');
+                if (f && this.fieldVisible(f, p)) return f;
+            }
+            return null;
+        }
+        effortShortLabel(key, v) {
+            if (key === 'thinking' || key === 'enable_thinking') {
+                if (v === 'default') return 'thinking: auto';
+                if (v === 'enabled' || v === 'on') return 'thinking: on';
+                if (v === 'disabled' || v === 'off') return 'thinking: off';
+                return `thinking: ${v}`;
+            }
+            if (v === 'default') return 'effort: auto';
+            if (v === 'none') return 'effort: off';
+            return `effort: ${v}`;
+        }
+        quickModelOptionsHtml(t) {
+            const models = this.modelsListFor(t);
+            const cur = this.modelFor(t);
+            const labels = t.model_labels || {};
+            const isCli = t.kind === 'cli';
+            const inList = !cur || models.includes(cur);
+            const customActive = Boolean(this.customModelFor === t.id);
+            const opts = [];
+            if (isCli) opts.push(`<option value=""${(!cur && !customActive) ? ' selected' : ''}>${esc(this.T('modelAuto'))}</option>`);
+            for (const m of models) {
+                opts.push(`<option value="${esc(m)}"${(cur === m && !customActive) ? ' selected' : ''}>${esc(labels[m] || m)}</option>`);
+            }
+            if (cur && !inList && !customActive) {
+                opts.push(`<option value="${esc(cur)}" selected>${esc(cur)}</option>`);
+            }
+            opts.push(`<option value="__custom__"${customActive ? ' selected' : ''}>${esc(this.T('modelCustom'))}</option>`);
+            return opts.join('');
+        }
+        quickEffortOptionsHtml(f, val) {
+            return (f.values || []).map(v => `<option value="${esc(v)}"${(val == null ? f.default === v : val === v) ? ' selected' : ''}>${esc(this.effortShortLabel(f.key, v))}</option>`).join('');
+        }
+        targetSubFor(t, skipEffortKey) {
+            const baseSub = t.kind === 'cloud' ? (t.key === 'server' ? this.T(this.remote ? 'keyServerRemote' : 'keyServer') : (this.key(t.service) ? this.T('keyDevice') : this.T('keyNeeded')))
+                : t.kind === 'cli' ? (t.version ? `v${t.version}` : (t.vendor || '')) : (t.vendor || '');
+            if (!this.isConfigurableTarget(t)) return baseSub;
+            const extra = this.paramsBadgeText(t, skipEffortKey);
+            return extra ? (baseSub ? `${baseSub} · ${extra}` : extra) : baseSub;
+        }
         renderPickerButton() {
             const t = this.currentTarget();
             const ok = t && this.usable(t);
+            const cfg = this.isConfigurableTarget(t);
             this.$pickerDot.className = 'hx-dot ' + (ok ? 'ok' : (this.targets ? 'err' : ''));
             let name = this.targets ? this.T('pickNone') : this.T('pickDetecting');
+            let m = '';
             if (t) {
-                const m = t.kind === 'cloud' || t.kind === 'cli' ? this.modelFor(t) : '';
-                name = t.kind === 'protect' ? this.T('protectOnly') : (m && t.kind !== 'local' ? `${t.vendor || t.name} · ${m}` : t.name);
+                m = this.hasModelPicker(t) ? this.modelFor(t) : '';
+                name = t.kind === 'protect' ? this.T('protectOnly') : t.name;
             }
             this.$pickerName.textContent = name;
-            this.$pickerBtn.title = t ? `${t.name}${t.model ? ' · ' + t.model : ''}` : this.T('pickTitle');
+            if (cfg) this.ensureModelSchema(t);
+            const showModel = Boolean(cfg && this.hasModelPicker(t));
+            this.$quickModel.hidden = !showModel;
+            if (showModel) {
+                this.$quickModel.innerHTML = this.quickModelOptionsHtml(t);
+                this.$quickModel.title = m ? `${this.T('model')}: ${m}` : this.T('modelAuto');
+            }
+            const eff = cfg ? this.primaryEffortField(t) : null;
+            this.$quickEffort.hidden = !eff;
+            if (eff) {
+                const p = this.effectiveParams(t);
+                this.$quickEffort.dataset.effortKey = eff.key;
+                this.$quickEffort.innerHTML = this.quickEffortOptionsHtml(eff, p[eff.key]);
+                this.$quickEffort.title = this.lang === 'en' ? (eff.en || eff.key) : (eff.it || eff.key);
+            } else {
+                delete this.$quickEffort.dataset.effortKey;
+            }
+            const badge = cfg ? this.paramsBadgeText(t) : '';
+            const danger = cfg && this.paramsDanger(this.effectiveParams(t));
+            this.$paramsWarn.hidden = !danger;
+            this.$pickerDock.classList.toggle('is-danger', danger);
+            this.$pickerBtn.setAttribute('aria-expanded', String(!this.$pickerPop.hidden));
+            const titleParts = t ? [t.name, m || t.model, badge].filter(Boolean) : [];
+            this.$pickerBtn.title = titleParts.length ? titleParts.join(' · ') : this.T('pickTitle');
             if (!this.$pickerPop.hidden) this.clampPop(this.$pickerPop);
         }
         // tiene il popover dentro lo schermo: sui telefoni il selettore non e' sul bordo destro e un popover
-        // largo quanto lo schermo finirebbe tagliato a sinistra (vale per modelli e parametri)
+        // largo quanto lo schermo finirebbe tagliato a sinistra
         clampPop(pop) {
             if (!pop || pop.hidden) return;
             pop.style.right = '';
@@ -1193,21 +1291,27 @@
             if (r.left < 8) pop.style.right = `${Math.round(r.left - 8)}px`;
             else if (r.right > vw - 8) pop.style.right = `${Math.round(r.right - vw + 8)}px`;
         }
-        togglePicker() { if (this.$pickerPop.hidden) this.openPicker(); else this.closePicker(); }
-        openPicker() {
-            this.closeParams();
+        togglePicker() { if (this.$pickerPop.hidden) this.openPicker(false); else this.closePicker(); }
+        openPicker(expandCurrentAdv = false) {
             this.$pickerPop.hidden = false;
             this.$pickerBtn.setAttribute('aria-expanded', 'true');
             this.$pickerSearch.value = '';
             this.pickerExpanded = false;
+            this.expandedAdv = new Set();
+            if (expandCurrentAdv && this.selectedId) this.expandedAdv.add(this.selectedId);
+            this.$pickerDetail.innerHTML = '';
             this.renderPicker();
             this.clampPop(this.$pickerPop);
+            const selCard = this.$pickerList.querySelector('.hx-pick-card.is-selected, .hx-pick[aria-selected="true"]');
+            if (selCard) selCard.scrollIntoView({ block: 'nearest' });
             this.refreshTargets(false);
-            setTimeout(() => this.$pickerSearch.focus(), 20);
+            if (!expandCurrentAdv) setTimeout(() => this.$pickerSearch.focus({ preventScroll: true }), 20);
         }
         closePicker() {
             this.$pickerPop.hidden = true;
             this.$pickerBtn.setAttribute('aria-expanded', 'false');
+            this.$pickerDetail.innerHTML = '';
+            this.customModelFor = null;
             this.renderPickerButton();
         }
         modelsListFor(t) {
@@ -1215,71 +1319,156 @@
             return Array.from(new Set([...(t.models || []), ...((this.fetchedModels || {})[t.service] || [])]))
                 .filter(m => m && m !== 'default');
         }
-        modelControlHtml(t, prefix, showPills) {
-            const models = this.modelsListFor(t);
-            const cur = this.modelFor(t);
-            const labels = t.model_labels || {};
-            const isCli = t.kind === 'cli';
-            const inList = !cur || models.includes(cur);
-            const customOpen = Boolean((cur && !inList) || this.customModelFor === `${prefix}:${t.id}`);
-            let html = '';
-            if (showPills && models.length > 0 && models.length <= 8) {
-                const pills = isCli ? ['default', ...models] : models;
-                html += `<div class="hx-params-models">${pills.map(m => `<button type="button" class="hx-params-model${(m === cur || (m === 'default' && !cur)) ? ' is-active' : ''}" data-act="params-model" data-model="${esc(m)}">${esc(m === 'default' ? this.T('modelAuto') : m)}</button>`).join('')}</div>`;
-            }
-            if (models.length) {
-                const opts = [];
-                if (isCli) opts.push(`<option value=""${(!cur && !customOpen) ? ' selected' : ''}>${esc(this.T('modelAuto'))}</option>`);
-                for (const m of models) {
-                    const txt = labels[m] ? `${labels[m]} — ${m}` : m;
-                    opts.push(`<option value="${esc(m)}"${(cur === m && !customOpen) ? ' selected' : ''}>${esc(txt)}</option>`);
-                }
-                opts.push(`<option value="__custom__"${customOpen ? ' selected' : ''}>${esc(this.T('modelCustom'))}</option>`);
-                html += `<span class="hx-row"><select data-${prefix}-select>${opts.join('')}</select>` +
-                    `${t.kind === 'cloud' ? `<button type="button" class="hx-mini" data-act="list-models" data-service="${esc(t.service)}">${esc(this.T('listModels'))}</button>` : ''}</span>`;
-                if (customOpen) {
-                    html += `<span class="hx-row"><input type="text" data-${prefix}-input value="${esc(cur)}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off"></span>`;
-                }
+        toggleAdv(tid) {
+            if (this.expandedAdv.has(tid)) {
+                this.expandedAdv.delete(tid);
+                if (this.customModelFor === tid) this.customModelFor = null;
             } else {
-                html += `<span class="hx-row"><input type="text" data-${prefix}-input value="${esc(cur)}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off">` +
-                    `${t.kind === 'cloud' ? `<button type="button" class="hx-mini" data-act="list-models" data-service="${esc(t.service)}">${esc(this.T('listModels'))}</button>` : ''}</span>`;
+                this.expandedAdv.add(tid);
             }
+            this.refreshCard(tid);
+        }
+        advConfigHtml(t) {
+            const m = this.modelFor(t);
+            this.ensureModelSchema(t, m);
+            const fields = this.schemaFields(t, m);
+            const p = this.effectiveParams(t, m);
+            const eff = this.primaryEffortField(t, m);
+            const hasModel = this.hasModelPicker(t);
+            const models = hasModel ? this.modelsListFor(t) : [];
+            const inList = !m || models.includes(m);
+            const customOpen = Boolean(hasModel && ((m && !inList) || this.customModelFor === t.id || !models.length));
+            const listId = models.length ? `hx-pmodels-${t.id}` : '';
+            let html = '';
+            if (customOpen) {
+                html += `<label class="hx-field hx-params-field"><span>${esc(this.T('modelCustom'))}</span>` +
+                    `<span class="hx-row"><input type="text" data-model-input value="${esc(m)}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off"></span></label>`;
+            }
+            const extraFields = fields.filter(f => (!eff || f.key !== eff.key) && this.fieldVisible(f, p));
+            for (const f of extraFields) {
+                const label = esc(this.lang === 'en' ? (f.en || f.key) : (f.it || f.key));
+                const note = f['note_' + this.lang] ? `<span class="hx-small-note">${esc(f['note_' + this.lang])}</span>` : '';
+                const tag = f.danger ? `<span class="hx-params-danger">${svg('alert')}${esc(this.T('paramsLocalOnly'))}</span>` : '';
+                const val = p[f.key];
+                let control;
+                if (f.type === 'enum') {
+                    control = `<select data-param="${esc(f.key)}">${(f.values || []).map(v => `<option value="${esc(v)}"${(val == null ? f.default === v : val === v) ? ' selected' : ''}>${esc(this.paramValueLabel(f.key, v))}</option>`).join('')}</select>`;
+                } else if (f.type === 'bool') {
+                    control = `<span class="hx-params-switch"><input type="checkbox" data-param="${esc(f.key)}"${val ? ' checked' : ''}><span>${esc(this.T('paramsEnable'))}</span></span>`;
+                } else if (f.type === 'int' || f.type === 'number') {
+                    control = `<input type="number" data-param="${esc(f.key)}" min="${f.min}" max="${f.max}" step="${f.step || 1}" value="${val == null ? '' : esc(val)}" placeholder="${esc(this.T('paramsDefault'))}">`;
+                } else {
+                    control = `<input type="text" data-param="${esc(f.key)}" value="${esc(val || '')}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off"${listId ? ` list="${esc(listId)}"` : ''}>`;
+                }
+                html += `<label class="hx-field hx-params-field${f.danger ? ' is-danger' : ''}"><span>${label}${tag}</span>${control}${note}</label>`;
+            }
+            if (listId && extraFields.some(f => f.type === 'text')) {
+                html += `<datalist id="${esc(listId)}">${models.map(x => `<option value="${esc(x)}"></option>`).join('')}</datalist>`;
+            }
+            if (t.kind === 'cloud' && t.key === 'server') {
+                html += `<span class="hx-small-note">🔑 ${esc(this.T(this.remote ? 'keyServerRemote' : 'keyServer'))}${t.key_vars ? ` (${esc(t.key_vars.join(', '))})` : ''}</span>`;
+            }
+            if (!customOpen && !extraFields.length) {
+                html += `<div class="hx-small-note">${esc(this.T('paramsNone'))}</div>`;
+            }
+            const mLabel = this.modelLabelFor(t, m);
+            const footTitle = mLabel && t.kind !== 'local' ? `${t.name} · ${mLabel}` : t.name;
+            const listBtn = t.kind === 'cloud' ? `<button type="button" class="hx-mini" data-act="list-models" data-service="${esc(t.service)}">${esc(this.T('listModels'))}</button>` : '';
+            html += `<div class="hx-pick-config-foot"><span class="hx-params-target">${esc(footTitle)}</span>` +
+                `<span class="hx-pick-config-foot-actions">${listBtn}<button type="button" class="hx-mini" data-act="params-reset" data-target-id="${esc(t.id)}">${svg('refresh')}<span>${esc(this.T('paramsReset'))}</span></button></span></div>`;
             return html;
         }
-        bindModelControl(container, t, prefix, rerender) {
-            const sel = container.querySelector(`[data-${prefix}-select]`);
-            if (sel) sel.addEventListener('change', () => {
-                if (sel.value === '__custom__') {
-                    this.customModelFor = `${prefix}:${t.id}`;
-                    rerender();
-                    const inp = container.querySelector(`[data-${prefix}-input]`);
+        cardInnerHtml(t, selected) {
+            const m = this.modelFor(t);
+            this.ensureModelSchema(t, m);
+            const hasModel = this.hasModelPicker(t);
+            const eff = this.primaryEffortField(t, m);
+            const p = this.effectiveParams(t, m);
+            const danger = this.paramsDanger(p);
+            const advOpen = this.expandedAdv.has(t.id) || this.customModelFor === t.id;
+            const sub = this.targetSubFor(t, eff ? eff.key : '');
+            const keyBtn = t.kind === 'cloud' && t.key !== 'server' ? `<span class="hx-pick-key" role="button" data-key-for="${esc(t.service)}">${esc(this.T('enterKey'))}</span>` : '';
+            const assistBtn = !this.remote && t.assist && !(t.kind === 'cloud' && !t.assist_hint)
+                ? `<span class="hx-pick-assist" role="button" data-assist-for="${esc(t.assist)}" title="${esc(t.assist_hint || this.T('assistKicker'))}">${esc(t.assist_label || this.T('assistOpen'))}</span>` : '';
+            const tag = t.kind === 'local' ? `<span class="hx-pick-tag ok">${this.remote ? 'LAN' : 'locale'}</span>` : '';
+            const modelSel = hasModel ? `<select class="hx-pick-qmodel" data-card-model="${esc(t.id)}" aria-label="${esc(this.T('model'))}">${this.quickModelOptionsHtml(t)}</select>` : '';
+            const effSel = eff ? `<select class="hx-pick-qeffort" data-card-effort="${esc(t.id)}" data-effort-key="${esc(eff.key)}" aria-label="${esc(this.lang === 'en' ? (eff.en || eff.key) : (eff.it || eff.key))}">${this.quickEffortOptionsHtml(eff, p[eff.key])}</select>` : '';
+            const moreBtn = `<button type="button" class="hx-pick-qmore${danger ? ' is-danger' : ''}${advOpen ? ' is-open' : ''}" data-act="toggle-adv" data-target-id="${esc(t.id)}" aria-expanded="${advOpen}" title="${esc(this.T('paramsTitle'))}">${svg('sliders')}<span>${esc(this.T('params'))}</span>${svg('chevron')}</button>`;
+            return `<div class="hx-pick" role="option" data-pick="${esc(t.id)}" aria-selected="${selected}" aria-disabled="false" tabindex="-1">
+                    <span class="hx-dot ok"></span><span class="hx-pick-main"><span class="hx-pick-name">${esc(t.name)}</span>
+                    <span class="hx-pick-sub">${esc(sub)}</span></span>${tag}${keyBtn}${assistBtn}</div>
+                <div class="hx-pick-quick" data-quick-for="${esc(t.id)}">${modelSel}${effSel}${moreBtn}</div>` +
+                (advOpen ? `<div class="hx-pick-adv" data-adv-for="${esc(t.id)}">${this.advConfigHtml(t)}</div>` : '');
+        }
+        bindCard(card, t) {
+            if (!card || !t) return;
+            const msel = card.querySelector('[data-card-model]');
+            if (msel) msel.addEventListener('change', () => {
+                if (msel.value === '__custom__') {
+                    this.customModelFor = t.id;
+                    this.expandedAdv.add(t.id);
+                    this.refreshCard(t.id);
+                    const inp = this.$pickerList.querySelector(`[data-card-for="${CSS.escape(t.id)}"] [data-model-input]`);
                     if (inp) inp.focus();
                     return;
                 }
-                if (this.customModelFor === `${prefix}:${t.id}`) this.customModelFor = null;
-                this.setModel(t, sel.value);
-                this.ensureModelSchema(t, sel.value);
-                this.renderPickerButton();
-                this.renderParamsButton();
-                if (prefix === 'model' && !this.$paramsPop.hidden) { this.paramsSig = this.paramsSchemaSig(); this.renderParamsBody(); }
-                if (prefix === 'params-model') { this.renderPickerDetail(); this.paramsSig = this.paramsSchemaSig(); rerender(); }
+                if (this.customModelFor === t.id) this.customModelFor = null;
+                this.setModel(t, msel.value);
+                this.ensureModelSchema(t, msel.value);
+                this.refreshCard(t.id);
             });
-            const inp = container.querySelector(`[data-${prefix}-input]`);
-            if (inp) inp.addEventListener('change', () => {
-                const v = inp.value.trim();
+            const esel = card.querySelector('[data-card-effort]');
+            if (esel) esel.addEventListener('change', () => {
+                const key = esel.dataset.effortKey;
+                if (!key) return;
+                this.setParam(t, key, esel.value);
+                const fields = this.schemaFields(t);
+                if (this.expandedAdv.has(t.id) && fields.some(x => (x.show_if && key in x.show_if) || (x.hide_if && key in x.hide_if))) {
+                    this.refreshCard(t.id);
+                } else {
+                    this.updateCardMeta(card, t);
+                }
+            });
+            const minp = card.querySelector('[data-model-input]');
+            if (minp) minp.addEventListener('change', () => {
+                const v = minp.value.trim();
                 const nm = v === 'default' ? '' : v;
                 this.setModel(t, nm);
                 if (!nm || this.modelsListFor(t).includes(nm)) this.customModelFor = null;
                 this.ensureModelSchema(t, nm);
-                this.renderPickerButton();
-                this.renderParamsButton();
-                if (prefix === 'model' && !this.$paramsPop.hidden) { this.paramsSig = this.paramsSchemaSig(); this.renderParamsBody(); }
-                if (prefix === 'params-model') { this.renderPickerDetail(); this.paramsSig = this.paramsSchemaSig(); rerender(); }
+                this.refreshCard(t.id);
             });
+            card.querySelectorAll('[data-param]').forEach(el => el.addEventListener('change', () => this.onParamInput(t, el, card)));
+        }
+        updateCardMeta(card, t) {
+            if (!card || !t) return;
+            const eff = this.primaryEffortField(t);
+            const subEl = card.querySelector('.hx-pick-sub');
+            if (subEl) subEl.textContent = this.targetSubFor(t, eff ? eff.key : '');
+            const moreBtn = card.querySelector('.hx-pick-qmore');
+            if (moreBtn) moreBtn.classList.toggle('is-danger', this.paramsDanger(this.effectiveParams(t)));
+        }
+        refreshCard(tid) {
+            if (tid === this.selectedId) this.renderPickerButton();
+            if (this.$pickerPop.hidden) return;
+            const t = (this.targets || []).find(x => x.id === tid);
+            const card = this.$pickerList.querySelector(`[data-card-for="${CSS.escape(tid)}"]`);
+            if (!t || !card || !this.isConfigurableTarget(t)) {
+                this.renderPicker();
+                return;
+            }
+            const scrollTop = this.$pickerList.scrollTop;
+            const selected = t.id === this.selectedId;
+            card.classList.toggle('is-selected', selected);
+            card.innerHTML = this.cardInnerHtml(t, selected);
+            this.bindCard(card, t);
+            this.$pickerList.scrollTop = scrollTop;
+            this.clampPop(this.$pickerPop);
         }
         renderPicker() {
             this.renderPickerButton();
             if (this.$pickerPop.hidden) return;
+            const prevScroll = this.$pickerList.scrollTop;
             const q = (this.$pickerSearch.value || '').trim().toLowerCase();
             const all = this.orderedTargets().filter(t => !q || `${t.name} ${t.vendor || ''} ${t.model || ''} ${t.service || ''}`.toLowerCase().includes(q));
             const groups = [['local', this.remote ? 'gLocalRemote' : 'gLocal'], ['cli', this.remote ? 'gCliRemote' : 'gCli'],
@@ -1287,13 +1476,16 @@
             const cur = this.selectedId;
             const row = t => {
                 const ok = this.usable(t);
-                const sub = t.kind === 'cloud' ? (t.key === 'server' ? this.T(this.remote ? 'keyServerRemote' : 'keyServer') : (this.key(t.service) ? this.T('keyDevice') : this.T('keyNeeded')))
-                    : t.kind === 'cli' ? (t.version ? `v${t.version}` : (t.vendor || '')) : t.kind === 'local' ? (t.vendor || '') : (t.vendor || '');
+                const selected = t.id === cur;
+                if (this.isConfigurableTarget(t)) {
+                    return `<li class="hx-pick-card${selected ? ' is-selected' : ''}" role="presentation" data-card-for="${esc(t.id)}">${this.cardInnerHtml(t, selected)}</li>`;
+                }
+                const sub = this.targetSubFor(t);
                 const keyBtn = t.kind === 'cloud' && t.key !== 'server' ? `<span class="hx-pick-key" role="button" data-key-for="${esc(t.service)}">${esc(this.T('enterKey'))}</span>` : '';
                 const assistBtn = !this.remote && t.assist && !(t.kind === 'cloud' && ok && !t.assist_hint)
                     ? `<span class="hx-pick-assist" role="button" data-assist-for="${esc(t.assist)}" title="${esc(t.assist_hint || this.T('assistKicker'))}">${esc(t.assist_label || this.T('assistOpen'))}</span>` : '';
-                const tag = ok ? (t.kind === 'local' ? `<span class="hx-pick-tag ok">${this.remote ? 'LAN' : 'locale'}</span>` : '') : `<span class="hx-pick-tag">${esc(t.assist_hint || this.reason(t))}</span>`;
-                return `<li class="hx-pick" role="option" data-pick="${esc(t.id)}" aria-selected="${t.id === cur}" aria-disabled="${!ok}" tabindex="-1">
+                const tag = ok ? '' : `<span class="hx-pick-tag">${esc(t.assist_hint || this.reason(t))}</span>`;
+                return `<li class="hx-pick" role="option" data-pick="${esc(t.id)}" aria-selected="${selected}" aria-disabled="${!ok}" tabindex="-1">
                     <span class="hx-dot ${ok ? 'ok' : ''}"></span><span class="hx-pick-main"><span class="hx-pick-name">${esc(t.name)}</span>
                     <span class="hx-pick-sub">${esc(sub)}</span></span>${tag}${keyBtn}${assistBtn}</li>`;
             };
@@ -1324,33 +1516,23 @@
             this.$pickerList.innerHTML = html || `<li class="hx-pick-group">${esc(this.T('noMatch'))}</li>`;
             const det = this.$pickerList.querySelector('[data-picker-expand]');
             if (det) det.addEventListener('toggle', () => { if (!q) this.pickerExpanded = det.open; });
-            this.renderPickerDetail();
+            this.$pickerList.querySelectorAll('[data-card-for]').forEach(card => {
+                const ct = (this.targets || []).find(x => x.id === card.dataset.cardFor);
+                if (ct) this.bindCard(card, ct);
+            });
+            this.$pickerList.scrollTop = prevScroll;
         }
-        renderPickerDetail(keyFor) {
-            const t = this.currentTarget();
-            const service = keyFor || (t && t.kind === 'cloud' ? t.service : null);
-            let html = '';
-            if (t && (t.kind === 'cloud' || t.kind === 'cli' || (t.kind === 'local' && !t.model)) && !keyFor) {
-                html += `<label class="hx-field"><span>${esc(this.T(t.kind === 'cli' ? 'modelOptional' : 'model'))}</span>` +
-                    this.modelControlHtml(t, 'model', false) + `</label>`;
-            }
-            if (service) {
-                const svc = (this.targets || []).find(x => x.kind === 'cloud' && x.service === service);
-                if (svc && svc.key !== 'server') {
-                    const has = Boolean(this.key(service));
-                    const remembered = Boolean(load('local', this.o.keysKey, {})[service]);
-                    html += `<div class="hx-field" data-keyform="${esc(service)}"><span>${esc(this.T('keyLabel'))} ${esc(svc.name)}</span>
-                        <span class="hx-row"><input type="password" data-key-input autocomplete="off" spellcheck="false" placeholder="${esc(this.T('keyPh'))}" value="${has ? '••••••••' : ''}">
-                        <button type="button" class="hx-mini primary" data-act="key-save" data-service="${esc(service)}">${esc(this.T('keySave'))}</button>
-                        ${has ? `<button type="button" class="hx-mini" data-act="key-remove" data-service="${esc(service)}">${esc(this.T('keyRemove'))}</button>` : ''}</span>
-                        <label class="hx-row" style="font-size:11.5px"><input type="checkbox" data-key-remember${remembered ? ' checked' : ''}> ${esc(this.T('keyRemember'))}</label>
-                        <span class="hx-small-note">${esc(this.T('keyNote'))}</span><span class="hx-small-note" data-key-msg></span></div>`;
-                } else if (svc && svc.key === 'server') {
-                    html += `<span class="hx-small-note">🔑 ${esc(this.T(this.remote ? 'keyServerRemote' : 'keyServer'))}${svc.key_vars ? ` (${esc(svc.key_vars.join(', '))})` : ''}</span>`;
-                }
-            }
-            this.$pickerDetail.innerHTML = html;
-            if (t && !keyFor) this.bindModelControl(this.$pickerDetail, t, 'model', () => this.renderPickerDetail());
+        renderKeyForm(service) {
+            const svc = (this.targets || []).find(x => x.kind === 'cloud' && x.service === service);
+            if (!svc || svc.key === 'server') { this.$pickerDetail.innerHTML = ''; return; }
+            const has = Boolean(this.key(service));
+            const remembered = Boolean(load('local', this.o.keysKey, {})[service]);
+            this.$pickerDetail.innerHTML = `<div class="hx-field" data-keyform="${esc(service)}"><span>${esc(this.T('keyLabel'))} ${esc(svc.name)}</span>
+                <span class="hx-row"><input type="password" data-key-input autocomplete="off" spellcheck="false" placeholder="${esc(this.T('keyPh'))}" value="${has ? '••••••••' : ''}">
+                <button type="button" class="hx-mini primary" data-act="key-save" data-service="${esc(service)}">${esc(this.T('keySave'))}</button>
+                ${has ? `<button type="button" class="hx-mini" data-act="key-remove" data-service="${esc(service)}">${esc(this.T('keyRemove'))}</button>` : ''}</span>
+                <label class="hx-row" style="font-size:11.5px"><input type="checkbox" data-key-remember${remembered ? ' checked' : ''}> ${esc(this.T('keyRemember'))}</label>
+                <span class="hx-small-note">${esc(this.T('keyNote'))}</span><span class="hx-small-note" data-key-msg></span></div>`;
             const ki = this.$pickerDetail.querySelector('[data-key-input]');
             if (ki) {
                 ki.addEventListener('focus', () => { if (ki.value === '••••••••') ki.value = ''; });
@@ -1358,8 +1540,8 @@
             }
         }
         openKeyForm(service) {
-            if (this.$pickerPop.hidden) this.openPicker();
-            this.renderPickerDetail(service);
+            if (this.$pickerPop.hidden) this.openPicker(false);
+            this.renderKeyForm(service);
             const ki = this.$pickerDetail.querySelector('[data-key-input]');
             if (ki) ki.focus();
         }
@@ -1368,13 +1550,18 @@
             if (!box) return;
             const v = box.querySelector('[data-key-input]').value.trim();
             const remember = box.querySelector('[data-key-remember]').checked;
-            if (v === '••••••••') { this.setKey(service, this.key(service), remember); this.renderPicker(); return; }
+            if (v === '••••••••') { this.setKey(service, this.key(service), remember); this.$pickerDetail.innerHTML = ''; this.renderPicker(); return; }
             if (!KEY_RE.test(v)) { box.querySelector('[data-key-msg]').textContent = this.T('keyInvalid'); return; }
             this.setKey(service, v, remember);
             const t = (this.targets || []).find(x => x.kind === 'cloud' && x.service === service);
             if (t) this.selectedId = t.id;
+            this.$pickerDetail.innerHTML = '';
             this.renderPicker();
-            this.renderPickerButton();
+            this.clampPop(this.$pickerPop);
+            if (t) {
+                const card = this.$pickerList.querySelector(`[data-card-for="${CSS.escape(t.id)}"]`);
+                if (card) card.scrollIntoView({ block: 'nearest' });
+            }
             if (this.o.onKeysChanged) this.o.onKeysChanged();
         }
         async listModels(service) {
@@ -1388,8 +1575,7 @@
                 if (!r.ok) { this.toast(data.message || 'Errore', 'error'); return; }
                 this.fetchedModels = this.fetchedModels || {};
                 this.fetchedModels[service] = data.models || [];
-                this.renderPickerDetail();
-                if (!this.$paramsPop.hidden) { this.paramsSig = this.paramsSchemaSig(); this.renderParamsBody(); }
+                this.refreshCard(t.id);
                 this.toast(`${(data.models || []).length} ${this.lang === 'en' ? 'models available' : 'modelli disponibili'}`, 'success');
             } catch (e) { this.toast(this.T('netError'), 'error'); }
         }
@@ -1400,18 +1586,26 @@
                 if (t.kind === 'cloud' && t.enabled && t.key !== 'server') this.openKeyForm(t.service);
                 return;
             }
+            const same = id === this.selectedId;
             this.selectedId = id;
-            this.renderPicker();
-            if (t.kind !== 'cloud' && t.kind !== 'cli') this.closePicker();
-            else { const mi = this.$pickerDetail.querySelector('[data-model-input]'); if (mi && !mi.value) mi.focus(); }
+            this.$pickerDetail.innerHTML = '';
+            if (t.kind === 'protect' || same) {
+                this.closePicker();
+                return;
+            }
+            this.ensureModelSchema(t);
             this.renderPickerButton();
-            this.renderParamsButton();
-            if (!this.$paramsPop.hidden) this.renderParamsBody();
+            this.$pickerList.querySelectorAll('.hx-pick-card').forEach(el => {
+                el.classList.toggle('is-selected', el.dataset.cardFor === id);
+            });
+            this.$pickerList.querySelectorAll('.hx-pick[data-pick]').forEach(el => {
+                el.setAttribute('aria-selected', String(el.dataset.pick === id));
+            });
         }
         // -------------------------------------------------------------- parametri del modello/CLI
-        // Il popover si adatta al MODELLO scelto con lo schema specifico del server (target.param_schemas[model] o
-        // /api/harness/v2/param_schema per modelli personalizzati/caricati): i valori predefiniti del modello si
-        // applicano subito e le scelte personalizzate si salvano in localStorage per (target.id, model).
+        // Controlli rapidi (modello + effort) sia nella barra del compositore sia in ogni scheda del menu;
+        // i parametri avanzati specifici del modello si espandono inline per ogni sistema e si salvano in
+        // localStorage in modo indipendente per (target.id, model).
         schemaFor(t, model) {
             if (!t) return { fields: [] };
             const m = model !== undefined ? model : this.modelFor(t);
@@ -1432,13 +1626,9 @@
                 .then(data => {
                     if (data && data.param_schema) {
                         this.modelSchemas[key] = data.param_schema;
-                        const cur = this.currentTarget();
-                        if (cur && cur.id === t.id && this.modelFor(cur) === m) {
-                            this.renderParamsButton();
-                            if (!this.$paramsPop.hidden) {
-                                this.paramsSig = this.paramsSchemaSig();
-                                this.renderParamsBody();
-                            }
+                        if (this.modelFor(t) === m) {
+                            if (t.id === this.selectedId) this.renderPickerButton();
+                            if (!this.$pickerPop.hidden) this.refreshCard(t.id);
                         }
                     }
                 })
@@ -1509,22 +1699,21 @@
             if (isDef) delete p[key];
             else p[key] = value;
             this.saveParams(t, p, model);
-            this.renderParamsButton();
+            if (t && t.id === this.selectedId) this.renderPickerButton();
         }
         resetParams(t) {
             if (!t) return;
             this.saveParams(t, {});
-            this.renderParamsButton();
-            if (!this.$paramsPop.hidden) this.renderParamsBody();
+            this.refreshCard(t.id);
         }
         paramsDanger(p) {
             return Boolean(p.skip_permissions || p.tools_mode === 'default'
                 || (p.permission_mode && p.permission_mode !== 'restricted' && p.permission_mode !== 'strict'));
         }
-        paramsBadgeText(t) {
+        paramsBadgeText(t, skipKey) {
             const p = this.effectiveParams(t);
             const bits = [];
-            if (p.effort && p.effort !== 'default') bits.push('effort: ' + p.effort);
+            if (skipKey !== 'effort' && p.effort && p.effort !== 'default') bits.push('effort: ' + p.effort);
             if (p.skip_permissions) bits.push('yolo');
             if (p.permission_mode && p.permission_mode !== 'restricted' && p.permission_mode !== 'strict'
                 && !(p.skip_permissions && (p.permission_mode === 'bypassPermissions' || p.permission_mode === 'auto'))) {
@@ -1533,12 +1722,12 @@
             if (p.tools_mode === 'default') bits.push('tools');
             if (p.max_turns) bits.push('turns ' + p.max_turns);
             if (p.fallback_model) bits.push('fallback');
-            if (p.reasoning_effort && p.reasoning_effort !== 'default') bits.push('effort: ' + p.reasoning_effort);
+            if (skipKey !== 'reasoning_effort' && p.reasoning_effort && p.reasoning_effort !== 'default') bits.push('effort: ' + p.reasoning_effort);
             if (p.temperature != null && p.temperature !== '') bits.push('temp ' + p.temperature);
             if (p.max_tokens) bits.push('tok ' + p.max_tokens);
             if (p.top_p != null && p.top_p !== '') bits.push('top_p ' + p.top_p);
-            if (p.thinking && p.thinking !== 'default') bits.push('thinking ' + p.thinking);
-            if (p.enable_thinking && p.enable_thinking !== 'default') bits.push('thinking ' + p.enable_thinking);
+            if (skipKey !== 'thinking' && p.thinking && p.thinking !== 'default') bits.push('thinking ' + p.thinking);
+            if (skipKey !== 'enable_thinking' && p.enable_thinking && p.enable_thinking !== 'default') bits.push('thinking ' + p.enable_thinking);
             return bits.slice(0, 3).join(' · ') + (bits.length > 3 ? ' …' : '');
         }
         paramValueLabel(key, v) {
@@ -1566,83 +1755,7 @@
             };
             return map[v] || v;
         }
-        renderParamsButton() {
-            const t = this.currentTarget();
-            const show = Boolean(t && (t.kind === 'cli' || t.kind === 'cloud' || t.kind === 'local'));
-            this.$paramsPicker.hidden = !show;
-            if (!show) { this.closeParams(); return; }
-            this.ensureModelSchema(t);
-            const badge = this.paramsBadgeText(t);
-            this.$paramsBadge.hidden = !badge;
-            this.$paramsBadge.textContent = badge;
-            const danger = this.paramsDanger(this.effectiveParams(t));
-            this.$paramsWarn.hidden = !danger;
-            this.$paramsBtn.classList.toggle('is-danger', danger);
-            this.$paramsBtn.setAttribute('aria-expanded', String(!this.$paramsPop.hidden));
-            if (!this.$paramsPop.hidden) this.clampPop(this.$paramsPop);
-        }
-        toggleParams() { if (this.$paramsPop.hidden) this.openParams(); else this.closeParams(); }
-        paramsSchemaSig() {
-            const t = this.currentTarget();
-            if (!t) return '';
-            const m = this.modelFor(t);
-            return `${t.id}|${m}|${JSON.stringify(this.schemaFor(t, m))}|${JSON.stringify(t.models || [])}|${JSON.stringify((this.fetchedModels || {})[t.service] || [])}`;
-        }
-        openParams() {
-            this.closePicker();
-            this.$paramsPop.hidden = false;
-            this.$paramsBtn.setAttribute('aria-expanded', 'true');
-            const t = this.currentTarget();
-            if (t) this.ensureModelSchema(t);
-            this.paramsSig = this.paramsSchemaSig();
-            this.renderParamsBody();
-            this.clampPop(this.$paramsPop);
-        }
-        closeParams() {
-            if (this.$paramsPop.hidden) return;
-            this.$paramsPop.hidden = true;
-            this.$paramsBtn.setAttribute('aria-expanded', 'false');
-        }
-        renderParamsBody() {
-            if (this.$paramsPop.hidden) return;
-            const t = this.currentTarget();
-            if (!t) { this.$paramsBody.innerHTML = ''; return; }
-            const m = this.modelFor(t);
-            this.ensureModelSchema(t, m);
-            const fields = this.schemaFields(t, m);
-            const p = this.effectiveParams(t, m);
-            const hasModel = t.kind === 'cli' || t.kind === 'cloud' || (t.kind === 'local' && !t.model);
-            let html = '';
-            if (hasModel) {
-                html += `<div class="hx-params-sec"><div class="hx-params-k">${esc(this.T(t.kind === 'cli' ? 'modelOptional' : 'model'))}</div>` +
-                    this.modelControlHtml(t, 'params-model', true) + `</div>`;
-            }
-            for (const f of fields) {
-                if (!this.fieldVisible(f, p)) continue;
-                const label = esc(this.lang === 'en' ? (f.en || f.key) : (f.it || f.key));
-                const note = f['note_' + this.lang] ? `<span class="hx-small-note">${esc(f['note_' + this.lang])}</span>` : '';
-                const tag = f.danger ? `<span class="hx-params-danger">${svg('alert')}${esc(this.T('paramsLocalOnly'))}</span>` : '';
-                const val = p[f.key];
-                let control;
-                if (f.type === 'enum') {
-                    control = `<select data-param="${esc(f.key)}">${(f.values || []).map(v => `<option value="${esc(v)}"${(val == null ? f.default === v : val === v) ? ' selected' : ''}>${esc(this.paramValueLabel(f.key, v))}</option>`).join('')}</select>`;
-                } else if (f.type === 'bool') {
-                    control = `<span class="hx-params-switch"><input type="checkbox" data-param="${esc(f.key)}"${val ? ' checked' : ''}><span>${esc(this.T('paramsEnable'))}</span></span>`;
-                } else if (f.type === 'int' || f.type === 'number') {
-                    control = `<input type="number" data-param="${esc(f.key)}" min="${f.min}" max="${f.max}" step="${f.step || 1}" value="${val == null ? '' : esc(val)}" placeholder="${esc(this.T('paramsDefault'))}">`;
-                } else {
-                    control = `<input type="text" data-param="${esc(f.key)}" value="${esc(val || '')}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off"${hasModel ? ` list="hx-pmodels-${esc(t.id)}"` : ''}>`;
-                }
-                html += `<label class="hx-field hx-params-field${f.danger ? ' is-danger' : ''}"><span>${label}${tag}</span>${control}${note}</label>`;
-            }
-            if (!hasModel && !fields.length) html = `<div class="hx-small-note">${esc(this.T('paramsNone'))}</div>`;
-            this.$paramsBody.innerHTML = html;
-            const mLabel = m && t.model_labels && t.model_labels[m] ? t.model_labels[m] : m;
-            this.$paramsTarget.textContent = mLabel && t.kind !== 'local' ? `${t.name} · ${mLabel}` : t.name;
-            this.$paramsBody.querySelectorAll('[data-param]').forEach(el => el.addEventListener('change', () => this.onParamInput(t, el)));
-            if (hasModel) this.bindModelControl(this.$paramsBody, t, 'params-model', () => this.renderParamsBody());
-        }
-        onParamInput(t, el) {
+        onParamInput(t, el, card) {
             const key = el.dataset.param;
             const fields = this.schemaFields(t);
             const f = fields.find(x => x.key === key);
@@ -1660,7 +1773,9 @@
             } else v = el.value.trim();
             this.setParam(t, key, v);
             if (fields.some(x => (x.show_if && key in x.show_if) || (x.hide_if && key in x.hide_if))) {
-                this.renderParamsBody();
+                this.refreshCard(t.id);
+            } else {
+                this.updateCardMeta(card, t);
             }
         }
         // -------------------------------------------------------------- assistente di configurazione (solo suite)

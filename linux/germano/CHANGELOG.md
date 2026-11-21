@@ -5,6 +5,19 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [1.00] - 2026-11-21
+
+### Migliorato
+- **Dock rapido modello ed effort nella barra del compositore (`static/harness.js`, `static/harness.css`, `remote/harness.js`, `remote/harness.css`):** i due pulsanti separati *Modello* e *Parametri* sono stati unificati in un'unica capsula compatta a segmenti (`[ ● Sistema ⌄ | Modello ▾ | effort ▾ | ⚠️ ]`) che consente di cambiare **modello** ed **effort** (o `reasoning_effort` / `thinking`) direttamente dalla barra in un clic, con adattamento immediato dei livelli al modello scelto.
+- **Menu AI unificato con schede immediatamente configurabili per ogni sistema disponibile:** aprendo il menu compaiono insieme tutti i sistemi rilevati e pronti (es. Antigravity CLI, Claude Code, modelli locali avviati, servizi cloud con chiave), ciascuno dotato subito sotto al proprio nome dei controlli rapidi `[ Modello ▾ ]`, `[ effort ▾ ]` e del pulsante `[ Parametri ▾ ]` per espandere inline i parametri avanzati (permessi, YOLO, strumenti CLI, turni massimi, temperatura, token massimi, `Ripristina predefiniti`). Ogni sistema si configura sul posto in modo del tutto indipendente (es. Antigravity su un modello/effort e Claude Code su un altro) anche prima di selezionarlo.
+- **Popolamento immediato del catalogo Antigravity CLI (`server.py`, `static/harness.js`):** avvio immediato non bloccante del refresh di `agy models` alla prima apertura e aggiornamento automatico del dock appena pronto (~1–2 s), senza attendere il ciclo periodico di 12 s.
+
+### Corretto
+- **Layout su schermi stretti (`<= 1180 px`, `static/harness.css`, `remote/harness.css`):** corretta la griglia CSS dell'Harness quando la barra delle conversazioni è aperta in sovrapposizione su mobile/tablet (`grid-template-columns: minmax(0, 1fr)`), garantendo area chat a piena larghezza e popover sempre nel viewport (`0 px` overflow a 390 px e 360 px).
+
+### Verificato
+- Collaudo end-to-end live in Edge headless sull'installazione locale (`dock_rapido_barra`, cambio diretto modello + effort nella barra, configurazione simultanea indipendente Antigravity ↔ Claude Code, parametri condizionali OpenAI `gpt-5.4`/`gpt-4o`/`o1-mini` e Anthropic `claude-opus-4-6`, responsive 1280/390/360 px, 0 errori console/JS), coerenza 6 alberi **4/4**, 164 `.py`, parità guida IT/EN **15/15** capitoli.
+
 ## [0.99] - 2026-11-21
 
 ### Migliorato

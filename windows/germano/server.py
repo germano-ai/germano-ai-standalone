@@ -2502,8 +2502,8 @@ def _harness_targets(local, sharing, lang="it"):
         model_aliases = None
         agy_cat = None
         if tid == "agy" and local and t.get("path"):
-            try:    # modelli rilevati da «agy models» (cache dell'assistente: mai attese qui)
-                agy_ms = gassist.agy_status(t["path"], refresh_if_stale=False).get("models") or []
+            try:    # modelli rilevati da «agy models» (cache dell'assistente: avvia refresh in background se vuota)
+                agy_ms = gassist.agy_status(t["path"], refresh_if_stale=True).get("models") or []
                 agy_cat = harness.agy_catalog(agy_ms)
                 if agy_cat:
                     models = agy_cat["models"]

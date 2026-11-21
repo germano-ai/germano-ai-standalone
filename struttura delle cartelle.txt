@@ -3,13 +3,13 @@ GERMANO AI — STRUTTURA DELLE CARTELLE PER OGNI RELEASE (v0.60+)
 ================================================================================
 
 Questa è la struttura ufficiale e tassativa adottata dalla release 0.60 e da tutte
-le release successive di Germano AI. Release corrente: 0.99 (21 novembre 2026).
+le release successive di Germano AI. Release corrente: 1.00 (21 novembre 2026).
 
 --------------------------------------------------------------------------------
 ALBERATURA DELLE CARTELLE
 --------------------------------------------------------------------------------
 
-germano.ai-0.99/
+germano.ai-1.00/
 ├── sorgenti/
 │   ├── macos/
 │   │   ├── germano/
@@ -28,14 +28,14 @@ germano.ai-0.99/
 └── releases/
     ├── version.json
     ├── macos/
-    │   ├── germano-0.99.pkg
-    │   └── germano-client-0.99.pkg
+    │   ├── germano-1.00.pkg
+    │   └── germano-client-1.00.pkg
     ├── linux/
-    │   ├── germano-0.99.deb
-    │   └── germano-client-0.99.deb
+    │   ├── germano-1.00.deb
+    │   └── germano-client-1.00.deb
     └── windows/
-        ├── germano-0.99.exe
-        └── germano-client-0.99.exe
+        ├── germano-1.00.exe
+        └── germano-client-1.00.exe
 
 
 --------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
      * Template HTML della Dashboard e del pannello client
      * Fogli di stile CSS, asset grafici (loghi SVG, favicon ICO)
      * Documentazione: README.md / README.en.md, CHANGELOG.md / CHANGELOG.en.md,
-       LEGGIMI_v0.99.md, guida offline GUIDA_OFFLINE.html (identica in tutte le copie)
+       LEGGIMI_v1.00.md, guida offline GUIDA_OFFLINE.html (identica in tutte le copie)
    - Regola vincolante: NESSUN modello di intelligenza artificiale pesante, nessun
      file binario proprietario di terze parti, nessun installer o eseguibile compilato,
      nessuna cache (__pycache__, .pyc).
@@ -109,25 +109,25 @@ DESCRIZIONE DETTAGLIATA DELLE CARTELLE E REGOLE DI DISTRIBUZIONE
    - Regola fondamentale: Zero dipendenze da Internet all'installazione. L'applicazione
      deve funzionare al primo colpo anche su sistemi operativi appena installati ("vanilla"):
      * Windows (Windows 10/11, Windows Server 2019+):
-       - releases/windows/germano-0.99.exe
+       - releases/windows/germano-1.00.exe
          Installer unico autoestraente della suite completa. Si installa per
          l'utente corrente (%LOCALAPPDATA%\Programs\Germano AI); appena si apre
          chiede i permessi di amministratore solo per la regola del firewall
          (accesso dalla rete locale), crea i collegamenti e le cartelle di lavoro
          in Documenti\Germano AI. Deve restare sotto i 4 GB (limite di Windows).
-       - releases/windows/germano-client-0.99.exe
+       - releases/windows/germano-client-1.00.exe
          Installer unico del client leggero (~22 MB, senza modelli, nessun UAC).
      * Linux (Ubuntu 26.04 / Debian):
-       - releases/linux/germano-0.99.deb
+       - releases/linux/germano-1.00.deb
          Pacchetto nativo Debian/Ubuntu autosufficiente in /opt/germano, con la
          voce di menu e il comando germano-ai.
-       - releases/linux/germano-client-0.99.deb
+       - releases/linux/germano-client-1.00.deb
          Pacchetto nativo Debian/Ubuntu per il client leggero.
      * macOS (Apple Silicon per la suite, Apple Silicon e Intel per il client):
-       - releases/macos/germano-0.99.pkg
+       - releases/macos/germano-1.00.pkg
          Pacchetto nativo macOS (.pkg). «Installa solo per me» mette Germano.app in
          ~/Applications senza password di amministratore.
-       - releases/macos/germano-client-0.99.pkg
+       - releases/macos/germano-client-1.00.pkg
          Pacchetto nativo macOS per il client leggero.
 
 --------------------------------------------------------------------------------

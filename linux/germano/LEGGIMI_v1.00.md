@@ -1,7 +1,7 @@
-# Germano AI 0.99 — Suite completa per Windows
+# Germano AI 1.00 — Suite completa per Windows
 
 ## Installazione
-Scarica **`germano-0.99.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
+Scarica **`germano-1.00.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
 necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, gli 8 modelli IA) e non scarica
 nulla. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a
 consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows solo per il Python di
@@ -42,6 +42,12 @@ Modalità operative (si scelgono e si cambiano in qualsiasi momento in Impostazi
 
 Per chiudere **tutto** basta la **X rossa**: si fermano anche il server Flask e il motore IA, senza lasciare processi in
 memoria.
+
+## Novità della 1.00: dock rapido modello ed effort + menu unificato per ogni sistema
+Nella barra del compositore in basso a destra puoi cambiare **modello** ed **effort** direttamente in un clic
+senza aprire il menu. Aprendo il menu unificato vedi subito insieme tutti i sistemi disponibili (es. Antigravity
+CLI e Claude Code), ciascuno con i propri selettori immediati di modello, effort e il pulsante *Parametri* per
+espandere inline le opzioni avanzate in modo del tutto indipendente per ogni sistema.
 
 ## Novità della 0.99: parametri specifici per ogni modello scelto
 Il selettore **Parametri** ora si adatta in tempo reale al **singolo modello selezionato** (salvando le scelte
@@ -177,7 +183,7 @@ App e file tecnici.
   correggerlo; nelle VM con NAT serve l'inoltro della porta TCP 8181 (o una scheda in modalità bridge).
 
 ## Client leggero per i colleghi
-Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.99.exe`** (circa 22 MB, senza
+Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-1.00.exe`** (circa 22 MB, senza
 modelli, nessun permesso di amministratore): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del
 client (collegamento **Germano AI Client**), che è lo stesso Remote Control del browser, con Chatbot e Agenti AI e Glass
 Window. Chi non vuole installare nulla apre direttamente nel browser `http://<IP-di-questo-PC>:8181/`.

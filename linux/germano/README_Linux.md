@@ -1,11 +1,11 @@
-# Germano AI 0.99 — Suite completa per Linux
+# Germano AI 1.00 — Suite completa per Linux
 
 ## Installazione
-Scarica **`germano-0.99.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-1.00.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure da terminale:
 
 ```bash
-sudo apt install ./germano-0.99.deb
+sudo apt install ./germano-1.00.deb
 ```
 
 Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, gli 8 modelli IA,
@@ -36,6 +36,11 @@ automatica, 8182/udp solo dalla rete locale.
 
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
 fuori dalla sessione grafica dell'utente.
+
+## Novità della 1.00: dock rapido modello ed effort + menu unificato per ogni sistema
+Nella barra del compositore cambi **modello** ed **effort** in un clic senza aprire il menu; aprendo il menu
+unificato vedi insieme tutti i sistemi rilevati e pronti (es. Antigravity CLI e Claude Code), ciascuno subito
+configurabile in modo indipendente (modello, effort e *Parametri* avanzati inline).
 
 ## Novità della 0.99: parametri specifici per ogni modello scelto
 Il selettore **Parametri** si adatta in tempo reale al **singolo modello scelto** (con salvataggio separato per

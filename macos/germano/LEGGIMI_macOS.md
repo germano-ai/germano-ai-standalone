@@ -1,7 +1,7 @@
-# Germano AI 0.99 — Suite completa per macOS
+# Germano AI 1.00 — Suite completa per macOS
 
 ## Installazione
-Scarica **`germano-0.99.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
+Scarica **`germano-1.00.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
 **macOS 14 Sonoma** o successivo: PyTorch non è più pubblicato per i Mac Intel, che usano il client leggero) e fai
 doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, gli 8 modelli IA, llama.cpp per il
 Sistema 2 e 7-Zip per gli archivi) e non scarica nulla.
@@ -30,6 +30,11 @@ questo computer filtrate da Germano e la Glass Window, sanitizzazione manuale di
 profilo PA). Di base l'accesso è libero; con la gestione utenti (Impostazioni › Modalità e rete › Accesso dalla rete)
 servono utente e password. Alla prima attivazione macOS può chiedere di consentire le connessioni in entrata a Python:
 rispondi **Consenti**.
+
+## Novità della 1.00: dock rapido modello ed effort + menu unificato per ogni sistema
+Nella barra del compositore cambi **modello** ed **effort** in un clic senza aprire il menu; aprendo il menu
+unificato vedi insieme tutti i sistemi rilevati e pronti (es. Antigravity CLI e Claude Code), ciascuno subito
+configurabile in modo indipendente (modello, effort e *Parametri* avanzati inline).
 
 ## Novità della 0.99: parametri specifici per ogni modello scelto
 Il selettore **Parametri** si adatta in tempo reale al **singolo modello scelto** (con salvataggio separato per

@@ -6,6 +6,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.00] - 2026-11-21
+
+### Improved
+- **Quick model & effort dock directly in the composer bar (`static/harness.js`, `static/harness.css`, `remote/harness.js`, `remote/harness.css`):** the separate *Model* and *Parameters* buttons have been unified into a single segmented dock (`[ ● System ⌄ | Model ▾ | effort ▾ | ⚠️ ]`) to switch **model** and **effort** (or `reasoning_effort` / `thinking`) in one click right from the composer bar, adapting tiers immediately to the chosen model.
+- **Unified AI menu with immediate per-system cards:** opening the menu displays all detected, ready systems together (e.g. Antigravity CLI, Claude Code, running local models, configured cloud services), each showing its own immediate `[ Model ▾ ]`, `[ effort ▾ ]` controls and a `[ Parameters ▾ ]` toggle to expand model-specific advanced parameters inline (permissions, YOLO, CLI tools, max turns, temperature, max tokens, `Reset defaults`). Every system keeps and edits its own independent configuration right in place.
+- **Instant Antigravity CLI catalog population (`server.py`, `static/harness.js`):** triggers a non-blocking `agy models` refresh immediately on first load and updates the dock automatically as soon as models arrive (~1–2 s) without waiting for the 12 s polling interval.
+
+### Fixed
+- **Narrow-screen layout (`<= 1180 px`, `static/harness.css`, `remote/harness.css`):** fixed the Harness CSS grid when the conversation sidebar overlays on mobile/tablet (`grid-template-columns: minmax(0, 1fr)`), keeping the chat pane full-width and the popover cleanly inside the viewport (`0 px` overflow at 390 px and 360 px).
+
+### Verified
+- Live Edge headless end-to-end verification on the local installation (direct model + effort switching in the bar, simultaneous independent Antigravity ↔ Claude Code cards, conditional OpenAI `gpt-5.4`/`gpt-4o`/`o1-mini` and Anthropic `claude-opus-4-6` parameters, responsive 1280/390/360 px, 0 console/JS errors), 6-tree coherence **4/4**, 164 `.py`, IT/EN guide parity **15/15** chapters.
+
 ## [0.99] - 2026-11-21
 
 ### Improved
