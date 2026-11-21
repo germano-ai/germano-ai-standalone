@@ -92,6 +92,7 @@ class SessionStore:
 
     TTL = 24 * 3600
     MAX = 1000
+    MAX_PER_PRINCIPAL = 200
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -103,8 +104,15 @@ class SessionStore:
             now = time.time()
             for sid in [k for k, v in self._items.items() if now - v.last_seen > self.TTL]:
                 self._items.pop(sid, None)
+            if principal != "local":
+                mine = [v for v in self._items.values() if v.principal == principal]
+                if len(mine) >= self.MAX_PER_PRINCIPAL:
+                    mine.sort(key=lambda v: v.last_seen)
+                    for old in mine[: len(mine) - self.MAX_PER_PRINCIPAL + 1]:
+                        self._items.pop(old.id, None)
             if len(self._items) >= self.MAX:
-                oldest = min(self._items.values(), key=lambda v: v.last_seen)
+                cands = [v for v in self._items.values() if v.principal != "local"] or list(self._items.values())
+                oldest = min(cands, key=lambda v: v.last_seen)
                 self._items.pop(oldest.id, None)
             self._items[s.id] = s
         return s
@@ -121,6 +129,16 @@ class SessionStore:
     def delete(self, sid):
         with self._lock:
             return self._items.pop(sid or "", None) is not None
+
+    def drop_principal(self, principal):
+        with self._lock:
+            for sid in [k for k, v in self._items.items() if v.principal == principal]:
+                self._items.pop(sid, None)
+
+    def drop_all(self, keep_local=True):
+        with self._lock:
+            for sid in [k for k, v in self._items.items() if not (keep_local and v.principal == "local")]:
+                self._items.pop(sid, None)
 
     def count(self):
         with self._lock:
@@ -141,6 +159,7 @@ class SseHub:
     """Sessioni del trasporto SSE legacy: le risposte ai POST su /mcp/messages viaggiano sul flusso aperto."""
 
     MAX = 32
+    MAX_PER_PRINCIPAL = 8
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -148,11 +167,32 @@ class SseHub:
 
     def open(self, principal):
         with self._lock:
+            if principal != "local":
+                mine = sum(1 for v in self._items.values() if v.principal == principal)
+                if mine >= self.MAX_PER_PRINCIPAL:
+                    return None
+                remote_used = sum(1 for v in self._items.values() if v.principal != "local")
+                if remote_used >= self.MAX - 4:
+                    return None
             if len(self._items) >= self.MAX:
                 return None
             s = SseSession(principal)
             self._items[s.id] = s
             return s
+
+    def drop_principal(self, principal):
+        with self._lock:
+            for sid in [k for k, v in self._items.items() if v.principal == principal]:
+                s = self._items.pop(sid, None)
+                if s is not None:
+                    s.closed = True
+
+    def drop_all(self, keep_local=True):
+        with self._lock:
+            for sid in [k for k, v in self._items.items() if not (keep_local and v.principal == "local")]:
+                s = self._items.pop(sid, None)
+                if s is not None:
+                    s.closed = True
 
     def get(self, sid):
         with self._lock:
@@ -302,11 +342,16 @@ def handle(msg, session, ctx_factory):
         return error(rid, INTERNAL_ERROR, f"Internal error ({type(e).__name__})")
 
 
+MAX_BATCH = 32
+
+
 def handle_payload(payload, session, ctx_factory):
     """Messaggio singolo o lotto (array, revisione 2025-03-26). Restituisce (risposta | elenco | None)."""
     if isinstance(payload, list):
         if not payload:
             return error(None, INVALID_REQUEST, "Invalid Request: empty batch")
+        if len(payload) > MAX_BATCH:
+            return error(None, INVALID_REQUEST, f"Invalid Request: batch exceeds {MAX_BATCH} items")
         out = [r for r in (handle(m, session, ctx_factory) for m in payload) if r is not None]
         return out or None
     return handle(payload, session, ctx_factory)
@@ -314,7 +359,8 @@ def handle_payload(payload, session, ctx_factory):
 
 def is_initialize(payload):
     msgs = payload if isinstance(payload, list) else [payload]
-    return any(isinstance(m, dict) and m.get("method") == "initialize" and "id" in m for m in msgs)
+    return any(isinstance(m, dict) and m.get("method") == "initialize"
+               and isinstance(m.get("id"), (str, int)) and not isinstance(m.get("id"), bool) for m in msgs)
 
 
 def modern_request(payload, header_version=None):
@@ -376,12 +422,33 @@ def _log(msg):
         pass
 
 
+def _pid_alive(pid):
+    try:
+        pid = int(pid)
+        if pid <= 0:
+            return False
+    except (TypeError, ValueError):
+        return False
+    try:
+        import psutil
+        p = psutil.Process(pid)
+        return p.is_running() and p.status() != psutil.STATUS_ZOMBIE
+    except Exception:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+
 def _local_port():
     """Porta del Germano aperto con QUESTA cartella dati: state/server.json (scritto dal server all'avvio), poi
     GERMANO_PORT, poi config.json."""
     info = common.read_json(os.path.join(common.STATE_DIR, "server.json"), {}) or {}
     ports = []
-    for p in (info.get("port"), os.environ.get("GERMANO_PORT"), common.load_config().get("port"), 8181):
+    srv_pid = info.get("pid")
+    srv_port = info.get("port") if (not srv_pid or _pid_alive(srv_pid)) else None
+    for p in (srv_port, os.environ.get("GERMANO_PORT"), common.load_config().get("port"), 8181):
         try:
             p = int(p)
         except (TypeError, ValueError):
@@ -408,12 +475,20 @@ def _http(method, url, body=None, headers=None, timeout=3700):
 
 
 def find_local_germano():
-    """Indirizzo del Germano aperto (stessa cartella dati) che risponde a /mcp, oppure None."""
+    """Indirizzo del Germano aperto (stessa cartella dati, stesso instance_id) che risponde a /mcp, oppure None."""
+    info = common.read_json(os.path.join(common.STATE_DIR, "server.json"), {}) or {}
+    expected_inst = str(info.get("instance_id") or common.load_config().get("instance_id") or "").strip()
     for port in _local_port():
         base = f"http://127.0.0.1:{port}"
         try:
-            st, _h, body = _http("GET", base + "/api/status", timeout=3)
-            if st != 200 or "version" not in json.loads(body.decode("utf-8", "replace") or "{}"):
+            st, _h, body = _http("GET", base + "/api/discovery", timeout=3)
+            if st != 200:
+                continue
+            disc = json.loads(body.decode("utf-8", "replace") or "{}")
+            if not isinstance(disc, dict) or disc.get("service") != "germano-server":
+                continue
+            remote_inst = str(disc.get("instance_id") or "").strip()
+            if expected_inst and remote_inst and remote_inst != expected_inst:
                 continue
             st2, _h2, body2 = _http("GET", base + "/mcp", headers={"Accept": "application/json"}, timeout=3)
             if st2 == 200 and json.loads(body2.decode("utf-8", "replace") or "{}").get("service") == gint.SERVICE:
@@ -433,19 +508,22 @@ class _Bridge:
         self.init_msg = None
         self._lock = threading.Lock()
 
-    def _post(self, obj):
+    def _post(self, obj, sid=None):
         headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
                    "X-Germano-Client": "mcp-stdio"}
-        if self.session_id:
-            headers["Mcp-Session-Id"] = self.session_id
+        use_sid = self.session_id if sid is None else sid
+        if use_sid:
+            headers["Mcp-Session-Id"] = use_sid
         if self.version:
             headers["MCP-Protocol-Version"] = self.version
         return _http("POST", self.base + "/mcp", json.dumps(obj, ensure_ascii=False).encode("utf-8"), headers)
 
-    def _reinit(self):
+    def _reinit(self, failed_sid):
         """Sessione scaduta (Germano riavviato): nuova sessione con la stessa richiesta initialize del client."""
+        if self.session_id and self.session_id != failed_sid:
+            return  # gia' reinizializzata da un altro thread
         self.session_id = None
-        st, h, body = self._post(self.init_msg)
+        st, h, body = self._post(self.init_msg, sid="")
         if st != 200:
             raise ConnectionError(f"initialize HTTP {st}")
         self.session_id = h.get("Mcp-Session-Id") or h.get("mcp-session-id")
@@ -455,10 +533,11 @@ class _Bridge:
         if is_initialize(payload):
             first = payload[0] if isinstance(payload, list) else payload
             self.init_msg = first
-        st, h, body = self._post(payload)
+        used_sid = self.session_id
+        st, h, body = self._post(payload, sid=used_sid)
         if st == 404 and self.init_msg is not None and not is_initialize(payload):
             with self._lock:
-                self._reinit()
+                self._reinit(used_sid)
             st, h, body = self._post(payload)
         if st == 202:
             return None
@@ -574,20 +653,26 @@ def stdio_main_early():
 def _run_bridge(base):
     bridge = _Bridge(base)
     state = {"local": None}
+    state_lock = threading.Lock()
 
     def dispatch(payload):
-        if state["local"] is not None:
-            return state["local"](payload)
+        local = state["local"]
+        if local is not None:
+            return local(payload)
         try:
             return bridge.send(payload)
-        except (OSError, ConnectionError, ValueError) as e:
-            _log(f"Germano non raggiungibile ({type(e).__name__}): passo alla modalita' nel processo")
-            state["local"] = _InProcess(_load_backend(), _inprocess_port(), bridge.version)
-            return state["local"](payload)
+        except (OSError, ConnectionError) as e:
+            with state_lock:
+                if state["local"] is None:
+                    _log(f"Germano non raggiungibile ({type(e).__name__}): passo alla modalita' nel processo")
+                    state["local"] = _InProcess(_load_backend(), _inprocess_port(), bridge.version)
+                local = state["local"]
+            return local(payload)
 
     def on_exit():
-        if state["local"] is not None:
-            state["local"].backend.shutdown()
+        local = state["local"]
+        if local is not None and find_local_germano() is None:
+            local.backend.shutdown()
 
     return _serve(dispatch, on_exit)
 

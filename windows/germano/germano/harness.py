@@ -504,14 +504,27 @@ def _isolated_vars(home):
     return {"USERPROFILE": home, "HOME": home} if os.name == "nt" else {"HOME": home}
 
 
-def _cli_env(prof, port, scope):
-    """Ambiente della CLI: quello di Germano senza le variabili che la porterebbero fuori dal Proxy, con il Proxy
-    locale come indirizzo del servizio. Il Proxy anonimizza, blocca se serve e ripristina SOLO i dati di quella
-    richiesta (/s/<ambito>: mai il resto del Vault, anche se il prompt chiedesse di ripetere etichette di altri
-    documenti). Per le CLI senza Proxy (agy) la cartella personale e' quella isolata di Germano."""
+_DROP_OTHER_KEYS = (
+    "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY",
+    "XAI_API_KEY", "OPENROUTER_API_KEY", "PERPLEXITY_API_KEY", "PPLX_API_KEY", "DASHSCOPE_API_KEY",
+    "MOONSHOT_API_KEY", "ZAI_API_KEY", "ZHIPU_API_KEY", "META_API_KEY", "LLAMA_API_KEY",
+    "GERMANO_TOKEN", "GERMANO_PARENT_PID", "GERMANO_DESKTOP_PID",
+)
+
+
+def _cli_env(prof, port, scope, keep_key=None):
+    """Ambiente della CLI: quello di Germano senza le variabili che la porterebbero fuori dal Proxy e senza le chiavi
+    API di altri servizi (o i token interni di Germano). Il Proxy anonimizza, blocca se serve e ripristina SOLO i dati
+    di quella richiesta (/s/<ambito>). Per le CLI senza Proxy (agy) la cartella personale e' quella isolata."""
     env = dict(os.environ)
     for k in _DROP_ENV:
         env.pop(k, None)
+    allow_key = keep_key or prof.get("needs")
+    for k in _DROP_OTHER_KEYS:
+        if k != allow_key:
+            env.pop(k, None)
+    if prof.get("format") == "agy":
+        env.pop("ANTHROPIC_API_KEY", None)
     if prof.get("env"):
         env[prof["env"]] = f"http://127.0.0.1:{port}/s/{scope}"
     if prof.get("isolate_home"):
@@ -769,7 +782,7 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
         def read_err():
             try:
                 for line in proc.stderr:
-                    err_lines.append(line)
+                    err_lines.append(line[:2048])
                     del err_lines[:-80]
             except (OSError, ValueError):
                 pass
@@ -786,10 +799,21 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
         timer = threading.Timer(timeout, on_timeout)
         timer.daemon = True
         timer.start()
-        parts, usage, final, is_error, streamed = [], {}, None, False, False
+        parts, parts_len, usage, final, is_error, streamed = [], 0, {}, None, False, False
         st = {"blocked": None, "error": None}
+        _MAX_LINE_BYTES = 2 * 1024 * 1024
+
+        def _append_part(chunk):
+            nonlocal parts_len
+            if parts_len < MAX_ANSWER + 1024:
+                parts.append(chunk)
+                parts_len += len(chunk)
+
         try:
-            for raw in proc.stdout:
+            while True:
+                raw = proc.stdout.readline(_MAX_LINE_BYTES)
+                if not raw:
+                    break
                 line = raw.decode("utf-8", "replace").strip()
                 if not line:
                     continue
@@ -801,7 +825,12 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                 if not isinstance(obj, dict):
                     continue
                 if agy:
+                    prev_len = len(parts)
                     res = _agy_event(obj, emit, parts, usage, st, allow_tools=allow_tools)
+                    if len(parts) > prev_len:
+                        parts_len += sum(len(x) for x in parts[prev_len:])
+                        if parts_len > MAX_ANSWER + 1024:
+                            del parts[prev_len:]
                     if st["blocked"]:
                         _kill_tree(proc)      # strumento annunciato: si ferma tutto prima che venga usato
                         break
@@ -816,7 +845,7 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                         d = ev.get("delta") or {}
                         if d.get("type") == "text_delta" and d.get("text"):
                             streamed = True
-                            parts.append(d["text"])
+                            _append_part(d["text"])
                             emit("delta", d["text"])
                         elif d.get("type") == "thinking_delta" and d.get("thinking"):
                             emit("thinking", d["thinking"])
@@ -834,7 +863,7 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                     content = (obj.get("message") or {}).get("content") or []
                     text = "".join(p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text")
                     if text:
-                        parts.append(text)
+                        _append_part(text)
                         emit("delta", text)
                 elif typ == "result":
                     final = obj.get("result") if isinstance(obj.get("result"), str) else None
@@ -851,13 +880,29 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                     emit("cli", json.dumps({"system": info}, ensure_ascii=False)[:2000])
         finally:
             timer.cancel()
-        try:
-            proc.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            _kill_tree(proc)
-        err_thread.join(2)
-        if agy and prof.get("isolate_home"):
-            _agy_forget(st.get("conv"))
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                _kill_tree(proc)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            except BaseException:
+                _kill_tree(proc)
+                try:
+                    proc.wait(timeout=5)
+                except Exception:
+                    pass
+            for pipe in (proc.stdin, proc.stdout, proc.stderr):
+                if pipe is not None:
+                    try:
+                        pipe.close()
+                    except Exception:
+                        pass
+            err_thread.join(2)
+            if agy and prof.get("isolate_home"):
+                _agy_forget(st.get("conv"))
         if cancel is not None and cancel.is_set():
             raise HarnessInterrupted()
         if expired:
@@ -898,6 +943,10 @@ def run(tool_id, exe, prompt, port, model=None, timeout=RUN_TIMEOUT):
     prof = PROFILES.get(tool_id)
     if not prof:
         raise HarnessError(f"{tool_id} non e' tra le AI che il server sa eseguire per i client.")
+    if not valid_model(model):
+        raise HarnessError("Nome del modello non valido.")
+    if model == "default":
+        model = None
     needs = prof.get("needs")
     if needs and not os.environ.get(needs):
         raise HarnessError(f"Per condividere {tool_id} il server deve avere la variabile {needs} (la chiave API del "

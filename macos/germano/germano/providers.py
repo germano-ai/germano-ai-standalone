@@ -82,9 +82,13 @@ KEY_RE = re.compile(r"^[\x21-\x7e]{8,512}$")       # caratteri stampabili, senza
 MAX_ANSWER = 400_000
 TIMEOUT = (15, 600)
 
+from http.cookiejar import DefaultCookiePolicy
+_NO_COOKIES = DefaultCookiePolicy(allowed_domains=[])
 _http = requests.Session()
+_http.cookies.set_policy(_NO_COOKIES)
 _http_local = requests.Session()
 _http_local.trust_env = False      # i modelli locali (127.0.0.1) non passano mai da un proxy aziendale
+_http_local.cookies.set_policy(_NO_COOKIES)
 
 
 class ServiceError(RuntimeError):
@@ -618,17 +622,42 @@ def _clip(text):
     return text if len(text) <= MAX_ANSWER else text[:MAX_ANSWER] + "\n[... risposta troncata da Germano ...]"
 
 
-def _error_text(r):
+def _scrub_key(text, api_key=""):
+    s = str(text or "")
+    k = str(api_key or "").strip()
+    if len(k) >= 6 and k in s:
+        s = s.replace(k, "••••(nascosta)")
+    return s
+
+
+def _read_snippet(r, limit=8192):
+    chunks = []
+    got = 0
     try:
-        data = r.json()
+        for ch in r.iter_content(4096):
+            if not ch:
+                continue
+            chunks.append(ch[: max(0, limit - got)])
+            got += len(ch)
+            if got >= limit:
+                break
+    except Exception:
+        pass
+    return b"".join(chunks).decode("utf-8", errors="replace")
+
+
+def _error_text(r, api_key=""):
+    raw = _read_snippet(r, 8192)
+    try:
+        data = json.loads(raw)
         err = data.get("error") if isinstance(data, dict) else None
         if isinstance(err, dict):
-            return str(err.get("message") or err)[:300]
+            return _scrub_key(str(err.get("message") or err)[:300], api_key)
         if err:
-            return str(err)[:300]
-        return json.dumps(data)[:300]
+            return _scrub_key(str(err)[:300], api_key)
+        return _scrub_key(json.dumps(data)[:300], api_key)
     except Exception:
-        return (r.text or "")[:300]
+        return _scrub_key(raw[:300], api_key)
 
 
 def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
@@ -645,18 +674,22 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
     params = validate_params(service_id, params, model=model)
     prof = _model_profile(service_id, model)
     http = _http_local if spec.get("local") else _http
+
     def _post_sync(url, payload, headers, fmt):
         cur = payload
         for _ in range(4):
             try:
-                resp = http.post(url, json=cur, headers=headers, timeout=TIMEOUT)
+                resp = http.post(url, json=cur, headers=headers, timeout=TIMEOUT, stream=True, allow_redirects=False)
             except requests.RequestException as e:
                 raise ServiceError(f"{spec['name']} non raggiungibile ({e.__class__.__name__})") from None
             if resp.status_code == 400:
-                nxt = _adapt_400_body(cur, fmt, (resp.text or "")[:2000])
+                detail = _read_snippet(resp, 2000)
+                resp.close()
+                nxt = _adapt_400_body(cur, fmt, detail)
                 if nxt is not None:
                     cur = nxt
                     continue
+                raise ServiceError(f"{spec['name']} ha risposto con errore 400: {_scrub_key(detail[:300], api_key)}")
             return resp
         return resp
 
@@ -666,16 +699,19 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
             headers["Authorization"] = f"Bearer {api_key}"
         body = _apply_params({"model": model, "messages": messages, "stream": False}, "openai", params, max_tokens, prof)
         r = _post_sync(_base(spec, "openai") + "/chat/completions", body, headers, "openai")
-        if r.status_code >= 400:
-            raise ServiceError(f"{spec['name']} ha risposto con errore {r.status_code}: {_error_text(r)}")
         try:
-            choice = r.json()["choices"][0]["message"]
-            content = choice.get("content")
-            if isinstance(content, list):   # alcuni servizi restituiscono parti di contenuto
-                content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
-            return _clip(str(content or ""))
-        except (ValueError, KeyError, IndexError, TypeError, AttributeError):
-            raise ServiceError(f"risposta di {spec['name']} non riconosciuta") from None
+            if r.status_code >= 400:
+                raise ServiceError(f"{spec['name']} ha risposto con errore {r.status_code}: {_error_text(r, api_key)}")
+            try:
+                choice = r.json()["choices"][0]["message"]
+                content = choice.get("content")
+                if isinstance(content, list):   # alcuni servizi restituiscono parti di contenuto
+                    content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+                return _clip(str(content or ""))
+            except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+                raise ServiceError(f"risposta di {spec['name']} non riconosciuta") from None
+        finally:
+            r.close()
     # solo formato Anthropic
     headers = {"Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01"}
     system = "\n\n".join(m["content"] for m in messages if m.get("role") == "system")
@@ -685,12 +721,15 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
         body["system"] = system
     _apply_params(body, "anthropic", params, max_tokens, prof)
     r = _post_sync(_base(spec, "anthropic") + "/messages", body, headers, "anthropic")
-    if r.status_code >= 400:
-        raise ServiceError(f"{spec['name']} ha risposto con errore {r.status_code}: {_error_text(r)}")
     try:
-        return _clip("".join(p.get("text", "") for p in r.json()["content"] if p.get("type") == "text"))
-    except (ValueError, KeyError, TypeError, AttributeError):
-        raise ServiceError(f"risposta di {spec['name']} non riconosciuta") from None
+        if r.status_code >= 400:
+            raise ServiceError(f"{spec['name']} ha risposto con errore {r.status_code}: {_error_text(r, api_key)}")
+        try:
+            return _clip("".join(p.get("text", "") for p in r.json()["content"] if p.get("type") == "text"))
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise ServiceError(f"risposta di {spec['name']} non riconosciuta") from None
+    finally:
+        r.close()
 
 
 def build_request(service_id, model, messages, api_key="", max_tokens=4096, stream=True, params=None):
@@ -786,7 +825,7 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
             raise Interrupted()
         try:
             return http.post(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), headers=headers,
-                             timeout=TIMEOUT, stream=True)
+                             timeout=TIMEOUT, stream=True, allow_redirects=False)
         except requests.RequestException as e:
             if stopped():
                 raise Interrupted() from None
@@ -797,7 +836,7 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
     # output_config.effort al livello inferiore ammesso oppure toglie i campi opzionali citati nell'errore 400.
     retries = 0
     while r.status_code == 400 and retries < 3:
-        detail = (r.text or "")[:2000]
+        detail = _read_snippet(r, 2000)
         r.close()
         if stopped():
             raise Interrupted()
@@ -805,18 +844,24 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
         if nxt is not None:
             body = nxt
         else:
-            raise ServiceError(f"{spec['name']} ha risposto con errore 400: {detail[:300]}")
+            raise ServiceError(f"{spec['name']} ha risposto con errore 400: {_scrub_key(detail[:300], api_key)}")
         retries += 1
         r = post(body)
     if cancel is not None:
         cancel.bind_response(r)
     if r.status_code >= 400:
-        msg = _error_text(r)
+        msg = _error_text(r, api_key)
         r.close()
         if stopped():
             raise Interrupted()
         raise ServiceError(f"{spec['name']} ha risposto con errore {r.status_code}: {msg}")
-    answer, usage = [], {}
+    answer, answer_len, usage = [], 0, {}
+
+    def _add_answer(chunk_text):
+        nonlocal answer_len
+        if answer_len < MAX_ANSWER + 1024:
+            answer.append(chunk_text)
+            answer_len += len(chunk_text)
 
     def put_usage(inp=None, out=None):
         if inp is not None:
@@ -826,7 +871,7 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
         emit("usage", dict(usage))
 
     try:
-        if "event-stream" not in (r.headers.get("Content-Type") or ""):
+        if "event-stream" not in (r.headers.get("Content-Type") or "").lower():
             data = r.json()          # il servizio ha ignorato «stream»: risposta in un solo blocco
             if fmt == "openai":
                 text = _text_of((data.get("choices") or [{}])[0].get("message", {}).get("content"))
@@ -839,7 +884,7 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
                 if u:
                     put_usage(u.get("input_tokens"), u.get("output_tokens"))
             if text:
-                answer.append(text)
+                _add_answer(text)
                 emit("delta", text)
         else:
             frame = (lambda s: emit("frame", s)) if raw_frames else None
@@ -858,7 +903,8 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
                     continue
                 err = obj.get("error")
                 if err and fmt == "openai":
-                    raise ServiceError(f"{spec['name']}: {str(err.get('message') if isinstance(err, dict) else err)[:300]}")
+                    msg = err.get("message") if isinstance(err, dict) else err
+                    raise ServiceError(f"{spec['name']}: {_scrub_key(str(msg)[:300], api_key)}")
                 if fmt == "openai":
                     u = obj.get("usage")
                     if isinstance(u, dict) and u:
@@ -869,7 +915,7 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
                         d = ch.get("delta") or ch.get("message") or {}
                         text = _text_of(d.get("content"))
                         if text:
-                            answer.append(text)
+                            _add_answer(text)
                             emit("delta", text)
                         reasoning = d.get("reasoning_content") or d.get("reasoning")
                         if isinstance(reasoning, str) and reasoning:
@@ -879,7 +925,7 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
                     if t == "content_block_delta":
                         d = obj.get("delta") or {}
                         if d.get("type") == "text_delta" and d.get("text"):
-                            answer.append(d["text"])
+                            _add_answer(d["text"])
                             emit("delta", d["text"])
                         elif d.get("type") == "thinking_delta" and d.get("thinking"):
                             emit("thinking", d["thinking"])
@@ -892,8 +938,9 @@ def stream_chat(service_id, model, messages, api_key, emit, cancel=None, max_tok
                         if u:
                             put_usage(None, u.get("output_tokens"))
                     elif t == "error":
-                        e = obj.get("error") or {}
-                        raise ServiceError(f"{spec['name']}: {str(e.get('message') or e)[:300]}")
+                        e = obj.get("error")
+                        msg = (e.get("message") or e) if isinstance(e, dict) else e
+                        raise ServiceError(f"{spec['name']}: {_scrub_key(str(msg)[:300], api_key)}")
     except (Interrupted, ServiceError):
         raise
     except Exception as e:
@@ -925,12 +972,15 @@ def list_models(service_id, api_key=""):
     elif not spec.get("local"):
         return known
     try:
-        r = http.get(_base(spec, fmt) + "/models", headers=headers, timeout=(10, 30))
-        if r.status_code >= 400:
-            raise ServiceError(f"{spec['name']}: elenco dei modelli non disponibile (errore {r.status_code}: "
-                               f"{_error_text(r)})")
-        items = r.json().get("data") or []
-        ids = [str(m.get("id")) for m in items if isinstance(m, dict) and m.get("id")]
+        r = http.get(_base(spec, fmt) + "/models", headers=headers, timeout=(10, 30), stream=True, allow_redirects=False)
+        try:
+            if r.status_code >= 400:
+                raise ServiceError(f"{spec['name']}: elenco dei modelli non disponibile (errore {r.status_code}: "
+                                   f"{_error_text(r, api_key)})")
+            items = r.json().get("data") or []
+            ids = [str(m.get("id")) for m in items if isinstance(m, dict) and m.get("id")]
+        finally:
+            r.close()
     except requests.RequestException as e:
         raise ServiceError(f"{spec['name']} non raggiungibile ({e.__class__.__name__})") from None
     except (ValueError, AttributeError):

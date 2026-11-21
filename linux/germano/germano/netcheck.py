@@ -19,7 +19,7 @@ _PS = (r"[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ErrorActionPreference
        r"$p=@(Get-NetConnectionProfile|Select-Object InterfaceAlias,NetworkCategory); "
        r"$f=@(Get-NetFirewallProfile -PolicyStore ActiveStore|Select-Object Name,Enabled,AllowLocalFirewallRules); "
        r"$r=@(Get-NetFirewallRule -DisplayName '" + RULE + r"'|ForEach-Object{[pscustomobject]@{Enabled=[string]$_.Enabled;"
-       r"Action=[string]$_.Action;Profile=[string]$_.Profile;Program=($_|Get-NetFirewallApplicationFilter).Program}}); "
+       r"Direction=[string]$_.Direction;Action=[string]$_.Action;Profile=[string]$_.Profile;Program=($_|Get-NetFirewallApplicationFilter).Program}}); "
        r"@{profiles=$p;firewall=$f;rules=$r}|ConvertTo-Json -Depth 4 -Compress")
 _lock = threading.Lock()
 _state = {"time": 0.0, "running": False, "warnings": None}
@@ -46,7 +46,8 @@ def analyze(data, program, installed, port, discovery_port):
     out = []
     for p in (data or {}).get("profiles") or []:
         if p.get("NetworkCategory") == 0:
-            alias = p.get("InterfaceAlias") or "?"
+            alias = str(p.get("InterfaceAlias") or "?").replace("\r", "").replace("\n", "")
+            alias_ps = alias.replace("'", "''")
             out.append({
                 "code": "public_network",
                 "it": f"La rete «{alias}» è classificata come Pubblica: Windows blocca i computer della rete (la regola "
@@ -55,9 +56,10 @@ def analyze(data, program, installed, port, discovery_port):
                 "en": f"The «{alias}» network is classified as Public: Windows blocks the network computers (Germano's "
                       "rule applies to private and domain networks, by design). If it is the office network set it to "
                       "Private, from PowerShell as administrator:",
-                "command": f'Set-NetConnectionProfile -InterfaceAlias "{alias}" -NetworkCategory Private'})
+                "command": f"Set-NetConnectionProfile -InterfaceAlias '{alias_ps}' -NetworkCategory Private"})
     rules = (data or {}).get("rules") or []
     good = [r for r in rules if r.get("Enabled") == "True" and r.get("Action") == "Allow"
+            and r.get("Direction", "Inbound") == "Inbound"
             and _same_program(r.get("Program"), program)]
     if installed and not good:
         why_it = "manca" if not rules else "è disattivata o riguarda un altro programma"

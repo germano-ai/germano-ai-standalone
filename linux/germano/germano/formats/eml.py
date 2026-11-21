@@ -2,6 +2,7 @@
 messaggi inoltrati annidati."""
 import email
 import os
+import re
 from email import policy
 
 from .. import common
@@ -13,8 +14,12 @@ _HEADERS = {
     "disposition-notification-to", "resent-from", "resent-to", "resent-cc", "x-sender", "x-receiver",
     "errors-to", "subject", "thread-topic", "comments", "keywords", "organization", "x-originating-ip",
     "received", "message-id", "in-reply-to", "references", "x-ms-exchange-organization-authas",
-    "x-forwarded-to", "x-forwarded-for", "list-unsubscribe",
+    "x-forwarded-to", "x-forwarded-for", "list-unsubscribe", "dkim-signature", "authentication-results",
+    "received-spf", "x-original-sender", "x-real-ip", "return-receipt-to", "final-recipient",
+    "original-recipient", "x-ricevuta", "x-trasporto", "x-riferimento-message-id", "x-verifica-sicurezza",
 }
+_HEADER_PREFIXES = ("x-pec", "x-original-", "x-forwarded-", "x-ms-exchange-")
+_UNFOLD_RE = re.compile(r"\r?\n[ \t]+")
 _IMAGE_SUBTYPES = {"png", "jpeg", "jpg", "gif", "bmp", "tiff", "webp"}
 
 
@@ -60,13 +65,21 @@ def process_eml(in_path, out_path, ctx):
         hdrs = getattr(part, "_headers", None)
         if hdrs:
             for idx, (name, value) in enumerate(list(hdrs)):
-                if name.lower() in _HEADERS:
-                    sval = str(value)
+                low = name.lower()
+                if low in _HEADERS or low.startswith(_HEADER_PREFIXES):
+                    sval = _UNFOLD_RE.sub(" ", str(value)).replace("\r", " ").replace("\n", " ")
                     if sval.strip():
                         units.append(Unit(sval, context=f"{name}: "))
 
                         def _ap(new, p=part, i=idx, nm=name):
-                            p._headers[i] = p.policy.header_store_parse(nm, new)
+                            clean = _UNFOLD_RE.sub(" ", str(new)).replace("\r", " ").replace("\n", " ")
+                            try:
+                                p._headers[i] = p.policy.header_store_parse(nm, clean)
+                            except Exception:
+                                if ctx.anonymize:
+                                    p._headers[i] = p.policy.header_store_parse(nm, "[DATO_OSCURATO]")
+                                else:
+                                    raise
                         appliers.append(_ap)
         if part.is_multipart() or part.get_content_maintype() == "message":
             continue
@@ -85,6 +98,15 @@ def process_eml(in_path, out_path, ctx):
                 appliers.append(_ap_text)
         elif ctype == "text/html":
             html_parts.append(part)
+        elif part.get_content_maintype() == "text":
+            text = _get_text(part)
+            sub = part.get_content_subtype() or "plain"
+            if text and text.strip():
+                units.append(Unit(text))
+
+                def _ap_other_text(new, p=part, st=sub):
+                    p.set_content(new, subtype=st, charset="utf-8")
+                appliers.append(_ap_other_text)
         elif part.get_content_maintype() == "image":
             att_parts.append(part)
         elif ctx.anonymize and part.get_content_maintype() not in ("text", "multipart"):
@@ -131,7 +153,7 @@ def _process_attachment(part, ctx, person):
         try:
             new_data, out_name = process_bytes(data, base, ctx.child())
             if out_name != base:  # es. documento.pdf.p7m -> documento.pdf
-                new_name = out_name
+                new_name = transform_filename(out_name, ctx)
                 maintype, subtype = "application", "octet-stream"
             if cid:
                 del part["Content-ID"]

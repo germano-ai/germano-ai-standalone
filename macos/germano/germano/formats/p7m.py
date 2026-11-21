@@ -11,10 +11,13 @@ import re
 from . import ProcessingError, process_file
 
 _OID_SIGNED_DATA = bytes.fromhex("2a864886f70d010702")
+_MAX_BER_DEPTH = 64
 
 
-def _tlv(data, pos, end):
-    """(tag, constructed, content_start, content_end, next_pos); content_end None se lunghezza indefinita."""
+def _tlv(data, pos, end, depth=0):
+    """(tag, constructed, content_start, content_end, next_pos)."""
+    if depth > _MAX_BER_DEPTH:
+        raise ValueError("struttura ASN.1 troppo annidata")
     if pos >= end:
         raise ValueError("fine dati")
     tag = data[pos]
@@ -38,7 +41,7 @@ def _tlv(data, pos, end):
                 raise ValueError("EOC mancante")
             if data[p] == 0 and data[p + 1] == 0:
                 return tag, constructed, pos, p, p + 2
-            _, _, _, _, p = _tlv(data, p, end)
+            _, _, _, _, p = _tlv(data, p, end, depth + 1)
     if first & 0x80:
         nb = first & 0x7F
         if nb == 0 or nb > 6 or pos + nb > end:
@@ -52,22 +55,26 @@ def _tlv(data, pos, end):
     return tag, constructed, pos, pos + length, pos + length
 
 
-def _children(data, start, end):
+def _children(data, start, end, depth=0):
+    if depth > _MAX_BER_DEPTH:
+        raise ValueError("struttura ASN.1 troppo annidata")
     out = []
     p = start
     while p < end:
         if data[p] == 0 and p + 1 < end and data[p + 1] == 0:
             break
-        t = _tlv(data, p, end)
+        t = _tlv(data, p, end, depth)
         out.append(t)
         p = t[4]
     return out
 
 
-def _octets(data, tag, constructed, cs, ce):
+def _octets(data, tag, constructed, cs, ce, depth=0):
+    if depth > _MAX_BER_DEPTH:
+        raise ValueError("struttura ASN.1 troppo annidata")
     if not constructed:
         return data[cs:ce]
-    return b"".join(_octets(data, t, c, s, e) for t, c, s, e, _ in _children(data, cs, ce))
+    return b"".join(_octets(data, t, c, s, e, depth + 1) for t, c, s, e, _ in _children(data, cs, ce, depth + 1))
 
 
 def extract_signed_content(raw):
@@ -141,12 +148,16 @@ def process_p7m(in_path, out_path, ctx):
     except Exception as e:
         raise ProcessingError(f"File .p7m non leggibile: {e}")
     base = out_path[:-4] if out_path.lower().endswith(".p7m") else out_path
-    if not os.path.splitext(os.path.basename(base))[1]:
-        base += _guess_ext(content)
+    guessed = _guess_ext(content)
+    declared = os.path.splitext(os.path.basename(base))[1].lower()
+    if not declared:
+        base += guessed
+    elif declared in (".txt", ".csv", ".md", ".log") and guessed in (".pdf", ".docx", ".xlsx", ".pptx", ".odt", ".zip", ".rtf", ".p7m"):
+        base = os.path.splitext(base)[0] + guessed
     with ctx.tempdir() as d:
         inner_in = os.path.join(d, os.path.basename(base))
         with open(inner_in, "wb") as f:
             f.write(content)
-        result = process_file(inner_in, base, ctx)
+        result = process_file(inner_in, base, ctx.child())
     ctx.note("Firma digitale CAdES rimossa: il file in uscita e' il documento interno (la firma conteneva i dati del firmatario).")
     return result

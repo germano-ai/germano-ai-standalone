@@ -23,7 +23,10 @@ import uuid
 
 MAX_EVENT_CHARS = 400_000         # testo massimo di un singolo campo di un evento (oltre si tronca, con l'avviso)
 MAX_RUNS_PER_OWNER = 3            # esecuzioni contemporanee per dispositivo/utente
+MAX_RUNS_TOTAL = 200              # tetto globale alle esecuzioni tracciate in memoria
+MAX_QUEUE_EVENTS = 4096           # tetto eventi per coda Run (evita crescita illimitata dopo disconnessioni)
 FINISHED_KEEP = 120               # secondi in cui un'esecuzione conclusa resta consultabile (abort tardivi, payload)
+STALE_RUN_TTL = 4 * 3600          # pulizia di sicurezza per Run rimaste appese senza chiusura
 REVIEW_TIMEOUT = 15 * 60          # attesa massima della revisione manuale prima dell'invio
 
 ABORT_IT = ("Operazione interrotta dall'utente tramite Glass Window: nessun dato ulteriore è stato trasmesso o "
@@ -32,25 +35,25 @@ ABORT_EN = "Operation stopped by the user via Glass Window: no further data was 
 
 _SECRET_HEADERS = {"authorization", "x-api-key", "api-key", "x-goog-api-key", "proxy-authorization", "cookie",
                    "x-germano-provider-key", "x-germano-auth"}
-_KEYISH_RE = re.compile(r"\b(sk|pk|rk|gsk|xai|pplx|AIza|sk-ant|sk-proj|sk-or)[-_A-Za-z0-9]{12,}\b")
+_KEYISH_RE = re.compile(r"(?<![A-Za-z0-9])(sk-ant|sk-proj|sk-or|sk|pk|rk|gsk|xai|pplx|AIza|hf_)[-_A-Za-z0-9]{12,}\b")
 
 
-def mask_secret(value):
+def mask_secret(value, strict=False):
     """Chiave o token mostrati in modo riconoscibile ma inutilizzabile: «Bearer sk-p…9fQ2 (nascosta)»."""
     v = str(value or "")
     scheme = ""
     if " " in v:
         scheme, _, v = v.partition(" ")
         scheme += " "
-    if len(v) <= 8:
+    if strict or len(v) <= 8:
         return scheme + "••••"
     return f"{scheme}{v[:4]}…{v[-4:]}"
 
 
-def redact_headers(headers):
+def redact_headers(headers, remote=False):
     out = {}
     for k, v in (headers or {}).items():
-        out[k] = mask_secret(v) + " (nascosta)" if k.lower() in _SECRET_HEADERS else v
+        out[k] = mask_secret(v, strict=remote) + " (nascosta)" if k.lower() in _SECRET_HEADERS else v
     return out
 
 
@@ -65,15 +68,16 @@ def scrub_server_paths(obj, enabled):
     if not enabled:
         return obj
     home = os.path.expanduser("~")
-    names = {home, home.replace("\\", "/"), home.replace("\\", "\\\\")}
+    names = sorted({home, home.replace("\\", "/"), home.replace("\\", "\\\\")}, key=len, reverse=True)
+    patterns = [re.compile(re.escape(n), re.I if os.name == "nt" else 0) for n in names if n]
     user = os.path.basename(home.rstrip("\\/"))
+    user_re = re.compile(r"(?i)(users[\\/]+|home[\\/]+)" + re.escape(user) + r"(?=[\\/]|$)") if user else None
 
     def fix(s):
-        for n in names:
-            if n and n in s:
-                s = s.replace(n, "~")
-        if user and len(user) > 2:
-            s = re.sub(r"(?i)(users[\\/]+|home[\\/]+)" + re.escape(user), r"\1~", s)
+        for pat in patterns:
+            s = pat.sub("~", s)
+        if user_re is not None:
+            s = user_re.sub(r"\1~", s)
         return s
 
     def walk(o):
@@ -128,18 +132,41 @@ class Run:
         self.transmitted = False           # True appena il primo byte e' partito verso il servizio di AI
         self.received = 0                  # caratteri ricevuti dal modello
         self.reason = ""                   # motivo dell'interruzione: "user", "client", "timeout"
-        self.queue = queue.Queue()
+        self.queue = queue.Queue(maxsize=MAX_QUEUE_EVENTS)
         self._cancel = threading.Event()
         self._approve = threading.Event()
         self._lock = threading.Lock()
         self._proc = None
         self._response = None
 
+    def _enqueue(self, item, drop_oldest=False):
+        try:
+            self.queue.put_nowait(item)
+        except queue.Full:
+            if drop_oldest:
+                try:
+                    self.queue.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    self.queue.put_nowait(item)
+                except queue.Full:
+                    pass
+
     # -- eventi
     def emit(self, kind, **data):
+        if self.finished is not None:
+            return
         data["type"] = kind
         data.setdefault("t", round((time.time() - self.created) * 1000))
-        self.queue.put(data)
+        self._enqueue(data, drop_oldest=kind in ("done", "error", "aborted", "_wake"))
+
+    def drain(self):
+        while True:
+            try:
+                self.queue.get_nowait()
+            except queue.Empty:
+                break
 
     def elapsed_ms(self):
         return round((time.time() - self.created) * 1000)
@@ -177,7 +204,7 @@ class Run:
             _kill_tree(proc)
         if resp is not None:
             _close_quietly(resp)
-        self.queue.put({"type": "_wake"})
+        self._enqueue({"type": "_wake"}, drop_oldest=True)
         return True
 
     def check(self):
@@ -256,11 +283,18 @@ class Registry:
 
     def _gc(self):
         now = time.time()
-        for rid in [r for r, run in self._runs.items() if run.finished and now - run.finished > FINISHED_KEEP]:
+        for rid in [r for r, run in self._runs.items()
+                    if (run.finished and now - run.finished > FINISHED_KEEP)
+                    or (not run.finished and now - run.created > STALE_RUN_TTL)]:
             self._runs.pop(rid, None)
+        if len(self._runs) > MAX_RUNS_TOTAL:
+            finished = sorted((r for r in self._runs.values() if r.finished), key=lambda r: r.finished)
+            for run in finished[: max(0, len(self._runs) - MAX_RUNS_TOTAL)]:
+                self._runs.pop(run.id, None)
 
     def active_for(self, owner):
         with self._lock:
+            self._gc()
             return sum(1 for r in self._runs.values() if r.owner == owner and not r.finished)
 
     def register(self, owner, local, target="", model=""):
@@ -268,6 +302,8 @@ class Registry:
             self._gc()
             busy = sum(1 for r in self._runs.values() if r.owner == owner and not r.finished)
             if busy >= MAX_RUNS_PER_OWNER and not local:
+                return None
+            if len(self._runs) >= MAX_RUNS_TOTAL and not local:
                 return None
             run = Run(owner, local, target, model)
             self._runs[run.id] = run
@@ -279,6 +315,12 @@ class Registry:
 
     def finish(self, run):
         run.finished = time.time()
+        with run._lock:
+            run._proc = None
+            run._response = None
+        run.drain()
+        with self._lock:
+            self._gc()
 
     def abort_all(self):
         with self._lock:
@@ -292,19 +334,34 @@ RUNS = Registry()
 
 
 # ------------------------------------------------------------------------------------------------ cache
+def _approx_bytes(value):
+    if isinstance(value, str):
+        return len(value) * 2
+    if isinstance(value, (bytes, bytearray)):
+        return len(value)
+    if isinstance(value, dict):
+        return sum(_approx_bytes(k) + _approx_bytes(v) for k, v in value.items()) + 64
+    if isinstance(value, (list, tuple)):
+        return sum(_approx_bytes(x) for x in value) + 32
+    return 32
+
+
 class AnonCache:
     """Risultati del motore per testi gia' protetti (cronologia della conversazione, anteprima della Glass Window):
-    a ogni turno si rianalizza solo il testo nuovo. Chiave = impronta di testo + impostazioni effettive; svuotata
-    quando si svuota il Vault (le etichette ripartirebbero da 1)."""
+    a ogni turno si rianalizza solo il testo nuovo. Chiave = impronta di testo + impostazioni effettive + identita'
+    del richiedente (isolata tra utenti della rete); svuotata quando si svuota il Vault."""
 
-    def __init__(self, maxsize=768, ttl=3600):
-        self.maxsize, self.ttl = maxsize, ttl
+    def __init__(self, maxsize=768, ttl=3600, max_bytes=128 * 1024 * 1024):
+        self.maxsize, self.ttl, self.max_bytes = maxsize, ttl, max_bytes
         self._d = collections.OrderedDict()
+        self._sizes = {}
+        self._total = 0
         self._lock = threading.Lock()
 
     @staticmethod
-    def key(text, settings_sig):
-        return hashlib.sha256((settings_sig + "\0" + text).encode("utf-8", "surrogatepass")).hexdigest()
+    def key(text, settings_sig, owner=""):
+        prefix = (str(owner or "") + "\0") if owner else ""
+        return hashlib.sha256((prefix + settings_sig + "\0" + text).encode("utf-8", "surrogatepass")).hexdigest()
 
     def get(self, k):
         with self._lock:
@@ -313,23 +370,34 @@ class AnonCache:
                 return None
             if time.time() - hit[0] > self.ttl:
                 self._d.pop(k, None)
+                self._total -= self._sizes.pop(k, 0)
                 return None
             self._d.move_to_end(k)
             return hit[1]
 
-    def put(self, k, value):
+    def put(self, k, value, size=None):
+        sz = int(size) if size is not None else _approx_bytes(value)
+        if self.max_bytes and sz > self.max_bytes // 4:
+            return
         with self._lock:
+            self._total -= self._sizes.pop(k, 0)
             self._d[k] = (time.time(), value)
             self._d.move_to_end(k)
-            while len(self._d) > self.maxsize:
-                self._d.popitem(last=False)
+            self._sizes[k] = sz
+            self._total += sz
+            while self._d and (len(self._d) > self.maxsize or (self.max_bytes and self._total > self.max_bytes)):
+                old, _ = self._d.popitem(last=False)
+                self._total -= self._sizes.pop(old, 0)
 
     def clear(self):
         with self._lock:
             self._d.clear()
+            self._sizes.clear()
+            self._total = 0
 
     def __len__(self):
-        return len(self._d)
+        with self._lock:
+            return len(self._d)
 
 
 CACHE = AnonCache()
@@ -340,43 +408,17 @@ class MediaCache(AnonCache):
     politica della cache dei testi, con un tetto anche sulla memoria occupata (turno 26)."""
 
     def __init__(self, maxsize=128, ttl=3600, max_bytes=256 * 1024 * 1024):
-        super().__init__(maxsize, ttl)
-        self.max_bytes = max_bytes
-        self._sizes = {}
-
-    def put(self, k, value, size=0):
-        size = int(size or 0)
-        if size > self.max_bytes // 4:
-            return                                   # un solo allegato enorme non svuota la cache
-        with self._lock:
-            self._d[k] = (time.time(), value)
-            self._d.move_to_end(k)
-            self._sizes[k] = size
-            while len(self._d) > self.maxsize or sum(self._sizes.values()) > self.max_bytes:
-                old, _ = self._d.popitem(last=False)
-                self._sizes.pop(old, None)
-
-    def get(self, k):
-        hit = super().get(k)
-        if hit is None:
-            with self._lock:
-                if k not in self._d:
-                    self._sizes.pop(k, None)
-        return hit
-
-    def clear(self):
-        with self._lock:
-            self._d.clear()
-            self._sizes.clear()
+        super().__init__(maxsize, ttl, max_bytes=max_bytes)
 
 
 MEDIA_CACHE = MediaCache()
 
 
 def settings_signature(cfg, options=None):
-    """Impronta delle impostazioni che cambiano il risultato del motore (modelli, categorie, soglia, mascheramento)."""
+    """Impronta delle impostazioni che cambiano il risultato del motore (modelli, categorie, visione, soglia, mascheramento)."""
     keys = sorted(k for k in cfg if k.startswith(("enable_model", "enable_regex", "censor_")) or
-                  k in ("ai_threshold", "compliance_mode", "enable_deanonymize", "enable_system2"))
+                  k in ("ai_threshold", "compliance_mode", "enable_deanonymize", "enable_system2",
+                        "enable_ocr", "enable_faces", "enable_signatures", "enable_plate_vision"))
     base = {k: cfg.get(k) for k in keys}
     return hashlib.sha256(json.dumps([base, options or None], sort_keys=True, default=str).encode()).hexdigest()[:24]
 

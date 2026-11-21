@@ -88,20 +88,49 @@ def main():
                         tags[key] = val[:20000]
         return fmt, tags
 
+    def _decode_bounded(path, max_seconds):
+        import av
+        import numpy as np
+        max_samples = int((max_seconds + 6) * SAMPLE_RATE) if max_seconds else 0
+        chunks = []
+        total = 0
+        resampler = av.audio.resampler.AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
+        with av.open(path, metadata_errors="ignore") as container:
+            audio_streams = [s for s in container.streams if s.type == "audio"]
+            if not audio_streams:
+                raise ValueError("il file non contiene una traccia audio")
+            for frame in container.decode(audio_streams[0]):
+                for rf in resampler.resample(frame):
+                    arr = rf.to_ndarray().reshape(-1)
+                    if arr.size:
+                        chunks.append(arr.copy())
+                        total += arr.size
+                        if max_samples and total > max_samples:
+                            return None, total / float(SAMPLE_RATE)
+            for rf in resampler.resample(None):
+                arr = rf.to_ndarray().reshape(-1)
+                if arr.size:
+                    chunks.append(arr.copy())
+                    total += arr.size
+                    if max_samples and total > max_samples:
+                        return None, total / float(SAMPLE_RATE)
+        if not chunks:
+            return np.zeros(0, dtype=np.float32), 0.0
+        pcm = np.concatenate(chunks).astype(np.float32) / 32768.0
+        return pcm, len(pcm) / float(SAMPLE_RATE)
+
     def transcribe(req):
-        from faster_whisper import decode_audio
         path = req["path"]
         fmt, tags = probe(path)
-        send({"ev": "probe", "ok": True, "format": fmt, "tags": tags})
         max_seconds = float(req.get("max_seconds") or 0)
         if max_seconds and fmt.get("duration") and fmt["duration"] > max_seconds + 5:
             send({"ev": "error", "kind": "too_long", "duration": fmt["duration"],
                   "message": "registrazione troppo lunga"})
             return
+        send({"ev": "probe", "ok": True, "format": fmt, "tags": tags})
         t0 = time.time()
-        audio = decode_audio(path, sampling_rate=SAMPLE_RATE)
-        seconds = len(audio) / float(SAMPLE_RATE)
-        if max_seconds and seconds > max_seconds + 5:
+        audio, seconds = _decode_bounded(path, max_seconds)
+        if audio is None or (max_seconds and seconds > max_seconds + 5):
             send({"ev": "error", "kind": "too_long", "duration": seconds, "message": "registrazione troppo lunga"})
             return
         send({"ev": "audio", "duration": seconds, "decode_s": round(time.time() - t0, 2)})

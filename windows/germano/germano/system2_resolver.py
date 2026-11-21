@@ -152,8 +152,7 @@ QUESTIONS = {
 # «Capitolo», «sub»): si rilascia per regola, senza interrogare il modello.
 NUMERIC_GROUPS = frozenset({
     "private_phone", "NUMERO_TELEFONO", "IMEI", "plates_docs", "NUMERO_DOCUMENTO", "N_LICENZA", "TARGA_VEICOLO",
-    "account_number", "IBAN", "NUMERO_CARTA", "NUMERO_CONTO", "CVV", "NUM_ASSEGNO_BANCARIO", "cf_iva",
-    "CODICE_FISCALE", "P_IVA", "cadastre", "FOGLIO", "PARTICELLA", "SUBALTERNO", "MAPPALE", "IP", "IPV6_1",
+    "cadastre", "FOGLIO", "PARTICELLA", "SUBALTERNO", "MAPPALE",
 })
 # Tipi ad alto rischio: il modello puo' solo confermarli, mai lasciarli in chiaro.
 NEVER_RELEASE = frozenset({
@@ -259,6 +258,8 @@ def context_window(text, s, e, width=CONTEXT_CHARS):
 
     def clean(t):
         t = t.replace("<|", "< |").replace("|>", "| >").replace("[[", "[ [").replace("]]", "] ]")
+        t = t.replace("«", '"').replace("»", '"')
+        t = re.sub(r"(?im)^[ \t]*(domanda|estratto|risposta|system|assistant|user)\s*:", r"\1 -", t)
         t = re.sub(r"[ \t\f\v]+", " ", t)
         return re.sub(r"\s*\n\s*", "\n", t)
     left, mid, right = clean(text[a:s]), clean(text[s:e]), clean(text[e:b])
@@ -432,8 +433,10 @@ class System2Resolver:
         self.model_path, self.manifest = _locate_model()
         self._lock = threading.Lock()
         self._cache_lock = threading.Lock()
+        self._stats_lock = threading.Lock()
         self._cache = OrderedDict()
         self._proc = None
+        self._ready = False
         self._port = None
         self._key = None
         self._job = None
@@ -449,7 +452,7 @@ class System2Resolver:
 
     def info(self):
         m = self.manifest or {}
-        return {"available": self.available, "running": self._proc is not None and self._proc.poll() is None,
+        return {"available": self.available, "running": self._running(),
                 "model": m.get("name") or (os.path.basename(self.model_path) if self.model_path else None),
                 "quantization": m.get("quantization"), "runtime": m.get("runtime") or "llama.cpp",
                 "error": self.last_error}
@@ -486,7 +489,8 @@ class System2Resolver:
             s.close()
 
     def _running(self):
-        return self._proc is not None and self._proc.poll() is None
+        proc = self._proc
+        return self._ready and proc is not None and proc.poll() is None
 
     def ensure_started(self):
         if self._running():
@@ -520,14 +524,15 @@ class System2Resolver:
                     self._job = _WinJob()
                 self._job.assign(proc)
             common.atomic_write_json(self._state_file(), {"pid": proc.pid, "port": port, "started": time.time()})
-            self._proc, self._port, self._key = proc, port, key
             while time.time() - t0 < START_TIMEOUT_S:
                 if proc.poll() is not None:
                     break
                 try:
                     with self._opener.open(f"http://127.0.0.1:{port}/health", timeout=2) as r:
                         if r.status == 200:
-                            self.stats["starts"] += 1
+                            self._port, self._key, self._proc, self._ready = port, key, proc, True
+                            with self._stats_lock:
+                                self.stats["starts"] += 1
                             self.last_error = None
                             self.log(f"Sistema 2 pronto in {time.time() - t0:.1f}s ({self.info()['model']}, "
                                      f"{self.threads} thread, solo 127.0.0.1).")
@@ -537,10 +542,12 @@ class System2Resolver:
                 time.sleep(0.25)
             self.last_error = "il server locale del Sistema 2 non si e' avviato (dettagli in state/sistema2.log)"
             self.log(f"Avviso: {self.last_error}.")
+            self._proc = proc
             self._kill()
             return False
 
     def _kill(self):
+        self._ready = False
         proc, self._proc = self._proc, None
         if proc is not None and proc.poll() is None:
             try:
@@ -562,12 +569,15 @@ class System2Resolver:
 
     # ------------------------------------------------------------------ decisioni
     def _ask(self, messages):
+        port, key = self._port, self._key
+        if not port or not key:
+            raise OSError("Sistema 2 non pronto")
         body = {"messages": messages, "max_tokens": 1, "temperature": 0.0, "logprobs": True, "top_logprobs": 20,
                 "cache_prompt": True}
-        req = urllib.request.Request(f"http://127.0.0.1:{self._port}/v1/chat/completions",
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions",
                                      data=json.dumps(body).encode("utf-8"), method="POST",
                                      headers={"Content-Type": "application/json",
-                                              "Authorization": f"Bearer {self._key}"})
+                                              "Authorization": f"Bearer {key}"})
         with self._opener.open(req, timeout=REQUEST_TIMEOUT_S) as r:
             data = json.loads(r.read().decode("utf-8"))
         content = ((data.get("choices") or [{}])[0].get("logprobs") or {}).get("content") or []
@@ -587,12 +597,13 @@ class System2Resolver:
     def decide(self, text, start, end, group, deadline=None):
         """Decisione su un frammento (None = non deciso: il dubbio resta oscurato)."""
         group = str(group or "")
-        if group in NUMERIC_GROUPS and not any(ch.isdigit() for ch in text[start:end]):
+        if group in NUMERIC_GROUPS and group not in NEVER_RELEASE and not any(ch.isdigit() for ch in text[start:end]):
             return Decision(0.0, "nessuna cifra: non può essere un numero o un codice di questo tipo", rule=True)
         desc = _desc(group)
         template = _question_template(group)
+        raw_win = text[max(0, start - CONTEXT_CHARS):min(len(text), end + CONTEXT_CHARS)]
         context, word = context_window(text, start, end)
-        if _INJECTION_RE.search(context):
+        if _INJECTION_RE.search(raw_win) or _INJECTION_RE.search(context):
             return Decision(1.0, "testo con istruzioni rivolte a un'AI: non valutato, resta oscurato", rule=True)
         question = template.format(w=word.replace("«", "").replace("»", ""), desc=desc)
         key = hashlib.sha1(f"{self.model_path}\x00{question}\x00{context}".encode("utf-8", "surrogatepass")).hexdigest()
@@ -600,7 +611,8 @@ class System2Resolver:
             hit = self._cache.get(key)
             if hit is not None:
                 self._cache.move_to_end(key)
-                self.stats["cached"] += 1
+                with self._stats_lock:
+                    self.stats["cached"] += 1
                 return Decision(hit, self._reason(template, desc, hit), 0.0, cached=True)
         if deadline is not None and time.time() > deadline:
             return None
@@ -610,14 +622,16 @@ class System2Resolver:
         try:
             p = self._ask(build_messages(context, question, template))
         except (urllib.error.URLError, OSError, ValueError, KeyError, IndexError, TypeError) as e:
-            self.stats["errors"] += 1
+            with self._stats_lock:
+                self.stats["errors"] += 1
             self.last_error = f"{type(e).__name__}: {e}"
             if not self._running():
                 self.log("Avviso: il server locale del Sistema 2 si e' chiuso; si riavvia alla prossima richiesta.")
             return None
         ms = (time.time() - t0) * 1000
-        self.stats["requests"] += 1
-        self.stats["seconds"] += ms / 1000
+        with self._stats_lock:
+            self.stats["requests"] += 1
+            self.stats["seconds"] += ms / 1000
         if p is None:
             return None
         with self._cache_lock:
@@ -637,9 +651,11 @@ class System2Resolver:
         """Politica di rilascio: True solo se il frammento puo' restare in chiaro."""
         if decision is None or decision.is_sensitive:
             return False
+        if str(group or "") in NEVER_RELEASE:
+            return False
         if decision.rule:
             return True
-        return str(group or "") not in NEVER_RELEASE and decision.confidence >= threshold
+        return decision.confidence >= threshold
 
     def resolve(self, text, spans, settings, cancel=None, max_seconds=MAX_SECONDS_PER_TEXT, known=None):
         """Applica la politica del Sistema 2 agli span di un testo. Restituisce (span da oscurare, decisioni)."""
@@ -667,9 +683,10 @@ class System2Resolver:
         if not cands or not settings.get("enable_system2", True) or not self.available:
             return [(spans, []) for _text, spans in items]
         threshold = RELEASE_P_NO.get(settings.get("compliance_mode", "PA"), RELEASE_P_NO["PA"])
-        # tempo massimo: come prima, MAX_SECONDS_PER_TEXT per ogni testo con dubbi (mai un'attesa senza fine)
+        # tempo massimo: MAX_SECONDS_PER_TEXT per testo con dubbi, con un tetto per lotto per evitare attese di ore
         n_texts = len({ti for ti, _sp in cands})
-        deadline = time.time() + max_seconds * n_texts
+        max_batch = max(max_seconds * 4, 600)
+        deadline = time.time() + min(max_seconds * n_texts, max_batch)
         if cancel is not None and getattr(cancel, "deadline", None):
             deadline = min(deadline, cancel.deadline)
         priority = 0 if is_interactive() else 1
@@ -708,14 +725,19 @@ class System2Resolver:
             submit(j)
         decisions = {}
         try:
+            hard_end = deadline + REQUEST_TIMEOUT_S
             while running:
-                done, _rest = wait(list(running), timeout=max(1.0, deadline - time.time() + REQUEST_TIMEOUT_S),
-                                   return_when=FIRST_COMPLETED)
-                if not done:                               # tempo scaduto: i dubbi rimasti restano oscurati
+                if cancel is not None:
+                    cancel.check()
+                rem = hard_end - time.time()
+                if rem <= 0:
                     for f in list(running):
                         f.cancel()
                         decisions[running.pop(f)] = None
                     break
+                done, _rest = wait(list(running), timeout=min(1.0, rem), return_when=FIRST_COMPLETED)
+                if not done:
+                    continue
                 for f in done:
                     j = running.pop(f)
                     try:

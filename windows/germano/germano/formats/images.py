@@ -223,12 +223,20 @@ def _back_to_mode(img, orig_mode):
     return img
 
 
+MAX_FRAMES = 300
+MAX_TOTAL_PIXELS = 200_000_000
+
+
 def _prepare_frames(im, ctx, single_transpose=True):
     """Prima fase: fotogrammi da modificare e visione su ciascuno (l'analisi del testo letto avviene dopo)."""
     from PIL import ImageOps
     import numpy as np
+    from . import ProcessingError
     n = getattr(im, "n_frames", 1) or 1
+    if n > MAX_FRAMES:
+        raise ProcessingError(f"Immagine animata o multi-pagina con troppi fotogrammi ({n}, massimo {MAX_FRAMES}).")
     frames = []
+    total_px = 0
     for i in range(n):
         ctx.check()
         if n > 1:
@@ -237,13 +245,16 @@ def _prepare_frames(im, ctx, single_transpose=True):
             fr = im.copy()
         else:
             fr = ImageOps.exif_transpose(im) if single_transpose else im.copy()
+        px = fr.size[0] * fr.size[1]
+        total_px += px
+        if total_px > MAX_TOTAL_PIXELS:
+            raise ProcessingError("Immagine multi-fotogramma troppo grande: limite di memoria di sicurezza superato.")
         orig_mode = fr.mode
         work = fr.convert("RGBA") if _has_alpha(fr) else fr.convert("RGB")
         scan = None
         if min(work.size) >= MIN_SIDE and ctx.engine is not None and ctx.anonymize:
             scan = scan_image(ctx, np.array(work.convert("RGB")))
-        frames.append({"work": work, "mode": orig_mode, "scan": scan, "regions": [],
-                       "pixels": work.size[0] * work.size[1]})
+        frames.append({"work": work, "mode": orig_mode, "scan": scan, "regions": [], "pixels": px})
     return frames
 
 
@@ -335,12 +346,17 @@ def _prepare_bytes(data, ctx):
     except Exception:
         return None
     try:
-        if min(im.size) < MIN_SIDE:
-            return None
         try:
-            has_meta = bool(im.info.get("exif")) or bool(im.getexif()) or bool(im.info.get("xmp"))
+            has_meta = (
+                bool(im.info.get("exif")) or bool(im.getexif()) or bool(im.info.get("xmp"))
+                or bool(im.info.get("comment"))
+                or any(isinstance(v, str) and v.strip() for k, v in (im.info or {}).items()
+                       if k not in ("compression", "dpi", "transparency", "loop", "duration", "gamma"))
+            )
         except Exception:
             has_meta = False
+        if min(im.size) < MIN_SIDE and not has_meta:
+            return None
         return {"fmt": im.format, "info": dict(im.info), "has_meta": has_meta,
                 "frames": _prepare_frames(im, ctx)}
     finally:

@@ -33,8 +33,13 @@ from . import common
 _L = "A-Za-zÀ-ÖØ-öø-ÿ"
 # Etichetta numerata: [PERSONA_1], [PERSONA 1], [ persona_1 ], [COD.FISCALE/P.IVA_3], [DATO_SANITARIO_2]
 TAG_RE = re.compile(r"\[\s*([" + _L + r"][" + _L + r"./]*(?:[ _]+[" + _L + r"./]+)*?)[ _]+(\d{1,7})\s*\]")
+# Forma canonica emessa da Germano (maiuscola, con underscore): evita falsi positivi di auto-ripristino (es. "[data 1]")
+STRICT_TAG_RE = re.compile(r"\[([A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þ./]*(?:_[A-ZÀ-ÖØ-Þ./]+)*)_(\d{1,7})\]")
 # Qualsiasi etichetta di Germano (anche non numerata, es. [VOLTO], [PERSONA]) da proteggere in rianalisi.
 ANY_TAG_RE = re.compile(r"\[[A-Z][A-Z0-9./_ ]{1,40}\]")
+MAX_RESTORE_FLOOR = 32 * 1024 * 1024
+MAX_RESTORE_RATIO = 16
+MAX_RESTORE_HARD = 250 * 1024 * 1024
 
 JSON_SYNC_MAX = 5000        # fino a qui la copia JSON si riscrive a ogni salvataggio (pochi millisecondi)
 JSON_EXPORT_S = 300         # oltre, al massimo ogni 5 minuti e alla chiusura del motore
@@ -75,20 +80,54 @@ def contains_tags(text, tag_map):
     return False
 
 
-def restore_text(text, tag_map, json_escape=False):
-    """Rimette i dati reali al posto delle etichette numerate (passaggio unico, O(n))."""
+def contains_strict_tags(text, tag_map):
+    """True solo se il testo contiene almeno un'etichetta nella forma canonica esatta di Germano ([PERSONA_1]) presente
+    nel Vault (evita che un testo comune come '[data 1]' attivi per errore la modalita' di ripristino)."""
+    if not text or "[" not in text or not tag_map:
+        return False
+    for m in STRICT_TAG_RE.finditer(text):
+        if _norm(m.group(1), m.group(2)) in tag_map:
+            return True
+    return False
+
+
+def restore_text(text, tag_map, json_escape=False, max_output=None):
+    """Rimette i dati reali al posto delle etichette numerate (passaggio unico, O(n)), con tetto anti-amplificazione."""
     if not isinstance(text, str) or "[" not in text or not tag_map:
         return text
-
-    def _rep(m):
+    limit = max_output if max_output is not None else min(MAX_RESTORE_HARD, max(len(text) * MAX_RESTORE_RATIO, MAX_RESTORE_FLOOR))
+    out = []
+    out_len = 0
+    pos = 0
+    for m in TAG_RE.finditer(text):
+        start, end = m.start(), m.end()
+        if start > pos:
+            chunk = text[pos:start]
+            out_len += len(chunk)
+            if out_len > limit:
+                raise ValueError("Il testo ripristinato supera il limite di sicurezza.")
+            out.append(chunk)
         word = tag_map.get(_norm(m.group(1), m.group(2)))
         if not word:
-            return m.group(0)
-        if json_escape:
-            return json.dumps(word, ensure_ascii=False)[1:-1]
-        return word
-
-    return TAG_RE.sub(_rep, text)
+            rep = m.group(0)
+        elif json_escape:
+            rep = json.dumps(word, ensure_ascii=False)[1:-1]
+        else:
+            rep = word
+        out_len += len(rep)
+        if out_len > limit:
+            raise ValueError("Il testo ripristinato supera il limite di sicurezza.")
+        out.append(rep)
+        pos = end
+    if pos == 0:
+        return text
+    if pos < len(text):
+        tail = text[pos:]
+        out_len += len(tail)
+        if out_len > limit:
+            raise ValueError("Il testo ripristinato supera il limite di sicurezza.")
+        out.append(tail)
+    return "".join(out)
 
 
 def _empty():
@@ -202,6 +241,37 @@ class Vault:
         self._json_due = False                             # la copia JSON e' indietro rispetto al database
         self._json_time = 0.0
         self._generation = None
+        self._norm_tags = None
+        self._active_jobs = 0
+        self._jobs_cond = threading.Condition(self._lock)
+
+    def _rollback_quietly(self, conn):
+        try:
+            if conn is not None and conn.in_transaction:
+                conn.execute("ROLLBACK")
+        except Exception:
+            pass
+
+    def begin_job(self):
+        with self._lock:
+            self._active_jobs += 1
+
+    def end_job(self):
+        with self._lock:
+            if self._active_jobs > 0:
+                self._active_jobs -= 1
+            if self._active_jobs == 0:
+                self._jobs_cond.notify_all()
+
+    def generation(self):
+        with self._lock:
+            self._ensure()
+            if self.use_sqlite:
+                try:
+                    self._generation = self._meta("generation", "0")
+                except Exception:
+                    pass
+            return str(self._generation or "0")
 
     # ------------------------------------------------------------------ disco: JSON (dischi di rete) ---------------
     def _stat(self):
@@ -216,6 +286,9 @@ class Vault:
         self._data = data or _empty()
         self._stat_sig = self._stat()
         self._map_cache = None
+        self._norm_tags = None
+        if self._generation is None:
+            self._generation = str(self._data.get("generation", "0"))
 
     # ------------------------------------------------------------------ disco: SQLite ------------------------------
     def _db(self):
@@ -249,13 +322,29 @@ class Vault:
         conn = self._db()
         conn.execute("BEGIN IMMEDIATE")
         try:
+            existing_tags = {normalize_tag(t) or t: (t, w) for t, w in conn.execute("SELECT tag, word FROM tags")}
             added = 0
+            accepted_tags = {}
             for tag, word in (data.get("tag_to_word") or {}).items():
-                if isinstance(tag, str) and isinstance(word, str):
-                    added += conn.execute("INSERT OR IGNORE INTO tags(tag, word) VALUES(?, ?)", (tag, word)).rowcount
+                if not (isinstance(tag, str) and isinstance(word, str)):
+                    continue
+                nt = normalize_tag(tag) or tag
+                if nt in existing_tags:
+                    cur_tag, cur_word = existing_tags[nt]
+                    if cur_word.strip().lower() == word.strip().lower():
+                        accepted_tags[tag] = cur_tag
+                    continue
+                rc = conn.execute("INSERT OR IGNORE INTO tags(tag, word) VALUES(?, ?)", (nt, word)).rowcount
+                if rc:
+                    added += rc
+                    existing_tags[nt] = (nt, word)
+                    accepted_tags[tag] = nt
             for key, tag in (data.get("word_to_tag") or {}).items():
-                if isinstance(key, str) and isinstance(tag, str):
-                    conn.execute("INSERT OR IGNORE INTO wkeys(wkey, tag) VALUES(?, ?)", (key, tag))
+                if not (isinstance(key, str) and isinstance(tag, str)):
+                    continue
+                mapped = accepted_tags.get(tag)
+                if mapped:
+                    conn.execute("INSERT OR IGNORE INTO wkeys(wkey, tag) VALUES(?, ?)", (key, mapped))
             for base, n in (data.get("counters") or {}).items():
                 try:
                     n = int(n)
@@ -267,7 +356,7 @@ class Vault:
             self._set_meta(conn, "ready", "1")      # il server legge il database solo dopo la migrazione completa
             conn.execute("COMMIT")
         except BaseException:
-            conn.execute("ROLLBACK")
+            self._rollback_quietly(conn)
             raise
         return added
 
@@ -287,8 +376,12 @@ class Vault:
                 # riscritta; la firma si registra per non riprovare a ogni richiesta
                 conn = self._db()
                 conn.execute("BEGIN IMMEDIATE")
-                self._set_meta(conn, "json_sig", sig)
-                conn.execute("COMMIT")
+                try:
+                    self._set_meta(conn, "json_sig", sig)
+                    conn.execute("COMMIT")
+                except BaseException:
+                    self._rollback_quietly(conn)
+                    raise
                 self._json_due = True
             return False
         added = self._merge_json(data, sig)
@@ -302,8 +395,12 @@ class Vault:
         self._sync_from_json()
         if self._meta("ready") != "1":         # nuova installazione, nessun JSON da importare
             conn.execute("BEGIN IMMEDIATE")
-            self._set_meta(conn, "ready", "1")
-            conn.execute("COMMIT")
+            try:
+                self._set_meta(conn, "ready", "1")
+                conn.execute("COMMIT")
+            except BaseException:
+                self._rollback_quietly(conn)
+                raise
         data = _empty()
         data["tag_to_word"] = {t: w for t, w in conn.execute("SELECT tag, word FROM tags ORDER BY id")}
         data["word_to_tag"] = {k: t for k, t in conn.execute("SELECT wkey, tag FROM wkeys ORDER BY id")}
@@ -311,6 +408,7 @@ class Vault:
         self._data = data
         self._generation = self._meta("generation", "0")
         self._map_cache = None
+        self._norm_tags = None
         if not self._json_time:
             self._json_time = time.time()      # copia JSON di un Vault grande: la prima tra JSON_EXPORT_S secondi
 
@@ -325,6 +423,7 @@ class Vault:
                        "tardi.")
             self._json_due = True
             return
+        conn = None
         try:
             st = os.stat(self.path)
             conn = self._db()
@@ -332,7 +431,7 @@ class Vault:
             self._set_meta(conn, "json_sig", f"{st.st_mtime_ns}:{st.st_size}")
             conn.execute("COMMIT")
         except Exception:
-            pass
+            self._rollback_quietly(conn)
         self._json_due = False
         self._json_time = time.time()
 
@@ -411,6 +510,11 @@ class Vault:
                 self._conn = None
 
     # ------------------------------------------------------------------ API
+    def _norm_set(self):
+        if self._norm_tags is None:
+            self._norm_tags = {normalize_tag(t) or t for t in self._data["tag_to_word"]}
+        return self._norm_tags
+
     def label_for(self, word, base_label):
         """Etichetta numerata stabile per (categoria, valore) - es. [PERSONA_3]."""
         w = str(word).strip()
@@ -427,13 +531,15 @@ class Vault:
             except (TypeError, ValueError):
                 idx = 1
             stem = base_label[:-1] if base_label.endswith("]") else base_label
+            used_norm = self._norm_set()
             tag = f"{stem}_{idx}]"
-            while tag in self._data["tag_to_word"]:
+            while tag in self._data["tag_to_word"] or (normalize_tag(tag) or tag) in used_norm:
                 idx += 1
                 tag = f"{stem}_{idx}]"
             self._data["counters"][base_label] = idx
             self._data["word_to_tag"][key] = tag
             self._data["tag_to_word"][tag] = w
+            used_norm.add(normalize_tag(tag) or tag)
             if self.use_sqlite:
                 self._pending.append((tag, w, key, base_label, idx))
             self._dirty = True
@@ -463,8 +569,15 @@ class Vault:
             self._ensure()
             return len(self._data["tag_to_word"])
 
-    def clear(self):
+    def clear(self, wait_jobs=5.0):
         with self._lock:
+            end = time.time() + max(0.0, float(wait_jobs or 0.0))
+            while self._active_jobs > 0:
+                rem = end - time.time()
+                if rem <= 0:
+                    raise RuntimeError("Impossibile svuotare il Vault mentre un'elaborazione e' in corso: riprova tra poco.")
+                self._jobs_cond.wait(timeout=min(0.25, rem))
+            gen = None
             if self.use_sqlite:
                 try:
                     conn = self._db()
@@ -476,15 +589,34 @@ class Vault:
                         self._set_meta(conn, "generation", gen)
                         conn.execute("COMMIT")
                     except BaseException:
-                        conn.execute("ROLLBACK")
+                        self._rollback_quietly(conn)
                         raise
                     self._generation = str(gen)
                 except Exception as e:
                     common.log(f"ATTENZIONE: archivio SQLite del Vault non svuotato ({e}): si usa il file JSON.")
                     self.use_sqlite = False
+                    if self._conn is not None:
+                        try:
+                            self._conn.close()
+                        except Exception:
+                            pass
+                        self._conn = None
+                    # Invalida il .db vecchio affinche' VaultReader non continui a leggere voci pre-svuotamento
+                    for suffix in ("", "-wal", "-shm"):
+                        try:
+                            os.remove(self.db_path + suffix)
+                        except OSError:
+                            pass
+            if gen is None:
+                try:
+                    gen = int(self._generation or 0) + 1
+                except ValueError:
+                    gen = int(time.time())
+                self._generation = str(gen)
             self._data = _empty()
             self._pending = []
             self._map_cache = None
+            self._norm_tags = set()
             if self.use_sqlite:
                 self._dirty = False
                 self._export_json()
@@ -505,14 +637,33 @@ class VaultReader:
         self._json.use_sqlite = False
         self._lock = threading.Lock()
         self._conn = None
+        self._db_ino = None
         self._gen = None
         self._last_id = 0
         self._items = {}
         self._map = {}
 
+    def _close_conn_locked(self):
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = None
+            self._db_ino = None
+
     def _sqlite_ready(self):
-        if not self.use_sqlite or not os.path.exists(self.db_path):
+        if not self.use_sqlite:
             return False
+        try:
+            st = os.stat(self.db_path)
+            ino = (st.st_dev, st.st_ino)
+        except OSError:
+            self._close_conn_locked()
+            return False
+        if self._conn is not None and self._db_ino != ino:
+            self._close_conn_locked()
+            self._gen, self._last_id, self._items, self._map = None, 0, {}, {}
         if self._conn is None:
             conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False, isolation_level=None)
             try:
@@ -522,6 +673,7 @@ class VaultReader:
                 conn.close()                    # il motore deve poter mettere da parte un database danneggiato
                 return False
             self._conn = conn
+            self._db_ino = ino
         row = self._conn.execute("SELECT v FROM meta WHERE k='ready'").fetchone()
         return bool(row and row[0] == "1")      # migrazione dal JSON non ancora conclusa: si legge il JSON
 
@@ -534,13 +686,15 @@ class VaultReader:
             self._gen, self._last_id, self._items, self._map = gen, 0, {}, {}
         rows = conn.execute("SELECT id, tag, word FROM tags WHERE id > ? ORDER BY id", (self._last_id,)).fetchall()
         if rows:
+            new_items = dict(self._items)
             new_map = dict(self._map)                 # chi ha gia' una mappa la usa intatta (oggetto non modificato)
             for rid, tag, word in rows:
-                self._items[tag] = word
+                new_items[tag] = word
                 nt = normalize_tag(tag)
                 if nt and word:
                     new_map[nt] = word
                 self._last_id = rid
+            self._items = new_items
             self._map = new_map
 
     def _sqlite(self):
@@ -551,13 +705,14 @@ class VaultReader:
                 self._update()
                 return True
             except sqlite3.DatabaseError:
-                if self._conn is not None:
-                    try:
-                        self._conn.close()
-                    except Exception:
-                        pass
-                self._conn = None
+                self._close_conn_locked()
                 return False
+
+    def generation(self):
+        if self._sqlite():
+            return str(self._gen or "0")
+        self._json.refresh()
+        return self._json.generation()
 
     def tag_map(self):
         if self._sqlite():
@@ -567,12 +722,14 @@ class VaultReader:
 
     def items(self):
         if self._sqlite():
-            return list(self._items.items())
+            with self._lock:
+                return list(self._items.items())
         self._json.refresh()
         return self._json.items()
 
     def count(self):
         if self._sqlite():
-            return len(self._items)
+            with self._lock:
+                return len(self._items)
         self._json.refresh()
         return self._json.count()

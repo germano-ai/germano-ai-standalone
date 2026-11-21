@@ -12,7 +12,7 @@ _SKIP_DESTS = {
     "defpap", "pnseclvl", "passwordhash", "protusertbl", "ftnsep", "ftnsepc", "aftnsep", "aftnsepc",
 }
 # Destinazioni "\*" che contengono testo da analizzare (le altre "\*" si ignorano)
-_STARRED_KEEP = ("\\fldinst", "\\revtbl", "\\shpinst")
+_STARRED_KEEP = ("\\fldinst", "\\revtbl", "\\shpinst", "\\atnauthor", "\\userprops")
 _INFO_FIELDS = {"author": True, "operator": True, "manager": True, "title": False, "subject": False,
                 "keywords": False, "doccomm": False, "company": False, "category": False, "comment": False,
                 "hlinkbase": False}
@@ -51,7 +51,8 @@ def _escape(text, uc):
             out.append(ch)
         else:
             n = o if o < 32768 else o - 65536
-            out.append(f"\\u{n}" + "?" * uc if uc > 0 else f"\\u{n} ")
+            u_cnt = min(16, max(0, int(uc or 0)))
+            out.append(f"\\u{n}" + "?" * u_cnt if u_cnt > 0 else f"\\u{n} ")
     return "".join(out)
 
 
@@ -150,7 +151,7 @@ def _parse(data, codepage="cp1252"):
                 if state.skip:
                     continue
                 if word == "uc" and param is not None:
-                    state.uc = max(0, param)
+                    state.uc = param if 0 <= param <= 4 else (0 if param < 0 else 1)
                 elif word == "u" and param is not None:
                     ch = chr(param + 65536 if param < 0 else param) if -32768 <= param <= 65535 else "?"
                     seg = add_seg(ch, tok_start, tok_end)

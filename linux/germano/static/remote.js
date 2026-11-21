@@ -304,6 +304,16 @@
         await api('/api/auth/logout', { method: 'POST', json: {}, noLoginRedirect: true });
         restoreMap = {};
         store('session', K.map);
+        store('session', K.keys);
+        if (!CLIENT) store('local', K.keys);
+        const convKey = CLIENT ? 'germano_client_harness_v1' : 'germano_rc_harness_v1';
+        store('session', convKey);
+        if (!CLIENT) store('local', convKey);
+        if (harness) {
+            harness.convs = [];
+            harness.currentId = null;
+            harness.renderAll();
+        }
         await loadInfo(true);
     }
 

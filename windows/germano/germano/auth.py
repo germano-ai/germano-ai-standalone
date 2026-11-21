@@ -27,8 +27,29 @@ MAX_FAILURES = 5
 FAIL_WINDOW = 600
 BLOCK_SECONDS = 600
 COOKIE = "germano_session"
+MAX_SESSIONS_PER_USER = 30
+MAX_SESSIONS_TOTAL = 500
+MAX_CONCURRENT_LOGINS = 3
 
 _lock = threading.RLock()
+_limiter_lock = threading.Lock()
+_pbkdf2_sem = threading.Semaphore(MAX_CONCURRENT_LOGINS)
+_revoke_hook = None
+
+
+def set_revoke_hook(fn):
+    """Callback notificata quando un utente o tutte le sessioni vengono revocati: fn(username | None)."""
+    global _revoke_hook
+    _revoke_hook = fn
+
+
+def _notify_revoke(username):
+    fn = _revoke_hook
+    if fn is not None:
+        try:
+            fn(username)
+        except Exception:
+            pass
 
 
 class AuthError(ValueError):
@@ -93,6 +114,7 @@ def set_user(username, password):
     """Crea l'utente o ne cambia la password (le sue sessioni aperte vengono chiuse). Restituisce True se nuovo."""
     username = check_username(username)
     record = hash_password(check_password(password))
+    revoked = None
     with _lock:
         users = common.load_users()
         for u in users:
@@ -101,28 +123,46 @@ def set_user(username, password):
                 u["changed"] = time.strftime("%Y-%m-%d %H:%M:%S")
                 common.save_users(users)
                 SESSIONS.revoke_user(u["username"])
-                return False
-        users.append({"username": username, "pbkdf2": record, "created": time.strftime("%Y-%m-%d %H:%M:%S")})
-        common.save_users(users)
-        return True
+                revoked = u["username"]
+                break
+        else:
+            users.append({"username": username, "pbkdf2": record, "created": time.strftime("%Y-%m-%d %H:%M:%S")})
+            common.save_users(users)
+            return True
+    if revoked:
+        _notify_revoke(revoked)
+    return False
 
 
 def delete_user(username):
+    target = str(username or "").strip().lower()
+    if not target:
+        return False
+    removed = []
     with _lock:
         users = common.load_users()
-        keep = [u for u in users if u["username"].lower() != str(username or "").strip().lower()]
-        if len(keep) == len(users):
+        keep = []
+        for u in users:
+            if u["username"].lower() == target:
+                removed.append(u["username"])
+            else:
+                keep.append(u)
+        if not removed:
             return False
         common.save_users(keep)
-        SESSIONS.revoke_user(username)
-        return True
+        for name in removed:
+            SESSIONS.revoke_user(name)
+    for name in removed:
+        _notify_revoke(name)
+    return True
 
 
 def authenticate(username, password):
     """Nome utente canonico se le credenziali sono giuste, altrimenti None (stesso tempo nei due casi)."""
     name = str(username or "").strip().lower()
     user = next((u for u in common.load_users() if u["username"].lower() == name), None)
-    ok = verify_password(password, user["pbkdf2"] if user else _DUMMY)
+    with _pbkdf2_sem:
+        ok = verify_password(password, user["pbkdf2"] if user else _DUMMY)
     return user["username"] if (user and ok) else None
 
 
@@ -160,6 +200,15 @@ class Sessions:
         with _lock:
             data = self._load()
             self._prune(now)
+            mine = [k for k, v in data.items() if v.get("user", "").lower() == str(user).lower()]
+            if len(mine) >= MAX_SESSIONS_PER_USER:
+                mine.sort(key=lambda k: float(data[k].get("last", 0)))
+                for k in mine[: len(mine) - MAX_SESSIONS_PER_USER + 1]:
+                    data.pop(k, None)
+            if len(data) >= MAX_SESSIONS_TOTAL:
+                oldest = sorted(data.keys(), key=lambda k: float(data[k].get("last", 0)))
+                for k in oldest[: len(data) - MAX_SESSIONS_TOTAL + 1]:
+                    data.pop(k, None)
             data[_digest(token)] = {"user": user, "kind": kind, "created": now, "last": now,
                                     "expires": now + SESSION_SECONDS, "ip": str(ip)[:64]}
             self._save()
@@ -179,7 +228,8 @@ class Sessions:
                 del data[_digest(token)]
                 self._save()
                 return None
-            if not any(u["username"] == s["user"] for u in common.load_users()):
+            users = common.load_users()
+            if not any(u["username"] == s["user"] for u in users):
                 del data[_digest(token)]        # utente eliminato nel frattempo
                 self._save()
                 return None
@@ -194,9 +244,10 @@ class Sessions:
                 self._save()
 
     def revoke_user(self, user):
+        target = str(user or "").strip().lower()
         with _lock:
             data = self._load()
-            dead = [k for k, v in data.items() if v.get("user", "").lower() == str(user or "").lower()]
+            dead = [k for k, v in data.items() if v.get("user", "").lower() == target]
             for k in dead:
                 del data[k]
             if dead:
@@ -207,6 +258,7 @@ class Sessions:
             self._load()
             self._data = {}
             self._save()
+        _notify_revoke(None)
 
     def count(self):
         with _lock:
@@ -221,23 +273,63 @@ SESSIONS = Sessions()
 
 # ------------------------------------------------------------------ freno ai tentativi
 class LoginLimiter:
+    _MAX_TRACKED = 2000
+
     def __init__(self):
-        self._fails = {}       # ip -> [istanti dei tentativi falliti]
+        self._fails = {}       # ip -> [(istante, username_lower)]
         self._blocked = {}     # ip -> fine del blocco
+        self._inflight = {}    # ip -> numero di verifiche PBKDF2 in corso
+
+    def _cleanup_locked(self, now):
+        if len(self._fails) + len(self._blocked) <= self._MAX_TRACKED:
+            return
+        for k in [k for k, until in self._blocked.items() if until <= now]:
+            self._blocked.pop(k, None)
+        for k in [k for k, items in self._fails.items() if not any(now - t < FAIL_WINDOW for t, _ in items)]:
+            self._fails.pop(k, None)
 
     def retry_after(self, ip):
-        with _lock:
+        now = time.time()
+        with _limiter_lock:
             until = self._blocked.get(ip, 0)
-            left = until - time.time()
+            left = until - now
             if left <= 0:
                 self._blocked.pop(ip, None)
                 return 0
             return int(left) + 1
 
-    def failed(self, ip):
+    def begin_attempt(self, ip):
+        """Prenota uno slot di login per `ip` prima di PBKDF2: impedisce che richieste parallele superino MAX_FAILURES."""
         now = time.time()
-        with _lock:
-            recent = [t for t in self._fails.get(ip, []) if now - t < FAIL_WINDOW] + [now]
+        with _limiter_lock:
+            self._cleanup_locked(now)
+            until = self._blocked.get(ip, 0)
+            left = until - now
+            if left > 0:
+                return False, int(left) + 1
+            self._blocked.pop(ip, None)
+            recent = [x for x in self._fails.get(ip, []) if now - x[0] < FAIL_WINDOW]
+            self._fails[ip] = recent
+            inflight = self._inflight.get(ip, 0)
+            if len(recent) + inflight >= MAX_FAILURES:
+                return False, max(5, min(BLOCK_SECONDS, 15))
+            self._inflight[ip] = inflight + 1
+            return True, 0
+
+    def end_attempt(self, ip):
+        with _limiter_lock:
+            cur = self._inflight.get(ip, 0)
+            if cur <= 1:
+                self._inflight.pop(ip, None)
+            else:
+                self._inflight[ip] = cur - 1
+
+    def failed(self, ip, username=""):
+        now = time.time()
+        u = str(username or "").strip().lower()
+        with _limiter_lock:
+            self._cleanup_locked(now)
+            recent = [x for x in self._fails.get(ip, []) if now - x[0] < FAIL_WINDOW] + [(now, u)]
             self._fails[ip] = recent
             if len(recent) >= MAX_FAILURES:
                 self._blocked[ip] = now + BLOCK_SECONDS
@@ -245,9 +337,19 @@ class LoginLimiter:
                 return True
             return False
 
-    def succeeded(self, ip):
-        with _lock:
-            self._fails.pop(ip, None)
+    def succeeded(self, ip, username=""):
+        u = str(username or "").strip().lower()
+        with _limiter_lock:
+            if not u:
+                self._fails.pop(ip, None)
+                return
+            cur = self._fails.get(ip)
+            if cur:
+                rest = [x for x in cur if x[1] != u]
+                if rest:
+                    self._fails[ip] = rest
+                else:
+                    self._fails.pop(ip, None)
 
 
 LIMITER = LoginLimiter()

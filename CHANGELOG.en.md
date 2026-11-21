@@ -15,9 +15,14 @@ Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHAN
 
 ### Fixed
 - **Narrow-screen layout (`<= 1180 px`, `static/harness.css`, `remote/harness.css`):** fixed the Harness CSS grid when the conversation sidebar overlays on mobile/tablet (`grid-template-columns: minmax(0, 1fr)`), keeping the chat pane full-width and the popover cleanly inside the viewport (`0 px` overflow at 390 px and 360 px).
+- **Full security, reliability & boundary hardening (40 files across suite, engine, proxy, formats, client and frontend):**
+  - *CSRF, Host & Auth:* strict `Host`, `Origin` (exact port) and `Sec-Fetch-Site` validation on all mutations in `server.py` and `client_ui.py`; per-route body limits; atomic `LoginLimiter` eliminating cross-account reset and concurrent burst TOCTOU; session caps and full revocation of web/MCP sessions on user deletion.
+  - *Engine, System 2, Proxy & Vault:* fail-closed check on empty `italian_ner` folder; `NEVER_RELEASE` enforced ahead of rules in System 2 with raw-slice prompt-injection detection; fixed PEM ReDoS and slash-tag corruption in `detect.py`; fail-closed `415` on external media URLs and full top-level scan in `proxy.py` + `StreamRewriter` fix (`tool_calls: null` and `flush()`); anti-amplification budget in `restore_text()`, `begin_job()`/`clear()` barrier and `flush()` before file delivery.
+  - *Multi-format parsers:* zip-bomb protection and removal of `huge_tree` (OOXML/ODF/markup/detection); RFC 5322 header unfolding and `text/*` parts in EML; caps on anomalous RTF `\uc`, ODF `text:c`, P7M BER nesting depth, image frames/pixels, PDF zoom and audio streaming decode.
+  - *Updater, AI Assist, Client & Frontend:* exact `download.germano.ai` host, mandatory SHA-256 and pre-exec re-verification + path containment, fail-closed exact RDN Authenticode for Ollama; `_NoRedirect`, `/api/harness/v2/param_schema` route and POSIX `CREATE_NEW_CONSOLE` fix in `germano-client`; PUA sanitization, non-expanding PII tags in link URLs (`href`), Markdown recursion cap and logout storage wipe in `harness.js`/`remote.js`; in-flight polling guards in `script.js`.
 
 ### Verified
-- Live Edge headless end-to-end verification on the local installation (direct model + effort switching in the bar, simultaneous independent Antigravity ↔ Claude Code cards, conditional OpenAI `gpt-5.4`/`gpt-4o`/`o1-mini` and Anthropic `claude-opus-4-6` parameters, responsive 1280/390/360 px, 0 console/JS errors), 6-tree coherence **4/4**, 164 `.py`, IT/EN guide parity **15/15** chapters.
+- Live Edge headless end-to-end verification on the local installation (direct model + effort switching in the bar, simultaneous independent Antigravity ↔ Claude Code cards, conditional OpenAI `gpt-5.4`/`gpt-4o`/`o1-mini` and Anthropic `claude-opus-4-6` parameters, responsive 1280/390/360 px, 0 console/JS errors), security & regression suite **14/14 OK** (including Edge V8 JS tests), 6-tree coherence **4/4**, 164 `.py`, IT/EN guide parity **15/15** chapters.
 
 ## [0.99] - 2026-11-21
 

@@ -248,6 +248,7 @@ class Engine:
             th.join()
         self.log(f"Modelli del testo e OCR pronti in {time.time() - t_pf:.0f}s (caricamento in parallelo).")
 
+        onnx_error = None
         if os.path.isdir(ita_path) and os.listdir(ita_path):
             onnx_error = ita_box.get("error")
             self.ita_onnx = ita_box.get("clf")
@@ -267,14 +268,16 @@ class Engine:
                 except Exception as e:
                     onnx_error = e
                     self.ita = None
-            if self.ita_onnx is None and self.ita is None:
-                # Un modello attivo nelle impostazioni non viene mai saltato in silenzio (come il Privacy Filter):
-                # senza Italian NER molti dati personali resterebbero in chiaro senza che nessuno se ne accorga.
-                if bool(settings.get("enable_model_italian_ner", True)):
-                    raise RuntimeError(f"il modello Italian NER non si carica ({type(onnx_error).__name__}: "
-                                       f"{onnx_error}). Reinstalla Germano oppure disattiva «Italian NER» nelle "
-                                       "Impostazioni (profilo PD) se vuoi proseguire senza.")
-                self.log(f"Avviso: Italian_NER_XXL non caricato ({onnx_error}); e' disattivato nelle impostazioni.")
+        else:
+            onnx_error = FileNotFoundError(f"cartella modello assente o vuota: {ita_path}")
+        if self.ita_onnx is None and self.ita is None:
+            # Un modello attivo nelle impostazioni non viene mai saltato in silenzio (come il Privacy Filter):
+            # senza Italian NER molti dati personali resterebbero in chiaro senza che nessuno se ne accorga.
+            if bool(settings.get("enable_model_italian_ner", True)):
+                raise RuntimeError(f"il modello Italian NER non si carica ({type(onnx_error).__name__}: "
+                                   f"{onnx_error}). Reinstalla Germano oppure disattiva «Italian NER» nelle "
+                                   "Impostazioni (profilo PD) se vuoi proseguire senza.")
+            self.log(f"Avviso: Italian_NER_XXL non caricato ({onnx_error}); e' disattivato nelle impostazioni.")
 
         try:
             from . import system2_resolver

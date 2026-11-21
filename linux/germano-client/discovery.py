@@ -52,16 +52,29 @@ def local_ipv4_addresses():
 class DiscoveryResponder:
     """Thread UDP che risponde ai ping di rilevamento con le info fornite da `info_provider()` (un dict)."""
 
+    _INFO_TTL = 3.0
+    _MIN_INTERVAL = 0.25
+    _MAX_IPS = 512
+
     def __init__(self, info_provider, port=DEFAULT_PORT):
         self.info_provider = info_provider
         self.port = port
         self._sock = None
         self._thread = None
         self._stop = threading.Event()
+        self._cache_at = 0.0
+        self._cache_payload = None
+        self._seen = {}
 
     def start(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            except OSError:
+                pass
+        else:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         except OSError:
@@ -72,6 +85,14 @@ class DiscoveryResponder:
         self._thread = threading.Thread(target=self._serve, name="germano-discovery", daemon=True)
         self._thread.start()
         return self.port
+
+    def _payload(self, now):
+        if self._cache_payload is None or now - self._cache_at >= self._INFO_TTL:
+            info = dict(self.info_provider() or {})
+            info["service"] = "germano-server"
+            self._cache_payload = json.dumps(info, ensure_ascii=False).encode("utf-8")
+            self._cache_at = now
+        return self._cache_payload
 
     def _serve(self):
         while not self._stop.is_set():
@@ -85,11 +106,15 @@ class DiscoveryResponder:
                 break
             if not data or not data.startswith(PING):
                 continue
+            now = time.time()
+            ip = addr[0]
+            if now - self._seen.get(ip, 0.0) < self._MIN_INTERVAL:
+                continue
+            if len(self._seen) > self._MAX_IPS:
+                self._seen = {k: v for k, v in self._seen.items() if now - v < 60.0}
+            self._seen[ip] = now
             try:
-                info = dict(self.info_provider() or {})
-                info["service"] = "germano-server"
-                payload = json.dumps(info, ensure_ascii=False).encode("utf-8")
-                self._sock.sendto(payload, addr)
+                self._sock.sendto(self._payload(now), addr)
             except Exception:
                 pass
 
@@ -119,8 +144,9 @@ def discover(timeout=1.0, port=DEFAULT_PORT, broadcasts=None, exclude_instance=N
             except OSError:
                 pass
         found = {}
+        packets = 0
         end = time.time() + timeout
-        while True:
+        while packets < 256 and len(found) < 64:
             left = end - time.time()
             if left <= 0:
                 break
@@ -136,6 +162,7 @@ def discover(timeout=1.0, port=DEFAULT_PORT, broadcasts=None, exclude_instance=N
                 continue
             except OSError:
                 break
+            packets += 1
             try:
                 info = json.loads(data.decode("utf-8", errors="replace"))
             except ValueError:
@@ -152,16 +179,16 @@ def discover(timeout=1.0, port=DEFAULT_PORT, broadcasts=None, exclude_instance=N
             if exclude_instance and inst == exclude_instance:
                 continue
             info["ip"] = addr[0]
-            key = inst or (addr[0], info["port"])
-            prev = found.get(key)
-            if prev is None or (prev["ip"].startswith("127.") and not addr[0].startswith("127.")):
+            # Chiave per (IP, porta): un host malevolo non puo' sopprimere il vero server copiandone instance_id
+            key = (addr[0], info["port"])
+            if key not in found:
                 found[key] = info
         items = list(found.values())
-        # Server senza identificativo (versioni precedenti): la risposta da 127.0.0.1 e' un doppione di quella
-        # arrivata dall'IP di rete quando nome e porta coincidono.
-        lan = {(i.get("name"), i["port"]) for i in items if not i["ip"].startswith("127.")}
-        return [i for i in items if i.get("instance_id") or not i["ip"].startswith("127.")
-                or (i.get("name"), i["port"]) not in lan]
+        # La risposta da 127.0.0.1 e' un doppione di quella arrivata dall'IP di rete quando instance_id o (nome, porta) coincidono.
+        lan_inst = {i.get("instance_id") for i in items if i.get("instance_id") and not i["ip"].startswith("127.")}
+        lan_np = {(i.get("name"), i["port"]) for i in items if not i["ip"].startswith("127.")}
+        return [i for i in items if not i["ip"].startswith("127.")
+                or (i.get("instance_id") not in lan_inst and (i.get("name"), i["port"]) not in lan_np)]
     finally:
         sock.close()
 

@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore")
 from germano import formats  # noqa: E402
 from germano.engine import CancelledError, CancelToken, Engine  # noqa: E402
 from germano.remote_engine import EngineUnavailable  # noqa: E402
-from germano.vault import Vault, contains_tags, restore_text  # noqa: E402
+from germano.vault import Vault, contains_strict_tags, contains_tags, restore_text  # noqa: E402
 
 VERSION = common.get_version()
 log = common.log
@@ -158,7 +158,13 @@ class Daemon:
         return 3 if getattr(self.engine, "is_remote", False) else 1
 
     def write_state(self, **extra):
-        st = {"pid": os.getpid(), "port": self.port, "token": self.token, "version": VERSION,
+        ctime = None
+        try:
+            import psutil
+            ctime = psutil.Process().create_time()
+        except Exception:
+            pass
+        st = {"pid": os.getpid(), "create_time": ctime, "port": self.port, "token": self.token, "version": VERSION,
               "started": time.time(), "engine": self.engine.info}
         st.update(extra)
         common.atomic_write_json(common.DAEMON_STATE_FILE, st)
@@ -216,6 +222,22 @@ class Daemon:
             os.makedirs(common.WORK_TMP_DIR, exist_ok=True)
         except Exception:
             pass
+        try:
+            cutoff = time.time() - 1800
+            if os.path.isdir(common.UPLOAD_DIR):
+                for entry in os.listdir(common.UPLOAD_DIR):
+                    ep = os.path.join(common.UPLOAD_DIR, entry)
+                    try:
+                        if os.path.getmtime(ep) < cutoff:
+                            if os.path.isdir(ep):
+                                import shutil
+                                shutil.rmtree(ep, ignore_errors=True)
+                            else:
+                                common.remove_quietly(ep)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
         for root, _dirs, files in os.walk(common.OUTPUT_DIR):
             for f in files:
                 if f.startswith(common.TMP_PREFIX):
@@ -245,10 +267,11 @@ class Daemon:
                     continue
                 seen.add(p)
                 sig = (st.st_size, st.st_mtime_ns)
-                if self.stuck.get(p) == sig:
-                    continue
-                prev = self.file_sig.get(p)
-                self.file_sig[p] = sig
+                with self._state_lock:
+                    if self.stuck.get(p) == sig:
+                        continue
+                    prev = self.file_sig.get(p)
+                    self.file_sig[p] = sig
                 if prev != sig:
                     continue  # nuovo o ancora in modifica: si attende il giro successivo
                 if now - st.st_mtime < 1.5:
@@ -256,10 +279,11 @@ class Daemon:
                 if _is_locked(p):
                     continue
                 found.append((st.st_mtime, p))
-        for p in list(self.file_sig):
-            if p not in seen:
-                self.file_sig.pop(p, None)
-                self.stuck.pop(p, None)
+        with self._state_lock:
+            for p in list(self.file_sig):
+                if p not in seen:
+                    self.file_sig.pop(p, None)
+                    self.stuck.pop(p, None)
         found.sort()
         return [p for _, p in found]
 
@@ -354,7 +378,7 @@ class Daemon:
         mode = "anonymize"
         if settings.get("enable_deanonymize", True) and tag_map:
             try:
-                if contains_tags(formats.sample_text(path), tag_map):
+                if contains_strict_tags(formats.sample_text(path), tag_map):
                     mode = "restore"
             except Exception:
                 pass
@@ -375,25 +399,28 @@ class Daemon:
         tmp_out = os.path.join(out_dir, tmp_prefix + os.path.basename(out_rel))
         result = None
         fail_reason = None
+        self.vault.begin_job()
         try:
             if len(os.path.abspath(tmp_out)) >= 259:
                 raise formats.ProcessingError(
                     "Percorso troppo lungo per Windows (oltre 260 caratteri): sposta Germano in una cartella piu' "
                     "corta (es. C:\\GermanoAI) oppure accorcia i nomi di cartelle e file.")
             result = formats.process_file(path, tmp_out, ctx)
+            # Il Vault va reso persistente PRIMA di pubblicare il file anonimizzato in output/ (crash-safety)
+            self.vault.flush()
             final = os.path.join(os.path.dirname(result), os.path.basename(result)[len(tmp_prefix):])
             try:
                 os.replace(result, final)
             except PermissionError:
                 final = common.unique_path(final)
                 os.replace(result, final)
-            self.vault.flush()
             if mode == "anonymize":
                 self._write_audit(rel, ctx)
             try:
                 self._move_away(path, common.PROCESSED_DIR, rel)
             except Exception as e:
-                self.stuck[path] = sig
+                with self._state_lock:
+                    self.stuck[path] = sig
                 log(f"ATTENZIONE: impossibile spostare {rel} in processed ({e}). Il file resta in input "
                     f"e non verra' rielaborato finche' non viene modificato.")
             elapsed = time.time() - t0
@@ -434,6 +461,7 @@ class Daemon:
             log(f"Dettaglio errore:\n{detail}")
             fail_reason = _friendly_error(e, rel)
         finally:
+            self.vault.end_job()
             self._end_file(rel)
         if fail_reason is not None:
             # Fuori dal blocco except: l'errore e i frame che trattiene sono gia' rilasciati, e con loro gli handle
@@ -472,7 +500,9 @@ class Daemon:
             self._record_failure(rel, reason)
         except Exception as e:
             try:
-                self.stuck[path] = (os.path.getsize(path), os.stat(path).st_mtime_ns)
+                sig = (os.path.getsize(path), os.stat(path).st_mtime_ns)
+                with self._state_lock:
+                    self.stuck[path] = sig
             except OSError:
                 pass
             log(f"FATALE: impossibile spostare {rel} in failed: {e}")
@@ -600,7 +630,10 @@ class Daemon:
         while not self.should_stop():
             self.reload_settings()
             if time.time() - last_flush > 3:
-                self.vault.flush()
+                try:
+                    self.vault.flush()
+                except Exception as e:
+                    log(f"Avviso: salvataggio periodico del Vault non riuscito ({type(e).__name__}: {e}).")
                 last_flush = time.time()
             if getattr(self.engine, "is_remote", False) and time.time() - self._last_ping > 20:
                 self._last_ping = time.time()

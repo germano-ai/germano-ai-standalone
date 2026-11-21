@@ -32,15 +32,8 @@ def _forced_label(name, ctx):
     return label
 
 
-def process_xml(in_path, out_path, ctx):
+def _transform_xml_tree(tree, ctx):
     from lxml import etree
-    parser = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=True, remove_blank_text=False,
-                             load_dtd=False, recover=False)
-    try:
-        tree = etree.parse(in_path, parser)
-    except etree.XMLSyntaxError:
-        from .textlike import process_text
-        return process_text(in_path, out_path, ctx)
     units, setters = [], []
 
     def add(value, setter, context="", force=None):
@@ -49,7 +42,7 @@ def process_xml(in_path, out_path, ctx):
 
     for el in tree.getroot().iter():
         if isinstance(el, (etree._Comment, etree._ProcessingInstruction)):
-            if isinstance(el, etree._Comment) and el.text and el.text.strip():
+            if el.text and el.text.strip():
                 add(el.text, lambda v, e=el: setattr(e, "text", v))
             if el.tail and el.tail.strip():
                 add(el.tail, lambda v, e=el: setattr(e, "tail", v))
@@ -60,7 +53,15 @@ def process_xml(in_path, out_path, ctx):
             add(el.text, lambda v, e=el: setattr(e, "text", v), context=f"{name}: " if name else "", force=force)
         for k, v in list(el.attrib.items()):
             an = _local(k)
-            if an in _SKIP_ATTRS or not v or len(v) < 3 or not any(c.isalpha() for c in v):
+            if not v or len(v) < 3:
+                continue
+            if an == "href":
+                if v.lower().startswith(("mailto:", "tel:", "sms:", "callto:")):
+                    add(v, lambda nv, e=el, kk=k: e.set(kk, nv), context="href: ")
+                continue
+            if an in _SKIP_ATTRS:
+                continue
+            if not any(c.isalpha() for c in v) and not (len(v) >= 5 and any(c.isdigit() for c in v)):
                 continue
             add(v, lambda nv, e=el, kk=k: e.set(kk, nv), context=f"{an}: ")
         if el.tail and el.tail.strip():
@@ -70,6 +71,28 @@ def process_xml(in_path, out_path, ctx):
     for u, setter, r in zip(units, setters, res):
         if r:
             setter(apply_replacements(u.text, r))
+
+
+def transform_xml_bytes(data, ctx):
+    from lxml import etree
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, remove_blank_text=False,
+                             load_dtd=False, recover=False)
+    root = etree.fromstring(data, parser)
+    tree = etree.ElementTree(root)
+    _transform_xml_tree(tree, ctx)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8")
+
+
+def process_xml(in_path, out_path, ctx):
+    from lxml import etree
+    parser = etree.XMLParser(resolve_entities=False, no_network=True, remove_blank_text=False,
+                             load_dtd=False, recover=False)
+    try:
+        tree = etree.parse(in_path, parser)
+    except etree.XMLSyntaxError:
+        from .textlike import process_text
+        return process_text(in_path, out_path, ctx)
+    _transform_xml_tree(tree, ctx)
     di = tree.docinfo
     tree.write(out_path, encoding=di.encoding or "UTF-8", xml_declaration=True,
                standalone=di.standalone if di.standalone is not None else None)
@@ -77,7 +100,7 @@ def process_xml(in_path, out_path, ctx):
 
 
 # ------------------------------------------------------------------------------------------ HTML
-_HTML_TEXT_SKIP = {"script", "style", "template"}
+_HTML_TEXT_SKIP = {"script", "style"}
 _HTML_ATTRS = ("title", "alt", "placeholder", "value", "aria-label", "data-name", "data-email", "label", "summary")
 _META_NAMES = {"author", "description", "keywords", "subject", "creator", "publisher", "copyright", "reply-to",
                "og:title", "og:description", "twitter:title", "twitter:description", "dc.creator", "dc.title"}
@@ -96,6 +119,12 @@ def transform_soup(soup, ctx):
             continue
         parent = node.parent
         if parent is not None and parent.name in _HTML_TEXT_SKIP:
+            if parent.name == "script" and "json" in str(parent.get("type") or "").lower():
+                s = str(node)
+                if s.strip():
+                    def _set_js(v, n=node, c=type(node)):
+                        n.replace_with(c(v))
+                    add(s, _set_js)
             continue
         s = str(node)
         if not s.strip():
@@ -111,6 +140,10 @@ def transform_soup(soup, ctx):
             v = tag.get(attr)
             if isinstance(v, str) and v.strip():
                 add(v, lambda nv, t=tag, a=attr: t.__setitem__(a, nv))
+        for attr, v in list((tag.attrs or {}).items()):
+            if isinstance(attr, str) and attr.startswith("data-") and attr not in _HTML_ATTRS:
+                if isinstance(v, str) and len(v.strip()) >= 3 and (any(c.isalpha() for c in v) or len(v) >= 5):
+                    add(v, lambda nv, t=tag, a=attr: t.__setitem__(a, nv))
         href = tag.get("href")
         if isinstance(href, str) and href.lower().startswith(("mailto:", "tel:", "sms:", "callto:")):
             add(href, lambda nv, t=tag: t.__setitem__("href", nv))

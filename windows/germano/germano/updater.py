@@ -34,6 +34,7 @@ macOS e Linux: il pacchetto nuovo viene scaricato allo stesso modo, in silenzio;
 solo un indicatore discreto «Aggiornamento pronto» che apre il pacchetto quando lo decide l'utente.
 Se un aggiornamento automatico non va a buon fine non viene ripetuto a ogni avvio: si può riprovare dalle Impostazioni.
 """
+import hashlib
 import json
 import os
 import re
@@ -49,8 +50,9 @@ from . import common
 
 DOWNLOAD_BASE = "https://download.germano.ai/"   # unica fonte degli aggiornamenti
 INDEX_FILE = "version.json"
-OFFICIAL_HOSTS = ("germano.ai",)                  # download.germano.ai e gli altri indirizzi del dominio ufficiale
+OFFICIAL_HOSTS = ("download.germano.ai",)         # solo l'host esatto di download ufficiale
 MAX_REDIRECTS = 5
+MAX_SIZE = 10 * 1024 ** 3       # tetto di sicurezza sullo stream di download (10 GB)
 FIRST_CHECK_DELAY = 20          # secondi dopo l'avvio
 CHECK_INTERVAL = 6 * 3600       # controllo periodico
 SIZE_ESTIMATE = 3 * 1024 ** 3   # se il server non indica la dimensione: stima prudente per lo spazio su disco
@@ -184,23 +186,30 @@ def source():
     if custom:
         base = custom if custom.endswith("/") else custom + "/"
         host = (urllib.parse.urlparse(base).hostname or "").lower()
+        if not host or host.endswith("."):
+            return base, (), True
         return base, (host,), host not in ("127.0.0.1", "localhost", "::1")
     return DOWNLOAD_BASE, OFFICIAL_HOSTS, True
 
 
 def allowed(url):
     _base, hosts, https = source()
-    parsed = urllib.parse.urlparse(url)
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError:
+        return False
     if parsed.scheme != "https" and (https or parsed.scheme != "http"):
         return False
+    if parsed.username is not None or parsed.password is not None:
+        return False
     host = (parsed.hostname or "").lower()
-    return any(host == h or host.endswith("." + h) for h in hosts)
+    if not host or host.endswith("."):
+        return False
+    return host in hosts
 
 
 def index_entry(data, key, default_name):
-    """(nome o indirizzo, dimensione | None, sha256 | None) di una voce di version.json. Dimensione e impronta si
-    leggono dalla voce («size», «sha256»); per compatibilità con gli indici scritti a mano anche dalle tabelle
-    «sha256» e «sizes» in fondo al file, indicizzate per nome del file."""
+    """(nome o indirizzo, dimensione | None, sha256 | None | 'INVALID') di una voce di version.json."""
     files = data.get("files") if isinstance(data.get("files"), dict) else {}
     entry = files.get(key, data.get(key))
     size = digest = None
@@ -221,7 +230,11 @@ def index_entry(data, key, default_name):
         size = int(size) if size else None
     except (TypeError, ValueError):
         size = None
-    digest = str(digest).strip().lower() if digest and SHA256_RE.match(str(digest).strip()) else None
+    if digest is not None and str(digest).strip() != "":
+        d = str(digest).strip().lower()
+        digest = d if SHA256_RE.match(d) else "INVALID"
+    else:
+        digest = None
     return str(entry), size, digest
 
 
@@ -234,9 +247,14 @@ def parse_index(data, base):
         return None
     key = platform_key()
     entry, size, digest = index_entry(data, key, f"germano-{ver}.{PLATFORM_EXT[key]}")   # convenzione dei nomi
+    if digest == "INVALID":
+        return None
     url = urllib.parse.urljoin(base, entry)
-    return {"version": ver, "url": url, "name": os.path.basename(urllib.parse.urlparse(url).path), "size": size,
-            "sha256": digest, "notes": data.get("notes")}
+    name = os.path.basename(urllib.parse.urlparse(url).path)
+    m = INSTALLER_RE.match(name)
+    if not m or m.group(2).lower() != PLATFORM_EXT[key]:
+        return None
+    return {"version": ver, "url": url, "name": name, "size": size, "sha256": digest, "notes": data.get("notes")}
 
 
 def publication_signature(release, headers):
@@ -249,15 +267,18 @@ def publication_signature(release, headers):
 
 def verify_download(release, done, content_length, digest):
     """Esito della verifica di un pacchetto scaricato: None se valido, altrimenti il motivo (per l'utente).
-    L'impronta SHA-256, quando è dichiarata, decide da sola; senza, vale la dimensione dichiarata."""
+    Su host ufficiali/HTTPS l'impronta SHA-256 è obbligatoria."""
     if content_length and done != content_length:
         return f"Download incompleto ({done} byte su {content_length}): riprova più tardi."
     declared, expected = release.get("size"), release.get("sha256")
     if expected:
-        if digest != expected:
+        if not SHA256_RE.match(str(expected)) or digest != str(expected).lower():
             return ("Il pacchetto scaricato non corrisponde all'impronta SHA-256 dichiarata da version.json: non "
                     "viene installato. Va corretto su download.germano.ai.")
         return None
+    if source()[2]:
+        return ("version.json non dichiara un'impronta SHA-256 valida per questo pacchetto: non viene installato. "
+                "Va corretto su download.germano.ai.")
     if declared and done != declared:
         return (f"Il pacchetto scaricato ha una dimensione diversa da quella dichiarata da version.json ({done} byte "
                 f"invece di {declared}): non viene installato. Va corretto su download.germano.ai.")
@@ -311,12 +332,68 @@ def check_package(path, platform=None):
         return False
 
 
+def _inside_dir(path, root):
+    try:
+        rp = os.path.normcase(os.path.realpath(path))
+        rr = os.path.normcase(os.path.realpath(root))
+        return rp != rr and os.path.commonpath([rp, rr]) == rr
+    except (OSError, ValueError):
+        return False
+
+
+def _file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(1 << 20)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest().lower()
+
+
+def _replace_retry(src, dst):
+    for attempt in range(10):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
+def _verify_ready_package(ready):
+    """Ri-verifica contenimento percorso, formato e SHA-256 dell'installer subito prima di eseguirlo."""
+    inst = str((ready or {}).get("installer") or "")
+    if not inst or not _inside_dir(inst, UPDATE_DIR) or not os.path.isfile(inst):
+        raise UpdateError("Percorso dell'installer di aggiornamento non valido o fuori dalla cartella degli aggiornamenti.")
+    m = INSTALLER_RE.match(os.path.basename(inst))
+    if not m or m.group(2).lower() != PLATFORM_EXT[platform_key()]:
+        raise UpdateError("Nome dell'installer di aggiornamento non valido.")
+    if not check_package(inst):
+        raise UpdateError("L'installer scaricato non è integro.")
+    expected = str(ready.get("sha256") or "").strip().lower()
+    if expected:
+        if not SHA256_RE.match(expected) or _file_sha256(inst) != expected:
+            raise UpdateError("L'impronta SHA-256 dell'installer pronto non corrisponde più: esecuzione bloccata.")
+    elif source()[2]:
+        raise UpdateError("Impronta SHA-256 dell'aggiornamento mancante: esecuzione bloccata.")
+    return inst
+
+
 def read_ready():
     """Aggiornamento scaricato e pronto da installare (più recente della versione in uso), oppure None."""
     data = common.read_json(READY_FILE, None)
     if not isinstance(data, dict) or not data.get("installer"):
         return None
-    if not is_newer(data.get("version"), common.get_version()) or not os.path.isfile(data["installer"]):
+    inst = str(data["installer"])
+    if not _inside_dir(inst, UPDATE_DIR) or not os.path.isfile(inst):
+        return None
+    m = INSTALLER_RE.match(os.path.basename(inst))
+    if not m or m.group(2).lower() != PLATFORM_EXT[platform_key()]:
+        return None
+    if not is_newer(data.get("version"), common.get_version()):
         return None
     return data
 
@@ -324,6 +401,9 @@ def read_ready():
 def staged_ok(ready):
     """La nuova versione è già stata copiata accanto a quella in uso (preparazione in background riuscita)?"""
     if not ready or not ready.get("staged") or not ready.get("staged_dir"):
+        return False
+    parent = os.path.dirname(os.path.realpath(common.BASE_DIR))
+    if not _inside_dir(ready["staged_dir"], parent):
         return False
     marker = common.read_json(os.path.join(ready["staged_dir"], "germano_staged.json"), None)
     return isinstance(marker, dict) and marker.get("version") == ready.get("version")
@@ -451,7 +531,8 @@ class Updater:
         self.check_now.set()
 
     def busy(self):
-        return self.state.get("state") in ("checking", "downloading", "staging", "installing")
+        with self.lock:
+            return self.state.get("state") in ("checking", "downloading", "staging", "installing")
 
     def check(self, manual=False, auto_download=True):
         if self.busy():
@@ -515,28 +596,28 @@ class Updater:
         raise UpdateError("Troppi reindirizzamenti dal server degli aggiornamenti.")
 
     def find_latest(self, s=None):
-        """version.json di download.germano.ai; se manca, l'elenco dei file della pagina di download."""
+        """Legge esclusivamente version.json da download.germano.ai (nessun ripiego HTML privo di impronta SHA-256)."""
         s = s or self._session()
         base = source()[0]
-        r = self._get(s, urllib.parse.urljoin(base, INDEX_FILE), timeout=15)
-        if r.status_code == 200:
+        with self._get(s, urllib.parse.urljoin(base, INDEX_FILE), timeout=15) as r:
+            if r.status_code != 200:
+                raise UpdateError(f"download.germano.ai ha risposto con il codice {r.status_code}.")
             try:
-                release = parse_index(json.loads(r.content.decode("utf-8-sig")), base)
+                release = parse_index(json.loads(r.content[:1 << 20].decode("utf-8-sig")), base)
             except ValueError:
                 release = None
-            if release:
-                return release
-            ulog("version.json presente ma non leggibile: provo l'elenco della pagina di download.")
-        r = self._get(s, base, timeout=15)
-        if r.status_code != 200:
-            raise UpdateError(f"download.germano.ai ha risposto con il codice {r.status_code}.")
-        return parse_listing(r.text, base)
+        if not release:
+            raise UpdateError("Indice degli aggiornamenti (version.json) non valido o incompleto.")
+        return release
 
     # -------------------------------------------------------------- download (in background, bassa priorità)
     def download(self, release, manual=False):
-        import hashlib
         version = release["version"]
         background_priority()
+        declared, expected_sha = release.get("size"), release.get("sha256")
+        if not expected_sha and source()[2]:
+            raise UpdateError("version.json non dichiara un'impronta SHA-256 valida per questo pacchetto: "
+                              "download annullato.")
         s = self._session()
         try:
             os.makedirs(UPDATE_DIR, exist_ok=True)
@@ -544,63 +625,66 @@ class Updater:
         except OSError as e:
             raise UpdateError(f"La cartella degli aggiornamenti non è scrivibile: {e}") from None
         path = os.path.join(UPDATE_DIR, release["name"])
+        if not _inside_dir(path, UPDATE_DIR):
+            raise UpdateError("Nome del file di aggiornamento non valido.")
         part = path + ".part"
         self._set(state="downloading", progress={"done": 0, "total": release.get("size") or 0}, error=None)
         s.headers["Accept-Encoding"] = "identity"     # il pacchetto così com'è: Content-Length = byte del file
-        r = self._get(s, release["url"], stream=True, timeout=60)
-        if r.status_code != 200:
-            r.close()
-            raise UpdateError(f"Download non riuscito (codice {r.status_code}).")
-        try:
-            content_length = int(r.headers.get("Content-Length") or 0)
-        except ValueError:
-            content_length = 0
-        if (r.headers.get("Content-Encoding") or "identity").lower() not in ("", "identity"):
-            content_length = 0                        # trasferimento compresso: la lunghezza non è quella del file
-        declared, expected_sha = release.get("size"), release.get("sha256")
-        signature = publication_signature(release, r.headers)
-        failed = common.read_json(FAILED_FILE, None)
-        if not manual and isinstance(failed, dict) and failed.get("signature") == signature:
-            # stesso indice e stesso file della volta scorsa: riscaricarlo darebbe lo stesso esito
-            r.close()
-            raise UpdateError(str(failed.get("reason") or "Il pacchetto pubblicato non supera la verifica.")
-                              + " Non viene riscaricato in automatico finché non viene corretto.")
-        if declared and content_length and declared != content_length:
-            note = (f"version.json dichiara {declared} byte per {release['name']}, ma il file pubblicato ne ha "
-                    f"{content_length} (differenza {content_length - declared:+d})")
-            if not expected_sha:
-                # indice e file non corrispondono e non c'è un'impronta per decidere: nessun download inutile
-                r.close()
-                reason = (f"{note[0].upper() + note[1:]}: l'indice degli aggiornamenti non descrive il file "
-                          "pubblicato, quindi non è stato scaricato nulla. Va corretto su download.germano.ai.")
-                ulog(reason)
-                raise UpdateError(reason)
-            ulog(f"Avviso: {note}; decide l'impronta SHA-256.")
-        size = content_length or declared or 0
-        space = (size or SIZE_ESTIMATE) + (INSTALL_SPACE if platform_key() == "windows" else 0)
-        if free < space:
-            r.close()
-            raise UpdateError(f"Spazio insufficiente: servono circa {space / 1024 ** 3:.1f} GB liberi per scaricare e "
-                              "preparare l'aggiornamento.")
-        ulog(f"Download di {release['url']} ({size or '?'} byte)...")
-        done, last, digest = 0, 0.0, hashlib.sha256()
-        try:
-            with open(part, "wb") as f:
-                for chunk in r.iter_content(1 << 20):
-                    if self.stop_event.is_set():
-                        raise UpdateError("Download interrotto.")
-                    f.write(chunk)
-                    digest.update(chunk)
-                    done += len(chunk)
-                    if time.time() - last > 0.5:
-                        last = time.time()
-                        self._set(progress={"done": done, "total": size})
-        except UpdateError:
-            common.remove_quietly(part)
-            raise
-        except Exception as e:
-            common.remove_quietly(part)
-            raise UpdateError(f"Download interrotto: {e}") from None
+        with self._get(s, release["url"], stream=True, timeout=60) as r:
+            if r.status_code != 200:
+                raise UpdateError(f"Download non riuscito (codice {r.status_code}).")
+            try:
+                content_length = int(r.headers.get("Content-Length") or 0)
+            except ValueError:
+                content_length = 0
+            if (r.headers.get("Content-Encoding") or "identity").lower() not in ("", "identity"):
+                content_length = 0                        # trasferimento compresso: la lunghezza non è quella del file
+            if content_length > MAX_SIZE:
+                raise UpdateError("File di aggiornamento troppo grande.")
+            signature = publication_signature(release, r.headers)
+            failed = common.read_json(FAILED_FILE, None)
+            if not manual and isinstance(failed, dict) and failed.get("signature") == signature:
+                # stesso indice e stesso file della volta scorsa: riscaricarlo darebbe lo stesso esito
+                raise UpdateError(str(failed.get("reason") or "Il pacchetto pubblicato non supera la verifica.")
+                                  + " Non viene riscaricato in automatico finché non viene corretto.")
+            if declared and content_length and declared != content_length:
+                note = (f"version.json dichiara {declared} byte per {release['name']}, ma il file pubblicato ne ha "
+                        f"{content_length} (differenza {content_length - declared:+d})")
+                if not expected_sha:
+                    # indice e file non corrispondono e non c'è un'impronta per decidere: nessun download inutile
+                    reason = (f"{note[0].upper() + note[1:]}: l'indice degli aggiornamenti non descrive il file "
+                              "pubblicato, quindi non è stato scaricato nulla. Va corretto su download.germano.ai.")
+                    ulog(reason)
+                    raise UpdateError(reason)
+                ulog(f"Avviso: {note}; decide l'impronta SHA-256.")
+            size = content_length or declared or 0
+            space = (size or SIZE_ESTIMATE) + (INSTALL_SPACE if platform_key() == "windows" else 0)
+            if free < space:
+                raise UpdateError(f"Spazio insufficiente: servono circa {space / 1024 ** 3:.1f} GB liberi per scaricare e "
+                                  "preparare l'aggiornamento.")
+            ulog(f"Download di {release['url']} ({size or '?'} byte)...")
+            done, last, digest = 0, 0.0, hashlib.sha256()
+            try:
+                with open(part, "wb") as f:
+                    for chunk in r.iter_content(1 << 20):
+                        if self.stop_event.is_set():
+                            raise UpdateError("Download interrotto.")
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        digest.update(chunk)
+                        done += len(chunk)
+                        if done > MAX_SIZE:
+                            raise UpdateError("File di aggiornamento troppo grande.")
+                        if time.time() - last > 0.5:
+                            last = time.time()
+                            self._set(progress={"done": done, "total": size})
+            except UpdateError:
+                common.remove_quietly(part)
+                raise
+            except Exception as e:
+                common.remove_quietly(part)
+                raise UpdateError(f"Download interrotto: {e}") from None
         problem = verify_download(release, done, content_length, digest.hexdigest())
         if problem is None and not check_package(part):
             problem = "Il file scaricato non è un installer di Germano AI completo: riprova più tardi."
@@ -612,7 +696,7 @@ class Updater:
                                                        "sha256_found": digest.hexdigest(), "bytes": done})
             ulog(f"Pacchetto {release['name']} scartato: {problem}")
             raise UpdateError(problem)
-        os.replace(part, path)
+        _replace_retry(part, path)
         common.remove_quietly(FAILED_FILE)
         common.atomic_write_json(READY_FILE, {"version": version, "installer": path, "downloaded": time.time(),
                                               "attempts": 0, "staged": False, "sha256": digest.hexdigest(),
@@ -635,9 +719,15 @@ class Updater:
         if not os.path.isfile(os.path.join(common.BASE_DIR, "germano_install.json")):
             ulog("Copia portatile (non installata): la preparazione in background non si usa.")
             return False
+        try:
+            inst = _verify_ready_package(ready)
+        except UpdateError as e:
+            self._set(state="error", staged=False, error=str(e))
+            ulog(f"Preparazione bloccata: {e}")
+            return False
         self._set(state="staging", progress=None, error=None)
         common.remove_quietly(STAGE_FILE)
-        args = [ready["installer"], "--update", "--silent", "--stage", "--result", STAGE_FILE]
+        args = [inst, "--update", "--silent", "--stage", "--result", STAGE_FILE]
         ulog(f"Preparazione in background della versione {ready['version']}...")
         t0 = time.time()
         try:
@@ -647,16 +737,18 @@ class Updater:
             self._set(state="ready", staged=False, error=f"Preparazione non avviata: {e}")
             ulog(f"Preparazione non avviata: {e}")
             return False
-        self._stage_proc = proc
+        with self.lock:
+            self._stage_proc = proc
         while proc.poll() is None:
             if self.stop_event.wait(1.0):
                 return False
             if time.time() - t0 > STAGE_TIMEOUT:
                 _kill_tree(proc)
                 break
-        if self._stage_proc is None:              # fermata per lasciare il posto all'installazione completa
-            return False
-        self._stage_proc = None
+        with self.lock:
+            if self._stage_proc is not proc:      # fermata per lasciare il posto all'installazione completa
+                return False
+            self._stage_proc = None
         res = common.read_json(STAGE_FILE, None) or {}
         if res.get("status") == "staged" and res.get("staging"):
             ready = dict(read_ready() or ready)
@@ -679,22 +771,24 @@ class Updater:
         ready = read_ready()
         if not ready:
             raise UpdateError("Nessun aggiornamento pronto da installare.")
+        inst = _verify_ready_package(ready)
         if platform_key() != "windows":
-            open_package(ready["installer"])
-            ulog(f"Pacchetto {os.path.basename(ready['installer'])} aperto con il programma di installazione.")
+            open_package(inst)
+            ulog(f"Pacchetto {os.path.basename(inst)} aperto con il programma di installazione.")
             return "opened"
         staged = staged_ok(ready)
         if not staged and not user_initiated:
             raise UpdateError("La nuova versione non è ancora stata preparata.")
-        if self._stage_proc is not None:          # preparazione ancora in corso: la si ferma, si installa per intero
+        with self.lock:
             proc, self._stage_proc = self._stage_proc, None
+        if proc is not None:                      # preparazione ancora in corso: la si ferma, si installa per intero
             _kill_tree(proc)
             time.sleep(1.0)                       # il blocco «installazione in corso» si libera con il processo
         ready["attempts"] = int(ready.get("attempts") or 0) + 1
         ready["launched"] = time.time()
         common.atomic_write_json(READY_FILE, ready)
         common.remove_quietly(RESULT_FILE)
-        args = [ready["installer"], "--update", "--result", RESULT_FILE]
+        args = [inst, "--update", "--result", RESULT_FILE]
         if staged:
             args += ["--silent", "--apply-staged"]
         subprocess.Popen(args, cwd=UPDATE_DIR, creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,

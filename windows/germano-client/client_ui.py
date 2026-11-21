@@ -9,13 +9,15 @@ Funzioni in piu' rispetto al browser: ricerca del server in rete (UDP), indirizz
 aggiornamenti silenziosi del client (client_updater.py). Prima di inoltrare qualsiasi dato si verifica che
 all'indirizzo risponda davvero un Germano Server (nessun dato verso servizi sconosciuti).
 """
+import argparse
 import json
 import os
+import re
 import sys
 import threading
 import time
-import argparse
 import urllib.error
+import urllib.parse
 import urllib.request
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -52,16 +54,67 @@ def _no_cache(resp):
     return resp
 
 
+_LOCAL_HOST_RE = re.compile(r"^(?:127\.0\.0\.1|localhost|\[::1\])(?::(\d{1,5}))?$", re.IGNORECASE)
+
+
+def _valid_local_host(host_header):
+    raw = str(host_header or "").strip()
+    if not raw or any(c in raw for c in "@ \t\r\n/\\"):
+        return False
+    m = _LOCAL_HOST_RE.match(raw)
+    if not m:
+        return False
+    if m.group(1):
+        p = int(m.group(1))
+        if not (1 <= p <= 65535):
+            return False
+    return True
+
+
+def _origin_matches_request(origin):
+    try:
+        u = urllib.parse.urlsplit(origin)
+        oh = (u.hostname or "").lower()
+        op = u.port or (443 if u.scheme == "https" else 80 if u.scheme == "http" else -1)
+    except ValueError:
+        return False
+    if u.scheme not in ("http", "https") or op <= 0 or oh not in ("127.0.0.1", "localhost", "::1"):
+        return False
+    try:
+        ru = urllib.parse.urlsplit("http://" + (request.host or ""))
+        rh = (ru.hostname or "").lower()
+        rp = ru.port or (443 if request.scheme == "https" else 80)
+    except ValueError:
+        return False
+    if op != rp:
+        return False
+    return oh == rh or (oh in ("127.0.0.1", "localhost", "::1") and rh in ("127.0.0.1", "localhost", "::1"))
+
+
+def _bad_path(path):
+    raw = str(path or "")
+    if "\\" in raw or "\r" in raw or "\n" in raw:
+        return True
+    parts = [urllib.parse.unquote(seg) for seg in raw.split("/")]
+    return any(seg == ".." or "\\" in seg or "/" in seg for seg in parts)
+
+
 @app.before_request
 def _guard():
     ra = request.remote_addr or ""
     if ra not in ("127.0.0.1", "::1") and not ra.startswith("127."):
         return ("Solo locale", 403)
-    origin = request.headers.get("Origin")
-    if request.method not in ("GET", "HEAD") and origin:   # nessuna azione avviata da siti web esterni
-        host = origin.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0].lower()
-        if host not in ("127.0.0.1", "localhost"):
-            return jsonify({"error": "Richiesta da un sito esterno bloccata."}), 403
+    if not _valid_local_host(request.headers.get("Host", "")):
+        return jsonify({"error": "Intestazione Host non consentita."}), 403
+    if _bad_path(request.path):
+        return jsonify({"error": "Percorso non valido."}), 400
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        sfs = (request.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if sfs in ("cross-site", "same-site"):
+            return jsonify({"error": "Richiesta da un altro sito o porta bloccata."}), 403
+        origin = request.headers.get("Origin")
+        if origin and not _origin_matches_request(origin):
+            return jsonify({"error": "Richiesta da un sito o porta esterni bloccata."}), 403
     return None
 
 
@@ -183,7 +236,7 @@ def client_update_install():
 # ------------------------------------------------------------------ inoltro al Germano Server
 def _server():
     """(base del server verificato come Germano Server, token di sessione). Solleva ClientError."""
-    base, _origin = client.resolve_server(argparse.Namespace(server=None, token=None))
+    base, _origin = client.resolve_server(argparse.Namespace(server=None, token=None), non_interactive=True)
     tok = client.load_config().get("token") or ""
     with _lock:
         fresh = _verified["base"] == base and time.time() - _verified["at"] < 30
@@ -230,9 +283,12 @@ def _forward(path, body=None, extra_json=None, response_headers=None):
 @app.route("/api/auth/status", methods=["GET"])
 @app.route("/api/harness/v2/targets", methods=["GET"])
 @app.route("/api/harness/v2/models", methods=["GET"])
+@app.route("/api/harness/v2/param_schema", methods=["GET"])
 @app.route("/api/harness/v2/preview", methods=["POST"])
 @app.route("/api/harness/v2/runs/<path:sub>", methods=["POST"])
 def proxy_remote(sub=None):
+    if sub is not None and _bad_path(sub):
+        return jsonify({"status": "error", "error": "Percorso non valido."}), 400
     path = request.path
     got = {}
     res, err, code = _forward(path, response_headers=got)
@@ -304,7 +360,10 @@ def proxy_login():
     if st == 200 and out.get("token"):
         cfg = client.load_config()
         cfg["token"], cfg["user"] = out["token"], out.get("user") or ""
-        client.save_config(cfg)
+        try:
+            client.save_config(cfg)
+        except client.ClientError as e:
+            return jsonify({"status": "error", "error": str(e), "message": str(e)}), 500
         return jsonify({"status": "success", "user": out.get("user")})   # il token resta nel client
     return Response(raw, status=st, content_type="application/json")
 
@@ -314,7 +373,10 @@ def proxy_logout():
     _forward("/api/auth/logout", extra_json={})
     cfg = client.load_config()
     cfg["token"], cfg["user"] = "", ""
-    client.save_config(cfg)
+    try:
+        client.save_config(cfg)
+    except client.ClientError as e:
+        return jsonify({"status": "error", "error": str(e), "message": str(e)}), 500
     return jsonify({"status": "success"})
 
 

@@ -206,10 +206,10 @@ PIVA_CTX_RE = re.compile(
     r"[ \t]*(?:[:.°n#][ \t]*)*(?:IT[ \t]?)?(\d{11})(?!\d)"
 )
 PIVA_IT_RE = re.compile(r"(?<![A-Za-z0-9])IT[ \t]?(\d{11})(?!\d)")
-IBAN_START_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z]{2})(\d{2})(?=[ \-]?[A-Z0-9])")
+IBAN_START_RE = re.compile(r"(?<![A-Za-z0-9])([A-Za-z]{2})(\d{2})(?=[ \-]?[A-Za-z0-9])")
 CARD_RE = re.compile(r"(?<![\d\-])(?:\d[ \-]?){12,18}\d(?![\d\-])")
 PHONE_STRICT_RE = re.compile(r"(?<![\w+])(?:\+|00)39[ \t]?3\d{2}[ .\-]?\d{6,7}(?![\d])")
-CIE_RE = re.compile(r"(?<![A-Za-z0-9])C[A-Z]\d{5}[A-Z]{2}(?![A-Za-z0-9])")
+CIE_RE = re.compile(r"(?<![A-Za-z0-9])[Cc][A-Za-z]\d{5}[A-Za-z]{2}(?![A-Za-z0-9])")
 PLATE_RE = re.compile(r"(?<![A-Za-z0-9])[A-HJ-NPR-TV-Z]{2}[ ]?\d{3}[ ]?[A-HJ-NPR-TV-Z]{2}(?![A-Za-z0-9])")
 IPV4_RE = re.compile(
     r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?!\d|\.\d)"
@@ -222,7 +222,7 @@ SECRET_RES = [
     re.compile(r"(?<![\w\-])AIza[0-9A-Za-z_\-]{35}"),
     re.compile(r"(?<![\w\-])xox[abposr]-[A-Za-z0-9\-]{10,}"),
     re.compile(r"(?<![\w\-])eyJ[A-Za-z0-9_\-]{8,}\.eyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}"),
-    re.compile(r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\s\S]{20,}?-----END (?:[A-Z]+ )*PRIVATE KEY-----"),
+    re.compile(r"-----BEGIN (?:[A-Z]+ ){0,4}PRIVATE KEY-----(?:(?!-----BEGIN )[A-Za-z0-9+/=\s:,\-._]){20,16384}?-----END (?:[A-Z]+ ){0,4}PRIVATE KEY-----"),
 ]
 
 
@@ -233,7 +233,7 @@ def _add(spans, s, e, group, score=1.0):
 
 def _iban_spans(text, spans, ocr):
     for m in IBAN_START_RE.finditer(text):
-        country = m.group(1)
+        country = m.group(1).upper()
         pos = m.end()
         chars, ends = [], []
         prev_sep = False
@@ -377,10 +377,17 @@ def _subtract_tags(text, s, e, tag_ranges, tag_starts):
     if not tag_ranges:
         return [(s, e)]
     i = bisect_right(tag_starts, e)
+    overlapping = []
+    for j in range(i - 1, -1, -1):
+        ts_, te_ = tag_ranges[j]
+        if te_ <= s:
+            break
+        if ts_ < e:
+            overlapping.append((ts_, te_))
+    if not overlapping:
+        return [(s, e)]
     parts = [(s, e)]
-    for ts_, te_ in tag_ranges[max(0, i - 50):i]:
-        if te_ <= s or ts_ >= e:
-            continue
+    for ts_, te_ in reversed(overlapping):
         new = []
         for a, b in parts:
             if te_ <= a or ts_ >= b:
@@ -562,6 +569,21 @@ class Propagator:
         out = []
         if not self.index or not text:
             return out
+        tag_ranges = [(m.start(), m.end()) for m in ANY_TAG_RE.finditer(text)] if "[" in text else []
+        tag_starts = [a for a, _ in tag_ranges]
+
+        def _overlaps_tag(a, b):
+            if not tag_ranges:
+                return False
+            idx = bisect_right(tag_starts, b)
+            for j in range(idx - 1, -1, -1):
+                ts_, te_ = tag_ranges[j]
+                if te_ <= a:
+                    return False
+                if ts_ < b:
+                    return True
+            return False
+
         toks = [(m.start(), m.end(), m.group(0).casefold()) for m in _TOKEN_RE.finditer(text)]
         i = 0
         nt = len(toks)
@@ -583,7 +605,10 @@ class Propagator:
                             ok = False
                             break
                     if ok:
-                        out.append((toks[i][0], toks[i + L - 1][1], label, group, key))
+                        a, b = toks[i][0], toks[i + L - 1][1]
+                        if _overlaps_tag(a, b):
+                            continue
+                        out.append((a, b, label, group, key))
                         i += L
                         matched = True
                         break

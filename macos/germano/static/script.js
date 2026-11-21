@@ -966,51 +966,58 @@ function renderLiveStats(data) {
     }
 }
 
+let pollStatusBusy = false;
 async function pollStatus() {
-    let data;
+    if (pollStatusBusy) return;
+    pollStatusBusy = true;
     try {
-        const r = await fetch('/api/status', { cache: 'no-store' });
-        if (!r.ok) return;
-        data = await r.json();
-        setServerDown(false);
-    } catch (e) {
-        setServerDown(true);
-        return;
-    }
-    if (pageVersion && data.version && data.version !== pageVersion) {
-        location.reload();  // Germano è stato aggiornato: si carica la nuova Dashboard
-        return;
-    }
-    pageVersion = pageVersion || data.version;
-    lastStatus = data;
-    currentStatus = data.status;
-    renderUpdate(data.update);
-    if (data.profile && data.profile !== currentComplianceMode) {
-        currentComplianceMode = data.profile;
-        updatePresetButtons();
-    }
-    if (typeof data.locked === 'boolean' && data.locked !== settingsLocked) {
-        settingsLocked = data.locked;
-        updateProfilePill();
-    }
-    renderEngine(data);
-    if (data.stats) {
-        renderCounts(data.stats);
-        const sig = [data.stats.pending, data.stats.outputs, data.stats.failed, data.stats.processed,
-            (data.progress || {}).current || ''].join('|');
-        if (currentTab === 'sanitize' && (sig !== filesSignature || Date.now() - lastFilesFetch > 10000)) {
-            filesSignature = sig;
-            fetchFiles();
+        let data;
+        try {
+            const r = await fetch('/api/status', { cache: 'no-store' });
+            if (!r.ok) return;
+            data = await r.json();
+            setServerDown(false);
+        } catch (e) {
+            setServerDown(true);
+            return;
         }
+        if (pageVersion && data.version && data.version !== pageVersion) {
+            location.reload();  // Germano è stato aggiornato: si carica la nuova Dashboard
+            return;
+        }
+        pageVersion = pageVersion || data.version;
+        lastStatus = data;
+        currentStatus = data.status;
+        renderUpdate(data.update);
+        if (data.profile && data.profile !== currentComplianceMode) {
+            currentComplianceMode = data.profile;
+            updatePresetButtons();
+        }
+        if (typeof data.locked === 'boolean' && data.locked !== settingsLocked) {
+            settingsLocked = data.locked;
+            updateProfilePill();
+        }
+        renderEngine(data);
+        if (data.stats) {
+            renderCounts(data.stats);
+            const sig = [data.stats.pending, data.stats.outputs, data.stats.failed, data.stats.processed,
+                (data.progress || {}).current || ''].join('|');
+            if (currentTab === 'sanitize' && (sig !== filesSignature || Date.now() - lastFilesFetch > 10000)) {
+                filesSignature = sig;
+                fetchFiles();
+            }
+        }
+        renderJob(data);
+        if (currentTab === 'sanitize') {
+            renderFileManager();
+            if (!fmPaths) loadFmPaths();
+        }
+        renderSystem(data);
+        renderLiveStats(data);
+        renderModeChip(data);
+    } finally {
+        pollStatusBusy = false;
     }
-    renderJob(data);
-    if (currentTab === 'sanitize') {
-        renderFileManager();
-        if (!fmPaths) loadFmPaths();
-    }
-    renderSystem(data);
-    renderLiveStats(data);
-    renderModeChip(data);
 }
 
 // ------------------------------------------------------------------ DOCUMENTI
@@ -1404,8 +1411,10 @@ async function loadFolders() {
     } catch (e) { /* riprova alla prossima apertura della sezione */ }
 }
 
+let pollLogsBusy = false;
 async function pollLogs() {
-    if (currentTab !== 'settings' || currentPane !== 'system') return;
+    if (pollLogsBusy || document.hidden || currentTab !== 'settings' || currentPane !== 'system') return;
+    pollLogsBusy = true;
     try {
         const { ok, data } = await fetchJson('/api/logs', { cache: 'no-store' });
         const term = $('logTerminal');
@@ -1419,7 +1428,9 @@ async function pollLogs() {
             return `<div class="${cls}">${escapeHtml(line.replace(/\s+$/, ''))}</div>`;
         }).join('');
         if (atBottom) term.scrollTop = term.scrollHeight;
-    } catch (e) { /* ignora */ }
+    } catch (e) { /* ignora */ } finally {
+        pollLogsBusy = false;
+    }
 }
 
 let vaultItems = [];
@@ -2301,9 +2312,11 @@ function renderModeChip(data) {
     chip.dataset.mode = eff;
 }
 
+let netSummaryBusy = false;
 async function renderNetSummary() {
     const box = $('netSummary');
-    if (!box || currentTab !== 'settings' || currentPane !== 'general') return;
+    if (netSummaryBusy || document.hidden || !box || currentTab !== 'settings' || currentPane !== 'general') return;
+    netSummaryBusy = true;
     try {
         const { ok, data } = await fetchJson('/api/mode', { cache: 'no-store' });
         if (!ok) return;
@@ -2342,7 +2355,9 @@ async function renderNetSummary() {
         ];
         box.innerHTML = items.map(([l, v, sub]) => `<div class="net-item"><div class="net-item-label">${escapeHtml(l)}</div>` +
             `<div class="net-item-value">${escapeHtml(v)}</div><div class="net-item-sub">${escapeHtml(sub)}</div></div>`).join('');
-    } catch (e) { /* Germano non risponde: gestito da pollStatus */ }
+    } catch (e) { /* Germano non risponde: gestito da pollStatus */ } finally {
+        netSummaryBusy = false;
+    }
 }
 
 // ------------------------------------------------------------------ INTERNAZIONALIZZAZIONE (i18n)

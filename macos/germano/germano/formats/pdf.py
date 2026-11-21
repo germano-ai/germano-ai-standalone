@@ -176,9 +176,20 @@ def _overlaps_image(rect, img_rects):
     return False
 
 
-def _render_rgb(page, fitz):
+_MAX_RENDER_PIXELS = 36_000_000
+
+
+def _page_zoom(page):
+    import math
+    area = max(1.0, abs(page.rect.width * page.rect.height))
+    if area * ZOOM * ZOOM <= _MAX_RENDER_PIXELS:
+        return ZOOM
+    return max(0.25, math.sqrt(_MAX_RENDER_PIXELS / area))
+
+
+def _render_rgb(page, fitz, zoom=ZOOM):
     import numpy as np
-    pix = page.get_pixmap(matrix=fitz.Matrix(ZOOM, ZOOM), alpha=False)
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
     img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
     if pix.n == 1:
         img = np.repeat(img, 3, axis=2)
@@ -187,8 +198,8 @@ def _render_rgb(page, fitz):
     return np.ascontiguousarray(img)
 
 
-def _pix_to_page(page, fitz, x0, y0, x1, y1):
-    r = fitz.Rect(x0 / ZOOM, y0 / ZOOM, x1 / ZOOM, y1 / ZOOM) * page.derotation_matrix
+def _pix_to_page(page, fitz, x0, y0, x1, y1, zoom=ZOOM):
+    r = fitz.Rect(x0 / zoom, y0 / zoom, x1 / zoom, y1 / zoom) * page.derotation_matrix
     r.normalize()
     return r
 
@@ -348,7 +359,7 @@ def _process_doc(doc, ctx, fitz):
             try:
                 for link in page.get_links():
                     uri = (link.get("uri") or "").lower()
-                    if uri.startswith(("mailto:", "tel:", "sms:", "callto:")):
+                    if uri.startswith(("mailto:", "tel:", "sms:", "callto:", "file:", "http://", "https://")):
                         page.delete_link(link)
             except Exception:
                 pass
@@ -444,19 +455,21 @@ def _prepare_page(page, fitz, ctx, text, boxes, sizes, repls):
     vision = bool(img_rects) or not has_text
     need_ocr = bool(ctx.settings.get("enable_ocr", True)) and _needs_ocr(page, text, boxes, big_imgs)
     st = {"pno": page.number, "page": page, "text": text, "boxes": boxes, "redact_rects": redact_rects,
-          "removed": removed, "labels_later": labels_later, "scan": None, "ocr_areas": None, "regions": []}
+          "removed": removed, "labels_later": labels_later, "scan": None, "ocr_areas": None, "regions": [], "zoom": ZOOM}
     if ctx.vision_enabled() and (vision or need_ocr):
         from .images import scan_image
         if need_ocr and has_text:
             common.log("Pagina con scansione e testo digitale parziale: OCR attivato anche sull'immagine.")
         elif need_ocr:
             common.log("Pagina scansionata: OCR attivato.")
-        img = _render_rgb(page, fitz)
+        zoom = _page_zoom(page)
+        st["zoom"] = zoom
+        img = _render_rgb(page, fitz, zoom)
         ocr_areas = None
         if need_ocr and has_text:
             # Pagina mista: l'OCR serve solo sulle immagini scansionate; il testo digitale (es. timbro di
             # protocollo) e' gia' stato analizzato con precisione dal livello testo.
-            m = page.rotation_matrix * fitz.Matrix(ZOOM, ZOOM)
+            m = page.rotation_matrix * fitz.Matrix(zoom, zoom)
             ocr_areas = []
             for br in big_imgs:
                 pr = fitz.Rect(br) * m
@@ -471,11 +484,12 @@ def _prepare_page(page, fitz, ctx, text, boxes, sizes, repls):
 def _finish_page(st, fitz, ctx):
     """Seconda fase: riquadri della visione e dell'OCR, rimozione definitiva, etichette nello spazio liberato."""
     page, redact_rects = st["page"], st["redact_rects"]
+    zoom = st.get("zoom", ZOOM)
     n_regions = 0
     if st["scan"] is not None:
         text_rects = list(redact_rects)
         for x0, y0, x1, y1, label in st["regions"]:
-            r = _pix_to_page(page, fitz, x0, y0, x1, y1)
+            r = _pix_to_page(page, fitz, x0, y0, x1, y1, zoom)
             if r.is_empty or not r.is_valid:
                 continue
             fs = _fit_fontsize(fitz, label, r, max(6.0, r.height * 0.6))
@@ -661,16 +675,17 @@ def _restore_page(page, fitz, text, boxes, sizes, repls):
     _place_labels(page, fitz, text, boxes, removed, items)
 
 
-def _replace_embedded(doc, name, data, info):
+def _replace_embedded(doc, name, data, info, new_name=None):
+    fname = new_name or info.get("filename") or name
     try:
-        doc.embfile_upd(name, buffer_=data)
+        doc.embfile_upd(name, buffer_=data, filename=fname, ufilename=fname, desc="")
         return
     except Exception:
         pass
     # PyMuPDF 2.0: embfile_upd puo' fallire con bytes -> si rimuove e si riaggiunge il file
     doc.embfile_del(name)
     # la descrizione (testo libero, possibile dato personale) non viene ricopiata
-    doc.embfile_add(name, data, filename=info.get("filename") or name, ufilename=info.get("ufilename") or name, desc="")
+    doc.embfile_add(name, data, filename=fname, ufilename=fname, desc="")
 
 
 def _process_attachments(doc, ctx, fitz):
@@ -685,13 +700,21 @@ def _process_attachments(doc, ctx, fitz):
             info = doc.embfile_info(name) or {}
             fname = info.get("filename") or info.get("ufilename") or name
             data = doc.embfile_get(name)
-        except Exception:
+        except Exception as e:
+            if ctx.anonymize:
+                try:
+                    doc.embfile_del(name)
+                    ctx.note(f"Allegato incorporato illeggibile rimosso per sicurezza ({name}: {e}).")
+                except Exception:
+                    pass
             continue
         base = str(fname).replace("\\", "/").split("/")[-1] or "allegato.bin"
         if is_supported(base):
             try:
-                new_data, _ = process_bytes(data, base, ctx.child())
-                _replace_embedded(doc, name, new_data, info)
+                from . import transform_filename
+                new_data, out_name = process_bytes(data, base, ctx.child())
+                clean_name = transform_filename(out_name or base, ctx)
+                _replace_embedded(doc, name, new_data, info, new_name=clean_name)
                 common.log(f"PDF: allegato incorporato elaborato ({base}).")
                 continue
             except Exception as e:

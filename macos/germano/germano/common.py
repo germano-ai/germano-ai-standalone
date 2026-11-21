@@ -483,10 +483,11 @@ class DataFolderLock:
 # I/O atomico (Windows: os.replace puo' fallire se il file e' aperto da un altro processo)
 # ----------------------------------------------------------------------------------------
 
-def atomic_write_bytes(path, data, retries=20):
+def atomic_write_bytes(path, data, retries=30):
     directory = os.path.dirname(os.path.abspath(path)) or "."
     os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=TMP_PREFIX, dir=directory)
+    last_err = None
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
@@ -499,11 +500,10 @@ def atomic_write_bytes(path, data, retries=20):
             try:
                 os.replace(tmp, path)
                 return
-            except PermissionError:
-                time.sleep(0.05 * (i + 1))
-        # Ultima risorsa: scrittura diretta (non atomica) per non perdere i dati.
-        with open(path, "wb") as f:
-            f.write(data)
+            except PermissionError as e:
+                last_err = e
+                time.sleep(min(0.25, 0.03 * (i + 1)))
+        raise last_err or PermissionError(f"Impossibile sostituire atomicamente {path}")
     finally:
         if os.path.exists(tmp):
             try:
@@ -586,7 +586,28 @@ def _validate_value(key, value, current):
             s = value.strip()
             if not s:
                 return DEFAULT_SETTINGS[key]
-            if re.match(r"^https?://[^\s/$.?#][^\s]*$", s, re.I) and len(s) <= 500:
+            if len(s) <= 500 and not any(ch.isspace() for ch in s):
+                import ipaddress
+                import urllib.parse
+                try:
+                    u = urllib.parse.urlsplit(s)
+                    port = u.port
+                except ValueError:
+                    return current
+                host = (u.hostname or "").lower()
+                if u.scheme not in ("http", "https") or not host or u.username or u.password or u.query or u.fragment:
+                    return current
+                if port is not None and not 1 <= port <= 65535:
+                    return current
+                try:
+                    ip = ipaddress.ip_address(host)
+                    if ip.is_link_local or ip.is_unspecified:
+                        return current
+                    if u.scheme == "http" and not (ip.is_loopback or ip.is_private):
+                        return current
+                except ValueError:
+                    if u.scheme == "http" and host != "localhost" and key != "remote_server":
+                        return current
                 return s
         return current
     if key in _HOST_KEYS:
@@ -628,15 +649,49 @@ def normalize_settings(raw):
     return cfg
 
 
+_last_good_cfg = None
+
+
+def _read_config_strict(retries=6):
+    """Legge CONFIG_FILE distinguendo FileNotFoundError da un file esistente ma illeggibile/bloccato.
+    Restituisce (dict | None, reason: None | 'missing' | 'locked' | 'corrupt')."""
+    last_err = None
+    for i in range(retries):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data, None
+            return None, "corrupt"
+        except FileNotFoundError:
+            return {}, "missing"
+        except PermissionError as e:
+            last_err = ("locked", e)
+            time.sleep(min(0.2, 0.04 * (i + 1)))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            last_err = ("corrupt", e)
+            time.sleep(min(0.2, 0.04 * (i + 1)))
+        except OSError as e:
+            last_err = ("locked", e)
+            time.sleep(min(0.2, 0.04 * (i + 1)))
+    return None, (last_err[0] if last_err else "corrupt")
+
+
 def load_config():
+    global _last_good_cfg
     with _config_lock:
-        return normalize_settings(read_json(CONFIG_FILE, {}))
+        raw, err = _read_config_strict()
+        if raw is not None:
+            _last_good_cfg = dict(raw)
+            return normalize_settings(raw)
+        if _last_good_cfg is not None:
+            return normalize_settings(_last_good_cfg)
+        return normalize_settings({})
 
 
 def _backup_unreadable_config():
-    """Se config.json esiste ma non e' un JSON valido (es. modifica manuale errata) se ne conserva una copia
-    prima di riscriverlo, cosi' le impostazioni dell'amministratore non vanno perse."""
-    if os.path.exists(CONFIG_FILE) and read_json(CONFIG_FILE, None) is None:
+    """Se config.json esiste ma non e' un JSON valido (es. modifica manuale errata) se ne conserva una copia."""
+    if os.path.exists(CONFIG_FILE):
         backup = CONFIG_FILE + time.strftime(".illeggibile-%Y%m%d-%H%M%S")
         try:
             import shutil
@@ -648,9 +703,15 @@ def _backup_unreadable_config():
 
 def save_config(updates, admin=False):
     """Aggiorna config.json. Restituisce (config, errore_o_None)."""
+    global _last_good_cfg
     with _config_lock:
-        _backup_unreadable_config()
-        cfg = normalize_settings(read_json(CONFIG_FILE, {}))
+        raw, err = _read_config_strict()
+        if raw is None:
+            if err == "corrupt":
+                _backup_unreadable_config()
+            base = normalize_settings(_last_good_cfg or {})
+            return base, "Impossibile leggere config.json (bloccato o danneggiato): salvataggio annullato per proteggere le impostazioni."
+        cfg = normalize_settings(raw)
         if not isinstance(updates, dict):
             return cfg, None
         locked = bool(cfg.get("lock_settings")) and not admin
@@ -671,10 +732,11 @@ def save_config(updates, admin=False):
                 cfg["compliance_mode"] = "PD"
         cfg = normalize_settings(cfg)
         atomic_write_json(CONFIG_FILE, cfg, indent=4)
-        err = None
+        _last_good_cfg = dict(cfg)
+        err_msg = None
         if rejected:
-            err = "Impostazioni bloccate dall'amministratore (lock_settings): modifiche ignorate."
-        return cfg, err
+            err_msg = "Impostazioni bloccate dall'amministratore (lock_settings): modifiche ignorate."
+        return cfg, err_msg
 
 
 # ----------------------------------------------------------------------------------------
@@ -731,7 +793,17 @@ def options_to_settings(opts):
 
 def load_users():
     """Utenti per l'accesso dalla rete: [{"username", "pbkdf2": {...}, "created"}]. Mai restituiti alla rete."""
-    users = (read_json(CONFIG_FILE, {}) or {}).get("users")
+    global _last_good_cfg
+    with _config_lock:
+        raw, _err = _read_config_strict()
+        if raw is not None:
+            _last_good_cfg = dict(raw)
+            src = raw
+        elif _last_good_cfg is not None:
+            src = _last_good_cfg
+        else:
+            return []
+    users = src.get("users")
     if not isinstance(users, list):
         return []
     return [u for u in users if isinstance(u, dict) and isinstance(u.get("username"), str)
@@ -740,13 +812,19 @@ def load_users():
 
 def save_users(users):
     """Scrive l'elenco degli utenti in config.json lasciando invariato tutto il resto."""
+    global _last_good_cfg
     with _config_lock:
-        _backup_unreadable_config()
-        cfg = normalize_settings(read_json(CONFIG_FILE, {}))
+        raw, err = _read_config_strict()
+        if raw is None:
+            if err == "corrupt":
+                _backup_unreadable_config()
+            raise RuntimeError("Impossibile leggere config.json: aggiornamento utenti annullato per evitare la perdita delle impostazioni.")
+        cfg = normalize_settings(raw)
         cfg["users"] = list(users)
         if not users:
             cfg["auth_enabled"] = False      # senza utenti l'accesso con password non avrebbe nessun ingresso
         atomic_write_json(CONFIG_FILE, cfg, indent=4)
+        _last_good_cfg = dict(cfg)
         return cfg
 
 

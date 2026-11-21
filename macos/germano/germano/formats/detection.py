@@ -8,6 +8,19 @@ import zipfile
 _TAG_STRIP = re.compile(r"<[^>]+>")
 _PARA_END = re.compile(r"</(?:w:p|a:p|text:p|text:h|si|row)>")
 _MAX_FILE = 64 * 1024 * 1024
+_MAX_ZIP_SAMPLE_TOTAL = 16 * 1024 * 1024
+_MAX_ZIP_SAMPLE_MEMBER = 4 * 1024 * 1024
+
+
+def _read_zip_bounded(z, info, budget):
+    rem = _MAX_ZIP_SAMPLE_TOTAL - budget[0]
+    if rem <= 0:
+        return b""
+    cap = min(_MAX_ZIP_SAMPLE_MEMBER, rem)
+    with z.open(info, "r") as f:
+        data = f.read(cap)
+    budget[0] += len(data)
+    return data
 
 
 def _xml_text(xml_bytes):
@@ -77,14 +90,18 @@ def sample_text(path, max_chars=3_000_000, depth=0, audio=None, headers=False, l
     if ext in OOXML_EXTS or ext in ODF_EXTS:
         out = []
         size = 0
+        budget = [0]
         with zipfile.ZipFile(path) as z:
-            for n in z.namelist():
-                low = n.lower()
+            for info in z.infolist():
+                low = info.filename.lower()
                 if not low.endswith(".xml") or "/_rels/" in low or low.startswith("[content_types]"):
                     continue
                 if ext in ODF_EXTS and os.path.basename(low) not in ("content.xml", "styles.xml"):
                     continue
-                t = _xml_text(z.read(n))
+                raw_xml = _read_zip_bounded(z, info, budget)
+                if not raw_xml:
+                    break
+                t = _xml_text(raw_xml)
                 out.append(t)
                 size += len(t)
                 if size > max_chars:
@@ -145,8 +162,18 @@ def sample_text(path, max_chars=3_000_000, depth=0, audio=None, headers=False, l
 
 def sample_text_zip(path, max_chars):
     out = []
+    size = 0
+    budget = [0]
     with zipfile.ZipFile(path) as z:
-        for n in z.namelist():
-            if n.lower().endswith(".xml") and "/_rels/" not in n.lower():
-                out.append(_xml_text(z.read(n)))
+        for info in z.infolist():
+            low = info.filename.lower()
+            if low.endswith(".xml") and "/_rels/" not in low:
+                raw_xml = _read_zip_bounded(z, info, budget)
+                if not raw_xml:
+                    break
+                t = _xml_text(raw_xml)
+                out.append(t)
+                size += len(t)
+                if size > max_chars:
+                    break
     return "\n".join(out)[:max_chars]

@@ -310,10 +310,14 @@ def _seven_list(exe, path):
             kind = "dir"
         else:
             kind = "file"
-        try:
-            size = int(fields.get("Size") or 0)
-        except ValueError:
-            size = 0
+        raw_size = (fields.get("Size") or "").strip()
+        if kind == "file" and raw_size == "":
+            size = -1
+        else:
+            try:
+                size = int(raw_size or 0)
+            except ValueError:
+                size = -1 if kind == "file" else 0
         mtime = None
         m = re.match(r"(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)", fields.get("Modified") or "")
         if m:
@@ -342,6 +346,10 @@ class _SevenReader:
         self.proc = None
         self._err = None
         self._pending = None            # elemento i cui dati sono i prossimi nel flusso
+        self._guard = None
+
+    def set_guard(self, guard):
+        self._guard = guard
 
     def __enter__(self):
         return self
@@ -367,6 +375,8 @@ class _SevenReader:
             self._err = None
 
     def total_declared(self):
+        if any(m.size < 0 for m in self.members if m.kind == "file"):
+            return None
         return sum(m.size for m in self.members if m.kind == "file")
 
     def _start(self):
@@ -386,6 +396,8 @@ class _SevenReader:
 
     def _consume(self, m, dst, guard):
         """Legge dal flusso i dati dell'elemento (li scrive in dst, se indicato) e ne verifica dimensione e CRC."""
+        if m.size < 0:
+            raise ProcessingError("Archivio non supportato: un file interno non dichiara la propria dimensione.")
         if self.proc is None:
             self._start()
         left, crc = m.size, 0
@@ -409,7 +421,7 @@ class _SevenReader:
                 self._pending = m
                 yield m
                 if self._pending is m:              # non estratto da chi consuma: i suoi dati vanno comunque letti
-                    self._consume(m, None, None)
+                    self._consume(m, None, self._guard)
                     self._pending = None
             else:
                 yield m
@@ -422,6 +434,9 @@ class _SevenReader:
     def extract_to(self, m, dst, guard):
         if self._pending is not m:
             raise ProcessingError("Errore interno: estrazione fuori sequenza.")
+        self._guard = guard
+        if m.size < 0:
+            raise ProcessingError("Archivio non supportato: un file interno non dichiara la propria dimensione.")
         if m.size > MAX_MEMBER_BYTES:
             raise ProcessingError("Un file interno dell'archivio e' troppo grande (oltre "
                                   f"{MAX_MEMBER_BYTES / 1024 ** 3:.0f} GB).")
@@ -435,7 +450,7 @@ class _SevenWriter:
     dall'archivio viene mai creato sul disco."""
     ext = ".7z"
 
-    def __init__(self, out_path, workdir, threads=None):
+    def __init__(self, out_path, workdir, threads=None, ctx=None):
         self.out, self.exe = out_path, sevenzip_path()
         if not self.exe:
             raise ProcessingError("Per creare gli archivi 7Z serve 7-Zip, che non e' stato trovato accanto a Germano.")
@@ -444,6 +459,7 @@ class _SevenWriter:
         self.prefix = "g" + uuid.uuid4().hex[:10] + "_"
         self.items = []
         self.threads = threads
+        self.ctx = ctx
 
     def _neutral(self):
         return f"{self.prefix}{len(self.items):07d}"
@@ -470,10 +486,32 @@ class _SevenWriter:
         self.items.append((neutral, name))
 
     def _run(self, args, what):
-        r = subprocess.run([self.exe] + args, cwd=self.stage, capture_output=True, stdin=subprocess.DEVNULL,
-                           **_popen_kw())
-        if r.returncode != 0:
-            common.log(f"7-Zip ({what}): codice {r.returncode}: {r.stderr.decode('utf-8', 'replace')[:300]}")
+        proc = subprocess.Popen([self.exe] + args, cwd=self.stage, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                stdin=subprocess.DEVNULL, **_popen_kw())
+        t0 = time.time()
+        try:
+            while proc.poll() is None:
+                if self.ctx is not None:
+                    self.ctx.check()
+                elif time.time() - t0 > 1800:
+                    raise ProcessingError("Creazione dell'archivio 7Z oltre il tempo massimo.")
+                time.sleep(0.25)
+            err = (proc.stderr.read(8000) if proc.stderr else b"")
+        except BaseException:
+            try:
+                proc.kill()
+                proc.wait(5)
+            except Exception:
+                pass
+            raise
+        finally:
+            if proc.stderr:
+                try:
+                    proc.stderr.close()
+                except Exception:
+                    pass
+        if proc.returncode != 0:
+            common.log(f"7-Zip ({what}): codice {proc.returncode}: {err.decode('utf-8', 'replace')[:300]}")
             raise ProcessingError("Non e' stato possibile ricomporre l'archivio 7Z.")
 
     def close(self, ok=True):
@@ -749,8 +787,10 @@ def process_archive(in_path, out_path, ctx):
                         safe_member_name(getattr(item, "name", None) or getattr(item, "filename", ""))
                 if declared is not None:
                     guard.declared(declared)
+                if hasattr(reader, "set_guard"):
+                    reader.set_guard(guard)
                 if container == "7z":
-                    writer = _SevenWriter(real_out, work, common.cpu_threads(ctx.settings)[0])
+                    writer = _SevenWriter(real_out, work, common.cpu_threads(ctx.settings)[0], ctx=ctx)
                 elif container == "tar":
                     writer = _TarWriter(real_out, comp)
                 else:
@@ -990,6 +1030,8 @@ def sample_members(path, workdir, max_members=SAMPLE_MEMBERS, max_member_bytes=S
                 yield inner, dst
             return
         with _open_reader(container, path, workdir) as reader:
+            if hasattr(reader, "set_guard"):
+                reader.set_guard(guard)
             declared = reader.total_declared()
             if declared is not None:
                 guard.declared(declared)

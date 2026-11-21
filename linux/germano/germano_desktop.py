@@ -691,6 +691,39 @@ def _headless_running():
     return None
 
 
+def _running_instance(default_port, psutil):
+    """Porta di un'istanza Germano gia' attiva sulla stessa cartella dati/client, oppure None."""
+    if IS_CLIENT:
+        if os.environ.get("GERMANO_PORT"):
+            return None
+        try:
+            with _OPENER.open(f"http://127.0.0.1:{int(default_port)}/api/status", timeout=1.5) as r:
+                data = json.loads(r.read(65536).decode("utf-8", "replace"))
+            if r.status == 200 and isinstance(data, dict) and data.get("service") == "germano-client-ui":
+                return int(default_port)
+        except Exception:
+            return None
+        return None
+    info = _read_json_file(os.path.join(DATA_DIR, "state", "server.json"))
+    try:
+        pid = int(info.get("pid") or 0)
+        port = int(info.get("port") or 0)
+    except (TypeError, ValueError):
+        return None
+    if not pid or not port or not psutil.pid_exists(pid):
+        return None
+    try:
+        with _OPENER.open(f"http://127.0.0.1:{port}/api/discovery", timeout=2.0) as r:
+            data = json.loads(r.read(65536).decode("utf-8", "replace"))
+        if r.status == 200 and isinstance(data, dict) and data.get("service") == "germano-server":
+            want_id = info.get("instance_id")
+            if not want_id or data.get("instance_id") == want_id:
+                return port
+    except Exception:
+        return None
+    return None
+
+
 def _open_existing(port):
     """Germano e' gia' attivo senza finestra: si apre solo una finestra sulla sua Dashboard (chiuderla non lo ferma),
     invece di avviare un secondo server sulla stessa cartella dati."""
@@ -726,14 +759,22 @@ def main():
 
     _prepare_data_dir()
     os.makedirs(TECH_DIR, exist_ok=True)
-    default_port = 8181
-    try:
-        cfgp = os.path.join(DATA_DIR, "config.json")
-        if os.path.isfile(cfgp):
-            with open(cfgp, encoding="utf-8-sig") as f:
-                default_port = int(json.load(f).get("port") or 8181)
-    except Exception:
-        pass
+    default_port = 8360 if IS_CLIENT else 8181
+    if not IS_CLIENT:
+        try:
+            cfgp = os.path.join(DATA_DIR, "config.json")
+            if os.path.isfile(cfgp):
+                with open(cfgp, encoding="utf-8-sig") as f:
+                    default_port = int(json.load(f).get("port") or 8181)
+        except Exception:
+            pass
+    same = _running_instance(default_port, psutil)
+    if same:
+        if HEADLESS:
+            _announce([T(f"{PRODUCT} è già attivo sulla porta {same}.",
+                         f"{PRODUCT} is already running on port {same}.")])
+            return 0
+        return _open_existing(same)
 
     env = dict(os.environ)
     env["GERMANO_NO_BROWSER"] = "1"   # il server non apre il browser di sistema: la finestra la gestiamo noi

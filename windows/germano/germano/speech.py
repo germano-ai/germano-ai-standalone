@@ -298,19 +298,21 @@ class SpeechEngine:
                "duration": 0.0, "speech": 0.0, "model": self.model_label()}
         t0 = time.time()
 
+        max_ext = (max_minutes * 60 + 5) * SPEED_MARGIN + SPEED_BASE_S
+
         def on_event(ev):
             kind = ev.get("ev")
             if kind == "probe":
                 out["format"], out["tags"] = ev.get("format") or {}, ev.get("tags") or {}
                 d = out["format"].get("duration")
                 if d and extend:
-                    extend(d * SPEED_MARGIN + SPEED_BASE_S)
+                    extend(min(max_ext, max(0.0, float(d)) * SPEED_MARGIN + SPEED_BASE_S))
                 if progress:
                     progress("audio: lettura della traccia" + (f" ({_clock(d)})" if d else ""))
             elif kind == "audio":
                 out["duration"] = float(ev.get("duration") or 0)
                 if extend:
-                    extend(out["duration"] * SPEED_MARGIN + SPEED_BASE_S)
+                    extend(min(max_ext, max(0.0, out["duration"]) * SPEED_MARGIN + SPEED_BASE_S))
                 if progress:
                     progress(f"audio: trascrizione di {_clock(out['duration'])} di registrazione")
             elif kind == "info":

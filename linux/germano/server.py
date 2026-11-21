@@ -39,6 +39,8 @@ if "--mcp-stdio" in sys.argv:
 common.setup_offline_env()
 common.force_utf8_stdio()
 
+from concurrent.futures import ThreadPoolExecutor  # noqa: E402
+from http.cookiejar import DefaultCookiePolicy  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
 
@@ -47,7 +49,8 @@ import requests  # noqa: E402
 from flask import (Flask, Response, g, jsonify, redirect, render_template, request, send_file,  # noqa: E402
                    stream_with_context)
 
-from germano.vault import TAG_RE, VaultReader, contains_tags, normalize_tag, restore_text  # noqa: E402
+from germano.vault import (TAG_RE, VaultReader, contains_strict_tags, contains_tags,  # noqa: E402
+                           normalize_tag, restore_text)
 from germano import auth as gauth  # noqa: E402
 from germano import glass as gglass  # noqa: E402
 from germano import providers as gproviders  # noqa: E402
@@ -59,6 +62,23 @@ from germano import utcp as gutcp  # noqa: E402
 
 # Chiavi «collegate» con l'assistente di configurazione: lette dalla loro fonte al momento dell'uso (mai copiate)
 gproviders.set_key_resolver(gassist.linked_key)
+
+
+def _on_auth_revoke(username):
+    if username is None:
+        gint.SCOPES.clear()
+        gmcp.HTTP_SESSIONS.drop_all(keep_local=True)
+        gmcp.SSE_HUB.drop_all(keep_local=True)
+    else:
+        principal = "user:" + str(username)
+        gint.SCOPES.drop_principal(principal)
+        gmcp.HTTP_SESSIONS.drop_principal(principal)
+        gmcp.SSE_HUB.drop_principal(principal)
+
+
+gauth.set_revoke_hook(_on_auth_revoke)
+gint.set_token_rotate_hook(lambda: (gmcp.HTTP_SESSIONS.drop_principal("token"),
+                                    gmcp.SSE_HUB.drop_principal("token")))
 
 APP_VERSION = common.get_version()
 app = Flask(__name__)
@@ -132,15 +152,54 @@ def _remote_is_local():
     return ra in _LOOPBACK or ra.startswith("127.") or ra == "::1"
 
 
-def _host_allowed(hostname):
+def _parse_host_header(raw_host):
+    """Analizza rigorosamente l'intestazione Host: rifiuta userinfo (@), spazi, caratteri di controllo o porte invalide.
+    Restituisce (hostname_lower, port_int_o_None) oppure (None, None)."""
+    raw = str(raw_host or "").strip()
+    if not raw or any(c in raw for c in ("@", "/", "\\", " ", "\t", "\r", "\n")):
+        return None, None
+    if raw.startswith("["):
+        end = raw.find("]")
+        if end < 2:
+            return None, None
+        hn = raw[1:end].lower()
+        rest = raw[end + 1:]
+        if rest:
+            if not rest.startswith(":"):
+                return None, None
+            try:
+                port = int(rest[1:])
+            except ValueError:
+                return None, None
+            if not 1 <= port <= 65535:
+                return None, None
+            return hn, port
+        return hn, None
+    if raw.count(":") > 1:
+        return None, None
+    if ":" in raw:
+        hn, pstr = raw.split(":", 1)
+        try:
+            port = int(pstr)
+        except ValueError:
+            return None, None
+        if not hn or not 1 <= port <= 65535:
+            return None, None
+        return hn.lower(), port
+    return raw.lower(), None
+
+
+def _host_allowed(raw_host):
     """Anti DNS-rebinding: si accettano solo loopback, IP letterali e il nome di questo computer
     (un dominio controllato da un attaccante non corrisponde a nessuno di questi)."""
-    if hostname in _LOOPBACK or hostname == "[::1]":
+    hostname, _port = _parse_host_header(raw_host)
+    if not hostname:
+        return False
+    if hostname in _LOOPBACK:
         return True
-    h = hostname.strip("[]")
     try:
         import ipaddress
-        ipaddress.ip_address(h)
+        ipaddress.ip_address(hostname)
         return True
     except ValueError:
         pass
@@ -148,37 +207,25 @@ def _host_allowed(hostname):
     return hostname == MACHINE_NAME or (bool(sn) and hostname == sn)
 
 
-def _origin_allowed(origin):
-    from urllib.parse import urlparse
-    try:
-        o = urlparse(origin)
-    except Exception:
-        return False
-    hn = (o.hostname or "").lower()
-    if not hn:
-        return False
-    if hn in _LOOPBACK or hn.startswith("127."):
-        return True
-    return hn == (request.host or "").split(":")[0].lower()   # stessa origine del server (LAN)
-
-
 def _same_origin(origin):
-    """Origine identica a quella del server (schema, host e porta): per MCP, API v1 e pannello delle integrazioni non
-    basta una pagina servita da un'altra porta di 127.0.0.1."""
+    """Origine identica a quella del server (schema, host e porta): mai una pagina web di un altro sito o di un'altra
+    porta locale o LAN."""
     from urllib.parse import urlsplit
     try:
-        o = urlsplit(origin)
+        o = urlsplit(str(origin or ""))
         port = o.port or (443 if o.scheme == "https" else 80)
     except ValueError:
         return False
-    host = (request.host or "").lower()
-    hn = host.split("]")[0].strip("[") if host.startswith("[") else host.split(":")[0]
-    try:
-        hp = int(host.rsplit(":", 1)[1]) if ":" in host.split("]")[-1] else (443 if request.scheme == "https" else 80)
-    except ValueError:
+    if o.scheme not in ("http", "https") or o.username or o.password:
         return False
+    hn, hp = _parse_host_header(request.host)
+    if not hn:
+        return False
+    if hp is None:
+        hp = 443 if request.scheme == "https" else 80
+    oh = (o.hostname or "").lower()
     loop = {"127.0.0.1", "localhost", "::1"}
-    same_host = (o.hostname or "").lower() == hn or ((o.hostname or "").lower() in loop and hn in loop)
+    same_host = oh == hn or (oh in loop and hn in loop)
     return same_host and port == hp and o.scheme == request.scheme
 
 
@@ -237,6 +284,8 @@ def _wsgi_prefixes(environ, start_response):
         for prefix, key in _PREFIXES:
             if path.startswith(prefix):
                 value, _, tail = path[len(prefix):].partition("/")
+                if key == "germano.token" and not common.TOKEN_RE.match(value):
+                    value = ""
                 environ[key] = value
                 path = "/" + tail
                 break
@@ -253,9 +302,13 @@ UPDATER = gupdater.Updater()
 _spawn_lock = threading.Lock()
 _cache = {}
 _DISCOVERY = None  # responder UDP di rilevamento (avviato in main() quando il server ascolta sulla LAN)
+_NO_COOKIES = DefaultCookiePolicy(allowed_domains=[])
 _daemon_http = requests.Session()
 _daemon_http.trust_env = False  # le chiamate a 127.0.0.1 non devono mai passare da un proxy aziendale
-_upstream = requests.Session()  # verso gli LLM: usa proxy di sistema/ambiente se configurati
+_daemon_http.cookies.set_policy(_NO_COOKIES)
+_upstream = requests.Session()  # verso gli LLM: usa proxy di sistema/ambiente se configurati, mai cookie condivisi
+_upstream.cookies.set_policy(_NO_COOKIES)
+_MCP_SSE_POOL = ThreadPoolExecutor(max_workers=16, thread_name_prefix="germano-mcp-sse")
 common.ensure_dirs()
 
 
@@ -393,16 +446,50 @@ def _sync_engine(prev_mode, new_mode, prev_remote, cfg):
     return None
 
 
+# Limiti per-rotta sulla dimensione del corpo (evitano OOM su rotte JSON/auth anche se MAX_CONTENT_LENGTH e' 4 GB)
+_ROUTE_BODY_LIMITS = (
+    (("/api/auth/",), 32 * 1024),
+    (("/api/settings", "/api/mode", "/api/clear_vault", "/api/clear_logs", "/api/file_action",
+      "/api/retry_failed", "/api/harness/v2/preview", "/api/integrations"), 4 * 1024 * 1024),
+    (("/api/v1/anonymize-text", "/api/v1/inspect-entities", "/api/v1/leak-check",
+      "/api/v1/deanonymize-text", "/api/v1/workflow-roundtrip"), 8 * 1024 * 1024),
+    (("/v1/", "/chat/completions", "/responses", "/messages"), 64 * 1024 * 1024),
+    (("/mcp", "/api/v1/anonymize-file", "/api/v1/deanonymize-file"), 100 * 1024 * 1024),
+)
+
+
+def _route_body_limit(path):
+    for prefixes, limit in _ROUTE_BODY_LIMITS:
+        if any(path == p or path.startswith(p) for p in prefixes):
+            return limit
+    return None
+
+
+def _read_bounded_body(limit):
+    """Legge il corpo della richiesta fino a `limit` byte (anche con Transfer-Encoding: chunked). None se supera."""
+    cl = request.content_length
+    if cl is not None and cl > limit:
+        return None
+    data = request.stream.read(limit + 1)
+    if len(data) > limit:
+        return None
+    return data
+
+
 # ------------------------------------------------------------------------------------------------
 # Sicurezza: solo host locali (anti DNS-rebinding) e nessuna azione da siti web esterni (anti CSRF)
 # ------------------------------------------------------------------------------------------------
 @app.before_request
 def _guard():
-    host = (request.host or "").lower()
-    hostname = host.split("]")[0] + "]" if host.startswith("[") else host.split(":")[0]
-    if not _host_allowed(hostname):
+    if not _host_allowed(request.host):
         return jsonify({"error": _L("Host non consentito: usa l'indirizzo IP del server.",
                                     "Host not allowed: use the server's IP address.")}), 403
+
+    limit = _route_body_limit(request.path)
+    if limit is not None and request.method not in ("GET", "HEAD", "OPTIONS"):
+        if request.content_length is not None and request.content_length > limit:
+            return jsonify({"status": "error", "code": "payload_too_large",
+                            "error": _L("Richiesta troppo grande.", "Request body too large.")}), 413
 
     g.remote_user = None
     if not _remote_is_local():
@@ -446,23 +533,16 @@ def _guard():
             return jsonify({"error": _L("Operazione riservata al computer del server (accessibile solo in locale).",
                                         "Operation reserved to the server computer (local access only).")}), 403
 
-    # 0.95: MCP (anche il flusso SSE), API v1 e pannello delle integrazioni accettano solo la stessa origine del server
-    # o nessuna origine (client MCP, n8n, curl, script): mai una pagina web di un altro sito o di un'altra porta.
-    if _path_matches(request.path, ("/mcp",)) or (
-            request.path.startswith(("/api/v1/", "/api/integrations")) and request.method not in ("GET", "HEAD")):
+    # Anti-CSRF rigoroso (same-origin: schema + host + porta): vale per TUTTE le mutazioni (/api/*, /mcp*, /v1/*)
+    # e per i flussi GET /mcp*. I client non-browser (CLI, IDE, curl, n8n, Germano Client) non inviano Origin ne'
+    # Sec-Fetch-Site e continuano a funzionare; qualsiasi pagina web di un altro sito o di un'altra porta viene bloccata.
+    if request.method not in ("GET", "HEAD", "OPTIONS") or _path_matches(request.path, ("/mcp",)):
         origin = request.headers.get("Origin")
-        if (origin and not _same_origin(origin)) or request.headers.get("Sec-Fetch-Site") in ("cross-site",
-                                                                                               "same-site"):
+        sfs = (request.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if (origin and not _same_origin(origin)) or sfs in ("cross-site", "same-site"):
             return jsonify({"status": "error", "code": "origin_blocked", "error": _L(
-                "Richiesta da un'altra pagina web bloccata.", "Request from another web page blocked.")}), 403
-
-    # Anti-CSRF: nessuna azione di modifica avviata da un sito web esterno.
-    if request.path.startswith("/api/") and request.method not in ("GET", "HEAD", "OPTIONS"):
-        origin = request.headers.get("Origin")
-        if origin and not _origin_allowed(origin):
-            return jsonify({"error": _L("Richiesta da un sito esterno bloccata.", "Request from an external site blocked.")}), 403
-        if request.headers.get("Sec-Fetch-Site") == "cross-site":
-            return jsonify({"error": _L("Richiesta da un sito esterno bloccata.", "Request from an external site blocked.")}), 403
+                "Richiesta da un'altra pagina web o porta bloccata.",
+                "Request from another web page or port blocked.")}), 403
     return None
 
 
@@ -499,23 +579,36 @@ def daemon_state():
     return common.read_json(common.DAEMON_STATE_FILE, {}) or {}
 
 
-def is_daemon_running():
-    st = daemon_state()
+def _daemon_process(st=None):
+    """Restituisce psutil.Process solo se il PID registrato e' effettivamente il nostro daemon.py (stesso create_time)."""
+    st = st if st is not None else daemon_state()
     pid = st.get("pid")
     if not pid:
-        return False
+        return None
     try:
         p = psutil.Process(int(pid))
-        if p.is_running() and p.status() != psutil.STATUS_ZOMBIE:
+        if not p.is_running() or p.status() == psutil.STATUS_ZOMBIE:
+            return None
+        ctime = st.get("create_time")
+        if ctime is not None:
             try:
-                cmd = " ".join(p.cmdline() or [])
-            except psutil.AccessDenied:
-                return True
-            if "daemon.py" in cmd:
-                return True
-    except (psutil.NoSuchProcess, ValueError):
-        pass
-    except psutil.AccessDenied:
+                if abs(p.create_time() - float(ctime)) > 2.5:
+                    return None
+            except (psutil.Error, ValueError, TypeError):
+                return None
+        cmd = " ".join(p.cmdline() or [])
+        if "daemon.py" in cmd:
+            return p
+    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError, OSError):
+        return None
+    return None
+
+
+def is_daemon_running():
+    st = daemon_state()
+    if not st.get("pid"):
+        return False
+    if _daemon_process(st) is not None:
         return True
     for f in (common.DAEMON_STATE_FILE, common.READY_FLAG, common.STATUS_FILE):
         common.remove_quietly(f)
@@ -611,37 +704,38 @@ def start_daemon():
         finally:
             log_f.close()
         common.atomic_write_json(common.DAEMON_STATE_FILE, {"pid": proc.pid, "token": token, "port": None,
-                                                            "status": "starting", "started": time.time()})
+                                                            "status": "starting", "started": time.time(),
+                                                            "create_time": psutil.Process(proc.pid).create_time()})
         return True
 
 
 def stop_daemon(wait=6.0):
-    st = daemon_state()
-    pid = st.get("pid")
-    with open(common.STOP_FLAG, "w", encoding="utf-8") as f:
-        f.write("1")
-    try:
-        if st.get("port"):
-            daemon_call("/internal/stop", timeout=2)
-    except Exception:
-        pass
-    if pid:
+    with _spawn_lock:
+        st = daemon_state()
+        p = _daemon_process(st)
+        with open(common.STOP_FLAG, "w", encoding="utf-8") as f:
+            f.write("1")
         try:
-            p = psutil.Process(int(pid))
-            try:
-                p.wait(timeout=wait)
-            except psutil.TimeoutExpired:
-                p.terminate()
-                try:
-                    p.wait(timeout=3)
-                except psutil.TimeoutExpired:
-                    p.kill()
-        except (psutil.NoSuchProcess, ValueError):
-            pass
+            if st.get("port") and p is not None:
+                daemon_call("/internal/stop", timeout=2)
         except Exception:
             pass
-    for f in (common.DAEMON_STATE_FILE, common.READY_FLAG, common.STOP_FLAG, common.STATUS_FILE):
-        common.remove_quietly(f)
+        if p is not None:
+            try:
+                try:
+                    p.wait(timeout=wait)
+                except psutil.TimeoutExpired:
+                    p.terminate()
+                    try:
+                        p.wait(timeout=3)
+                    except psutil.TimeoutExpired:
+                        p.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+                pass
+            except Exception:
+                pass
+        for f in (common.DAEMON_STATE_FILE, common.READY_FLAG, common.STOP_FLAG, common.STATUS_FILE):
+            common.remove_quietly(f)
 
 
 def _same_data_dir(proc):
@@ -760,14 +854,21 @@ def api_status():
     progress = common.read_json(common.STATUS_FILE, {}) if running else {}
     cfg = common.load_config()
     eff = common.effective_operating_mode(cfg)
+    mode_info = {"effective": eff, "label": MODE_LABELS.get(eff, eff), "server": LAN_MODE,
+                 "client": common.mode_flags(eff)[1], "forced_by": common.mode_forced_by()}
+    if not _remote_is_local():
+        # Dalla LAN (endpoint aperto anche senza login) mai esporre progress.current (nomi file locali), errori con
+        # percorsi DATA_DIR, contatori Vault o risorse di sistema del server.
+        return jsonify({
+            "version": APP_VERSION, "running": running, "status": state, "mode": mode_info,
+        })
     return jsonify({
         "version": APP_VERSION, "running": running, "status": state, "error": err,
         "stats": st, "system": system, "progress": progress or {},
         "engine": daemon_state().get("engine") if running else None,
         "profile": cfg.get("compliance_mode"), "locked": bool(cfg.get("lock_settings")),
         "update": UPDATER.snapshot(),
-        "mode": {"effective": eff, "label": MODE_LABELS.get(eff, eff), "server": LAN_MODE,
-                 "client": common.mode_flags(eff)[1], "forced_by": common.mode_forced_by()},
+        "mode": mode_info,
     })
 
 
@@ -1098,11 +1199,14 @@ def api_mode():
     updates = {"first_run_done": True}
     if "enable_tooltips" in data:
         updates["enable_tooltips"] = data["enable_tooltips"]
-    if cfg.get("lock_settings") and mode != (cfg.get("operating_mode") or "standalone"):
+    if cfg.get("lock_settings") and (
+            mode != (cfg.get("operating_mode") or "standalone")
+            or any(k in data for k in ("remote_server", "remote_token", "remote_user", "remote_password",
+                                       "remote_logout", "client_fallback_local", "share_ai_tools"))):
         common.save_config(updates)   # le preferenze dell'interfaccia restano modificabili
-        return jsonify({"status": "locked", "message": _L("Modalita' operativa bloccata dall'amministratore "
+        return jsonify({"status": "locked", "message": _L("Modalita' operativa e rete bloccate dall'amministratore "
                                                           "(lock_settings in config.json).",
-                                                          "Operating mode locked by the administrator "
+                                                          "Operating mode and network locked by the administrator "
                                                           "(lock_settings in config.json)."), **_mode_state()}), 403
     updates["operating_mode"] = mode
     if "client_fallback_local" in data:
@@ -1376,7 +1480,7 @@ def _is_return_file(path, tag_map):
         return False
     from germano import formats
     try:
-        return contains_tags(formats.sample_text(path), tag_map)
+        return contains_strict_tags(formats.sample_text(path), tag_map)
     except Exception:
         return False
 
@@ -1480,9 +1584,13 @@ def _work_file(folder, name):
     """Percorso di un file dentro una cartella di lavoro (None se inesistente o fuori dalla cartella)."""
     if folder not in common.WORK_FOLDERS or not isinstance(name, str) or not name:
         return None
-    base = os.path.abspath(common.WORK_FOLDERS[folder])
-    target = os.path.abspath(os.path.join(base, name))
-    if os.path.commonpath([base, target]) != base or not os.path.isfile(target):
+    base = os.path.normcase(os.path.realpath(common.WORK_FOLDERS[folder]))
+    target = os.path.realpath(os.path.join(base, name))
+    try:
+        inside = os.path.commonpath([base, os.path.normcase(target)]) == base
+    except ValueError:
+        inside = False
+    if not inside or not os.path.isfile(target):
         return None
     return target
 
@@ -1556,9 +1664,8 @@ def api_retry_failed():
 def api_download(folder, filename):
     if folder not in ("output", "extracted", "processed", "failed"):
         return jsonify({"error": _L("Cartella non autorizzata", "Folder not allowed")}), 403
-    base = os.path.abspath(common.WORK_FOLDERS[folder])
-    target = os.path.abspath(os.path.join(base, filename))
-    if os.path.commonpath([base, target]) != base or not os.path.isfile(target):
+    target = _work_file(folder, filename)
+    if not target:
         return jsonify({"error": _L("File non trovato", "File not found")}), 404
     return send_file(target, as_attachment=True, download_name=os.path.basename(target))
 
@@ -1602,12 +1709,17 @@ def api_clear_vault():
     try:
         if daemon_ready():
             r = daemon_call("/internal/vault/clear", timeout=30)
+            if r.status_code == 409:
+                return jsonify({"status": "error", "message": _daemon_error(r) or _L(
+                    "Elaborazione in corso: attendi la fine prima di svuotare il Vault.",
+                    "Processing in progress: wait until it finishes before clearing the Vault.")}), 409
             if r.status_code != 200:
                 raise RuntimeError(r.text)
         else:
             from germano.vault import Vault
             Vault().clear()
         _cache.pop("stats", None)
+        gint.SCOPES.clear()       # le etichette ripartono da 1: gli ambiti di ripristino precedenti non valgono piu'
         gglass.CACHE.clear()      # le etichette ripartono da 1: i testi protetti in cache non valgono piu'
         gglass.MEDIA_CACHE.clear()
         return jsonify({"status": "success", "message": _L("Archivio corrispondenze azzerato.", "Mapping archive cleared.")})
@@ -1689,8 +1801,11 @@ def api_anonymize_text():
     force = bool(data.get("force_anonymize", False))
     if not force and common.load_config().get("enable_deanonymize", True):
         tag_map = vault_reader.tag_map()
-        if contains_tags(text, tag_map):
-            restored = restore_text(text, tag_map)
+        if contains_strict_tags(text, tag_map):
+            try:
+                restored = restore_text(text, tag_map)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 413
             return jsonify({"anonymized": restored, "restored": restored, "auto_restored": True, "extracted_data": []})
     if not daemon_ready():
         return jsonify({"error": _L("Il motore IA non e' pronto: avvialo dalla Dashboard e attendi il caricamento.",
@@ -1960,39 +2075,51 @@ def api_auth_status():
 @app.route("/api/auth/login", methods=["POST"])
 def api_auth_login():
     ip = request.remote_addr or ""
-    wait = gauth.LIMITER.retry_after(ip)
-    if wait:
+    raw_body = _read_bounded_body(32 * 1024)
+    if raw_body is None:
+        return jsonify({"status": "error", "code": "payload_too_large",
+                        "error": _L("Richiesta troppo grande.", "Request body too large.")}), 413
+    ok_slot, wait = gauth.LIMITER.begin_attempt(ip)
+    if not ok_slot:
         minutes = max(1, round(wait / 60))
         resp = jsonify({"status": "error", "code": "too_many", "retry_after": wait, "error": _L(
             f"Troppi tentativi non riusciti: riprova tra {minutes} minuti.",
             f"Too many failed attempts: try again in {minutes} minutes.")})
         resp.headers["Retry-After"] = str(wait)
         return resp, 429
-    if not _auth_enabled():
-        return jsonify({"status": "error", "code": "auth_disabled", "error": _L(
-            "Su questo Germano Server la gestione utenti non e' attiva: non serve accedere.",
-            "User management is not enabled on this Germano Server: no sign-in needed.")}), 400
-    data = request.get_json(silent=True) or {}
-    username = _CTRL_CHARS.sub("", str(data.get("username") or ""))[:64]
-    user = gauth.authenticate(username, str(data.get("password") or "")[:gauth.MAX_PASSWORD])
-    if not user:
-        blocked = gauth.LIMITER.failed(ip)
-        common.log(f"Remote Control: accesso non riuscito per l'utente «{username}» da {ip}"
-                   + (" (indirizzo bloccato per 10 minuti)." if blocked else "."))
-        return jsonify({"status": "error", "code": "bad_credentials",
-                        "error": _L("Utente o password non corretti.", "Wrong user name or password.")}), 401
-    gauth.LIMITER.succeeded(ip)
-    client = bool(data.get("client"))
-    token = gauth.SESSIONS.create(user, "client" if client else "web", ip)
-    kind = "Germano Client o modalita' Client" if client else "browser"
-    common.log(f"Remote Control: accesso di «{user}» da {ip} ({kind}).")
-    body = {"status": "success", "user": user, "expires_days": gauth.SESSION_SECONDS // 86400}
-    if client:
-        body["token"] = token      # Germano Client e CLI lo conservano nella propria configurazione
-    resp = jsonify(body)
-    if not client:                 # browser: cookie non leggibile dagli script della pagina
-        resp.set_cookie(gauth.COOKIE, token, max_age=gauth.SESSION_SECONDS, httponly=True, samesite="Strict", path="/")
-    return resp
+    try:
+        if not _auth_enabled():
+            return jsonify({"status": "error", "code": "auth_disabled", "error": _L(
+                "Su questo Germano Server la gestione utenti non e' attiva: non serve accedere.",
+                "User management is not enabled on this Germano Server: no sign-in needed.")}), 400
+        try:
+            data = json.loads(raw_body.decode("utf-8") or "{}") if raw_body else {}
+        except (ValueError, UnicodeDecodeError):
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        username = _CTRL_CHARS.sub("", str(data.get("username") or ""))[:64]
+        user = gauth.authenticate(username, str(data.get("password") or "")[:gauth.MAX_PASSWORD])
+        if not user:
+            blocked = gauth.LIMITER.failed(ip, username)
+            common.log(f"Remote Control: accesso non riuscito per l'utente «{username}» da {ip}"
+                       + (" (indirizzo bloccato per 10 minuti)." if blocked else "."))
+            return jsonify({"status": "error", "code": "bad_credentials",
+                            "error": _L("Utente o password non corretti.", "Wrong user name or password.")}), 401
+        gauth.LIMITER.succeeded(ip, user)
+        client = bool(data.get("client"))
+        token = gauth.SESSIONS.create(user, "client" if client else "web", ip)
+        kind = "Germano Client o modalita' Client" if client else "browser"
+        common.log(f"Remote Control: accesso di «{user}» da {ip} ({kind}).")
+        body = {"status": "success", "user": user, "expires_days": gauth.SESSION_SECONDS // 86400}
+        if client:
+            body["token"] = token      # Germano Client e CLI lo conservano nella propria configurazione
+        resp = jsonify(body)
+        if not client:                 # browser: cookie non leggibile dagli script della pagina
+            resp.set_cookie(gauth.COOKIE, token, max_age=gauth.SESSION_SECONDS, httponly=True, samesite="Strict", path="/")
+        return resp
+    finally:
+        gauth.LIMITER.end_attempt(ip)
 
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -2393,9 +2520,11 @@ def api_remote_ask():
             answer_protected = gproviders.chat(ident, model, messages, api_key=key)
             target_name = spec["name"]
     except harness.HarnessError as e:
-        return jsonify({"status": "blocked" if e.status == 503 else "error", "message": str(e)}), e.status
+        msg = gglass.scrub_server_paths(gglass.redact_text(str(e)), not _remote_is_local())
+        return jsonify({"status": "blocked" if e.status == 503 else "error", "message": msg}), e.status
     except gproviders.ServiceError as e:
-        return jsonify({"status": "error", "message": str(e)}), e.status
+        msg = gglass.scrub_server_paths(gglass.redact_text(str(e)), not _remote_is_local())
+        return jsonify({"status": "error", "message": msg}), e.status
     _session_log(entities)
     tag_map = _entity_map(entities) if masking == "numbered" else {}
     answer = restore_text(answer_protected, tag_map) if tag_map else answer_protected
@@ -2425,7 +2554,8 @@ def api_remote_models():
     except _Refused as e:
         return e.response()
     except gproviders.ServiceError as e:
-        return jsonify({"status": "error", "message": str(e)}), e.status
+        msg = gglass.scrub_server_paths(gglass.redact_text(str(e)), not _remote_is_local())
+        return jsonify({"status": "error", "message": msg}), e.status
     return jsonify({"status": "success", "service": sid, "models": models})
 
 
@@ -2629,11 +2759,16 @@ def _harness_history(raw):
     return out
 
 
-def _anonymize_cached(texts, options, cfg):
+def _anonymize_cached(texts, options, cfg, owner=None):
     """Come _anonymize_many, ma i testi gia' protetti con le stesse impostazioni (turni precedenti della
-    conversazione, anteprima della Glass Window) non tornano al motore."""
+    conversazione, anteprima della Glass Window) non tornano al motore. La chiave e' isolata per utente."""
+    if owner is None:
+        try:
+            owner = "local" if _remote_is_local() else str(_requester())
+        except RuntimeError:
+            owner = "local"
     sig = gglass.settings_signature(cfg, options)
-    keys = [gglass.CACHE.key(t, sig) for t in texts]
+    keys = [gglass.CACHE.key(t, sig, owner=owner) for t in texts]
     results = [gglass.CACHE.get(k) for k in keys]
     missing = [i for i, r in enumerate(results) if r is None]
     if missing:
@@ -2687,10 +2822,10 @@ def _validate_harness_target(target, model, local, sharing, cfg):
                 "network («Share this computer's AIs»).")})
         info = next((t for t in cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)["tools"] if t.get("id") == ident),
                     None)
-        if not info or not info.get("detected") or not info.get("path"):
+        if not info or not info.get("detected") or not info.get("path") or not ai_detect.runnable(info["path"]):
             raise _Refused(404, {"status": "error", "code": "not_detected", "message": _L(
-                f"{ident} non e' installata su questo computer." if local else f"{ident} non e' installata sul server.",
-                f"{ident} is not installed on this computer." if local else f"{ident} is not installed on the server.")})
+                f"{ident} non e' installata (o non eseguibile) su questo computer." if local else f"{ident} non e' installata sul server.",
+                f"{ident} is not installed (or not runnable) on this computer." if local else f"{ident} is not installed on the server.")})
         if not harness.valid_model(model):
             raise _Refused(400, {"status": "error", "message": _L("Nome del modello non valido.", "Invalid model name.")})
         return "cli", {"tool": ident, "info": info, "profile": prof, "name": info.get("name") or ident}
@@ -2791,18 +2926,20 @@ def api_harness_run_v2():
             raise _Refused(400, {"status": "error", "message": str(e)})
         if not daemon_ready():
             raise _engine_blocked()
+        file_items = [(f.filename, f.read()) for f in files]
         run = gglass.RUNS.register(_requester(), local, target, eff_model)
         if run is None:
             raise _Refused(429, {"status": "error", "message": _L(
                 "Hai gia' altre richieste in corso: attendi che finiscano o interrompile.",
                 "You already have other requests in progress: wait for them to finish or stop them.")})
-        file_items = [(f.filename, f.read()) for f in files]
     except _Refused as e:
         return e.response()
+    owner_key = "local" if local else str(_requester())
     ctx = {"kind": kind, "dest": dest, "target": target, "model": eff_model, "prompt": prompt,
            "system": system, "history": history, "files": file_items, "options": options, "review": review,
            "raw_frames": raw_frames, "label_hint": label_hint, "lang": lang, "cfg": cfg, "local": local,
-           "params": params, "agy_cat": agy_cat, "who": g.get("remote_user") or request.remote_addr}
+           "owner": owner_key, "params": params, "agy_cat": agy_cat,
+           "who": g.get("remote_user") or request.remote_addr}
     return Response(_harness_stream(run, ctx), mimetype="application/x-ndjson",
                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no", "X-Germano-Run": run.id})
 
@@ -2852,7 +2989,7 @@ def _harness_stream(run, ctx):
                 system_text = ctx["system"]
                 texts = ([system_text] if system_text else []) + [h["text"] for h in ctx["history"]] + \
                         [ctx["prompt"] or " "] + [t for _, t in parts]
-                results, cached_n = _anonymize_cached(texts, ctx["options"], cfg)
+                results, cached_n = _anonymize_cached(texts, ctx["options"], cfg, owner=ctx.get("owner"))
                 box.update(attachments=attachments, parts=parts, results=results, cached=cached_n,
                            has_system=bool(system_text))
             except _Refused as e:
@@ -3078,25 +3215,34 @@ def _harness_stream(run, ctx):
             except (harness.HarnessInterrupted, gproviders.Interrupted):
                 q.put({"type": "_end", "interrupted": True})
             except harness.HarnessError as e:
-                q.put({"type": "_fail", "status": "blocked" if e.status == 503 else "error", "message": str(e)})
+                msg = gglass.scrub_server_paths(gglass.redact_text(str(e)), scrub)
+                q.put({"type": "_fail", "status": "blocked" if e.status == 503 else "error", "message": msg})
             except gproviders.ServiceError as e:
-                q.put({"type": "_fail", "status": "error", "message": gglass.redact_text(str(e))})
+                msg = gglass.scrub_server_paths(gglass.redact_text(str(e)), scrub)
+                q.put({"type": "_fail", "status": "error", "message": msg})
             except Exception as e:
-                q.put({"type": "_fail", "status": "error", "message": L(f"Errore imprevisto: {e}",
-                                                                         f"Unexpected error: {e}")})
+                msg = gglass.scrub_server_paths(gglass.redact_text(
+                    L(f"Errore imprevisto: {e}", f"Unexpected error: {e}")), scrub)
+                q.put({"type": "_fail", "status": "error", "message": msg})
         sender = threading.Thread(target=transmit, name="germano-harness-send", daemon=True)
         sender.start()
         parts, first_ms, result, failure, usage = [], None, None, None, {}
         last_ping = time.time()
         while True:
+            if run.cancelled:
+                break
             try:
                 item = q.get(timeout=5)
             except queue.Empty:
+                if run.cancelled:
+                    break
                 yield ev("ping", phase=run.phase)
                 last_ping = time.time()
                 continue
             typ = item.get("type")
             if typ == "_wake":
+                if run.cancelled:
+                    break
                 continue
             if typ == "_end":
                 result = item
@@ -3216,10 +3362,13 @@ def api_harness_preview():
     except _Refused as e:
         return e.response()
     r = results[0]
-    return jsonify({"status": "success", "anonymized": r["anonymized"], "cached": bool(cached_n),
-                    "entities": gglass.public_entities(r.get("extracted_data") or [], "preview"),
-                    "system2": gglass.public_system2(r.get("system2") or [], "preview"),
-                    "elapsed_ms": round((time.time() - t0) * 1000)})
+    payload = {"status": "success", "anonymized": r["anonymized"],
+               "entities": gglass.public_entities(r.get("extracted_data") or [], "preview"),
+               "system2": gglass.public_system2(r.get("system2") or [], "preview"),
+               "elapsed_ms": round((time.time() - t0) * 1000)}
+    if _remote_is_local():
+        payload["cached"] = bool(cached_n)
+    return jsonify(payload)
 
 
 @app.route("/api/harness/v2/models")
@@ -3494,6 +3643,9 @@ class _IntegrationBackend:
     def tag_map(self):
         return vault_reader.tag_map()
 
+    def vault_generation(self):
+        return vault_reader.generation()
+
     def vault_stats(self):
         now = time.time()
         at, count, by_type = self._by_type
@@ -3728,7 +3880,9 @@ def mcp_endpoint():
             return _mcp_json(gmcp.error(None, gmcp.INVALID_REQUEST, "Session not found"), 404)
         gmcp.HTTP_SESSIONS.delete(sid)
         return Response(status=200)
-    raw = request.get_data(cache=False)
+    raw = _read_bounded_body(100 * 1024 * 1024)
+    if raw is None:
+        return _mcp_json(gmcp.error(None, gmcp.INVALID_REQUEST, "Payload too large"), 413)
     try:
         payload = json.loads(raw.decode("utf-8")) if raw else None
     except (ValueError, UnicodeDecodeError):
@@ -3798,12 +3952,18 @@ def mcp_sse_messages():
     session = gmcp.SSE_HUB.get(sid)
     if session is None or session.principal != principal:
         return jsonify({"status": "error", "error": "Session not found"}), 404
+    raw_msg = _read_bounded_body(100 * 1024 * 1024)
+    if raw_msg is None:
+        return jsonify({"status": "error", "code": "payload_too_large", "error": "Payload too large"}), 413
     try:
-        payload = json.loads(request.get_data(cache=False).decode("utf-8") or "null")
+        payload = json.loads(raw_msg.decode("utf-8") or "null")
     except (ValueError, UnicodeDecodeError):
         payload = None
     if not isinstance(payload, (dict, list)):
-        session.queue.put(json.dumps(gmcp.error(None, gmcp.PARSE_ERROR, "Parse error")))
+        try:
+            session.queue.put(json.dumps(gmcp.error(None, gmcp.PARSE_ERROR, "Parse error")), timeout=2)
+        except queue.Full:
+            pass
         return Response("Accepted", status=202)
     ctx_factory = (lambda: _integration_ctx("mcp-sse"))
     environ = dict(request.environ)
@@ -3819,7 +3979,7 @@ def mcp_sse_messages():
             except queue.Full:
                 break
 
-    threading.Thread(target=work, name="germano-mcp-sse", daemon=True).start()
+    _MCP_SSE_POOL.submit(work)
     return Response("Accepted", status=202)
 
 
@@ -3942,7 +4102,8 @@ def _target(kind, sub):
         base = _strip_suffix(cfg.get("target_api_url"))
         if kind == "anthropic":
             anth = _strip_suffix(cfg.get("target_anthropic_url") or "https://api.anthropic.com/v1")
-            if "anthropic.com" in base:
+            bh = _host_of(base).lower()
+            if bh == "api.anthropic.com" or bh == "anthropic.com" or bh.endswith(".anthropic.com"):
                 anth = base
             url = anth + "/messages" + sub
         elif kind == "responses":
@@ -4109,8 +4270,30 @@ def _anonymize_payload(payload, kind):
     return extracted
 
 
+_MAX_PROXY_RESP = 64 * 1024 * 1024
+
+
+def _read_bounded_resp(r, limit=_MAX_PROXY_RESP):
+    chunks = []
+    total = 0
+    for chunk in r.iter_content(65536):
+        if not chunk:
+            continue
+        total += len(chunk)
+        if total > limit:
+            raise ValueError("Risposta del servizio IA troppo grande.")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _proxy(kind, sub=""):
-    payload = request.get_json(force=True, silent=True)
+    raw_in = _read_bounded_body(64 * 1024 * 1024)
+    if raw_in is None:
+        return _proxy_error(kind, 413, "Corpo della richiesta troppo grande per il Proxy.")
+    try:
+        payload = json.loads(raw_in.decode("utf-8")) if raw_in else None
+    except (ValueError, UnicodeDecodeError):
+        payload = None
     if not isinstance(payload, dict):
         return _proxy_error(kind, 400, "Corpo della richiesta non valido (JSON atteso).")
     try:
@@ -4122,6 +4305,7 @@ def _proxy(kind, sub=""):
         return _proxy_error(kind, 500, f"Blocco di sicurezza: anonimizzazione non riuscita ({e}).")
     _session_log(extracted)
     scope = request.environ.get("germano.scoped") or ""
+    run = None
     if scope.startswith("run-") and _remote_is_local():
         # CLI eseguita dall'Harness AI: la Glass Window mostra il payload HTTP esatto che esce verso il fornitore
         run = gglass.RUNS.get(scope[4:])
@@ -4130,13 +4314,15 @@ def _proxy(kind, sub=""):
                 return _proxy_error(kind, 409, "Richiesta interrotta dall'utente tramite Glass Window: nessun dato "
                                                "inviato.")
             run.emit("payload", transport="http", via="proxy", format="anthropic" if kind == "anthropic" else "openai",
-                     method="POST", url=url, headers=gglass.redact_headers(_forward_headers()),
+                     method="POST", url=url, headers=gglass.redact_headers(_forward_headers(), remote=not _remote_is_local()),
                      body=gglass.cap_obj(payload), extracted=len(extracted))
     try:
         r = _http_for(url).post(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                                headers=_forward_headers(), stream=True, timeout=(20, 900))
+                                headers=_forward_headers(), stream=True, timeout=(20, 900), allow_redirects=False)
     except Exception as e:
         return _proxy_error(kind, 502, f"Impossibile contattare il servizio IA ({url}): {e}")
+    if run is not None:
+        run.bind_response(r)
     deanon = bool(common.load_config().get("enable_deanonymize", True))
     if not deanon:
         tag_map = {}
@@ -4145,10 +4331,14 @@ def _proxy(kind, sub=""):
     else:
         tag_map = vault_reader.tag_map()     # richieste da questo computer: l'intero Vault (uso personale)
     ctype = r.headers.get("Content-Type", "")
-    if r.status_code >= 400 or "text/event-stream" not in ctype:
-        body = r.content
-        r.close()
-        if deanon and "json" in ctype:
+    if r.status_code >= 400 or "text/event-stream" not in ctype.lower():
+        try:
+            body = _read_bounded_resp(r)
+        except ValueError as e:
+            return _proxy_error(kind, 502, str(e))
+        finally:
+            r.close()
+        if deanon and "json" in ctype.lower():
             try:
                 obj = gproxy.restore_obj(json.loads(body.decode("utf-8")), tag_map)
                 return Response(json.dumps(obj, ensure_ascii=False), status=r.status_code,
@@ -4176,6 +4366,8 @@ def _proxy(kind, sub=""):
                     for n2, d2 in rewriter.process(name, data):
                         yield gproxy.serialize_event(n2, d2, other)
                         other = ()
+                for n2, d2 in rewriter.flush():
+                    yield gproxy.serialize_event(n2, d2)
         except Exception as e:
             err = {"type": "error", "error": {"type": "api_error", "message": f"Stream interrotto: {e}"}}
             yield gproxy.serialize_event("error", json.dumps(err))
@@ -4226,7 +4418,7 @@ def proxy_models():
         cfg = common.load_config()
         base = _strip_suffix(cfg.get("target_anthropic_url") if is_anthropic else cfg.get("target_api_url"))
     try:
-        r = _http_for(base).get(base + "/models", headers=_forward_headers(), timeout=15)
+        r = _http_for(base).get(base + "/models", headers=_forward_headers(), timeout=15, allow_redirects=False)
         if r.status_code == 200:
             return Response(r.content, status=200, content_type=r.headers.get("Content-Type", "application/json"))
     except Exception:
@@ -4281,11 +4473,12 @@ _SERVER_INFO_FILE = os.path.join(common.STATE_DIR, "server.json")
 
 
 def _write_server_info():
-    """state/server.json: porta e processo di questo server (il server MCP stdio della stessa cartella dati lo usa
-    per fare da ponte). Nessun dato personale, nessun token."""
+    """state/server.json: porta, processo e instance_id di questo server (il server MCP stdio della stessa cartella dati
+    lo usa per fare da ponte). Nessun dato personale, nessun token."""
     try:
-        common.atomic_write_json(_SERVER_INFO_FILE, {"port": PORT, "pid": os.getpid(), "version": APP_VERSION,
-                                                     "started": time.time()})
+        inst = common.load_config().get("instance_id") or ""
+        common.atomic_write_json(_SERVER_INFO_FILE, {"port": PORT, "pid": os.getpid(), "instance_id": inst,
+                                                     "version": APP_VERSION, "started": time.time()})
     except Exception:
         pass
 

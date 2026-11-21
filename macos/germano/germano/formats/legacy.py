@@ -77,8 +77,12 @@ def process_xls(in_path, out_path, ctx):
         rb = xlrd.open_workbook(in_path)
     wb = xl_copy(rb)
     units, cells = [], []
+    sheet_name_idx = []
     for si in range(rb.nsheets):
         sheet = rb.sheet_by_index(si)
+        if isinstance(sheet.name, str) and sheet.name.strip():
+            sheet_name_idx.append((si, len(units)))
+            units.append(Unit(sheet.name))
         for r in range(sheet.nrows):
             row_units = []
             for c in range(sheet.ncols):
@@ -87,13 +91,21 @@ def process_xls(in_path, out_path, ctx):
                     u = Unit(v, sep=" | ")
                     units.append(u)
                     row_units.append(u)
-                    cells.append((si, r, c))
+                    cells.append((si, r, c, len(units) - 1))
             if row_units:
                 row_units[-1].sep = "\n"
     res = ctx.analyze(units) if units else []
-    for (si, r, c), u, rep in zip(cells, units, res):
-        if rep:
-            _write_keep_style(wb.get_sheet(si), r, c, apply_replacements(u.text, rep))
+    for si, ui in sheet_name_idx:
+        if res[ui]:
+            clean = common.safe_filename(apply_replacements(units[ui].text, res[ui]), max_len=31).replace("[", "(").replace("]", ")")[:31]
+            if clean:
+                try:
+                    wb.get_sheet(si).name = clean
+                except Exception:
+                    pass
+    for si, r, c, ui in cells:
+        if res[ui]:
+            _write_keep_style(wb.get_sheet(si), r, c, apply_replacements(units[ui].text, res[ui]))
     wb.save(out_path)
     return None
 
@@ -176,14 +188,35 @@ def _convert_office(app, src, dst, fmt):
 
 
 def _convert_soffice(soffice, src, out_dir, target_ext):
-    profile = os.path.join(common.STATE_DIR, "lo_profile")
+    from pathlib import Path
+    profile = os.path.join(out_dir, "_lo_profile")
     os.makedirs(profile, exist_ok=True)
-    url = "file:///" + profile.replace("\\", "/")
+    url = Path(profile).resolve().as_uri()
     cmd = [soffice, "--headless", "--norestore", "--nolockcheck", "--nodefault", f"-env:UserInstallation={url}",
            "--convert-to", target_ext, "--outdir", out_dir, src]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                            creationflags=_NO_WINDOW)
     try:
-        subprocess.run(cmd, capture_output=True, timeout=CONVERT_TIMEOUT, creationflags=_NO_WINDOW)
+        proc.communicate(timeout=CONVERT_TIMEOUT)
     except subprocess.TimeoutExpired:
+        try:
+            import psutil
+            parent = psutil.Process(proc.pid)
+            for child in parent.children(recursive=True):
+                try:
+                    child.kill()
+                except Exception:
+                    pass
+            parent.kill()
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        try:
+            proc.wait(5)
+        except Exception:
+            pass
         raise ProcessingError("conversione con LibreOffice oltre il tempo massimo")
     out = os.path.join(out_dir, os.path.splitext(os.path.basename(src))[0] + "." + target_ext)
     if not os.path.isfile(out):

@@ -80,6 +80,11 @@ def _network_problem(reason, base, timeout):
     return f"collegamento a {where} non riuscito ({reason})"
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class RemoteEngine:
     is_remote = True
 
@@ -98,8 +103,8 @@ class RemoteEngine:
         self.info = {"mode": "remote", "server": self.base, "ok": False}
         self._cache = OrderedDict()
         self._cache_max = 4000
-        # In LAN non si passa mai dal proxy di sistema o aziendale (come le chiamate interne a 127.0.0.1).
-        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        # In LAN non si passa mai dal proxy di sistema o aziendale, ne' si seguono redirect (niente leak di token).
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
         self.latency_ms = None
         self.last_ok = 0.0
         self.last_error = ""
@@ -359,10 +364,22 @@ class RemoteEngine:
 def find_server(settings, timeout=1.5):
     """Primo Germano Server della LAN che condivide un motore locale pronto, esclusa questa installazione.
     Restituisce (url | None, elenco_server_trovati). A parita' di condizioni si preferisce un server con GPU."""
+    import ipaddress
     from . import discovery
     found = discovery.discover(timeout=timeout, port=common.discovery_port(settings), broadcasts=discovery.broadcast_addresses(),
                                exclude_instance=settings.get("instance_id") or None)
-    usable = [s for s in found if s.get("engine_shared") and s.get("engine_ready")]
+    usable = []
+    for s in found:
+        if not (s.get("engine_shared") and s.get("engine_ready")):
+            continue
+        try:
+            ip = ipaddress.ip_address(str(s.get("ip") or ""))
+            port = int(s.get("port") or 0)
+            if ip.is_link_local or ip.is_unspecified or not 1 <= port <= 65535:
+                continue
+        except ValueError:
+            continue
+        usable.append(s)
     usable.sort(key=lambda s: 0 if str(s.get("device") or "").startswith("cuda") else 1)
     if not usable:
         return None, found

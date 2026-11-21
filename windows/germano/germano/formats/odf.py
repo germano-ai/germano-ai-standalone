@@ -7,7 +7,9 @@ import zipfile
 from lxml import etree
 
 from ..analyzer import Segment
-from .ooxml import _Collector, write_zip, _PARSER, _local, unreadable_part
+from . import ProcessingError, reraise_control
+from .ooxml import (_Collector, write_zip, _PARSER, _local, unreadable_part,
+                    safe_zip_read, ZIP_MAX_ENTRIES, ZIP_MAX_TOTAL_BYTES, _VECTOR_EXTS, _blank_png_bytes)
 
 NS_TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
 NS_OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
@@ -32,7 +34,7 @@ def _space_text(el):
     tag = el.tag
     if tag == T("s"):
         try:
-            return " " * max(1, int(el.get(T("c")) or 1))
+            return " " * min(4096, max(1, int(el.get(T("c")) or 1)))
         except ValueError:
             return " "
     if tag == T("tab"):
@@ -101,15 +103,19 @@ def process_odf(in_path, out_path, ctx):
     person = "[PERSONA]" if ctx.settings.get("censor_person", True) else None
     with zipfile.ZipFile(in_path, "r") as zin:
         infos = zin.infolist()
+        if len(infos) > ZIP_MAX_ENTRIES:
+            raise ProcessingError("Documento OpenDocument con troppi elementi interni: rifiutato per sicurezza.")
+        budget = {"total": 0, "max_total": ZIP_MAX_TOTAL_BYTES}
         names = [i.filename for i in infos]
         if "content.xml" not in names:
             raise ValueError("Documento OpenDocument privo di content.xml (forse cifrato con password).")
         trees = {}
-        for n in names:
+        for info in infos:
+            n = info.filename
             base = n.rsplit("/", 1)[-1]
             if base in ("content.xml", "styles.xml", "meta.xml"):
                 try:
-                    trees[n] = etree.fromstring(zin.read(n), _PARSER)
+                    trees[n] = etree.fromstring(safe_zip_read(zin, info, budget), _PARSER)
                 except etree.XMLSyntaxError as e:
                     if base == "content.xml" and n == "content.xml":
                         raise ValueError(f"content.xml non leggibile (documento cifrato?): {e}")
@@ -119,23 +125,40 @@ def process_odf(in_path, out_path, ctx):
             _collect(n, root, col, person)
         changed = col.run(ctx)
         new_data = {}
+        removed = set()
         for n in changed:
             new_data[n] = etree.tostring(trees[n], xml_declaration=True, encoding="UTF-8")
         def _image_done(name, nb, err):
             if err is not None:
                 ctx.note(f"immagine incorporata non elaborata ({os.path.basename(name)}): {err}")
+                if ctx.anonymize:
+                    new_data[name] = _blank_png_bytes()
             elif nb is not None:
                 new_data[name] = nb
         from .images import ImageBatcher
         batcher = ImageBatcher(ctx, _image_done)   # a finestre: un'unica analisi del testo letto per finestra
-        for n in names:
+        for info in infos:
+            n = info.filename
             low = n.lower()
             ext = os.path.splitext(low)[1]
             if low.startswith("thumbnails/") and ext == ".png" and ctx.anonymize:
-                new_data[n] = _blank_png_like(zin.read(n))
+                new_data[n] = _blank_png_like(safe_zip_read(zin, info, budget))
             elif low.startswith("pictures/") and ext in _RASTER_EXTS and ctx.vision_enabled():
                 ctx.check()
-                batcher.add(n, zin.read(n))
+                batcher.add(n, safe_zip_read(zin, info, budget))
+            elif low.startswith("pictures/") and ext in _VECTOR_EXTS and ctx.anonymize:
+                ctx.check()
+                if ext == ".svg":
+                    try:
+                        from .markup import transform_xml_bytes
+                        new_data[n] = transform_xml_bytes(safe_zip_read(zin, info, budget), ctx)
+                    except Exception as e:
+                        reraise_control(e)
+                        removed.add(n)
+                        ctx.note(f"immagine vettoriale rimossa per sicurezza ({os.path.basename(n)}): {e}")
+                else:
+                    removed.add(n)
+                    ctx.note(f"immagine vettoriale ({os.path.basename(n)}) rimossa per sicurezza (formato non analizzabile).")
         batcher.flush()
-        write_zip(out_path, zin, infos, new_data)
+        write_zip(out_path, zin, infos, new_data, removed, budget=budget)
     return None

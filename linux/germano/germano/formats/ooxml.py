@@ -39,9 +39,49 @@ S_SI, S_T, S_R, S_RPH = _q(S_NS, "si"), _q(S_NS, "t"), _q(S_NS, "r"), _q(S_NS, "
 C_V = _q(C_NS, "v")
 C_STRCACHE, C_TX = _q(C_NS, "strCache"), _q(C_NS, "tx")
 
-_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=True, remove_blank_text=False)
+_PARSER = etree.XMLParser(resolve_entities=False, no_network=True, remove_blank_text=False)
 _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".jpe", ".bmp", ".gif", ".tif", ".tiff", ".webp"}
+_VECTOR_EXTS = {".svg", ".emf", ".wmf"}
 _PERSON = "[PERSONA]"
+ZIP_MAX_ENTRIES = 10_000
+ZIP_MAX_MEMBER_BYTES = 128 * 1024 * 1024
+ZIP_MAX_TOTAL_BYTES = 512 * 1024 * 1024
+ZIP_MAX_RATIO = 100
+
+
+def safe_zip_read(zin, info_or_name, budget=None, max_member=ZIP_MAX_MEMBER_BYTES):
+    """Legge un membro di un archivio ZIP con limiti anti zip-bomb (dimensione, totale, rapporto)."""
+    info = info_or_name if isinstance(info_or_name, zipfile.ZipInfo) else zin.getinfo(info_or_name)
+    if info.file_size > max_member:
+        raise ProcessingError(f"Parte interna troppo grande ({info.filename}): limite di sicurezza superato.")
+    if info.compress_size > 0 and info.file_size > 1024 * 1024 and (info.file_size / info.compress_size) > ZIP_MAX_RATIO:
+        raise ProcessingError(f"Rapporto di compressione anomalo ({info.filename}): file rifiutato per sicurezza.")
+    chunks = []
+    read = 0
+    with zin.open(info, "r") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            read += len(chunk)
+            if read > max_member:
+                raise ProcessingError(f"Parte interna troppo grande ({info.filename}): limite di sicurezza superato.")
+            if budget is not None:
+                budget["total"] = budget.get("total", 0) + len(chunk)
+                if budget["total"] > budget.get("max_total", ZIP_MAX_TOTAL_BYTES):
+                    raise ProcessingError("Contenuto decompresso del documento troppo grande: limite di sicurezza superato.")
+            chunks.append(chunk)
+    if info.compress_size > 0 and read > 1024 * 1024 and (read / info.compress_size) > ZIP_MAX_RATIO:
+        raise ProcessingError(f"Rapporto di compressione anomalo ({info.filename}): file rifiutato per sicurezza.")
+    return b"".join(chunks)
+
+
+def _blank_png_bytes():
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (255, 255, 255)).save(buf, "PNG")
+    return buf.getvalue()
 
 
 def _local(tag):
@@ -161,6 +201,9 @@ def process_ooxml(in_path, out_path, ctx):
         raise ValueError("File Office non valido o protetto da password (non e' un pacchetto OOXML).")
     with zipfile.ZipFile(in_path, "r") as zin:
         infos = zin.infolist()
+        if len(infos) > ZIP_MAX_ENTRIES:
+            raise ProcessingError("Documento Office con troppi elementi interni: rifiutato per sicurezza.")
+        budget = {"total": 0, "max_total": ZIP_MAX_TOTAL_BYTES}
         names = [i.filename for i in infos]
         kind = _kind(names)
         if kind is None:
@@ -169,14 +212,14 @@ def process_ooxml(in_path, out_path, ctx):
         for info in infos:
             if _is_text_part(kind, info.filename):
                 try:
-                    trees[info.filename] = etree.fromstring(zin.read(info.filename), _PARSER)
+                    trees[info.filename] = etree.fromstring(safe_zip_read(zin, info, budget), _PARSER)
                 except etree.XMLSyntaxError:
                     raise unreadable_part(info.filename) from None
         rels = {}
         for info in infos:
             if info.filename.endswith(".rels"):
                 try:
-                    rels[info.filename] = etree.fromstring(zin.read(info.filename), _PARSER)
+                    rels[info.filename] = etree.fromstring(safe_zip_read(zin, info, budget), _PARSER)
                 except etree.XMLSyntaxError:
                     raise unreadable_part(info.filename) from None
 
@@ -203,6 +246,8 @@ def process_ooxml(in_path, out_path, ctx):
         def _image_done(name, nb, err):
             if err is not None:
                 ctx.note(f"immagine incorporata non elaborata ({os.path.basename(name)}): {err}")
+                if ctx.anonymize:
+                    new_data[name] = _blank_png_bytes()
             elif nb is not None:
                 new_data[name] = nb
         from .images import ImageBatcher
@@ -213,19 +258,37 @@ def process_ooxml(in_path, out_path, ctx):
             ext = os.path.splitext(low)[1]
             if "/media/" in low and ext in _RASTER_EXTS and ctx.vision_enabled():
                 ctx.check()
-                batcher.add(n, zin.read(n))
+                batcher.add(n, safe_zip_read(zin, info, budget))
+            elif "/media/" in low and ext in _VECTOR_EXTS and ctx.anonymize:
+                ctx.check()
+                if ext == ".svg":
+                    try:
+                        from .markup import transform_xml_bytes
+                        new_data[n] = transform_xml_bytes(safe_zip_read(zin, info, budget), ctx)
+                    except Exception as e:
+                        reraise_control(e)
+                        removed.add(n)
+                        ctx.note(f"immagine vettoriale rimossa per sicurezza ({os.path.basename(n)}): {e}")
+                else:
+                    removed.add(n)
+                    ctx.note(f"immagine vettoriale ({os.path.basename(n)}) rimossa per sicurezza (formato non analizzabile).")
             elif "/embeddings/" in low:
                 base = os.path.basename(n)
                 if is_supported(base) and ext not in (".bin",):
                     try:
-                        nb, _ = process_bytes(zin.read(n), base, ctx.child())
+                        nb, _ = process_bytes(safe_zip_read(zin, info, budget), base, ctx.child())
                         new_data[n] = nb
                         common.log(f"Documento incorporato elaborato: {base}")
                     except Exception as e:
                         reraise_control(e)
-                        ctx.note(f"oggetto incorporato non elaborabile ({base}): {e}")
+                        if ctx.anonymize:
+                            removed.add(n)
+                            ctx.note(f"oggetto incorporato rimosso per sicurezza ({base}): {e}")
+                        else:
+                            ctx.note(f"oggetto incorporato non elaborabile ({base}): {e}")
                 elif ctx.anonymize:
-                    ctx.note(f"Oggetto OLE incorporato non analizzabile ({base}): verificarne il contenuto manualmente.")
+                    removed.add(n)
+                    ctx.note(f"Oggetto OLE incorporato rimosso per sicurezza ({base}): formato binario non analizzabile.")
             elif low.startswith("docprops/thumbnail") and ctx.anonymize:
                 removed.add(n)
         batcher.flush()
@@ -233,41 +296,51 @@ def process_ooxml(in_path, out_path, ctx):
         if removed:
             _drop_parts(removed, new_data, zin, rels)
 
-        write_zip(out_path, zin, infos, new_data, removed)
+        write_zip(out_path, zin, infos, new_data, removed, budget=budget)
     return None
 
 
 def clone_zipinfo(info):
-    """Nuovo ZipInfo con i soli metadati utili (evita di ricopiare campi extra/zip64 non piu' validi)."""
+    """Nuovo ZipInfo con i soli metadati utili (evita di ricopiare campi extra/zip64 e commenti con possibili PII)."""
     zi = zipfile.ZipInfo(info.filename, date_time=info.date_time)
     zi.compress_type = info.compress_type
     zi.external_attr = info.external_attr
     zi.create_system = info.create_system
-    zi.comment = info.comment
+    zi.comment = b""
     return zi
 
 
-def write_zip(out_path, zin, infos, new_data, removed=()):
+def write_zip(out_path, zin, infos, new_data, removed=(), budget=None):
     """Riscrive l'archivio mantenendo ordine e metodo di compressione (es. 'mimetype' ODF non compresso)."""
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zout:
         for info in infos:
             if info.filename in removed:
                 continue
-            data = new_data[info.filename] if info.filename in new_data else zin.read(info.filename)
+            data = new_data[info.filename] if info.filename in new_data else safe_zip_read(zin, info, budget)
             zout.writestr(clone_zipinfo(info), data)
 
 
 def _drop_parts(removed, new_data, zin, rels):
-    root_rels = "_rels/.rels"
-    tree = rels.get(root_rels)
-    if tree is not None:
+    for rel_name, tree in rels.items():
+        if tree is None:
+            continue
+        base_dir = os.path.dirname(os.path.dirname(rel_name)) if "/_rels/" in rel_name else ""
+        changed_rel = False
         for rel in list(tree):
-            target = (rel.get("Target") or "").lstrip("/")
-            if target in removed:
+            raw_t = (rel.get("Target") or "").replace("\\", "/")
+            if raw_t.startswith("/"):
+                cand = raw_t.lstrip("/")
+            elif base_dir:
+                cand = os.path.normpath(base_dir + "/" + raw_t).replace("\\", "/")
+            else:
+                cand = raw_t
+            if cand in removed or raw_t.lstrip("/") in removed:
                 tree.remove(rel)
-        new_data[root_rels] = etree.tostring(tree, xml_declaration=True, encoding="UTF-8", standalone=True)
+                changed_rel = True
+        if changed_rel:
+            new_data[rel_name] = etree.tostring(tree, xml_declaration=True, encoding="UTF-8", standalone=True)
     try:
-        ct = etree.fromstring(zin.read("[Content_Types].xml"), _PARSER)
+        ct = etree.fromstring(safe_zip_read(zin, "[Content_Types].xml"), _PARSER)
         for ov in list(ct):
             if (ov.get("PartName") or "").lstrip("/") in removed:
                 ct.remove(ov)

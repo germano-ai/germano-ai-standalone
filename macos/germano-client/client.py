@@ -28,6 +28,7 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import unicodedata
 import urllib.error
@@ -41,17 +42,43 @@ if BASE_DIR not in sys.path:
 import ai_detect          # noqa: E402  (rilevamento delle CLI installate su QUESTO computer)
 import discovery          # noqa: E402  (protocollo di rilevamento UDP, identico a quello del Server)
 
-CONFIG_FILE = os.path.join(BASE_DIR, "client_config.json")
-CREATE_NEW_CONSOLE = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
+
+def _config_file():
+    """Percorso di client_config.json: usa la cartella dati/tecnica dell'utente se installato, altrimenti BASE_DIR."""
+    for var in ("GERMANO_DATA_DIR", "GERMANO_TECH_DIR"):
+        if os.environ.get(var):
+            return os.path.join(os.environ[var], "client_config.json")
+    inst = os.path.join(BASE_DIR, "germano_install.json")
+    if os.path.isfile(inst):
+        try:
+            with open(inst, encoding="utf-8-sig") as f:
+                info = json.load(f)
+            if isinstance(info, dict):
+                folder = info.get("data_dir") or info.get("tech_dir")
+                if folder:
+                    return os.path.join(folder, "client_config.json")
+        except (OSError, ValueError):
+            pass
+    return os.path.join(BASE_DIR, "client_config.json")
+
+
+CONFIG_FILE = _config_file()
+CREATE_NEW_CONSOLE = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
 DEFAULT_SERVER_PORT = 8181
 MAX_ATTACHMENTS = 12          # limite dello Studio del Server per un singolo invio
 OK, ERR_SERVER, ERR_USAGE, ERR_TOKEN, ERR_ENGINE, ERR_CLI, ERR_LOCKED = 0, 1, 2, 3, 4, 5, 6
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _CTRL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 _LOOPBACK = ("127.0.0.1", "localhost", "::1")
-# Verso il Germano Server della LAN ci si collega sempre direttamente: mai attraverso un proxy di sistema o aziendale,
-# che vedrebbe in chiaro i testi da proteggere.
-_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+# Verso il Germano Server della LAN ci si collega sempre direttamente, senza proxy di sistema e senza seguire redirect.
+_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
 
 # Come ogni CLI passa dal Proxy del Server. stato: "verificato" (collaudato dal vivo), "documentato" (secondo la
 # documentazione della CLI), "manuale" (la CLI non legge le variabili d'ambiente: va configurata a mano, poi --forza),
@@ -279,17 +306,38 @@ def load_config():
 
 
 def save_config(cfg):
-    tmp = CONFIG_FILE + ".tmp"
+    folder = os.path.dirname(CONFIG_FILE) or BASE_DIR
+    tmp = None
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        os.makedirs(folder, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(prefix=".client_cfg_", suffix=".tmp", dir=folder)
+        if os.name != "nt":
+            try:
+                os.chmod(tmp, 0o600)
+            except OSError:
+                pass
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
             f.write("\n")
-        os.replace(tmp, CONFIG_FILE)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        for attempt in range(10):
+            try:
+                os.replace(tmp, CONFIG_FILE)
+                break
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
     except OSError as e:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
         raise ClientError(f"impossibile salvare client_config.json ({e.strerror or e}): la cartella del Client e' in "
                           "sola lettura? Usa le opzioni --server e --token sulla riga di comando.", ERR_USAGE) from None
 
@@ -343,7 +391,7 @@ def discover_servers(timeout=1.5):
     return discovery.discover(timeout=timeout, port=_discovery_port(), broadcasts=discovery.broadcast_addresses())
 
 
-def resolve_server(args):
+def resolve_server(args, non_interactive=False):
     """(base_url, provenienza). Ordine: --server, client_config.json, rilevamento automatico sulla rete."""
     if getattr(args, "server", None):
         base, tok = parse_server(args.server)
@@ -365,12 +413,12 @@ def resolve_server(args):
     if len(found) == 1:
         s = found[0]
         return f"http://{s['ip']}:{s['port']}", f"trovato in rete: «{_clean(s.get('name'))}»"
+    if non_interactive or sys.stdin is None or not sys.stdin.isatty():
+        raise ClientError("piu' server disponibili: indica quale con --server oppure salvalo nelle impostazioni del Client.",
+                          ERR_USAGE)
     print("Trovati piu' Germano Server sulla rete:")
     for i, s in enumerate(found, 1):
         print(f"  [{i}] {_clean(s.get('name'))}  http://{s['ip']}:{s['port']}  v{_clean(s.get('version'), 20)}")
-    if sys.stdin is None or not sys.stdin.isatty():
-        raise ClientError("piu' server disponibili: indica quale con --server oppure salvalo con «client config "
-                          "--server <indirizzo>».", ERR_USAGE)
     choice = _ask("Scegli il server [1]: ")
     if choice is None:
         raise ClientError("nessun server scelto.", ERR_USAGE)
@@ -1075,7 +1123,6 @@ def build_env(tool_id, base, tok, base_env=None):
     elif tool_id == "aider":
         put("OPENAI_API_BASE", openai)
         put("OPENAI_BASE_URL", openai)
-        extra = ["--openai-api-base", openai]
     else:   # profili «manuale» avviati con --forza e CLI non classificate: entrambe le vie
         put("ANTHROPIC_BASE_URL", anth)
         put("OPENAI_BASE_URL", openai)
@@ -1208,7 +1255,8 @@ def cmd_launch(args):
         print("(prova a vuoto: la CLI non e' stata avviata)")
         return OK
     try:
-        subprocess.Popen([exe] + extra + cli_args, env=env, cwd=os.getcwd(), creationflags=CREATE_NEW_CONSOLE)
+        kw = {"creationflags": CREATE_NEW_CONSOLE} if os.name == "nt" else {}
+        subprocess.Popen([exe] + extra + cli_args, env=env, cwd=os.getcwd(), **kw)
     except OSError as e:
         print(f"Avvio non riuscito: {e}")
         return ERR_CLI
@@ -1291,8 +1339,9 @@ def cmd_mcp(args):
     Sullo stdout solo messaggi JSON-RPC; avvisi su stderr."""
     proto = sys.stdout.buffer
     sys.stdout = sys.stderr                   # qualsiasi stampa va su stderr: lo stdout e' del protocollo
-    base, origin = resolve_server(args)
+    base, origin = resolve_server(args, non_interactive=True)
     tok = _integration_token(args)
+    check_server(base, tok, timeout=6.0)      # verifica che all'indirizzo risponda davvero un Germano Server
     print(f"Germano Client {get_version()}: ponte MCP verso {base}/mcp ({origin}).", file=sys.stderr)
     state = {"sid": None, "version": None, "init": None}
 

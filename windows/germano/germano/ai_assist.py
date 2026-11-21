@@ -17,9 +17,11 @@ Sicurezza: le rotte /api/ai/assist/* rispondono solo a questo computer (server.p
 senza shell e senza testo dell'utente tra gli argomenti; i download avvengono solo in HTTPS da host consentiti e con
 verifica dell'impronta o della firma; il registro dei lavori viene ripulito da qualsiasi chiave nota.
 """
+import collections
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -144,20 +146,24 @@ def _short_path(path):
 
 
 # ------------------------------------------------------------------------------------------------ chiavi: fonti
-_SECRET_VALUES = set()   # valori letti dalle fonti: si tolgono da qualsiasi testo dei lavori
+_SECRET_VALUES = collections.OrderedDict()   # valori letti dalle fonti: FIFO protetto da _LOCK
 
 
 def _remember_secret(value):
     if value and len(value) >= 8:
-        _SECRET_VALUES.add(value)
-        if len(_SECRET_VALUES) > 200:
-            _SECRET_VALUES.pop()
+        with _LOCK:
+            _SECRET_VALUES[value] = None
+            _SECRET_VALUES.move_to_end(value)
+            while len(_SECRET_VALUES) > 200:
+                _SECRET_VALUES.popitem(last=False)
 
 
 def scrub(text):
     """Toglie da un testo le chiavi note e quelle riconoscibili dal formato."""
     s = str(text or "")
-    for v in list(_SECRET_VALUES):
+    with _LOCK:
+        secrets_snapshot = list(_SECRET_VALUES.keys())
+    for v in secrets_snapshot:
         if v in s:
             s = s.replace(v, v[:3] + "…(nascosta)")
     try:
@@ -202,13 +208,31 @@ _OPENCODE = {"openai": "openai", "anthropic": "anthropic", "zai": "zai", "zai-co
 
 
 def _service_for_url(url):
-    u = str(url or "").lower()
-    for host, sid in _HOST_SERVICES:
-        if host in u:
+    raw = str(url or "").strip()
+    if not raw:
+        return None
+    if "://" not in raw:
+        raw = "https://" + raw
+    try:
+        parsed = urllib.parse.urlsplit(raw)
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower().rstrip(".")
+    path = (parsed.path or "").lower().rstrip("/")
+    if not host:
+        return None
+    for spec, sid in _HOST_SERVICES:
+        spec_host, sep, spec_path = spec.partition("/")
+        if host != spec_host:
+            continue
+        if not sep:
             return sid
-    for host in _UNSUPPORTED_HOSTS:
-        if host in u:
-            return "!" + host
+        want = "/" + spec_path.rstrip("/")
+        if path == want or path.startswith(want + "/"):
+            return sid
+    for bad in _UNSUPPORTED_HOSTS:
+        if host == bad or host.endswith("." + bad) or (bad == "token-plan.cn-beijing" and host.startswith(bad + ".")):
+            return "!" + bad
     return None
 
 
@@ -851,19 +875,24 @@ class Job:
         self.state = "running"
         self.progress = None
         self.lines = []
+        self.base_seq = 0
         self.result = {}
         self.message = ""
         self.started = time.time()
         self.ended = None
         self.cancel = threading.Event()
         self.proc = None
+        self.resp = None
 
     def log(self, text):
         line = _GLOG_RE.sub("", scrub(str(text or "")).rstrip())[:600]
         if line:
             with _LOCK:
                 self.lines.append({"t": round(time.time() - self.started, 1), "text": line})
-                del self.lines[:-400]
+                if len(self.lines) > 400:
+                    drop = len(self.lines) - 400
+                    del self.lines[:drop]
+                    self.base_seq += drop
 
     def check(self):
         if self.cancel.is_set():
@@ -871,9 +900,13 @@ class Job:
 
     def view(self, since=0):
         with _LOCK:
+            try:
+                idx = max(0, int(since or 0) - self.base_seq)
+            except (TypeError, ValueError):
+                idx = 0
             return {"id": self.id, "action": self.action, "assist": self.assist, "title": self.title,
                     "state": self.state, "progress": self.progress, "message": self.message,
-                    "lines": self.lines[since:], "next": len(self.lines), "result": self.result,
+                    "lines": list(self.lines[idx:]), "next": self.base_seq + len(self.lines), "result": self.result,
                     "seconds": round((self.ended or time.time()) - self.started, 1)}
 
 
@@ -902,13 +935,20 @@ def running_jobs():
 
 
 def cancel_job(jid):
-    j = job(jid)
-    if not j:
-        return None
-    j.cancel.set()
-    p = j.proc
+    with _LOCK:
+        j = JOBS.get(str(jid or ""))
+        if not j:
+            return None
+        j.cancel.set()
+        p = j.proc
+        resp = j.resp
     if p is not None:
         harness._kill_tree(p)
+    if resp is not None:
+        try:
+            resp.close()
+        except Exception:
+            pass
     return j
 
 
@@ -928,8 +968,10 @@ def _spawn(j, fn, lang):
             j.state = "error"
             j.message = scrub(_L(lang, f"Errore imprevisto: {e}", f"Unexpected error: {e}"))
         finally:
-            j.ended = time.time()
-            j.proc = None          # il messaggio finale si mostra a parte (j.message), non si ripete nel registro
+            with _LOCK:
+                j.ended = time.time()
+                j.proc = None          # il messaggio finale si mostra a parte (j.message), non si ripete nel registro
+                j.resp = None
             common.log(f"Assistente AI: {j.action} -> {j.state}")
             if _refresh_hook:
                 try:
@@ -947,20 +989,39 @@ def _run_process(j, args, timeout, env=None, cwd=None):
                              env=env, cwd=cwd, creationflags=NO_WINDOW)
     except OSError as e:
         raise AssistError(f"{os.path.basename(args[0])}: {e}") from None
-    j.proc = p
+    with _LOCK:
+        j.proc = p
+        cancelled = j.cancel.is_set()
+    if cancelled:
+        harness._kill_tree(p)
     timer = threading.Timer(timeout, lambda: harness._kill_tree(p))
     timer.daemon = True
     timer.start()
     try:
-        for raw in p.stdout:
-            j.log(raw.decode("utf-8", "replace"))
-            if j.cancel.is_set():
-                harness._kill_tree(p)
-                break
-        p.wait(timeout=30)
+        if p.stdout is not None:
+            for raw in p.stdout:
+                j.log(raw.decode("utf-8", "replace"))
+                if j.cancel.is_set():
+                    harness._kill_tree(p)
+                    break
+        try:
+            p.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            harness._kill_tree(p)
+            try:
+                p.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
     finally:
         timer.cancel()
-        j.proc = None
+        if p.stdout is not None:
+            try:
+                p.stdout.close()
+            except OSError:
+                pass
+        with _LOCK:
+            if j.proc is p:
+                j.proc = None
     j.check()
     return p.returncode
 
@@ -977,53 +1038,91 @@ def _check_url(url, hosts, prefix=None):
         u = urllib.parse.urlsplit(url)
     except ValueError:
         return False
-    if u.scheme != "https" or (u.hostname or "").lower() not in hosts:
+    host = (u.hostname or "").lower().rstrip(".")
+    if u.scheme != "https" or not host or u.username is not None or u.password is not None or host not in hosts:
         return False
-    return not prefix or u.path.startswith(prefix)
+    if prefix:
+        raw_path = urllib.parse.unquote(u.path or "/")
+        if ".." in raw_path.split("/"):
+            return False
+        norm = posixpath.normpath(raw_path)
+        if raw_path.endswith("/") and not norm.endswith("/"):
+            norm += "/"
+        return norm.startswith(prefix)
+    return True
 
 
 def _download(j, url, dest, hosts, max_bytes, lang, sha512=None, prefix=None):
-    """Scarica in `dest` (accanto alla destinazione finale) mostrando l'avanzamento; host e redirect controllati."""
+    """Scarica in `dest` (accanto alla destinazione finale) mostrando l'avanzamento; ogni hop di redirect e' verificato."""
     import requests
     if not _check_url(url, hosts, prefix):
         raise AssistError(_L(lang, f"Indirizzo di download non consentito: {url[:120]}",
                              f"Download address not allowed: {url[:120]}"))
     h = hashlib.sha512()
     total = 0
+    s = _http()
+    cur = url
+    r = None
     try:
-        with _http().get(url, stream=True, timeout=(20, 120), allow_redirects=True) as r:
-            final = r.url
-            if not _check_url(final, hosts):
+        for _ in range(6):
+            j.check()
+            if not _check_url(cur, hosts, prefix):
                 raise AssistError(_L(lang, f"Il download e' stato reindirizzato a un host non consentito: "
-                                           f"{urllib.parse.urlsplit(final).hostname}",
+                                           f"{urllib.parse.urlsplit(cur).hostname}",
                                      f"The download was redirected to a host that is not allowed: "
-                                     f"{urllib.parse.urlsplit(final).hostname}"))
-            if r.status_code != 200:
-                raise AssistError(_L(lang, f"Download non riuscito (HTTP {r.status_code}).",
-                                     f"Download failed (HTTP {r.status_code})."))
+                                     f"{urllib.parse.urlsplit(cur).hostname}"))
+            r = s.get(cur, stream=True, timeout=(20, 120), allow_redirects=False)
+            if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("Location"):
+                nxt = urllib.parse.urljoin(cur, r.headers["Location"])
+                r.close()
+                r = None
+                cur = nxt
+                continue
+            break
+        else:
+            raise AssistError(_L(lang, "Troppi reindirizzamenti durante il download.",
+                                 "Too many redirects during download."))
+        with _LOCK:
+            j.resp = r
+            cancelled = j.cancel.is_set()
+        if cancelled:
+            raise _Cancelled()
+        final = cur
+        if r.status_code != 200:
+            raise AssistError(_L(lang, f"Download non riuscito (HTTP {r.status_code}).",
+                                 f"Download failed (HTTP {r.status_code})."))
+        try:
             size = int(r.headers.get("Content-Length") or 0) or None
-            if size and size > max_bytes:
-                raise AssistError(_L(lang, "File troppo grande.", "File too large."))
-            j.log(_L(lang, f"Download da {urllib.parse.urlsplit(final).hostname}"
-                           + (f" ({size / 1048576:.0f} MB)" if size else ""),
-                     f"Downloading from {urllib.parse.urlsplit(final).hostname}"
-                     + (f" ({size / 1048576:.0f} MB)" if size else "")))
-            last = 0.0
-            with open(dest, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1 << 20):
-                    if j.cancel.is_set():
-                        raise _Cancelled()
-                    if not chunk:
-                        continue
-                    f.write(chunk)
-                    h.update(chunk)
-                    total += len(chunk)
-                    if total > max_bytes:
-                        raise AssistError(_L(lang, "File troppo grande.", "File too large."))
-                    if size and time.time() - last > 0.4:
-                        last = time.time()
-                        j.progress = round(min(0.99, total / size), 3)
+        except ValueError:
+            size = None
+        if size and size > max_bytes:
+            raise AssistError(_L(lang, "File troppo grande.", "File too large."))
+        j.log(_L(lang, f"Download da {urllib.parse.urlsplit(final).hostname}"
+                       + (f" ({size / 1048576:.0f} MB)" if size else ""),
+                 f"Downloading from {urllib.parse.urlsplit(final).hostname}"
+                 + (f" ({size / 1048576:.0f} MB)" if size else "")))
+        last = 0.0
+        with open(dest, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1 << 20):
+                if j.cancel.is_set():
+                    raise _Cancelled()
+                if not chunk:
+                    continue
+                f.write(chunk)
+                h.update(chunk)
+                total += len(chunk)
+                if total > max_bytes:
+                    raise AssistError(_L(lang, "File troppo grande.", "File too large."))
+                if size and time.time() - last > 0.4:
+                    last = time.time()
+                    j.progress = round(min(0.99, total / size), 3)
     except requests.RequestException as e:
+        try:
+            os.remove(dest)
+        except OSError:
+            pass
+        if j.cancel.is_set():
+            raise _Cancelled() from None
         raise AssistError(_L(lang, f"Download non riuscito ({e.__class__.__name__}): controlla la connessione a "
                                    "Internet.", f"Download failed ({e.__class__.__name__}): check the Internet "
                                                 "connection.")) from None
@@ -1033,6 +1132,19 @@ def _download(j, url, dest, hosts, max_bytes, lang, sha512=None, prefix=None):
         except OSError:
             pass
         raise
+    finally:
+        with _LOCK:
+            if j.resp is r:
+                j.resp = None
+        if r is not None:
+            try:
+                r.close()
+            except Exception:
+                pass
+        try:
+            s.close()
+        except Exception:
+            pass
     if sha512 and h.hexdigest().lower() != sha512.lower():
         try:
             os.remove(dest)
@@ -1067,13 +1179,39 @@ def authenticode(path):
         return None, None
 
 
-def _require_signature(j, path, signer, lang):
+_RDN_RE = re.compile(r'(?:^|,\s*)([A-Za-z]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^,]*))')
+
+
+def _subject_matches(subject, signer):
+    """Confronto esatto per attributo RDN del certificato (es. O=Google LLC, CN/O=Ollama Inc), mai substring grezza."""
+    if not subject or not signer:
+        return False
+    attrs = {}
+    for k, qv, uv in _RDN_RE.findall(str(subject)):
+        val = (qv if qv else uv).replace('\\"', '"').strip().rstrip(".").lower()
+        attrs.setdefault(k.upper(), []).append(val)
+    if "=" in signer:
+        want_k, _, want_v = signer.partition("=")
+        want_v = want_v.strip().strip('"').rstrip(".").lower()
+        return want_v in attrs.get(want_k.strip().upper(), ())
+    want_v = signer.strip().strip('"').rstrip(".").lower()
+    return want_v in attrs.get("O", ()) or want_v in attrs.get("CN", ())
+
+
+def _require_signature(j, path, signer, lang, required=False):
     status, subject = authenticode(path)
     if status is None:
+        if required:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            raise AssistError(_L(lang, "Impossibile verificare la firma digitale su questo sistema: file scartato.",
+                                 "Unable to verify the digital signature on this system: file discarded."))
         j.log(_L(lang, "Firma digitale non verificabile su questo sistema: resta valida la verifica dell'impronta.",
                  "Digital signature not verifiable on this system: the digest check still applies."))
         return
-    if status != "Valid" or signer.lower() not in str(subject or "").lower():
+    if status != "Valid" or not _subject_matches(subject, signer):
         try:
             os.remove(path)
         except OSError:
@@ -1349,7 +1487,7 @@ def _act_ollama_install(j, lang):
     setup = os.path.join(work, "OllamaSetup.germano.exe")
     _download(j, OLLAMA_SETUP, setup, OLLAMA_HOSTS, OLLAMA_MAX_BYTES, lang)
     try:
-        _require_signature(j, setup, OLLAMA_SIGNER, lang)
+        _require_signature(j, setup, OLLAMA_SIGNER, lang, required=True)
         j.progress = None
         marker_dir = os.path.join(os.environ.get("LOCALAPPDATA") or "", "Ollama")
         try:   # come lo script ufficiale: l'app si avvia nascosta dopo l'installazione
@@ -1704,12 +1842,15 @@ def describe(assist_id, lang="it"):
                         "anything." if login else "After the installation you can sign in with Google.")))
         if desk["installed"] and not desk["account"] and login is False:
             actions.append(_action("antigravity-open", _L(lang, "Apri Antigravity Desktop", "Open Antigravity Desktop")))
-        facts.append(_fact(None, _L(lang, "Nell'Harness la CLI riceve solo il testo gia' protetto da Germano, senza "
-                                          "strumenti, file o comandi; le sue istruzioni interne vanno a Google "
-                                          "direttamente (non passano dal Proxy).",
-                                    "In the Harness the CLI receives only the text already protected by Germano, with no "
-                                    "tools, files or commands; its internal instructions go to Google directly (not "
-                                    "through the Proxy).")))
+        facts.append(_fact(None, _L(lang, "Nell'Harness la CLI riceve solo il testo gia' protetto da Germano; su questo "
+                                          "computer puoi scegliere dai parametri del modello la modalita' autonoma (YOLO) "
+                                          "o ristretta (strict, senza strumenti ne' file), mentre dalla rete locale e' "
+                                          "sempre ristretta. Le sue istruzioni interne vanno a Google direttamente (non "
+                                          "passano dal Proxy).",
+                                    "In the Harness the CLI receives only the text already protected by Germano; on this "
+                                    "computer you can choose autonomous (YOLO) or strict mode (no tools or files) in the "
+                                    "model parameters, while from the local network it is always restricted. Its internal "
+                                    "instructions go to Google directly (not through the Proxy).")))
         links_out += [{"label": _L(lang, "Guida della CLI", "CLI guide"), "url": LINKS["agy_docs"]},
                       {"label": _L(lang, "Installazione e accesso", "Installation and sign-in"),
                        "url": LINKS["agy_install"]}]
@@ -2087,55 +2228,49 @@ def mcp_connect(client_id, cmd, remove=False, lang="it"):
         raise AssistError(_L(lang, f"{spec['name']} non risulta installato su questo computer.",
                              f"{spec['name']} does not appear to be installed on this computer."))
     path = spec["path"]
-    data, err = _read_config_json(path)
-    if err:
-        raise AssistError(_L(lang, f"{_short_path(path)} non e' un JSON valido (forse contiene commenti): Germano non "
-                                   "lo modifica. Aggiungi la voce a mano con «Copia configurazione MCP».",
-                             f"{_short_path(path)} is not valid JSON (it may contain comments): Germano does not "
-                             "modify it. Add the entry by hand with «Copy MCP configuration»."))
-    data = dict(data or {})
-    box = data.get(spec["container"])
-    if box is None:
-        box = {}
-    if not isinstance(box, dict):
-        raise AssistError(_L(lang, f"«{spec['container']}» in {_short_path(path)} non e' un oggetto: modifica a mano.",
-                             f"«{spec['container']}» in {_short_path(path)} is not an object: edit it by hand."))
-    box = dict(box)
-    before = box.get(MCP_SERVER_NAME)
-    result = {"client": spec["id"], "name": spec["name"], "path": path, "backup": None}
-    if remove:
-        if before is None:
-            result["action"] = "absent"
-            return result
-        box.pop(MCP_SERVER_NAME, None)
-        result["action"] = "removed"
-    else:
-        entry = _mcp_entry(spec, cmd)
-        if before == entry:
-            result["action"] = "unchanged"
-            return result
-        box[MCP_SERVER_NAME] = entry
-        result["action"] = "updated" if before is not None else "connected"
-    data[spec["container"]] = box
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        if os.path.exists(path):
-            backup = f"{path}.germano-backup-{time.strftime('%Y%m%d-%H%M%S')}"
-            shutil.copy2(path, backup)
-            result["backup"] = backup
-        tmp = path + ".germano-tmp"
-        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-        os.replace(tmp, path)
-    except OSError as e:
+    with _LOCK:
+        data, err = _read_config_json(path)
+        if err:
+            raise AssistError(_L(lang, f"{_short_path(path)} non e' un JSON valido (forse contiene commenti): Germano non "
+                                       "lo modifica. Aggiungi la voce a mano con «Copia configurazione MCP».",
+                                 f"{_short_path(path)} is not valid JSON (it may contain comments): Germano does not "
+                                 "modify it. Add the entry by hand with «Copy MCP configuration»."))
+        data = dict(data or {})
+        box = data.get(spec["container"])
+        if box is None:
+            box = {}
+        if not isinstance(box, dict):
+            raise AssistError(_L(lang, f"«{spec['container']}» in {_short_path(path)} non e' un oggetto: modifica a mano.",
+                                 f"«{spec['container']}» in {_short_path(path)} is not an object: edit it by hand."))
+        box = dict(box)
+        before = box.get(MCP_SERVER_NAME)
+        result = {"client": spec["id"], "name": spec["name"], "path": path, "backup": None}
+        if remove:
+            if before is None:
+                result["action"] = "absent"
+                return result
+            box.pop(MCP_SERVER_NAME, None)
+            result["action"] = "removed"
+        else:
+            entry = _mcp_entry(spec, cmd)
+            if before == entry:
+                result["action"] = "unchanged"
+                return result
+            box[MCP_SERVER_NAME] = entry
+            result["action"] = "updated" if before is not None else "connected"
+        data[spec["container"]] = box
         try:
-            os.remove(path + ".germano-tmp")
-        except OSError:
-            pass
-        raise AssistError(_L(lang, f"Impossibile scrivere {_short_path(path)} ({e.strerror or e}).",
-                             f"Cannot write {_short_path(path)} ({e.strerror or e}).")) from None
-    _prune_backups(path)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            if os.path.exists(path):
+                backup = f"{path}.germano-backup-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+                shutil.copy2(path, backup)
+                result["backup"] = backup
+            payload = (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+            common.atomic_write_bytes(path, payload)
+        except OSError as e:
+            raise AssistError(_L(lang, f"Impossibile scrivere {_short_path(path)} ({e.strerror or e}).",
+                                 f"Cannot write {_short_path(path)} ({e.strerror or e}).")) from None
+        _prune_backups(path)
     common.log(f"Integrazioni: Germano {'tolto da' if remove else 'collegato a'} {spec['name']} ({path}); copia di "
                f"sicurezza: {result['backup'] or 'nessuna (file nuovo)'}.")
     result["message"] = (_L(lang, f"Germano tolto da {spec['name']}.", f"Germano removed from {spec['name']}.")

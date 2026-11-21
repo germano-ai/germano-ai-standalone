@@ -16,6 +16,7 @@ import base64
 import codecs
 import json
 import re
+import urllib.parse
 
 from .vault import restore_text
 
@@ -48,8 +49,13 @@ _FREE_CHILD_KEYS = {"functionCall": {"args"}, "functionResponse": {"response"}, 
 # Nome di un partecipante (OpenAI Chat, ruoli user/assistant/system/developer): puo' essere un nome di persona
 _PARTICIPANT_ROLES = {"user", "assistant", "system", "developer"}
 _PARTICIPANT_NAME_RE = re.compile(r"[^A-Za-z0-9_-]")
-# Campi di primo livello visitati: contenuti della conversazione e identificativi dell'utente finale
-_PAYLOAD_KEYS = ("messages", "input", "instructions", "system", "prompt", "contents", "metadata", "user")
+# Campi di primo livello visitati: contenuti della conversazione, predizioni, documenti e identificativi utente
+_PAYLOAD_KEYS = ("messages", "input", "instructions", "system", "system_instruction", "systemInstruction",
+                 "prompt", "contents", "metadata", "user", "prediction", "documents", "prefix", "suffix")
+_TOP_SCALAR_SKIP = {"model", "stream", "temperature", "top_p", "top_k", "max_tokens", "max_completion_tokens",
+                    "max_output_tokens", "n", "seed", "service_tier", "reasoning_effort", "tool_choice",
+                    "parallel_tool_calls", "store", "stream_options", "logprobs", "top_logprobs",
+                    "frequency_penalty", "presence_penalty", "logit_bias", "thinking", "output_config"}
 _MEDIA_EXT = {
     "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/webp": ".webp", "image/gif": ".gif",
     "image/bmp": ".bmp", "image/tiff": ".tif", "application/pdf": ".pdf", "text/plain": ".txt",
@@ -106,20 +112,22 @@ class Job:
         self.media.append((mime, data, setter, name))
 
 
-def _data_url(job, url, setter, filename=None):
+def _data_url(job, url, setter, filename=None, loc=None):
     m = _DATA_URL_RE.match(url or "")
     if not m:
         return False
     mime, b64 = m.group(1) or "text/plain", m.group(3)
     payload = m.group(4)
     try:
-        data = base64.b64decode(payload) if b64 else payload.encode("utf-8")
+        data = base64.b64decode(payload) if b64 else urllib.parse.unquote_to_bytes(payload)
     except Exception:
         raise ProxyBlock("Allegato base64 non valido: richiesta bloccata.", 400)
 
     def _set(new_bytes, mm=mime, st=setter):
         st(f"data:{mm};base64," + base64.b64encode(new_bytes).decode("ascii"))
     job.add_media(mime, data, _set, filename)
+    if loc is not None:
+        job.collected.add((id(loc[0]), loc[1]))
     return True
 
 
@@ -132,7 +140,9 @@ def _json_string(job, container, key, value):
         job.text(value, lambda v, c=container, k=key: c.__setitem__(k, v), (container, key))
         return
     if isinstance(parsed, str):
-        job.text(value, lambda v, c=container, k=key: c.__setitem__(k, v), (container, key))
+        holder = [parsed]
+        job.text(parsed, lambda v, h=holder: h.__setitem__(0, v))
+        job.finalizers.append(lambda c=container, k=key, h=holder: c.__setitem__(k, json.dumps(h[0], ensure_ascii=False)))
         return
     holder = [parsed]
     _walk_free(holder, job)
@@ -144,15 +154,12 @@ def _json_string(job, container, key, value):
 
 
 def _free_string(job, container, key, value):
-    """Stringa di un contenuto libero: allegato (data URL di un tipo gestito) oppure testo da anonimizzare."""
+    """Stringa di un contenuto libero: allegato (data URL: gestito o bloccato) oppure testo da anonimizzare."""
     def setter(nv, c=container, k=key):
         c[k] = nv
-    if value.startswith("data:"):
-        m = _DATA_URL_RE.match(value)
-        if m and (m.group(1) or "").lower() in _MEDIA_EXT:
-            _data_url(job, value, setter)
-            job.collected.add((id(container), key))
-            return
+    if value.startswith("data:") and _DATA_URL_RE.match(value):
+        _data_url(job, value, setter, loc=(container, key))
+        return
     job.text(value, setter, (container, key))
 
 
@@ -176,6 +183,9 @@ def _walk_free(node, job):
         for i, v in enumerate(node):
             if isinstance(v, str):
                 _free_string(job, node, i, v)
+            elif isinstance(v, (int, float)) and not isinstance(v, bool) and len(str(v)) >= 9:
+                sv = str(v)
+                job.text(sv, lambda nv, c=node, idx=i, orig=sv: c.__setitem__(idx, nv) if nv != orig else None)
             elif isinstance(v, (dict, list)):
                 _walk_free(v, job)
         return
@@ -185,6 +195,9 @@ def _walk_free(node, job):
     for k, v in list(node.items()):
         if isinstance(v, str):
             _free_string(job, node, k, v)
+        elif isinstance(v, (int, float)) and not isinstance(v, bool) and len(str(v)) >= 9:
+            sv = str(v)
+            job.text(sv, lambda nv, c=node, kk=k, orig=sv: c.__setitem__(kk, nv) if nv != orig else None)
         elif isinstance(v, (dict, list)):
             _walk_free(v, job)
         if isinstance(k, str) and k.strip():
@@ -224,33 +237,56 @@ def _walk(node, job, free_keys=()):
         return  # riga di attribuzione di Claude Code (nessun dato personale)
     if t in ("input_audio", "audio"):
         raise ProxyBlock("Contenuti audio non anonimizzabili (voce = dato biometrico): richiesta bloccata.", 415)
-    free = {"input"} if t in _TOOL_INPUT_TYPES else set(free_keys)
+    free = set(free_keys)
+    if t in _TOOL_INPUT_TYPES:
+        free.add("input")
+    if t == "function_call_output":
+        free.add("output")
     if node.get("role") in _PARTICIPANT_ROLES and isinstance(node.get("name"), str) and node["name"].strip():
         _participant_name(job, node)
     handled = set()
     # OpenAI Chat: {"type":"image_url","image_url":{"url":"data:..."}}
     iu = node.get("image_url")
     if isinstance(iu, dict) and isinstance(iu.get("url"), str):
-        _data_url(job, iu["url"], lambda v, d=iu: d.__setitem__("url", v))
+        if not _data_url(job, iu["url"], lambda v, d=iu: d.__setitem__("url", v), loc=(iu, "url")):
+            raise ProxyBlock("Immagine da indirizzo esterno (non data URL) non anonimizzabile: richiesta bloccata per sicurezza.", 415)
+        for ik, iv in list(iu.items()):
+            if ik == "url" or ik in _STRUCT_KEYS:
+                continue
+            if isinstance(iv, str):
+                job.text(iv, lambda nv, d=iu, kk=ik: d.__setitem__(kk, nv), (iu, ik))
+            else:
+                _walk(iv, job)
         handled.add("image_url")
     elif isinstance(iu, str):  # Responses: {"type":"input_image","image_url":"data:..."}
-        _data_url(job, iu, lambda v, d=node: d.__setitem__("image_url", v))
+        if not _data_url(job, iu, lambda v, d=node: d.__setitem__("image_url", v), loc=(node, "image_url")):
+            raise ProxyBlock("Immagine da indirizzo esterno (non data URL) non anonimizzabile: richiesta bloccata per sicurezza.", 415)
         handled.add("image_url")
     # OpenAI file: {"type":"file","file":{"file_data":"data:...","filename":...}}
     fobj = node.get("file")
     if isinstance(fobj, dict) and isinstance(fobj.get("file_data"), str):
-        if not _data_url(job, fobj["file_data"], lambda v, d=fobj: d.__setitem__("file_data", v), fobj.get("filename")):
+        if not _data_url(job, fobj["file_data"], lambda v, d=fobj: d.__setitem__("file_data", v),
+                         fobj.get("filename"), loc=(fobj, "file_data")):
             raw = fobj["file_data"]
 
             def _set_raw(v, d=fobj):
                 d["file_data"] = v.split(",", 1)[1] if v.startswith("data:") else v
-            _data_url(job, "data:application/pdf;base64," + raw, _set_raw, fobj.get("filename"))
+            _data_url(job, "data:application/pdf;base64," + raw, _set_raw, fobj.get("filename"), loc=(fobj, "file_data"))
+        for fk, fv in list(fobj.items()):
+            if fk == "file_data" or fk in _STRUCT_KEYS:
+                continue
+            if isinstance(fv, str):
+                job.text(fv, lambda nv, d=fobj, kk=fk: d.__setitem__(kk, nv), (fobj, fk))
+            else:
+                _walk(fv, job)
         handled.add("file")
     if isinstance(node.get("file_data"), str):  # Responses input_file
         fd = node["file_data"]
-        if not _data_url(job, fd, lambda v, d=node: d.__setitem__("file_data", v), node.get("filename")):
+        if not _data_url(job, fd, lambda v, d=node: d.__setitem__("file_data", v), node.get("filename"),
+                         loc=(node, "file_data")):
             _data_url(job, "data:application/pdf;base64," + fd,
-                      lambda v, d=node: d.__setitem__("file_data", v.split(",", 1)[1]), node.get("filename"))
+                      lambda v, d=node: d.__setitem__("file_data", v.split(",", 1)[1]),
+                      node.get("filename"), loc=(node, "file_data"))
         handled.add("file_data")
     # Anthropic: {"type":"image"|"document","source":{"type":"base64","media_type":...,"data":...}}
     src = node.get("source")
@@ -263,10 +299,20 @@ def _walk(node, job, free_keys=()):
                 raise ProxyBlock("Allegato base64 non valido: richiesta bloccata.", 400)
             job.add_media(src.get("media_type"), data,
                           lambda b, d=src: d.__setitem__("data", base64.b64encode(b).decode("ascii")))
+            job.collected.add((id(src), "data"))
         elif st == "text" and isinstance(src.get("data"), str):
             job.text(src["data"], lambda v, d=src: d.__setitem__("data", v), (src, "data"))
         elif st == "content":
             _walk(src.get("content"), job)
+        elif st is not None:
+            raise ProxyBlock(f"Sorgente allegato '{st}' non anonimizzabile: richiesta bloccata per sicurezza.", 415)
+        for sk, sv in list(src.items()):
+            if sk in ("type", "data", "content", "media_type") or sk in _STRUCT_KEYS:
+                continue
+            if isinstance(sv, str):
+                job.text(sv, lambda nv, d=src, kk=sk: d.__setitem__(kk, nv), (src, sk))
+            else:
+                _walk(sv, job)
         handled.add("source")
     for k, v in list(node.items()):
         if k in handled:
@@ -322,8 +368,7 @@ def leak_check(payload, job, words):
     """Dopo l'anonimizzazione: cerca i dati appena rilevati (`words`: [(dato, etichetta)]) in tutte le stringhe del
     corpo che NON sono passate dall'anonimizzazione (campi nuovi o sconosciuti, identificativi, strutture che la visita
     non conosce). Restituisce [(percorso, etichetta)] dei punti in cui un dato e' rimasto: il chiamante blocca la
-    richiesta. Indipendente da _walk: guarda ogni stringa, tranne i blocchi di ragionamento firmati, i contenuti binari
-    (base64, data URL) e i valori tecnici del protocollo (_CHECK_SKIP_KEYS)."""
+    richiesta. Indipendente da _walk: guarda ogni campo di primo livello non tecnico."""
     from .detect import Propagator
     prop = Propagator()
     for word, label in words:
@@ -346,13 +391,12 @@ def leak_check(payload, job, words):
             for k, v in node.items():
                 p = f"{path}.{k}"
                 child_free = free or (k == "input" and typ in _TOOL_INPUT_TYPES) or \
+                    (k == "output" and typ == "function_call_output") or \
                     k in ("args", "response") or k in ("arguments", "partial_json")
                 if isinstance(v, str):
-                    if (id(node), k) in job.collected or v.startswith("data:"):
+                    if (id(node), k) in job.collected:
                         continue
                     if not child_free and k in _CHECK_SKIP_KEYS:
-                        continue
-                    if k in _BINARY_KEYS and len(v) > 256:
                         continue
                     if typ == "text" and k == "text" and _ATTRIBUTION_RE.match(v):
                         continue
@@ -363,13 +407,14 @@ def leak_check(payload, job, words):
             for i, v in enumerate(node):
                 p = f"{path}[{i}]"
                 if isinstance(v, str):
-                    if (id(node), i) not in job.collected and not v.startswith("data:"):
+                    if (id(node), i) not in job.collected:
                         scan(v, p)
                 else:
                     walk(v, p, free)
 
-    for key in _PAYLOAD_KEYS:
-        v = payload.get(key)
+    for key, v in payload.items():
+        if key in _TOP_SCALAR_SKIP:
+            continue
         if isinstance(v, str):
             if (id(payload), key) not in job.collected:
                 scan(v, key)
@@ -465,6 +510,9 @@ class SSEParser:
     """Parser Server-Sent Events conforme: gestisce \\r\\n, \\n, \\r e chunk spezzati in qualunque punto."""
 
     _NL = re.compile(r"\r\n|\n|\r")
+    MAX_BUF = 16 * 1024 * 1024
+    MAX_DATA = 16 * 1024 * 1024
+    MAX_OTHER = 1024
 
     def __init__(self):
         self.dec = codecs.getincrementaldecoder("utf-8")("replace")
@@ -474,10 +522,13 @@ class SSEParser:
     def _reset(self):
         self.event = None
         self.data = []
+        self.data_len = 0
         self.other = []
 
     def feed(self, chunk):
         self.buf += self.dec.decode(chunk)
+        if len(self.buf) > self.MAX_BUF:
+            raise ValueError("Riga SSE troppo grande")
         out = []
         while True:
             m = self._NL.search(self.buf)
@@ -513,7 +564,8 @@ class SSEParser:
             self._reset()
             return ev
         if line.startswith(":"):
-            self.other.append(line)
+            if len(self.other) < self.MAX_OTHER:
+                self.other.append(line)
             return None
         field, _, value = line.partition(":")
         if value.startswith(" "):
@@ -521,9 +573,13 @@ class SSEParser:
         if field == "event":
             self.event = value
         elif field == "data":
+            self.data_len += len(value)
+            if self.data_len > self.MAX_DATA:
+                raise ValueError("Evento SSE troppo grande")
             self.data.append(value)
         else:
-            self.other.append(line)
+            if len(self.other) < self.MAX_OTHER:
+                self.other.append(line)
         return None
 
 
@@ -542,6 +598,8 @@ class StreamRewriter:
     def __init__(self, tag_map):
         self.tm = tag_map
         self.bufs = {}
+        self._last_chat_meta = {}
+        self._had_named_events = False
 
     def _buf(self, key, json_mode):
         b = self.bufs.get(key)
@@ -551,12 +609,48 @@ class StreamRewriter:
             self.bufs[key] = b
         return b
 
+    def flush(self):
+        """Svuota eventuali frammenti ancora in attesa nei buffer a fine stream o prima di [DONE]."""
+        out = []
+        for key in list(self.bufs):
+            rem = self.bufs.pop(key).flush()
+            if not rem:
+                continue
+            kind = key[0]
+            if kind == "chat":
+                ci = key[1]
+                delta = {}
+                if key[2] == "tool":
+                    delta["tool_calls"] = [{"index": key[3], "function": {"arguments": rem}}]
+                else:
+                    delta[key[2]] = rem
+                ev = dict(self._last_chat_meta)
+                ev.setdefault("object", "chat.completion.chunk")
+                ev["choices"] = [{"index": ci, "delta": delta, "finish_reason": None}]
+                out.append((None, json.dumps(ev, ensure_ascii=False)))
+            elif kind == "anth":
+                idx = key[1]
+                delta = {"type": "input_json_delta", "partial_json": rem} if key[2] == "json" else {"type": "text_delta", "text": rem}
+                synth = {"type": "content_block_delta", "index": idx, "delta": delta}
+                out.append(("content_block_delta" if self._had_named_events else None, json.dumps(synth, ensure_ascii=False)))
+            elif kind == "resp":
+                base, item_id, out_idx, cnt_idx, sum_idx = key[1:]
+                s = {"type": base + ".delta", "delta": rem}
+                for k, v in (("item_id", item_id), ("output_index", out_idx), ("content_index", cnt_idx),
+                             ("summary_index", sum_idx)):
+                    if v is not None:
+                        s[k] = v
+                out.append((base + ".delta" if self._had_named_events else None, json.dumps(s, ensure_ascii=False)))
+        return out
+
     def process(self, name, data):
         """Restituisce la lista di (nome_evento, dati) da inviare al client."""
+        if name:
+            self._had_named_events = True
         if data is None:
             return [(name, None)]
         if data.strip() == "[DONE]":
-            return [(name, data)]
+            return self.flush() + [(name, data)]
         try:
             obj = json.loads(data)
         except ValueError:
@@ -566,6 +660,9 @@ class StreamRewriter:
         before = []
         typ = obj.get("type")
         if isinstance(obj.get("choices"), list):
+            for k in ("id", "object", "created", "model"):
+                if k in obj:
+                    self._last_chat_meta[k] = obj[k]
             self._chat(obj)
         elif typ == "content_block_delta":
             self._anthropic_delta(obj)
@@ -593,8 +690,13 @@ class StreamRewriter:
             delta = ch.get("delta")
             if isinstance(delta, dict):
                 for field in ("content", "reasoning_content", "reasoning", "refusal"):
-                    if isinstance(delta.get(field), str):
-                        delta[field] = self._buf(("chat", ci, field), False).feed(delta[field])
+                    val = delta.get(field)
+                    if isinstance(val, str):
+                        delta[field] = self._buf(("chat", ci, field), False).feed(val)
+                    elif field == "content" and isinstance(val, list):
+                        for bi, blk in enumerate(val):
+                            if isinstance(blk, dict) and isinstance(blk.get("text"), str):
+                                blk["text"] = self._buf(("chat", ci, f"content_{bi}"), False).feed(blk["text"])
                 tcs = delta.get("tool_calls")
                 if isinstance(tcs, list):
                     for tc in tcs:
@@ -612,13 +714,21 @@ class StreamRewriter:
                     if not rem:
                         continue
                     if key[2] == "tool":
-                        tcs = delta.setdefault("tool_calls", [])
+                        tcs = delta.get("tool_calls")
+                        if not isinstance(tcs, list):
+                            tcs = []
+                            delta["tool_calls"] = tcs
                         entry = next((t for t in tcs if isinstance(t, dict) and t.get("index", 0) == key[3]), None)
                         if entry is None:
                             entry = {"index": key[3], "function": {"arguments": ""}}
                             tcs.append(entry)
-                        fnd = entry.setdefault("function", {})
+                        fnd = entry.get("function")
+                        if not isinstance(fnd, dict):
+                            fnd = {}
+                            entry["function"] = fnd
                         fnd["arguments"] = (fnd.get("arguments") or "") + rem
+                    elif isinstance(key[2], str) and key[2].startswith("content_"):
+                        delta["content"] = (delta.get("content") if isinstance(delta.get("content"), str) else "") + rem
                     else:
                         delta[key[2]] = (delta.get(key[2]) or "") + rem
 
@@ -653,7 +763,7 @@ class StreamRewriter:
                 rem = b.flush()
                 if rem:
                     s = {"type": base + ".delta", "delta": rem}
-                    for k in ("item_id", "output_index", "content_index", "summary_index", "sequence_number"):
+                    for k in ("item_id", "output_index", "content_index", "summary_index"):
                         if k in obj:
                             s[k] = obj[k]
                     synth = (base + ".delta" if name else None, json.dumps(s, ensure_ascii=False))

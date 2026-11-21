@@ -25,6 +25,7 @@ import re
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -34,7 +35,7 @@ import urllib.request
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 DOWNLOAD_BASE = "https://download.germano.ai/"
-OFFICIAL_HOSTS = ("germano.ai",)
+OFFICIAL_HOSTS = ("download.germano.ai",)
 FIRST_CHECK_DELAY = 30
 CHECK_INTERVAL = 6 * 3600
 MAX_REDIRECTS = 5
@@ -69,12 +70,33 @@ def _read_json(path):
         return None
 
 
+def _replace_retry(src, dst):
+    for attempt in range(10):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
 def _write_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    folder = os.path.dirname(path) or "."
+    os.makedirs(folder, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".upd_", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+        _replace_retry(tmp, path)
+    except BaseException:
+        _remove(tmp)
+        raise
 
 
 def _remove(path):
@@ -160,17 +182,26 @@ def source():
     if custom:
         base = custom if custom.endswith("/") else custom + "/"
         host = (urllib.parse.urlparse(base).hostname or "").lower()
+        if not host or host.endswith("."):
+            return base, (), True
         return base, (host,), host not in ("127.0.0.1", "localhost", "::1")
     return DOWNLOAD_BASE, OFFICIAL_HOSTS, True
 
 
 def allowed(url):
     _base, hosts, https = source()
-    p = urllib.parse.urlparse(url)
+    try:
+        p = urllib.parse.urlparse(url)
+    except ValueError:
+        return False
     if p.scheme != "https" and (https or p.scheme != "http"):
         return False
+    if p.username is not None or p.password is not None:
+        return False
     host = (p.hostname or "").lower()
-    return any(host == h or host.endswith("." + h) for h in hosts)
+    if not host or host.endswith("."):
+        return False
+    return host in hosts
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -195,10 +226,16 @@ def _get(url, timeout=30):
         try:
             return _OPENER.open(req, timeout=timeout)
         except urllib.error.HTTPError as e:
-            if e.code in (301, 302, 303, 307, 308) and e.headers.get("Location"):
-                url = urllib.parse.urljoin(url, e.headers["Location"])
+            loc = e.headers.get("Location") if e.headers else None
+            code = e.code
+            try:
+                e.close()
+            except Exception:
+                pass
+            if code in (301, 302, 303, 307, 308) and loc:
+                url = urllib.parse.urljoin(url, loc)
                 continue
-            raise UpdateError(f"download.germano.ai ha risposto con il codice {e.code}.") from None
+            raise UpdateError(f"download.germano.ai ha risposto con il codice {code}.") from None
         except (urllib.error.URLError, OSError) as e:
             raise UpdateError(f"{urllib.parse.urlparse(url).hostname} non raggiungibile: {e}") from None
     raise UpdateError("Troppi reindirizzamenti dal server degli aggiornamenti.")
@@ -221,6 +258,9 @@ def parse_index(data, base):
         entry = f"germano-client-{ver}.{EXT[platform()]}"
     url = urllib.parse.urljoin(base, str(entry))
     name = os.path.basename(urllib.parse.urlparse(url).path)
+    m = INSTALLER_RE.match(name)
+    if not m or m.group(2).lower() != EXT[platform()]:
+        return None
     # compatibilita' con gli indici scritti a mano: tabelle «sha256» e «sizes» per nome del file
     if not digest and isinstance(data.get("sha256"), dict):
         digest = data["sha256"].get(name)
@@ -230,21 +270,30 @@ def parse_index(data, base):
         size = int(size) if size else None
     except (TypeError, ValueError):
         size = None
-    digest = str(digest).strip().lower() if digest and SHA256_RE.match(str(digest).strip()) else None
+    if digest is not None and str(digest).strip() != "":
+        d = str(digest).strip().lower()
+        if not SHA256_RE.match(d):
+            return None
+        digest = d
+    else:
+        digest = None
     return {"version": ver, "url": url, "name": name, "size": size, "sha256": digest, "notes": data.get("notes")}
 
 
 def verify_download(release, done, content_length, digest):
-    """None se il pacchetto scaricato e' valido, altrimenti il motivo. L'impronta SHA-256, quando e' dichiarata,
-    decide da sola; senza, vale la dimensione dichiarata. (Stesse regole di germano/updater.py della suite.)"""
+    """None se il pacchetto scaricato e' valido, altrimenti il motivo. Su host ufficiali/HTTPS l'impronta SHA-256 e'
+    obbligatoria. (Stesse regole di germano/updater.py della suite.)"""
     if content_length and done != content_length:
         return f"Download incompleto ({done} byte su {content_length}): riprova più tardi."
     declared, expected = release.get("size"), release.get("sha256")
     if expected:
-        if digest != expected:
+        if not SHA256_RE.match(str(expected)) or digest != str(expected).lower():
             return ("Il pacchetto scaricato non corrisponde all'impronta SHA-256 dichiarata da version.json: non "
                     "viene installato. Va corretto su download.germano.ai.")
         return None
+    if source()[2]:
+        return ("version.json non dichiara un'impronta SHA-256 valida per questo pacchetto: non viene installato. "
+                "Va corretto su download.germano.ai.")
     if declared and done != declared:
         return (f"Il pacchetto scaricato ha una dimensione diversa da quella dichiarata da version.json ({done} byte "
                 f"invece di {declared}): non viene installato. Va corretto su download.germano.ai.")
@@ -269,9 +318,53 @@ def check_package(path):
         return False
 
 
+def _inside_dir(path, root):
+    try:
+        rp = os.path.normcase(os.path.realpath(path))
+        rr = os.path.normcase(os.path.realpath(root))
+        return rp != rr and os.path.commonpath([rp, rr]) == rr
+    except (OSError, ValueError):
+        return False
+
+
+def _file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(1 << 20)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest().lower()
+
+
+def _verify_ready_package(ready):
+    inst = str((ready or {}).get("installer") or "")
+    if not inst or not _inside_dir(inst, UPDATE_DIR) or not os.path.isfile(inst):
+        raise UpdateError("Percorso dell'installer di aggiornamento non valido o fuori dalla cartella degli aggiornamenti.")
+    m = INSTALLER_RE.match(os.path.basename(inst))
+    if not m or m.group(2).lower() != EXT[platform()]:
+        raise UpdateError("Nome dell'installer di aggiornamento non valido.")
+    if not check_package(inst):
+        raise UpdateError("L'installer scaricato non è integro.")
+    expected = str(ready.get("sha256") or "").strip().lower()
+    if expected:
+        if not SHA256_RE.match(expected) or _file_sha256(inst) != expected:
+            raise UpdateError("L'impronta SHA-256 dell'installer pronto non corrisponde più: esecuzione bloccata.")
+    elif source()[2]:
+        raise UpdateError("Impronta SHA-256 dell'aggiornamento mancante: esecuzione bloccata.")
+    return inst
+
+
 def read_ready():
     data = _read_json(READY_FILE)
-    if not data or not data.get("installer") or not os.path.isfile(data["installer"]):
+    if not data or not data.get("installer"):
+        return None
+    inst = str(data["installer"])
+    if not _inside_dir(inst, UPDATE_DIR) or not os.path.isfile(inst):
+        return None
+    m = INSTALLER_RE.match(os.path.basename(inst))
+    if not m or m.group(2).lower() != EXT[platform()]:
         return None
     if not is_newer(data.get("version"), get_version()):
         return None
@@ -336,7 +429,8 @@ class ClientUpdater:
         return snap
 
     def busy(self):
-        return self.state.get("state") in ("checking", "downloading", "installing")
+        with self.lock:
+            return self.state.get("state") in ("checking", "downloading", "installing")
 
     def start_background(self):
         if self.worker and self.worker.is_alive():
@@ -395,12 +489,17 @@ class ClientUpdater:
 
     def download(self, release, manual=False):
         background_priority()
+        declared, expected_sha = release.get("size"), release.get("sha256")
+        if not expected_sha and source()[2]:
+            raise UpdateError("version.json non dichiara un'impronta SHA-256 valida per questo pacchetto: "
+                              "download annullato.")
         os.makedirs(UPDATE_DIR, exist_ok=True)
         path = os.path.join(UPDATE_DIR, release["name"])
+        if not _inside_dir(path, UPDATE_DIR):
+            raise UpdateError("Nome del file di aggiornamento non valido.")
         part = path + ".part"
         self._set(state="downloading", progress={"done": 0, "total": release.get("size") or 0}, error=None)
         done, last, digest = 0, 0.0, hashlib.sha256()
-        declared, expected_sha = release.get("size"), release.get("sha256")
         content_length, signature = 0, None
         try:
             with _get(release["url"], timeout=60) as r:
@@ -455,7 +554,7 @@ class ClientUpdater:
                                           "sha256_found": digest.hexdigest(), "bytes": done})
             ulog(f"Pacchetto {release['name']} scartato: {problem}")
             raise UpdateError(problem)
-        os.replace(part, path)
+        _replace_retry(part, path)
         _remove(FAILED_FILE)
         _write_json(READY_FILE, {"version": release["version"], "installer": path, "downloaded": time.time(),
                                  "attempts": 0, "sha256": digest.hexdigest(),
@@ -476,14 +575,15 @@ def launch_install():
     ready = read_ready()
     if not ready:
         raise UpdateError("Nessun aggiornamento pronto da installare.")
+    inst = _verify_ready_package(ready)
     if platform() != "windows":
-        open_package(ready["installer"])
+        open_package(inst)
         return "opened"
     ready["attempts"] = int(ready.get("attempts") or 0) + 1
     ready["launched"] = time.time()
     _write_json(READY_FILE, ready)
     _remove(RESULT_FILE)
-    subprocess.Popen([ready["installer"], "--update", "--silent", "--result", RESULT_FILE], cwd=UPDATE_DIR,
+    subprocess.Popen([inst, "--update", "--silent", "--result", RESULT_FILE], cwd=UPDATE_DIR,
                      creationflags=0x00000008 | 0x00000200, close_fds=True)   # DETACHED_PROCESS | NEW_PROCESS_GROUP
     ulog(f"Aggiornamento silenzioso a Germano AI Client {ready['version']} avviato (tentativo {ready['attempts']}).")
     return "silent"

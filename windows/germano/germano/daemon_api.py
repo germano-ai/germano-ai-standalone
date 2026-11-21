@@ -1,6 +1,7 @@
 """API interna del demone: solo 127.0.0.1, porta dinamica, richieste autenticate con token.
 Usata dal server web per Proxy API, API REST e strumento testo della dashboard."""
 import base64
+import hmac
 import json
 import os
 import threading
@@ -11,10 +12,13 @@ from . import common, formats
 from .analyzer import Unit, apply_replacements
 from .engine import CancelledError, CancelToken, interactive_scope
 from .remote_engine import API_VERSION, TEXT_SETTINGS, EngineUnavailable
-from .vault import contains_tags, restore_text
+from .vault import contains_strict_tags, contains_tags, restore_text
 
 MAX_BODY = 700 * 1024 * 1024
 REQUEST_TIMEOUT = 900
+TEXTS_MAX_COUNT = 4096
+TEXTS_MAX_CHARS = 8_000_000
+_API_SEM = threading.BoundedSemaphore(32)
 ENGINE_MAX_TEXTS = 256              # motore condiviso: limiti per richiesta di un client della LAN
 ENGINE_MAX_CHARS = 2_000_000
 ENGINE_MAX_IMAGE = 80 * 1024 * 1024
@@ -129,7 +133,10 @@ def handle_engine_image(daemon, body, kind):
         raise ValueError("immagine mancante o troppo grande")
     import numpy as np
     from PIL import Image
-    img = Image.open(io.BytesIO(data)).convert("RGB")
+    try:
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+    except Exception as e:
+        raise ValueError(f"immagine non valida o troppo grande: {type(e).__name__}") from None
     if kind == "ocr":
         out = eng.ocr(np.asarray(img))
         return {"results": [[[[float(p[0]), float(p[1])] for p in box], str(text), float(conf)]
@@ -202,14 +209,17 @@ def cancel_op(op):
             _CANCELLED_OPS[op] = now
 
 
-def _ctx(daemon, mode, tag_map=None, settings=None, op=None):
+def _ctx(daemon, mode, tag_map=None, settings=None, op=None, timeout=None):
     stop = daemon.should_stop
     if isinstance(op, str) and op:
         def stop(op=op):
             return daemon.should_stop() or op in _CANCELLED_OPS
+    eff = settings or dict(daemon.settings)
+    if timeout is None:
+        timeout = REQUEST_TIMEOUT
     return formats.Ctx(
-        mode, settings or dict(daemon.settings), engine=daemon.engine, vault=daemon.vault, tag_map=tag_map or {},
-        cancel=CancelToken(deadline=time.time() + REQUEST_TIMEOUT, stop_check=stop),
+        mode, eff, engine=daemon.engine, vault=daemon.vault, tag_map=tag_map or {},
+        cancel=CancelToken(deadline=time.time() + timeout, stop_check=stop),
     )
 
 
@@ -271,26 +281,35 @@ def handle_texts(daemon, body):
     texts = body.get("texts") or []
     if not isinstance(texts, list):
         raise ValueError("'texts' deve essere una lista di stringhe")
+    if len(texts) > TEXTS_MAX_COUNT:
+        raise ValueError(f"troppi testi in una richiesta (massimo {TEXTS_MAX_COUNT})")
+    clean_texts = [t if isinstance(t, str) else "" for t in texts]
+    if sum(len(t) for t in clean_texts) > TEXTS_MAX_CHARS:
+        raise ValueError("testi troppo grandi per una singola richiesta")
     settings, label = _client_settings(daemon, body.get("options"))
     settings, label = _protective_overrides(settings, body.get("overrides"), label)
     ctx = _ctx(daemon, "anonymize", settings=settings)
     ctx.label_override = label
-    units = [Unit(t if isinstance(t, str) else "") for t in texts]
+    units = [Unit(t) for t in clean_texts]
     t0 = time.time()
-    res = ctx.analyze(units, batch_context=bool(body.get("batch_context", False)))
-    positions = bool(body.get("positions"))
-    out = []
-    k = 0
-    for i, (u, r) in enumerate(zip(units, res)):
-        n = len(r)
-        items = ctx.audit[k:k + n]
-        if positions:
-            # posizioni (inizio, fine) nel testo originale, una per dato oscurato e nello stesso ordine dell'audit
-            items = [dict(a, start=s, end=e) for a, (s, e, _rep) in zip(items, r)]
-        out.append({"anonymized": apply_replacements(u.text, r), "extracted_data": items,
-                    "system2": [d for d in ctx.system2 if d.get("unit") == i]})
-        k += n
-    daemon.vault.flush()
+    daemon.vault.begin_job()
+    try:
+        res = ctx.analyze(units, batch_context=bool(body.get("batch_context", False)))
+        positions = bool(body.get("positions"))
+        out = []
+        k = 0
+        for i, (u, r) in enumerate(zip(units, res)):
+            n = len(r)
+            items = ctx.audit[k:k + n]
+            if positions:
+                # posizioni (inizio, fine) nel testo originale, una per dato oscurato e nello stesso ordine dell'audit
+                items = [dict(a, start=s, end=e) for a, (s, e, _rep) in zip(items, r)]
+            out.append({"anonymized": apply_replacements(u.text, r), "extracted_data": items,
+                        "system2": [d for d in ctx.system2 if d.get("unit") == i]})
+            k += n
+        daemon.vault.flush()
+    finally:
+        daemon.vault.end_job()
     # decisioni del Sistema 2 sui casi dubbi (confermati, rilasciati, incerti) per la trasparenza (Glass Window)
     return {"results": out, "elapsed": round(time.time() - t0, 3), "system2": ctx.system2}
 
@@ -303,7 +322,7 @@ def handle_text(daemon, body):
     if not force and daemon.settings.get("enable_deanonymize", True):
         daemon.vault.refresh()
         tm = daemon.vault.tag_map()
-        if contains_tags(text, tm):
+        if contains_strict_tags(text, tm):
             restored = restore_text(text, tm)
             return {"anonymized": restored, "restored": restored, "auto_restored": True, "extracted_data": []}
     res = handle_texts(daemon, {"texts": [text]})
@@ -321,30 +340,36 @@ def handle_file(daemon, body):
     if overrides:
         settings, label = _protective_overrides(settings, {k: v for k, v in overrides.items() if k != "dry_run"},
                                                 label)
+    file_timeout = max(REQUEST_TIMEOUT, max(5, int(settings.get("file_timeout_minutes", 60))) * 60)
     daemon.vault.refresh()
     tm = daemon.vault.tag_map()
-    ctx0 = _ctx(daemon, "anonymize")
-    with ctx0.tempdir() as d:
-        src_dir = os.path.join(d, "in")
-        out_dir = os.path.join(d, "out")
-        os.makedirs(src_dir)
-        os.makedirs(out_dir)
-        src = os.path.join(src_dir, name)
-        _stage_input(body, src)
-        if mode == "auto":
-            mode = "anonymize"
-            if daemon.settings.get("enable_deanonymize", True) and tm:
-                try:
-                    if contains_tags(formats.sample_text(src), tm):
-                        mode = "restore"
-                except Exception:
-                    pass
-        ctx = _ctx(daemon, mode, tm, settings=settings if mode == "anonymize" else None, op=body.get("op"))
-        ctx.label_override = label if mode == "anonymize" else None
-        out = formats.process_file(src, os.path.join(out_dir, name), ctx)
-        result = {"filename": os.path.basename(out), "mode": mode}
-        result.update(_deliver_output(body, out))
-    daemon.vault.flush()
+    ctx0 = _ctx(daemon, "anonymize", timeout=file_timeout)
+    daemon.vault.begin_job()
+    try:
+        with ctx0.tempdir() as d:
+            src_dir = os.path.join(d, "in")
+            out_dir = os.path.join(d, "out")
+            os.makedirs(src_dir)
+            os.makedirs(out_dir)
+            src = os.path.join(src_dir, name)
+            _stage_input(body, src)
+            if mode == "auto":
+                mode = "anonymize"
+                if daemon.settings.get("enable_deanonymize", True) and tm:
+                    try:
+                        if contains_strict_tags(formats.sample_text(src), tm):
+                            mode = "restore"
+                    except Exception:
+                        pass
+            ctx = _ctx(daemon, mode, tm, settings=settings if mode == "anonymize" else None,
+                       op=body.get("op"), timeout=file_timeout)
+            ctx.label_override = label if mode == "anonymize" else None
+            out = formats.process_file(src, os.path.join(out_dir, name), ctx)
+            daemon.vault.flush()
+            result = {"filename": os.path.basename(out), "mode": mode}
+            result.update(_deliver_output(body, out))
+    finally:
+        daemon.vault.end_job()
     result.update({
         "extracted_data": ctx.audit if mode == "anonymize" else [],
         "system2": ctx.system2 if mode == "anonymize" else [],
@@ -357,6 +382,7 @@ def handle_file(daemon, body):
 def start_api(daemon):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        timeout = 120
 
         def log_message(self, *args):
             pass
@@ -370,14 +396,20 @@ def start_api(daemon):
             self.wfile.write(data)
 
         def _auth(self):
-            if self.headers.get("X-Germano-Token") != daemon.token:
+            got = str(self.headers.get("X-Germano-Token") or "")
+            exp = str(daemon.token or "")
+            if not exp or not hmac.compare_digest(got, exp):
                 self._json(403, {"error": "token non valido"})
                 return False
             return True
 
         def _body(self):
-            n = int(self.headers.get("Content-Length") or 0)
-            if n > MAX_BODY:
+            raw_len = self.headers.get("Content-Length") or "0"
+            try:
+                n = int(raw_len)
+            except ValueError:
+                raise ValueError("Content-Length non valido") from None
+            if n < 0 or n > MAX_BODY:
                 raise ValueError("richiesta troppo grande")
             raw = self.rfile.read(n) if n else b"{}"
             obj = json.loads(raw.decode("utf-8") or "{}")
@@ -401,18 +433,24 @@ def start_api(daemon):
         def do_POST(self):
             if not self._auth():
                 return
-            try:
-                body = self._body()
-            except Exception as e:
-                self._json(400, {"error": str(e)})
+            if not _API_SEM.acquire(timeout=30):
+                self._json(503, {"error": "troppe richieste interne contemporanee"})
                 return
-            reload = getattr(daemon, "reload_settings", None)
-            if reload:
-                reload()     # impostazioni attuali anche subito dopo un cambio (es. profilo PA/PD, opzioni dei client)
-            # Corsia preferenziale (turno 26): le richieste dell'API (Proxy, Harness, API, client della rete) passano
-            # davanti ai documenti della cartella input/ sui modelli condivisi (Privacy Filter, OCR, Sistema 2)
-            with interactive_scope():
-                self._dispatch(body)
+            try:
+                try:
+                    body = self._body()
+                except Exception as e:
+                    self._json(400, {"error": str(e)})
+                    return
+                reload = getattr(daemon, "reload_settings", None)
+                if reload:
+                    reload()     # impostazioni attuali anche subito dopo un cambio (es. profilo PA/PD, opzioni dei client)
+                # Corsia preferenziale (turno 26): le richieste dell'API (Proxy, Harness, API, client della rete) passano
+                # davanti ai documenti della cartella input/ sui modelli condivisi (Privacy Filter, OCR, Sistema 2)
+                with interactive_scope():
+                    self._dispatch(body)
+            finally:
+                _API_SEM.release()
 
         def _dispatch(self, body):
             try:
@@ -430,7 +468,11 @@ def start_api(daemon):
                 elif self.path == "/internal/engine/transcribe":
                     self._json(200, handle_engine_transcribe(daemon, body))
                 elif self.path == "/internal/vault/clear":
-                    daemon.vault.clear()
+                    try:
+                        daemon.vault.clear()
+                    except RuntimeError as e:
+                        self._json(409, {"error": str(e)})
+                        return
                     daemon.engine.clear_cache()
                     self._json(200, {"status": "ok"})
                 elif self.path == "/internal/stop":

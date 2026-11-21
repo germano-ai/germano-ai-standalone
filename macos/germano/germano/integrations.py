@@ -151,6 +151,7 @@ class ScopeStore:
 
     TTL = 24 * 3600
     SCOPES_MAX = 5_000
+    SCOPES_PER_PRINCIPAL = 500
     TAGS_MAX = 50_000
 
     def __init__(self):
@@ -161,7 +162,7 @@ class ScopeStore:
         for sid in [k for k, v in self._items.items() if now - v["used"] > self.TTL]:
             self._items.pop(sid, None)
 
-    def create(self, principal, tags):
+    def create(self, principal, tags, generation="0"):
         tags = [t for t in tags if t][: self.TAGS_MAX]
         if not tags:
             return None
@@ -169,18 +170,30 @@ class ScopeStore:
         now = time.time()
         with self._lock:
             self._prune(now)
-            self._items[sid] = {"principal": principal, "tags": set(tags), "created": now, "used": now}
+            if principal != "local":
+                mine = [k for k, v in self._items.items() if v["principal"] == principal]
+                while len(mine) >= self.SCOPES_PER_PRINCIPAL:
+                    self._items.pop(mine.pop(0), None)
+            self._items[sid] = {"principal": principal, "tags": set(tags), "gen": str(generation or "0"),
+                                "created": now, "used": now}
             while len(self._items) > self.SCOPES_MAX:
-                self._items.popitem(last=False)
+                victim = next((k for k, v in self._items.items() if v["principal"] != "local"), None)
+                if victim is not None:
+                    self._items.pop(victim, None)
+                else:
+                    self._items.popitem(last=False)
         return sid
 
-    def tags(self, sid, principal):
+    def tags(self, sid, principal, generation=None):
         if not isinstance(sid, str) or not sid.startswith("gs_") or len(sid) > 64:
             return None
         now = time.time()
         with self._lock:
             item = self._items.get(sid)
             if not item or now - item["used"] > self.TTL:
+                self._items.pop(sid, None)
+                return None
+            if generation is not None and str(item.get("gen") or "0") != str(generation):
                 self._items.pop(sid, None)
                 return None
             if not hmac.compare_digest(str(item["principal"]).encode(), str(principal).encode()):
@@ -194,6 +207,10 @@ class ScopeStore:
             for sid in [k for k, v in self._items.items() if v["principal"] == principal]:
                 self._items.pop(sid, None)
 
+    def clear(self):
+        with self._lock:
+            self._items.clear()
+
     def count(self):
         with self._lock:
             return len(self._items)
@@ -204,6 +221,12 @@ SCOPES = ScopeStore()
 
 # ------------------------------------------------------------------------------------------------ token delle integrazioni
 _TOKEN_LOCK = threading.Lock()
+_TOKEN_ROTATE_HOOK = None
+
+
+def set_token_rotate_hook(fn):
+    global _TOKEN_ROTATE_HOOK
+    _TOKEN_ROTATE_HOOK = fn
 
 
 def ensure_token():
@@ -223,6 +246,11 @@ def regenerate_token():
         tok = secrets.token_urlsafe(32)
         common.save_config({"integration_token": tok}, admin=True)
     SCOPES.drop_principal("token")
+    if _TOKEN_ROTATE_HOOK is not None:
+        try:
+            _TOKEN_ROTATE_HOOK()
+        except Exception:
+            pass
     return tok
 
 
@@ -631,14 +659,15 @@ def _deliver(tmp_out, produced_name, args, ctx, prefix, source=None):
             dest = _final_name(dest, prefix + produced_name, produced_name)
             if dest != os.path.realpath(dest_raw.strip()):
                 dest = check_path(dest, ctx, output=True, overwrite=overwrite)
-        tmp_dest = dest + ".germano-part"
+        tmp_dest = f"{dest}.{uuid.uuid4().hex[:8]}.germano-part"
         try:
             shutil.copyfile(tmp_out, tmp_dest)
             os.replace(tmp_dest, dest)
         except OSError as e:
-            common.remove_quietly(tmp_dest)
             raise ToolError("write_failed", f"Impossibile scrivere il file di destinazione ({e.strerror or e}).",
                             f"Cannot write the destination file ({e.strerror or e}).", status=500) from None
+        finally:
+            common.remove_quietly(tmp_dest)
         out["output_path"] = dest
         out["filename"] = os.path.basename(dest)
     if want_b64:
@@ -674,7 +703,12 @@ def _found_tags(texts):
     return found
 
 
-def _restore_source(args, ctx, found, limit):
+def _vault_gen(ctx):
+    fn = getattr(ctx.backend, "vault_generation", None)
+    return str(fn() if callable(fn) else "0")
+
+
+def _restore_source(args, ctx, found, limit, full_scope=False):
     """(mappa etichetta -> dato limitata alle etichette trovate, origine). Mai l'intero Vault: solo le etichette
     presenti; dalla rete solo quelle dell'ambito di ripristino o della mappa del chiamante."""
     if len(found) > limit:
@@ -693,16 +727,20 @@ def _restore_source(args, ctx, found, limit):
             nk = normalize_tag(k)
             if nk and isinstance(v, str) and v:
                 source[nk] = v[:2000]
+        if full_scope:
+            return source, "mapping"
         return {t: source[t] for t in found if t in source}, "mapping"
     tag_map = ctx.backend.tag_map()
     if scope is not None:
-        allowed = SCOPES.tags(scope, ctx.principal)
+        allowed = SCOPES.tags(scope, ctx.principal, generation=_vault_gen(ctx))
         if allowed is None:
             raise ToolError("scope_not_found",
-                            "Ambito di ripristino sconosciuto, scaduto (24 ore o riavvio di Germano) o di un'altra "
+                            "Ambito di ripristino sconosciuto, scaduto (24 ore, riavvio o svuotamento Vault) o di un'altra "
                             "utenza: ripeti l'anonimizzazione oppure usa «mapping».",
-                            "Unknown or expired restore scope (24 hours or Germano restart) or owned by another "
+                            "Unknown or expired restore scope (24 hours, restart, or Vault clear) or owned by another "
                             "identity: repeat the anonymization or use «mapping».", status=404)
+        if full_scope:
+            return {t: tag_map[t] for t in allowed if t in tag_map}, "scope"
         return {t: tag_map[t] for t in found if t in allowed and t in tag_map}, "scope"
     if not ctx.local:
         raise ToolError("scope_required",
@@ -710,6 +748,8 @@ def _restore_source(args, ctx, found, limit):
                         "«restore_scope» (restituito da germano_anonymize_*) oppure «mapping».",
                         "From the network restoration only covers the data of your own anonymization: send "
                         "«restore_scope» (returned by germano_anonymize_*) or «mapping».", status=403)
+    if full_scope:
+        return dict(tag_map), "vault"
     return {t: tag_map[t] for t in found if t in tag_map}, "vault"
 
 
@@ -765,7 +805,7 @@ def h_anonymize_text(args, ctx):
     else:
         out["anonymized_texts"] = [r["anonymized"] for r in results]
     if placeholders:
-        out["restore_scope"] = SCOPES.create(ctx.principal, placeholders)
+        out["restore_scope"] = SCOPES.create(ctx.principal, placeholders, generation=_vault_gen(ctx))
     if want_map:
         out["mapping"] = _mapping(entities)
     ctx.backend.session_log(entities)
@@ -861,9 +901,9 @@ def h_inspect_entities(args, ctx):
             "system2": _system2_summary(results, _s2_enabled(use_s2)), "elapsed_ms": _ms(t0)}
 
 
-def _walk(obj, path, out, budget):
+def _walk(obj, path, out, budget, depth=0):
     """Foglie testuali (e numeri lunghi, chiavi) di un JSON qualsiasi con il loro percorso JSONPath."""
-    if len(out) >= LEAK_MAX_STRINGS:
+    if len(out) >= LEAK_MAX_STRINGS or depth > 64:
         budget["truncated"] = True
         return
     if isinstance(obj, str):
@@ -877,14 +917,20 @@ def _walk(obj, path, out, budget):
             out.append((path, s))
     elif isinstance(obj, dict):
         for k, v in obj.items():
+            if len(out) >= LEAK_MAX_STRINGS:
+                budget["truncated"] = True
+                return
             key = str(k)
             child = f"{path}.{key}" if key.replace("_", "").isalnum() else f"{path}[{json.dumps(key, ensure_ascii=False)}]"
             if key.strip() and not key.strip().isdigit():
                 out.append((child + "#key", key))     # anche le chiavi: un nome o un'email possono fare da chiave
-            _walk(v, child, out, budget)
+            _walk(v, child, out, budget, depth + 1)
     elif isinstance(obj, (list, tuple)):
         for i, v in enumerate(obj):
-            _walk(v, f"{path}[{i}]", out, budget)
+            if len(out) >= LEAK_MAX_STRINGS:
+                budget["truncated"] = True
+                return
+            _walk(v, f"{path}[{i}]", out, budget, depth + 1)
 
 
 def h_leak_check(args, ctx):
@@ -902,12 +948,13 @@ def h_leak_check(args, ctx):
         items = []
         _walk(args.get("payload"), "$", items, budget)
     if budget.get("truncated"):
-        raise ToolError("too_large", "Payload troppo grande da controllare (oltre 5.000 testi): dividilo.",
-                        "Payload too large to check (over 5,000 strings): split it.", status=413)
+        raise ToolError("too_large", "Payload troppo grande o troppo annidato da controllare (oltre 5.000 testi): dividilo.",
+                        "Payload too large or too deeply nested to check (over 5,000 strings): split it.", status=413)
     total = sum(len(v) for _p, v in items)
     if total > BATCH_MAX_CHARS or any(len(v) > TEXT_MAX_CHARS for _p, v in items):
         raise ToolError("too_large", "Payload troppo grande da controllare (massimo 2.000.000 di caratteri).",
                         "Payload too large to check (at most 2,000,000 characters).", status=413)
+    require_engine(ctx)
     placeholders = len(_found_tags([v for _p, v in items]))
     results = []
     for start in range(0, len(items), BATCH_MAX_TEXTS):
@@ -931,7 +978,13 @@ def h_deanonymize_text(args, ctx):
     texts, single = _texts(args, ctx)
     found = _found_tags(texts)
     tag_map, source = _restore_source(args, ctx, found, MAX_RESTORE_TEXT_TAGS)
-    restored = [restore_text(t, tag_map) if tag_map else t for t in texts]
+    try:
+        restored = [restore_text(t, tag_map) if tag_map else t for t in texts]
+    except ValueError:
+        raise ToolError("output_too_large",
+                        "Il testo ripristinato supera il limite di sicurezza (espansione eccessiva delle etichette).",
+                        "Restored text exceeds the safety size limit (excessive placeholder expansion).",
+                        status=413) from None
     out = {"status": "success", "restored_count": _count_restored(texts, tag_map),
            "restored_placeholders": len(tag_map), "unmatched_placeholders": sorted(found - set(tag_map)),
            "source": source, "contains_personal_data": bool(tag_map)}
@@ -943,9 +996,16 @@ def h_deanonymize_text(args, ctx):
         if os.path.isdir(dest):
             dest = check_path(os.path.join(dest, "ripristinato.txt"), ctx, output=True,
                               overwrite=_opt_bool(args, "overwrite", False, ctx))
-        with open(dest + ".germano-part", "w", encoding="utf-8", newline="") as f:
-            f.write(restored[0])
-        os.replace(dest + ".germano-part", dest)
+        tmp_dest = f"{dest}.{uuid.uuid4().hex[:8]}.germano-part"
+        try:
+            with open(tmp_dest, "w", encoding="utf-8", newline="") as f:
+                f.write(restored[0])
+            os.replace(tmp_dest, dest)
+        except OSError as e:
+            raise ToolError("write_failed", f"Impossibile scrivere il file di destinazione ({e.strerror or e}).",
+                            f"Cannot write the destination file ({e.strerror or e}).", status=500) from None
+        finally:
+            common.remove_quietly(tmp_dest)
         out["output_path"] = dest
         if _opt_bool(args, "return_text", False, ctx):
             out["restored_text"] = restored[0]
@@ -966,19 +1026,7 @@ def h_deanonymize_file(args, ctx):
     tmp_dir = os.path.join(common.UPLOAD_DIR, "r_" + uuid.uuid4().hex[:10])
     try:
         found = _found_tags([formats.sample_text(staged)])
-        tag_map, src = _restore_source(args, ctx, found, MAX_RESTORE_FILE_TAGS)
-        if src == "vault" and not args.get("restore_scope") and args.get("mapping") is None:
-            tag_map = ctx.backend.tag_map()           # in locale: anche le etichette fuori dal testo campionato
-        elif src == "scope":
-            allowed = SCOPES.tags(args.get("restore_scope"), ctx.principal) or set()
-            full = ctx.backend.tag_map()
-            tag_map = {t: full[t] for t in allowed if t in full}
-        elif src == "mapping":
-            tag_map = {}
-            for k, v in (args.get("mapping") or {}).items():
-                nk = normalize_tag(k)
-                if nk and isinstance(v, str) and v:
-                    tag_map[nk] = v[:2000]
+        tag_map, src = _restore_source(args, ctx, found, MAX_RESTORE_FILE_TAGS, full_scope=True)
         os.makedirs(tmp_dir, exist_ok=True)
         out_tmp = os.path.join(tmp_dir, name)
         fctx = formats.Ctx("restore", common.load_config(), tag_map=tag_map)
@@ -988,6 +1036,8 @@ def h_deanonymize_file(args, ctx):
             raise ToolError("unsupported_format", str(e), str(e), status=415) from None
         except formats.ProcessingError as e:
             raise ToolError("processing_error", str(e), str(e), status=422) from None
+        except ValueError as e:
+            raise ToolError("output_too_large", str(e), str(e), status=413) from None
         restored_tags = {normalize_tag(a.get("word") or "") for a in fctx.audit} - {None}
         produced = os.path.basename(real)
         out = {"status": "success", "input": _clean({"filename": name, "bytes": size, "file_path": source}),

@@ -14,9 +14,14 @@ Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.
 
 ### Corretto
 - **Layout su schermi stretti (`<= 1180 px`, `static/harness.css`, `remote/harness.css`):** corretta la griglia CSS dell'Harness quando la barra delle conversazioni è aperta in sovrapposizione su mobile/tablet (`grid-template-columns: minmax(0, 1fr)`), garantendo area chat a piena larghezza e popover sempre nel viewport (`0 px` overflow a 390 px e 360 px).
+- **Hardening completo di sicurezza, affidabilità e confini (40 file su suite, motore, proxy, formati, client e frontend):**
+  - *CSRF, Host & Auth:* validazione rigorosa `Host`, `Origin` (porta esatta) e `Sec-Fetch-Site` su tutte le mutazioni di `server.py` e `client_ui.py`; limiti body per-rotta; `LoginLimiter` atomico senza cross-account reset né TOCTOU su burst; cap sessioni e revoca completa di sessioni/scope MCP su eliminazione utente.
+  - *Motore, Sistema 2, Proxy & Vault:* fail-closed su cartella `italian_ner` vuota; precedenza assoluta di `NEVER_RELEASE` sulle regole in Sistema 2 e sanitizzazione prompt-injection sul contesto grezzo; eliminato ReDoS PEM e corruzione tag con `/` in `detect.py`; fail-closed `415` su URL media esterni e scansione completa top-level in `proxy.py` + fix `StreamRewriter` (`tool_calls: null` e `flush()`); anti-amplificazione in `restore_text()`, barriera `begin_job()`/`clear()` e `flush()` prima della consegna file.
+  - *Parser multi-formato:* protezione zip-bomb e rimozione `huge_tree` (OOXML/ODF/markup/detection); unfolding RFC 5322 e `text/*` in EML; cap `\uc` anomali in RTF, `text:c` in ODF, profondità BER in P7M, frame/pixel in immagini, zoom PDF e decode streaming audio.
+  - *Updater, AI Assist, Client & Frontend:* host esatto `download.germano.ai`, SHA-256 obbligatorio e ri-verifica + path containment prima di `Popen()`, Authenticode fail-closed RDN esatto per Ollama; `_NoRedirect`, rotta `/api/harness/v2/param_schema` e fix `CREATE_NEW_CONSOLE` POSIX in `germano-client`; protezione PUA, URL senza espansione PII in `href`, limite ricorsione Markdown e pulizia storage al logout in `harness.js`/`remote.js`; guard `in-flight` sul polling di `script.js`.
 
 ### Verificato
-- Collaudo end-to-end live in Edge headless sull'installazione locale (`dock_rapido_barra`, cambio diretto modello + effort nella barra, configurazione simultanea indipendente Antigravity ↔ Claude Code, parametri condizionali OpenAI `gpt-5.4`/`gpt-4o`/`o1-mini` e Anthropic `claude-opus-4-6`, responsive 1280/390/360 px, 0 errori console/JS), coerenza 6 alberi **4/4**, 164 `.py`, parità guida IT/EN **15/15** capitoli.
+- Collaudo end-to-end live in Edge headless sull'installazione locale (`dock_rapido_barra`, cambio diretto modello + effort nella barra, configurazione simultanea indipendente Antigravity ↔ Claude Code, parametri condizionali OpenAI `gpt-5.4`/`gpt-4o`/`o1-mini` e Anthropic `claude-opus-4-6`, responsive 1280/390/360 px, 0 errori console/JS), suite di sicurezza e regressione **14/14 OK** (inclusi test JS in Edge V8), coerenza 6 alberi **4/4**, 164 `.py`, parità guida IT/EN **15/15** capitoli.
 
 ## [0.99] - 2026-11-21
 

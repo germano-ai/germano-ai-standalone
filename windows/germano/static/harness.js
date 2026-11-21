@@ -325,28 +325,51 @@
 
     // ------------------------------------------------------------------ Markdown sicuro
     // I segnaposti \uE000n\uE001 marcano i dati ripristinati (o le etichette): sopravvivono all'escape e diventano span.
-    function inline(text) {
-        const codes = [];
-        let s = text.replace(/`([^`\n]+)`/g, (m, c) => { codes.push(c); return `\uE010${codes.length - 1}\uE011`; });
-        s = esc(s);
-        s = s.replace(/!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (m, alt) => `<span class="hx-img">[🖼 ${alt || 'immagine'}]</span>`);
-        s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (m, label, url) => {
-            const u = url.replace(/&amp;/g, '&');
-            if (!/^(https?:|mailto:)/i.test(u)) return label;
-            return `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(u)}">${label}</a>`;
-        });
-        s = s.replace(/(^|[\s(])((?:https?:\/\/)[^\s<>"']+[^\s<>"'.,;:!?)])/g, (m, pre, url) => {
-            const u = url.replace(/&amp;/g, '&');
-            return `${pre}<a href="${esc(u)}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>`;
-        });
+    const PUA_INLINE_RE = /[\uE010-\uE013]/g;
+    const PUA_ALL_RE = /[\uE000\uE001\uE010-\uE013]/g;
+    function fmtEmphasis(s) {
         s = s.replace(/\*\*([^*\n]+)\*\*|__([^_\n]+)__/g, (m, a, b) => `<strong>${a || b}</strong>`);
         s = s.replace(/(^|[^\w*])\*([^*\n]+)\*(?!\w)|(^|[^\w])_([^_\n]+)_(?!\w)/g, (m, p1, a, p2, b) => `${p1 ?? p2 ?? ''}<em>${a || b}</em>`);
         s = s.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
-        s = s.replace(/\uE010(\d+)\uE011/g, (m, n) => `<code>${esc(codes[+n])}</code>`);
         return s;
     }
-    function renderMarkdown(src) {
+    function safeHref(raw, marks) {
+        return String(raw || '')
+            .replace(/&amp;/g, '&')
+            .replace(/\uE000(\d+)\uE001/g, (m, n) => (marks && marks[+n] ? marks[+n][0] : ''));
+    }
+    function inline(text, marks) {
+        const codes = [];
+        const links = [];
+        let s = String(text || '').replace(PUA_INLINE_RE, '');
+        s = s.replace(/`([^`\n]+)`/g, (m, c) => { codes.push(c); return `\uE010${codes.length - 1}\uE011`; });
+        s = esc(s);
+        s = s.replace(/!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)/g, (m, alt) => {
+            links.push(`<span class="hx-img">[🖼 ${alt || 'immagine'}]</span>`);
+            return `\uE012${links.length - 1}\uE013`;
+        });
+        s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (m, label, url) => {
+            const u = safeHref(url, marks);
+            if (!/^(https?:|mailto:)/i.test(u)) return fmtEmphasis(label);
+            links.push(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(u)}">${fmtEmphasis(label)}</a>`);
+            return `\uE012${links.length - 1}\uE013`;
+        });
+        s = s.replace(/(^|[\s(])((?:https?:\/\/)[^\s<>"']+[^\s<>"'.,;:!?)])/g, (m, pre, url) => {
+            const u = safeHref(url, marks);
+            links.push(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer nofollow">${esc(u)}</a>`);
+            return `${pre}\uE012${links.length - 1}\uE013`;
+        });
+        s = fmtEmphasis(s);
+        s = s.replace(/\uE012(\d+)\uE013/g, (m, n) => (links[+n] !== undefined ? links[+n] : m));
+        s = s.replace(/\uE010(\d+)\uE011/g, (m, n) => (codes[+n] !== undefined ? `<code>${esc(codes[+n])}</code>` : m));
+        return s;
+    }
+    const MAX_MD_DEPTH = 16;
+    function renderMarkdown(src, depth = 0, marks = null) {
         const lines = String(src || '').replace(/\r\n?/g, '\n').split('\n');
+        if (depth >= MAX_MD_DEPTH) {
+            return `<p>${lines.map(l => inline(l, marks)).join('<br>')}</p>`;
+        }
         const out = [];
         let i = 0;
         const isFence = l => /^\s{0,3}(```|~~~)/.test(l);
@@ -369,12 +392,12 @@
             }
             if (!line.trim()) { i += 1; continue; }
             let m = /^\s{0,3}(#{1,6})\s+(.*)$/.exec(line);
-            if (m) { out.push(`<h${m[1].length}>${inline(m[2].replace(/\s#+\s*$/, ''))}</h${m[1].length}>`); i += 1; continue; }
+            if (m) { out.push(`<h${m[1].length}>${inline(m[2].replace(/\s#+\s*$/, ''), marks)}</h${m[1].length}>`); i += 1; continue; }
             if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) { out.push('<hr>'); i += 1; continue; }
             if (/^\s{0,3}>/.test(line)) {
                 const quote = [];
                 while (i < lines.length && /^\s{0,3}>/.test(lines[i])) { quote.push(lines[i].replace(/^\s{0,3}>\s?/, '')); i += 1; }
-                out.push(`<blockquote>${renderMarkdown(quote.join('\n'))}</blockquote>`);
+                out.push(`<blockquote>${renderMarkdown(quote.join('\n'), depth + 1, marks)}</blockquote>`);
                 continue;
             }
             if (line.includes('|') && i + 1 < lines.length && isTableSep(lines[i + 1])) {
@@ -382,8 +405,8 @@
                 i += 2;
                 const rows = [];
                 while (i < lines.length && lines[i].includes('|') && lines[i].trim()) { rows.push(splitRow(lines[i])); i += 1; }
-                out.push('<table><thead><tr>' + head.map(h => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>' +
-                    rows.map(r => '<tr>' + head.map((_, k) => `<td>${inline(r[k] || '')}</td>`).join('') + '</tr>').join('') + '</tbody></table>');
+                out.push('<table><thead><tr>' + head.map(h => `<th>${inline(h, marks)}</th>`).join('') + '</tr></thead><tbody>' +
+                    rows.map(r => '<tr>' + head.map((_, k) => `<td>${inline(r[k] || '', marks)}</td>`).join('') + '</tr>').join('') + '</tbody></table>');
                 continue;
             }
             m = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/.exec(line);
@@ -402,8 +425,8 @@
                 const start = ordered ? parseInt(m[2], 10) : 1;
                 out.push(`<${tag}${ordered && start !== 1 ? ` start="${start}"` : ''}>` + items.map(it => {
                     const task = /^\[([ xX])\]\s+(.*)$/.exec(it.text);
-                    const body = task ? `${task[1] === ' ' ? '☐' : '☑'} ${inline(task[2])}` : inline(it.text);
-                    const sub = it.sub.length ? renderMarkdown(it.sub.join('\n')) : '';
+                    const body = task ? `${task[1] === ' ' ? '☐' : '☑'} ${inline(task[2], marks)}` : inline(it.text, marks);
+                    const sub = it.sub.length ? renderMarkdown(it.sub.join('\n'), depth + 1, marks) : '';
                     return `<li>${body}${sub}</li>`;
                 }).join('') + `</${tag}>`);
                 continue;
@@ -415,22 +438,25 @@
                 i += 1;
             }
             if (!para.length) { para.push(lines[i]); i += 1; }
-            out.push(`<p>${para.map(inline).join('<br>')}</p>`);
+            out.push(`<p>${para.map(l => inline(l, marks)).join('<br>')}</p>`);
         }
         return out.join('');
     }
     // Testo protetto + mappa -> HTML con i dati ripristinati evidenziati (oppure con le etichette, se richiesto)
     function renderAnswer(protectedText, map, showLabels, lang) {
         const marks = [];
-        const keyed = String(protectedText || '').replace(TAG_RE, (m, base, num) => {
+        const clean = String(protectedText || '').replace(PUA_ALL_RE, '');
+        const keyed = clean.replace(TAG_RE, (m, base, num) => {
             const key = normTag(base, num);
             if (!map || !Object.prototype.hasOwnProperty.call(map, key)) return m;
             marks.push([key, map[key]]);
             return `\uE000${marks.length - 1}\uE001`;
         });
-        let html = renderMarkdown(keyed);
+        let html = renderMarkdown(keyed, 0, marks);
         html = html.replace(/\uE000(\d+)\uE001/g, (m, n) => {
-            const [label, value] = marks[+n];
+            const entry = marks[+n];
+            if (!entry) return m;
+            const [label, value] = entry;
             const cls = catColor(labelCat(label));
             if (showLabels) return `<span class="hx-label-inline ${cls}" title="${esc(value)}">${esc(label)}</span>`;
             return `<span class="hx-restored" title="${esc((lang === 'en' ? 'Restored from ' : 'Ripristinato da ') + label)}">${esc(value)}</span>`;
@@ -491,7 +517,11 @@
             return Array.isArray(list) ? list.filter(c => c && c.id && Array.isArray(c.messages)) : [];
         }
         saveConvs() {
-            const keep = this.convs.filter(c => !c.temporary && c.messages.length);
+            const curId = this.currentId;
+            const keep = this.convs
+                .filter(c => !c.temporary && c.messages.length)
+                .slice()
+                .sort((a, b) => (b.id === curId) - (a.id === curId) || (b.updated || 0) - (a.updated || 0));
             let list = keep.slice(0, 100).map(c => Object.assign({}, c, { messages: c.messages.slice(-240).map(m => {
                 const x = Object.assign({}, m);
                 delete x.live;
@@ -984,7 +1014,13 @@
             } else if (!m.protectedText && !m.text && m.status === 'streaming') {
                 body = '<span class="hx-caret-only"></span>';
             } else {
-                body = `<div class="hx-md">${renderAnswer(m.protectedText || m.text || '', m.masking === 'numbered' ? m.map : null, m.showLabels, this.lang)}</div>`;
+                let rendered;
+                try {
+                    rendered = renderAnswer(m.protectedText || m.text || '', m.masking === 'numbered' ? m.map : null, m.showLabels, this.lang);
+                } catch (e) {
+                    rendered = `<p>${esc(m.protectedText || m.text || '')}</p>`;
+                }
+                body = `<div class="hx-md">${rendered}</div>`;
             }
             const think = m.thinking ? `<details class="hx-thinking"><summary>${esc(this.T('gwThinking'))}</summary><pre>${esc(m.thinking)}</pre></details>` : '';
             let badges = '';
@@ -2710,6 +2746,6 @@
 
     window.GermanoHarness = {
         mount(root, opts) { return new Harness(root, opts); },
-        renderMarkdown, highlight, restorePlain, esc,
+        renderMarkdown, renderAnswer, highlight, restorePlain, esc,
     };
 })();
