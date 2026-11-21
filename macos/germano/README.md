@@ -2,7 +2,7 @@
 
  *Read this in other languages: [English](README.en.md)*
 
-**Versione 0.98** (21 novembre 2026): menu AI pulito all'apertura (mostra subito solo i modelli rilevati e pronti, con freccina espandibile per tutti gli altri) e tendina completa `<select>` con tutte le opzioni e i nomi leggibili dei modelli (inclusi tutti i 27 modelli di Antigravity CLI), insieme ai predefiniti massimi `max`/`xhigh` e YOLO locale. Vedi [Novità della 0.98](#novità-della-098-selettore-ai-pulito-solo-modelli-rilevati-e-tendina-completa-di-tutti-i-modelli) e il [CHANGELOG](CHANGELOG.md).
+**Versione 0.99** (21 novembre 2026): parametri dinamici **relativi al singolo modello scelto** per tutte le CLI e tutti i 19 servizi API/locali (catalogo base Antigravity CLI senza conflitti `--effort`, livelli reali per modello, `temperature`/`top_p` condizionali e salvataggio separato per modello), più fix YOLO locale su `agy.exe`. Vedi [Novità della 0.99](#novità-della-099-parametri-specifici-per-ogni-singolo-modello-scelto) e il [CHANGELOG](CHANGELOG.md).
 
 *<span style="color: #007bff; font-weight: bold;">Caso d'Uso 1</span>: Hai semplicemente un gran numero di documenti da anonimizzare sul tuo computer o server o NAS. Germano funziona in modalità standalone e restituisce i documenti anonimizzati; supporta molti formati ed è altamente configurabile. Tu semplicemente copi la cartella contenente i file dentro ad input e ricevi i file anonimizzati nella cartella output. Germano mantiene la struttura della directory e delle sottocartelle originali. Germano anonimizza testo, prompt e volti ed è compatibile con il GDPR; Germano è un'applicazione Windows locale e offline (non richiede accesso ad internet per funzionare).*
 
@@ -26,6 +26,17 @@ Germano si apre sulla scheda **Chatbot e Agenti AI**, dove parli con l'AI che pr
  **Tip Produttività:** il motore di protezione si avvia da solo al primo invio o quando aggiungi documenti; finché è spento nessun dato esce. Puoi aggiungere file *mentre il software sta già lavorando*: vengono messi in coda senza riavviare nulla. **Esporta elenco** salva in CSV (per Excel) l'elenco dei documenti pronti o non riusciti, e il riquadro **«Sanitizzazione manuale di un testo»** anonimizza al volo un testo da incollare in qualsiasi AI (e ripristina la risposta).
 
  **[SCARICA GERMANO AI STANDALONE](https://download.germano.ai)**
+
+---
+
+## Novità della 0.99: parametri specifici per ogni singolo modello scelto
+
+Il selettore **Parametri** (in **Dashboard**, **Remote Control** e **Germano Client**) ora adatta campi, valori ammessi, range e predefiniti al **modello esatto** che hai selezionato, salvando le scelte separatamente per ogni modello:
+
+- **Antigravity CLI (`agy`) dinamica senza conflitti:** i modelli rilevati da `agy models` vengono raggruppati per modello base (es. *Gemini 4 Neon*, *Gemini 3.8 Flash*, *Claude Opus 5.5*, *Orchestrator*, *GPT-OSS 120B*) esponendo solo i livelli `--effort` reali di ciascuno (`low..xhigh` su Neon/Hydrogen, `low..high` su Flash/Carbon/Claude 5.5, nessun campo sforzo su Orchestrator e GPT-OSS 120B), con migrazione automatica degli ID salvati in precedenza e fix YOLO (`always-proceed` senza avvisi).
+- **Claude Code e tutti i 19 servizi API/locali:** ogni famiglia mostra solo i parametri validi per quel modello (es. `gpt-5.4` mostra `temperature`/`top_p` solo con `effort=none` e usa `max_completion_tokens`; `o3`/`deepseek-reasoner`/`claude-opus-5-5`/`kimi-k3` nascondono `temperature`/`top_p`; `gpt-4o`/`deepseek-chat`/`claude-haiku-4-5`/`gemini-2.0-flash`/`llama3.2` nascondono `reasoning_effort`; modelli personalizzati supportati in tempo reale via `/api/harness/v2/param_schema`).
+
+Restano il selettore AI pulito della 0.98, i predefiniti massimi, YOLO locale disattivabile, Server MCP e UTCP. Dettagli nel [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -128,12 +139,12 @@ Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.ge
 
 | Sistema | Suite completa | Client leggero |
 |---|---|---|
-| Windows 10/11 e Windows Server 2019/2022/2025 a 64 bit (anche in macchina virtuale) | `germano-0.98.exe` | `germano-client-0.98.exe` |
-| macOS | `germano-0.98.pkg` (Apple Silicon, macOS 14 o successivo) | `germano-client-0.98.pkg` (Apple Silicon e Intel, macOS 11 o successivo) |
-| Linux Ubuntu/Debian a 64 bit | `germano-0.98.deb` | `germano-client-0.98.deb` |
+| Windows 10/11 e Windows Server 2019/2022/2025 a 64 bit (anche in macchina virtuale) | `germano-0.99.exe` | `germano-client-0.99.exe` |
+| macOS | `germano-0.99.pkg` (Apple Silicon, macOS 14 o successivo) | `germano-client-0.99.pkg` (Apple Silicon e Intel, macOS 11 o successivo) |
+| Linux Ubuntu/Debian a 64 bit | `germano-0.99.deb` | `germano-client-0.99.deb` |
 
 ### Windows (10 / 11 a 64 bit)
-1. **Download:** scarica `germano-0.98.exe`.
+1. **Download:** scarica `germano-0.99.exe`.
 2. **Installazione:** doppio clic sull'installer. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows valida solo per il Python di Germano e solo per le reti private e di dominio (modalità Server LAN). Il programma si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI`, con i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni > App e le cartelle di lavoro in `Documenti\Germano AI`; al termine la finestra dell'installer si chiude e **Germano AI si apre da solo**, con i permessi normali dell'utente. Le librerie Microsoft Visual C++ sono già incluse: non serve installare altro.
 3. **Avvio:** collegamento **Germano AI** sul Desktop o nel menu Start (finestra dedicata, senza finestre nere di terminale).
 4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI (chiede i permessi di amministratore per togliere la regola del firewall); puoi scegliere se conservare le cartelle di lavoro e il Vault.
@@ -146,7 +157,7 @@ Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.ge
 L'installer della suite pesa circa 3,8 GB (contiene tutti i modelli IA): al primo doppio clic Microsoft Defender lo analizza e la finestra può comparire dopo qualche secondo. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC» scegli **Ulteriori informazioni > Esegui comunque**.
 
 ### macOS
-1. **Download:** scarica `germano-0.98.pkg`. La suite completa richiede un Mac con **Apple Silicon** (M1 o successivo) e **macOS 14 Sonoma** o successivo, perché PyTorch non è più pubblicato per i Mac Intel; sui Mac Intel si usa il client leggero `germano-client-0.98.pkg`.
+1. **Download:** scarica `germano-0.99.pkg`. La suite completa richiede un Mac con **Apple Silicon** (M1 o successivo) e **macOS 14 Sonoma** o successivo, perché PyTorch non è più pubblicato per i Mac Intel; sui Mac Intel si usa il client leggero `germano-client-0.99.pkg`.
 2. **Installazione:** doppio clic sul pacchetto. Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza password di amministratore**. Con «Installa per tutti gli utenti» va in `/Applications` e macOS chiede la password. Al termine Germano si apre da solo.
 3. **Avvio:** apri **Germano** (`Germano.app`) da Launchpad o dalla cartella Applicazioni. Al primo avvio crea le cartelle di lavoro in `~/Documents/Germano AI` (in `~/Germano AI` se Documenti è sincronizzata con iCloud).
 4. **Disinstallazione:** trascina `Germano.app` nel Cestino; le cartelle di lavoro restano dove sono.
@@ -154,8 +165,8 @@ L'installer della suite pesa circa 3,8 GB (contiene tutti i modelli IA): al prim
 Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema > Privacy e sicurezza** e scegli **Apri comunque**.
 
 ### Linux (Ubuntu / Debian a 64 bit)
-1. **Download:** scarica `germano-0.98.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva (Ubuntu 22.04 o successive, Debian 12 o successive).
-2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-0.98.deb`. Come per ogni pacchetto di sistema viene chiesta la password di amministratore. Il programma va in `/opt/germano`, con la voce **Germano AI** nel menu delle applicazioni e il comando `germano-ai`; non servono altri pacchetti.
+1. **Download:** scarica `germano-0.99.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva (Ubuntu 22.04 o successive, Debian 12 o successive).
+2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-0.99.deb`. Come per ogni pacchetto di sistema viene chiesta la password di amministratore. Il programma va in `/opt/germano`, con la voce **Germano AI** nel menu delle applicazioni e il comando `germano-ai`; non servono altri pacchetti.
 3. **Avvio:** dal menu delle applicazioni. Al primo avvio crea le cartelle di lavoro in `Documenti/Germano AI` (la cartella Documenti nella lingua del sistema).
 4. **Disinstallazione:** `sudo apt remove germano-ai`; le cartelle di lavoro restano dove sono.
 
@@ -306,7 +317,7 @@ Di default Germano si aggiorna da solo **in silenzio**, senza finestre né avvis
 3. Su Windows l'installer prepara subito la nuova versione, in silenzio e a bassa priorità, in una cartella accanto a quella del programma (`Germano AI.nuovo`), mentre Germano resta aperto e la versione in uso non viene toccata.
 4. Al **successivo avvio** la nuova versione prende il posto della vecchia in pochi secondi e Germano si apre già aggiornato. Chi vuole applicarla subito trova soltanto un discreto **«Riavvia per aggiornare»** in alto. Cartelle di lavoro in `Documenti\Germano AI`, Vault (`extracted\deanonymize_vault.db` e la copia `deanonymize_vault.json`) e preferenze `config.json` restano intatti; se qualcosa non va, resta la versione in uso.
 
-In **Impostazioni › Aggiornamenti**, come nella pagina «Informazioni» di Chrome, si vede lo stato: «Germano AI è aggiornato (v0.98)» con l'ora dell'ultimo controllo, «Download dell'aggiornamento in background…» con la barra di avanzamento, «Riavvia Germano per applicare l'aggiornamento». Su macOS e Linux il pacchetto `.pkg` / `.deb` si scarica allo stesso modo e si apre con il programma di installazione del sistema quando lo decidi tu. Germano Client si aggiorna nello stesso modo.
+In **Impostazioni › Aggiornamenti**, come nella pagina «Informazioni» di Chrome, si vede lo stato: «Germano AI è aggiornato (v0.99)» con l'ora dell'ultimo controllo, «Download dell'aggiornamento in background…» con la barra di avanzamento, «Riavvia Germano per applicare l'aggiornamento». Su macOS e Linux il pacchetto `.pkg` / `.deb` si scarica allo stesso modo e si apre con il programma di installazione del sistema quando lo decidi tu. Germano Client si aggiorna nello stesso modo.
 
 Opzioni (in Impostazioni o in `config.json`): `"auto_update": false` si limita a segnalare la nuova versione, `"check_updates": false` disattiva il controllo. Durante il controllo non viene inviato alcun dato dei documenti né dei testi.
 
@@ -374,9 +385,9 @@ Ogni release ha la stessa struttura: `sorgenti/{windows,linux,macos}/{germano,ge
 
 ```bash
 python -B build/coerenza_sorgenti.py                    # sorgenti Linux e macOS identici a quelli Windows nei file comuni
-python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-0.98.exe e germano-client-0.98.exe
-python -B build/costruisci_deb.py tutti                 # releases/linux/germano-0.98.deb e germano-client-0.98.deb
-python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-0.98.pkg e germano-client-0.98.pkg
+python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-0.99.exe e germano-client-0.99.exe
+python -B build/costruisci_deb.py tutti                 # releases/linux/germano-0.99.deb e germano-client-0.99.deb
+python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-0.99.pkg e germano-client-0.99.pkg
 python -B build/crea_version_json.py                    # releases/version.json: dimensioni e SHA-256 lette dai file
 ```
 

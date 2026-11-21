@@ -5,6 +5,21 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.99] - 2026-11-21
+
+### Migliorato
+- **Parametri dinamici relativi al modello scelto (`germano/harness.py`, `germano/providers.py`, `server.py`, `static/harness.js`, `remote/harness.js`):** il selettore *Parametri* mostra ora **solo i parametri realmente supportati dal singolo modello selezionato**, con valori ammessi, range, visibilità condizionale (`show_if`/`hide_if`), predefiniti ottimali e salvataggio separato in `localStorage` per coppia `(destinazione, modello)`:
+  - **Antigravity CLI (`agy`):** raggruppamento automatico dell'output di `agy models` per modello base (da 27 varianti duplicate agli 11 modelli base con etichette leggibili) estraendo i livelli di `--effort` reali di ciascuno (`Gemini 4 Neon`/`Hydrogen`: `low..xhigh`, default `xhigh`; `Gemini 3.8 Flash`/`Carbon`/`Argon`/`Claude Opus 5.5`/`Sonnet 5.5`: `low..high`, default `high`; `Orchestrator` e `GPT-OSS 120B (Medium)`: nessun campo sforzo). Migrazione trasparente di eventuali ID con suffisso salvati in precedenza (es. `gemini-3.8-flash-medium` → `gemini-3.8-flash`).
+  - **Claude Code (`claude-code`):** elenco aggiornato (`fable`, `opus`, `sonnet`, `haiku`, `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-opus-4-7`, `4-6`, `haiku-4-5`) con sforzo `--effort` differenziato per famiglia (es. `fable`/`opus`/`4.7+`/`5.x` fino a `xhigh`/`max`; `haiku-5-5` fino a `high`; nessun `--effort` su `claude-haiku-4-5` e modelli `3.x`/`4.5`).
+  - **Tutti i 19 servizi API e locali:** profili dedicati per modello (es. OpenAI `gpt-5.4`/`5.2` con `max_completion_tokens` e `temperature`/`top_p` visibili solo quando `reasoning_effort=none`; `o1`/`o3`/`o4-mini` senza `temperature`/`top_p`; `gpt-4o`/`4.1` senza `reasoning_effort`; Anthropic `5.x`/`4.7+` senza `temperature`/`top_p`, `4.6` con `temperature` 0–1 nascosta se `thinking=enabled`, `haiku-4-5` senza `effort`; `deepseek-reasoner`/`kimi-k3` senza `temperature`/`top_p`; `glm-5.3` senza `enable_thinking=off`; `mistral` `temperature` 0–1.5; modelli locali di ragionamento con `reasoning_effort`, chat standard senza).
+  - **Nuova rotta `GET /api/harness/v2/param_schema?target=...&model=...`:** consente all'interfaccia di adattare i parametri in tempo reale anche per modelli personalizzati digitati a mano o caricati via *Elenca*.
+
+### Corretto
+- **Antigravity CLI (`agy.exe`) in modalità YOLO locale (`germano/harness.py`):** rimosso `"toolPermission": "auto"` da `AGY_SESSION_SETTINGS_YOLO` (rifiutato dal parser `--settings` di `agy`) e omesso `--mode auto` quando è già attivo `--dangerously-skip-permissions` (`permission_mode = always-proceed`, zero avvisi e zero conflitti `--model`/`--effort`).
+
+### Verificato
+- Collaudo end-to-end su binario reale `agy.exe` (**13/13** combinazioni modello + `argv` accettate con `rc=0` e 0 conflitti), suite backend su tutti i 19 servizi + CLI, collaudo UI live in Edge headless su `cli:agy`, `cli:claude-code`, `cloud:openai` (incluso modello custom via `/api/harness/v2/param_schema`) e `cloud:anthropic` (0 errori console, 0 overflow a 1280 px e 390 px), coerenza 6 alberi **4/4**, 164 `.py`, parità guida IT/EN **15/15** capitoli.
+
 ## [0.98] - 2026-11-21
 
 ### Migliorato

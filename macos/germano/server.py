@@ -2499,19 +2499,30 @@ def _harness_targets(local, sharing, lang="it"):
             why = L(f"il server non ha la chiave {prof['needs']}", f"the server has no {prof['needs']} key")
         models = list(harness.CLAUDE_MODELS) if tid == "claude-code" else []
         model_labels = None
+        model_aliases = None
+        agy_cat = None
         if tid == "agy" and local and t.get("path"):
             try:    # modelli rilevati da «agy models» (cache dell'assistente: mai attese qui)
                 agy_ms = gassist.agy_status(t["path"], refresh_if_stale=False).get("models") or []
-                models = [m["id"] for m in agy_ms]
-                model_labels = {m["id"]: m["name"] for m in agy_ms if m.get("name") and m["name"] != m["id"]}
+                agy_cat = harness.agy_catalog(agy_ms)
+                if agy_cat:
+                    models = agy_cat["models"]
+                    model_labels = agy_cat["model_labels"]
+                    model_aliases = agy_cat["model_aliases"]
             except Exception:
                 models = []
+        param_schemas = {m: harness.param_schema_for(tid, local, model=m, catalog=agy_cat)
+                         for m in models if m and m != "default"}
         item_cli = {"id": f"cli:{tid}", "kind": "cli", "tool": tid, "name": t.get("name") or spec.get("name") or tid,
                     "vendor": spec.get("vendor"), "version": t.get("version"), "enabled": why is None, "reason": why,
-                    "models": models, "model_optional": True, "param_schema": harness.param_schema_for(tid, local),
+                    "models": models, "model_optional": True,
+                    "param_schema": harness.param_schema_for(tid, local, model=None, catalog=agy_cat),
+                    "param_schemas": param_schemas,
                     "where": L("questo computer", "this computer") if local else L("server", "server")}
         if model_labels:
             item_cli["model_labels"] = model_labels
+        if model_aliases:
+            item_cli["model_aliases"] = model_aliases
         out.append(item_cli)
     ports = _listening_ports(det)
     installed = _local_models(det)
@@ -2526,7 +2537,7 @@ def _harness_targets(local, sharing, lang="it"):
                 if gproviders.MODEL_RE.match(m):
                     out.append({"id": f"local:{sid}|{m}", "kind": "local", "service": sid, "model": m,
                                 "name": f"{name} · {m}", "vendor": name, "enabled": True,
-                                "param_schema": gproviders.param_schema_for(sid)})
+                                "param_schema": gproviders.param_schema_for(sid, m)})
         elif ports.get(port) and models is None:
             out.append({"id": f"local:{sid}", "kind": "local", "service": sid, "model": None, "name": name,
                         "vendor": name, "enabled": True, "model_required": True,
@@ -2540,10 +2551,12 @@ def _harness_targets(local, sharing, lang="it"):
         if spec.get("local"):
             continue
         server_key = bool(gproviders.server_key(sid)) and (local or sharing)
+        cmodels = list(spec.get("models", ()))
         item = {"id": f"cloud:{sid}", "kind": "cloud", "service": sid, "name": spec["name"], "vendor": _short_name(spec["name"]),
-                "enabled": True, "key": "server" if server_key else "user", "models": list(spec.get("models", ())),
+                "enabled": True, "key": "server" if server_key else "user", "models": cmodels,
                 "model_required": True, "formats": [f for f in ("openai", "anthropic") if spec.get(f)],
-                "param_schema": gproviders.param_schema_for(sid)}
+                "param_schema": gproviders.param_schema_for(sid, cmodels[0] if cmodels else None),
+                "param_schemas": {m: gproviders.param_schema_for(sid, m) for m in cmodels}}
         if local and server_key:
             item["key_vars"] = list(spec.get("keys", ()))
         out.append(item)
@@ -2757,11 +2770,19 @@ def api_harness_run_v2():
             if not isinstance(params_in, dict):
                 raise _Refused(400, {"status": "error", "message": _L(
                     "Parametri non validi: serve un oggetto JSON.", "Invalid parameters: a JSON object is needed.")})
+        eff_model = dest.get("model") or model
+        agy_cat = None
+        if kind == "cli" and dest["tool"] == "agy" and local and dest.get("info", {}).get("path"):
+            try:
+                agy_ms = gassist.agy_status(dest["info"]["path"], refresh_if_stale=False).get("models") or []
+                agy_cat = harness.agy_catalog(agy_ms)
+            except Exception:
+                agy_cat = None
         try:
             if kind == "cli":
-                params = harness.validate_params(dest["tool"], params_in, local)
+                params = harness.validate_params(dest["tool"], params_in, local, model=eff_model, catalog=agy_cat)
             elif kind in ("cloud", "local"):
-                params = gproviders.validate_params(dest["service"], params_in)
+                params = gproviders.validate_params(dest["service"], params_in, model=eff_model)
             else:
                 params = {}
         except harness.ParamsForbidden as e:
@@ -2770,7 +2791,7 @@ def api_harness_run_v2():
             raise _Refused(400, {"status": "error", "message": str(e)})
         if not daemon_ready():
             raise _engine_blocked()
-        run = gglass.RUNS.register(_requester(), local, target, dest.get("model") or model)
+        run = gglass.RUNS.register(_requester(), local, target, eff_model)
         if run is None:
             raise _Refused(429, {"status": "error", "message": _L(
                 "Hai gia' altre richieste in corso: attendi che finiscano o interrompile.",
@@ -2778,10 +2799,10 @@ def api_harness_run_v2():
         file_items = [(f.filename, f.read()) for f in files]
     except _Refused as e:
         return e.response()
-    ctx = {"kind": kind, "dest": dest, "target": target, "model": dest.get("model") or model, "prompt": prompt,
+    ctx = {"kind": kind, "dest": dest, "target": target, "model": eff_model, "prompt": prompt,
            "system": system, "history": history, "files": file_items, "options": options, "review": review,
            "raw_frames": raw_frames, "label_hint": label_hint, "lang": lang, "cfg": cfg, "local": local,
-           "params": params, "who": g.get("remote_user") or request.remote_addr}
+           "params": params, "agy_cat": agy_cat, "who": g.get("remote_user") or request.remote_addr}
     return Response(_harness_stream(run, ctx), mimetype="application/x-ndjson",
                     headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no", "X-Germano-Run": run.id})
 
@@ -2936,7 +2957,7 @@ def _harness_stream(run, ctx):
                     "characters): start a new one."))
                 return
             prof, argv = harness.command_line(dest["tool"], dest["info"]["path"], ctx["model"] or None, ctx["local"],
-                                              params=prm)
+                                              params=prm, catalog=ctx.get("agy_cat"))
             if not prof:
                 yield ev("error", status="error", transmitted=False,
                          message=L("Modello non valido per la CLI.", "Invalid model for the CLI."))
@@ -3048,7 +3069,7 @@ def _harness_stream(run, ctx):
                 if kind == "cli":
                     res = harness.stream_run(dest["tool"], dest["info"]["path"], transcript, PORT, push,
                                              model=ctx["model"] or None, scope=scope, local=ctx["local"], cancel=run,
-                                             params=ctx.get("params"))
+                                             params=ctx.get("params"), catalog=ctx.get("agy_cat"))
                 else:
                     res = gproviders.stream_chat(dest["service"], dest["model"], messages, dest["key"], push,
                                                  cancel=run, raw_frames=ctx["raw_frames"],
@@ -3220,6 +3241,49 @@ def api_harness_models():
     except gproviders.ServiceError as e:
         return jsonify({"status": "error", "message": gglass.redact_text(str(e))}), e.status
     return jsonify({"status": "success", "service": sid, "models": models})
+
+
+@app.route("/api/harness/v2/param_schema")
+def api_harness_param_schema():
+    """Schema dei parametri specifico per una coppia (destinazione, modello): usato dall'interfaccia quando
+    l'utente digita un modello personalizzato o sceglie un modello caricato con «Elenca modelli»."""
+    from germano import ai_detect, harness
+    target = (request.args.get("target") or "").strip()
+    model = (request.args.get("model") or "").strip()
+    local = _remote_is_local()
+    if target.startswith("cli:"):
+        tid = target[4:].strip()
+        if tid not in harness.LOCAL_PROFILES and tid not in harness.PROFILES:
+            return jsonify({"status": "error", "message": _L("CLI sconosciuta.", "Unknown CLI.")}), 404
+        if model and not harness.valid_model(model):
+            return jsonify({"status": "error", "message": _L("Nome del modello non valido.", "Invalid model name.")}), 400
+        agy_cat = None
+        if tid == "agy" and local:
+            try:
+                det = cached("ai_detect", AI_DETECT_TTL, ai_detect.detect)
+                t = next((x for x in (det.get("tools") or []) if x.get("id") == "agy"), None) or {}
+                if t.get("path"):
+                    agy_ms = gassist.agy_status(t["path"], refresh_if_stale=False).get("models") or []
+                    agy_cat = harness.agy_catalog(agy_ms)
+            except Exception:
+                agy_cat = None
+        schema = harness.param_schema_for(tid, local, model=model or None, catalog=agy_cat)
+        return jsonify({"status": "success", "target": target, "model": model or None, "param_schema": schema})
+    if target.startswith(("cloud:", "local:")):
+        rest = target.split(":", 1)[1]
+        if "|" in rest:
+            sid, fixed_m = rest.split("|", 1)
+            model = model or fixed_m
+        else:
+            sid = rest
+        sid = sid.strip().lower()
+        if not gproviders.get(sid):
+            return jsonify({"status": "error", "message": _L("Servizio sconosciuto.", "Unknown service.")}), 404
+        if model and not gproviders.MODEL_RE.match(model):
+            return jsonify({"status": "error", "message": _L("Nome del modello non valido.", "Invalid model name.")}), 400
+        schema = gproviders.param_schema_for(sid, model or None)
+        return jsonify({"status": "success", "target": target, "model": model or None, "param_schema": schema})
+    return jsonify({"status": "error", "message": _L("Destinazione sconosciuta.", "Unknown target.")}), 404
 
 
 # ------------------------------------------------------------------------------------------------

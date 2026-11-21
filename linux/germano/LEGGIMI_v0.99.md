@@ -1,7 +1,7 @@
-# Germano AI 0.98 — Suite completa per Windows
+# Germano AI 0.99 — Suite completa per Windows
 
 ## Installazione
-Scarica **`germano-0.98.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
+Scarica **`germano-0.99.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
 necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, gli 8 modelli IA) e non scarica
 nulla. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a
 consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows solo per il Python di
@@ -42,6 +42,15 @@ Modalità operative (si scelgono e si cambiano in qualsiasi momento in Impostazi
 
 Per chiudere **tutto** basta la **X rossa**: si fermano anche il server Flask e il motore IA, senza lasciare processi in
 memoria.
+
+## Novità della 0.99: parametri specifici per ogni modello scelto
+Il selettore **Parametri** ora si adatta in tempo reale al **singolo modello selezionato** (salvando le scelte
+separatamente per ogni modello): su Antigravity CLI i modelli di `agy models` sono raggruppati per modello base
+con i soli livelli `--effort` reali (es. `xhigh` su Neon/Hydrogen, `high` su Flash/Claude 5.5, nessuno su
+Orchestrator e GPT-OSS 120B, senza conflitti CLI e con YOLO `always-proceed` corretto); su Claude Code e tutti i
+19 servizi API/locali compaiono solo i parametri validi per quel modello (es. `temperature`/`top_p` condizionali su
+`gpt-5.4` e `claude-4-6`, nascosti su `o3`/`deepseek-reasoner`/`claude-5.5`; niente `effort` su `gpt-4o`,
+`claude-haiku-4-5`, `deepseek-chat`, `llama3.2`).
 
 ## Novità della 0.98: selettore AI pulito e tendina completa dei modelli
 Aprendo il menu dei modelli in basso a destra vedi subito **solo le AI rilevate e pronte all'uso**; tutti gli altri
@@ -168,7 +177,7 @@ App e file tecnici.
   correggerlo; nelle VM con NAT serve l'inoltro della porta TCP 8181 (o una scheda in modalità bridge).
 
 ## Client leggero per i colleghi
-Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.98.exe`** (circa 22 MB, senza
+Per i notebook che si collegano a questo PC c'è l'installer separato **`germano-client-0.99.exe`** (circa 22 MB, senza
 modelli, nessun permesso di amministratore): anche lì il programma si chiama **`Germano.exe`** e apre il pannello del
 client (collegamento **Germano AI Client**), che è lo stesso Remote Control del browser, con Chatbot e Agenti AI e Glass
 Window. Chi non vuole installare nulla apre direttamente nel browser `http://<IP-di-questo-PC>:8181/`.

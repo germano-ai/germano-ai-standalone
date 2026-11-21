@@ -1,10 +1,10 @@
-# Germano AI 0.98 — Client leggero per Windows
+# Germano AI 0.99 — Client leggero per Windows
 
 Installer leggero (circa 22 MB, **senza modelli IA**) per i PC che si collegano a un **Germano Server** della rete (la
 suite completa installata sul PC più potente dell'ufficio, in modalità Server).
 
 ## Installazione
-Scarica **`germano-client-0.98.exe`** da https://download.germano.ai/ e fai doppio clic: contiene il proprio Python e
+Scarica **`germano-client-0.99.exe`** da https://download.germano.ai/ e fai doppio clic: contiene il proprio Python e
 non scarica nulla. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client`, **senza diritti di
 amministratore**, con i collegamenti **Germano AI Client** sul Desktop e nel menu Start; alla fine il client si apre da
 solo. Le impostazioni del client (server, sessione e opzioni) sono in `%LOCALAPPDATA%\Germano AI Client`.
@@ -37,6 +37,11 @@ Disinstallazione: Impostazioni › App › App installate › Germano AI Client.
 
 Prima di inviare qualsiasi dato il client verifica, **senza inviare dati personali**, che risponda un vero Germano
 Server, che l'accesso sia consentito e che il motore sia pronto; altrimenti non invia nulla.
+
+## Novità della 0.99
+- **Parametri specifici per ogni modello:** il pannello *Parametri* mostra solo i campi e i livelli realmente
+  supportati dal modello selezionato (anche per modelli personalizzati via `/api/harness/v2/param_schema`) e
+  salva le scelte separatamente per modello; pannello allineato al Germano Server 0.99.
 
 ## Novità della 0.98
 - **Menu AI pulito all'apertura:** mostra subito solo le destinazioni pronte, con freccina espandibile
@@ -93,7 +98,7 @@ anche `login --user mario`, `models`, `ask claude-code "..."`, `ask deepseek "..
   finestra dedicata (di serie su Windows 10/11; su Windows Server 2019 va installato, altrimenti il client indica
   l'indirizzo del pannello e si può usare la riga di comando).
 - Un Germano Server attivo in modalità Server sulla stessa rete locale, versione 0.70 o successiva (consigliata la
-  0.98): Chatbot e Agenti AI e la sanitizzazione dei file del pannello usano API del server introdotte con la 0.70; con
+  0.99): Chatbot e Agenti AI e la sanitizzazione dei file del pannello usano API del server introdotte con la 0.70; con
   un server 0.60 resta utilizzabile la riga di comando (`client ask`, `client send`, `client launch`).
 
 ## Per gli sviluppatori

@@ -1,4 +1,4 @@
-/* Germano AI 0.98 - Harness AI e Glass Window.
+/* Germano AI 0.99 - Harness AI e Glass Window.
    Componente condiviso dalla Dashboard (index.html), dal Remote Control (/remote) e dal pannello di Germano Client:
    stessa interfaccia ovunque, stesse rotte del server (/api/harness/v2/*), che applica le regole di chi chiede
    (questo computer o un dispositivo della rete).
@@ -463,6 +463,8 @@
             this.targets = null;
             this.meta = {};
             this.targetSig = '';
+            this.modelSchemas = {};
+            this.pendingSchemas = {};
             this.runs = [];
             this.glassRun = null;
             this.follow = true;
@@ -744,11 +746,14 @@
                 case 'params-model': {
                     const cur = this.currentTarget();
                     if (cur) {
+                        const nm = t.dataset.model === 'default' ? '' : t.dataset.model;
                         this.customModelFor = null;
-                        this.setModel(cur, t.dataset.model === 'default' ? '' : t.dataset.model);
+                        this.setModel(cur, nm);
+                        this.ensureModelSchema(cur, nm);
                         this.renderPickerButton();
                         this.renderPickerDetail();
                         this.renderParamsButton();
+                        this.paramsSig = this.paramsSchemaSig();
                         this.renderParamsBody();
                     }
                     break;
@@ -1081,7 +1086,7 @@
                 const prev = this.targets;
                 this.meta = data;
                 this.targets = data.targets || [];
-                const sig = JSON.stringify(this.targets.map(t => [t.id, t.enabled, t.key, t.reason, (t.models || []).length]));
+                const sig = JSON.stringify(this.targets.map(t => [t.id, t.enabled, t.key, t.reason, (t.models || []).length, Object.keys(t.param_schemas || {}).length]));
                 if (force || sig !== this.targetSig) {
                     const before = new Set((prev || []).filter(t => this.usable(t)).map(t => t.id));
                     this.targetSig = sig;
@@ -1152,7 +1157,13 @@
             if (!t) return '';
             if (t.model) return t.model;
             const saved = load('local', this.o.convKey + '_models', {});
-            return saved[t.id] || (t.models && t.kind === 'cloud' ? t.models[0] : '') || '';
+            let m = saved[t.id];
+            if (m && t.model_aliases && t.model_aliases[m] && (!t.models || !t.models.includes(m))) {
+                m = t.model_aliases[m].model;
+                saved[t.id] = m;
+                save('local', this.o.convKey + '_models', saved);
+            }
+            return m || (t.models && t.kind === 'cloud' ? t.models[0] : '') || '';
         }
         setModel(t, m) {
             const saved = load('local', this.o.convKey + '_models', {});
@@ -1247,20 +1258,23 @@
                 }
                 if (this.customModelFor === `${prefix}:${t.id}`) this.customModelFor = null;
                 this.setModel(t, sel.value);
+                this.ensureModelSchema(t, sel.value);
                 this.renderPickerButton();
                 this.renderParamsButton();
-                if (prefix === 'model' && !this.$paramsPop.hidden) this.renderParamsBody();
-                if (prefix === 'params-model') { this.renderPickerDetail(); rerender(); }
+                if (prefix === 'model' && !this.$paramsPop.hidden) { this.paramsSig = this.paramsSchemaSig(); this.renderParamsBody(); }
+                if (prefix === 'params-model') { this.renderPickerDetail(); this.paramsSig = this.paramsSchemaSig(); rerender(); }
             });
             const inp = container.querySelector(`[data-${prefix}-input]`);
             if (inp) inp.addEventListener('change', () => {
                 const v = inp.value.trim();
-                this.setModel(t, v === 'default' ? '' : v);
-                if (!v || this.modelsListFor(t).includes(v)) this.customModelFor = null;
+                const nm = v === 'default' ? '' : v;
+                this.setModel(t, nm);
+                if (!nm || this.modelsListFor(t).includes(nm)) this.customModelFor = null;
+                this.ensureModelSchema(t, nm);
                 this.renderPickerButton();
                 this.renderParamsButton();
-                if (prefix === 'model' && !this.$paramsPop.hidden) this.renderParamsBody();
-                if (prefix === 'params-model') { this.renderPickerDetail(); rerender(); }
+                if (prefix === 'model' && !this.$paramsPop.hidden) { this.paramsSig = this.paramsSchemaSig(); this.renderParamsBody(); }
+                if (prefix === 'params-model') { this.renderPickerDetail(); this.paramsSig = this.paramsSchemaSig(); rerender(); }
             });
         }
         renderPicker() {
@@ -1395,51 +1409,106 @@
             if (!this.$paramsPop.hidden) this.renderParamsBody();
         }
         // -------------------------------------------------------------- parametri del modello/CLI
-        // Il popover si adatta alla destinazione scelta con lo schema del server (target.param_schema): i valori
-        // predefiniti dello schema (effort massimo max/xhigh, YOLO locale sulle CLI) si applicano subito; le scelte
-        // diverse dal predefinito si salvano in localStorage per target.id e viaggiano come JSON nel campo «params».
-        schemaFields(t) {
-            return (((t && t.param_schema || {}).fields) || []).filter(f => !(f.local_only && this.remote));
+        // Il popover si adatta al MODELLO scelto con lo schema specifico del server (target.param_schemas[model] o
+        // /api/harness/v2/param_schema per modelli personalizzati/caricati): i valori predefiniti del modello si
+        // applicano subito e le scelte personalizzate si salvano in localStorage per (target.id, model).
+        schemaFor(t, model) {
+            if (!t) return { fields: [] };
+            const m = model !== undefined ? model : this.modelFor(t);
+            if (m && t.param_schemas && t.param_schemas[m]) return t.param_schemas[m];
+            const key = m ? `${t.id}::${m}` : '';
+            if (key && this.modelSchemas[key]) return this.modelSchemas[key];
+            return t.param_schema || { fields: [] };
         }
-        defaultParams(t) {
+        ensureModelSchema(t, model) {
+            if (!t || t.kind === 'protect') return;
+            const m = model !== undefined ? model : this.modelFor(t);
+            if (!m || (t.param_schemas && t.param_schemas[m])) return;
+            const key = `${t.id}::${m}`;
+            if (this.modelSchemas[key] || this.pendingSchemas[key]) return;
+            this.pendingSchemas[key] = true;
+            this.api(`/api/harness/v2/param_schema?target=${encodeURIComponent(t.id)}&model=${encodeURIComponent(m)}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                    if (data && data.param_schema) {
+                        this.modelSchemas[key] = data.param_schema;
+                        const cur = this.currentTarget();
+                        if (cur && cur.id === t.id && this.modelFor(cur) === m) {
+                            this.renderParamsButton();
+                            if (!this.$paramsPop.hidden) {
+                                this.paramsSig = this.paramsSchemaSig();
+                                this.renderParamsBody();
+                            }
+                        }
+                    }
+                })
+                .catch(() => {})
+                .finally(() => { delete this.pendingSchemas[key]; });
+        }
+        fieldVisible(f, p) {
+            if (f.show_if && Object.entries(f.show_if).some(([k, v]) => Array.isArray(v) ? !v.includes(p[k]) : p[k] !== v)) return false;
+            if (f.hide_if && Object.entries(f.hide_if).some(([k, v]) => Array.isArray(v) ? v.includes(p[k]) : p[k] === v)) return false;
+            return true;
+        }
+        schemaFields(t, model) {
+            return ((this.schemaFor(t, model).fields) || []).filter(f => !(f.local_only && this.remote));
+        }
+        defaultParams(t, model) {
             const out = {};
-            for (const f of this.schemaFields(t)) {
+            for (const f of this.schemaFields(t, model)) {
                 const d = f.default;
                 if (d === undefined || d === null || d === '') continue;
                 out[f.key] = d;
             }
             return out;
         }
-        paramsFor(t) {
+        paramsStorageKey(t, model) {
+            if (!t) return '';
+            if (t.kind === 'local' && t.model) return t.id;
+            const m = model !== undefined ? model : this.modelFor(t);
+            return m ? `${t.id}::${m}` : t.id;
+        }
+        paramsFor(t, model) {
             if (!t) return {};
             const all = load('local', this.o.convKey + '_params', {});
-            const p = all && typeof all === 'object' && !Array.isArray(all) ? all[t.id] : null;
+            const key = this.paramsStorageKey(t, model);
+            const p = all && typeof all === 'object' && !Array.isArray(all) ? all[key] : null;
             return p && typeof p === 'object' && !Array.isArray(p) ? p : {};
         }
-        effectiveParams(t) {
-            const eff = Object.assign({}, this.defaultParams(t), this.paramsFor(t));
+        effectiveParams(t, model) {
+            const fields = this.schemaFields(t, model);
+            const merged = Object.assign({}, this.defaultParams(t, model), this.paramsFor(t, model));
             const out = {};
-            for (const [k, v] of Object.entries(eff)) {
+            for (const f of fields) {
+                let v = merged[f.key];
                 if (v === '' || v == null) continue;
-                out[k] = v;
+                if (f.type === 'enum' && Array.isArray(f.values) && !f.values.includes(v)) {
+                    v = f.default;
+                    if (v === '' || v == null || !f.values.includes(v)) continue;
+                }
+                out[f.key] = v;
+            }
+            for (const f of fields) {
+                if (f.key in out && !this.fieldVisible(f, out)) delete out[f.key];
             }
             return out;
         }
-        saveParams(t, p) {
+        saveParams(t, p, model) {
             if (!t) return;
             const all = load('local', this.o.convKey + '_params', {});
             const map = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
-            if (p && Object.keys(p).length) map[t.id] = p; else delete map[t.id];
+            const key = this.paramsStorageKey(t, model);
+            if (p && Object.keys(p).length) map[key] = p; else delete map[key];
             save('local', this.o.convKey + '_params', map);
         }
-        setParam(t, key, value) {
-            const p = Object.assign({}, this.paramsFor(t));
-            const f = this.schemaFields(t).find(x => x.key === key);
+        setParam(t, key, value, model) {
+            const p = Object.assign({}, this.paramsFor(t, model));
+            const f = this.schemaFields(t, model).find(x => x.key === key);
             const def = f ? f.default : undefined;
             const isDef = value === def || ((def == null || def === '') && (value === '' || value == null));
             if (isDef) delete p[key];
             else p[key] = value;
-            this.saveParams(t, p);
+            this.saveParams(t, p, model);
             this.renderParamsButton();
         }
         resetParams(t) {
@@ -1484,6 +1553,9 @@
                 if (key === 'tools_mode') return en ? 'none · text only' : 'none · solo testo';
                 if (key === 'reasoning_effort') return en ? 'none · off' : 'none · disattivo';
             }
+            if (v === 'minimal' && (key === 'effort' || key === 'reasoning_effort')) {
+                return en ? 'minimal' : 'minimal · minimo';
+            }
             const map = {
                 restricted: en ? 'restricted · safe' : 'restricted · sicuro',
                 strict: en ? 'strict · safe' : 'strict · sicuro',
@@ -1499,6 +1571,7 @@
             const show = Boolean(t && (t.kind === 'cli' || t.kind === 'cloud' || t.kind === 'local'));
             this.$paramsPicker.hidden = !show;
             if (!show) { this.closeParams(); return; }
+            this.ensureModelSchema(t);
             const badge = this.paramsBadgeText(t);
             this.$paramsBadge.hidden = !badge;
             this.$paramsBadge.textContent = badge;
@@ -1511,12 +1584,16 @@
         toggleParams() { if (this.$paramsPop.hidden) this.openParams(); else this.closeParams(); }
         paramsSchemaSig() {
             const t = this.currentTarget();
-            return t ? `${t.id}|${JSON.stringify(t.param_schema || {})}|${JSON.stringify(t.models || [])}|${JSON.stringify((this.fetchedModels || {})[t.service] || [])}` : '';
+            if (!t) return '';
+            const m = this.modelFor(t);
+            return `${t.id}|${m}|${JSON.stringify(this.schemaFor(t, m))}|${JSON.stringify(t.models || [])}|${JSON.stringify((this.fetchedModels || {})[t.service] || [])}`;
         }
         openParams() {
             this.closePicker();
             this.$paramsPop.hidden = false;
             this.$paramsBtn.setAttribute('aria-expanded', 'true');
+            const t = this.currentTarget();
+            if (t) this.ensureModelSchema(t);
             this.paramsSig = this.paramsSchemaSig();
             this.renderParamsBody();
             this.clampPop(this.$paramsPop);
@@ -1530,8 +1607,10 @@
             if (this.$paramsPop.hidden) return;
             const t = this.currentTarget();
             if (!t) { this.$paramsBody.innerHTML = ''; return; }
-            const fields = this.schemaFields(t);
-            const p = this.effectiveParams(t);
+            const m = this.modelFor(t);
+            this.ensureModelSchema(t, m);
+            const fields = this.schemaFields(t, m);
+            const p = this.effectiveParams(t, m);
             const hasModel = t.kind === 'cli' || t.kind === 'cloud' || (t.kind === 'local' && !t.model);
             let html = '';
             if (hasModel) {
@@ -1539,7 +1618,7 @@
                     this.modelControlHtml(t, 'params-model', true) + `</div>`;
             }
             for (const f of fields) {
-                if (f.show_if && Object.entries(f.show_if).some(([k, v]) => p[k] !== v)) continue;
+                if (!this.fieldVisible(f, p)) continue;
                 const label = esc(this.lang === 'en' ? (f.en || f.key) : (f.it || f.key));
                 const note = f['note_' + this.lang] ? `<span class="hx-small-note">${esc(f['note_' + this.lang])}</span>` : '';
                 const tag = f.danger ? `<span class="hx-params-danger">${svg('alert')}${esc(this.T('paramsLocalOnly'))}</span>` : '';
@@ -1558,13 +1637,15 @@
             }
             if (!hasModel && !fields.length) html = `<div class="hx-small-note">${esc(this.T('paramsNone'))}</div>`;
             this.$paramsBody.innerHTML = html;
-            this.$paramsTarget.textContent = t.name;
+            const mLabel = m && t.model_labels && t.model_labels[m] ? t.model_labels[m] : m;
+            this.$paramsTarget.textContent = mLabel && t.kind !== 'local' ? `${t.name} · ${mLabel}` : t.name;
             this.$paramsBody.querySelectorAll('[data-param]').forEach(el => el.addEventListener('change', () => this.onParamInput(t, el)));
             if (hasModel) this.bindModelControl(this.$paramsBody, t, 'params-model', () => this.renderParamsBody());
         }
         onParamInput(t, el) {
             const key = el.dataset.param;
-            const f = (((t.param_schema || {}).fields) || []).find(x => x.key === key);
+            const fields = this.schemaFields(t);
+            const f = fields.find(x => x.key === key);
             let v;
             if (el.type === 'checkbox') v = el.checked;
             else if (el.type === 'number') {
@@ -1578,7 +1659,9 @@
                 }
             } else v = el.value.trim();
             this.setParam(t, key, v);
-            if (key === 'thinking') this.renderParamsBody();   // mostra/nasconde thinking_budget
+            if (fields.some(x => (x.show_if && key in x.show_if) || (x.hide_if && key in x.hide_if))) {
+                this.renderParamsBody();
+            }
         }
         // -------------------------------------------------------------- assistente di configurazione (solo suite)
         // Finestra montata su document.body: si apre dal selettore dei modelli e dalle Impostazioni (dove la vista
@@ -1860,7 +1943,7 @@
             const model = run.model;
             if (model) fd.append('model', model);
             if (run.target.kind !== 'protect') {
-                const params = this.effectiveParams(run.target);
+                const params = this.effectiveParams(run.target, model);
                 run.params = params;
                 if (Object.keys(params).length) fd.append('params', JSON.stringify(params));
             }

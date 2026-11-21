@@ -1911,8 +1911,14 @@ def annotate(targets, tools, lang="it"):
             else:
                 t["assist_label"] = L("Configura", "Set up")
             if tid == "cli:agy" and agy_st and agy_st["models"]:
-                t["models"] = [m["id"] for m in agy_st["models"]]
-                t["model_labels"] = {m["id"]: m["name"] for m in agy_st["models"] if m.get("name") and m["name"] != m["id"]}
+                cat = harness.agy_catalog(agy_st["models"])
+                if cat:
+                    t["models"] = cat["models"]
+                    t["model_labels"] = cat["model_labels"]
+                    if cat["model_aliases"]:
+                        t["model_aliases"] = cat["model_aliases"]
+                    t["param_schema"] = harness.param_schema_for("agy", True, None, catalog=cat)
+                    t["param_schemas"] = {m: harness.param_schema_for("agy", True, m, catalog=cat) for m in cat["models"]}
             if tid == "other:antigravity":
                 t["reason"] = (L("app desktop: nell'Harness usa «Antigravity CLI (agy)», stesso account",
                                  "desktop app: in the Harness use «Antigravity CLI (agy)», same account") if agy else

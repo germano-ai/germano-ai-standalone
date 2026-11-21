@@ -226,9 +226,9 @@ def _setup_output():
 def get_version():
     try:
         with open(os.path.join(BASE_DIR, "VERSION"), "r", encoding="utf-8-sig") as f:
-            return f.read().strip() or "0.98"
+            return f.read().strip() or "0.99"
     except OSError:
-        return "0.98"
+        return "0.99"
 
 
 def _clean(value, limit=60):

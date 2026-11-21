@@ -119,7 +119,6 @@ AGY_SESSION_SETTINGS = {
                              "mcp(*)"]},
 }
 AGY_SESSION_SETTINGS_YOLO = {
-    "toolPermission": "auto",
     "disableSlashCommands": True,
     "showTips": False,
     "showFeedbackSurvey": False,
@@ -130,14 +129,21 @@ AGY_ALLOWED_TOOLS = frozenset({"finish"})
 
 # Modelli e alias di Claude Code per il selettore dei parametri: «default» = nessuna scelta (il modello predefinito
 # della CLI, nessun flag --model). I nomi completi sono quelli suggeriti dalla documentazione di Anthropic.
-CLAUDE_MODELS = ("default", "opus", "sonnet", "haiku", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5")
-# Valori reali dei flag (verificati su claude.exe e su agy.exe con --help):
-# --effort accetta low, medium, high, xhigh, max; Claude --permission-mode accetta acceptEdits, plan, dontAsk,
-# bypassPermissions; agy --mode accetta accept-edits, auto, plan.
+CLAUDE_MODELS = ("default", "fable", "opus", "sonnet", "haiku",
+                 "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
+                 "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5")
+# Valori reali dei flag (verificati su claude.exe e su agy.exe):
+# - Claude Code --effort dipende dal modello (fable/opus 4.7+/5.x: low..max incluso xhigh; sonnet/opus 4.6: low..max;
+#   haiku 5.x: low..high; claude-haiku-4-5 e modelli 3.x/4.5: nessuno sforzo);
+# - Antigravity CLI --effort dipende esattamente dalle varianti dichiarate da «agy models» per ogni modello base
+#   (es. gemini-4-neon: low..xhigh; gemini-3.8-flash/claude-opus-5-5: low..high; gpt-oss-120b/orchestrator: nessuno).
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 CLAUDE_PERMISSION_MODES = ("acceptEdits", "plan", "dontAsk", "bypassPermissions")
 AGY_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 AGY_PERMISSION_MODES = ("auto", "accept-edits", "plan")
+_EFFORT_RANK = {v: i for i, v in enumerate(AGY_EFFORTS)}
+_AGY_SUFFIX_RE = re.compile(r"-(low|medium|high|xhigh|max)$", re.I)
+_AGY_LABEL_SUFFIX_RE = re.compile(r"\s*\((?:low|medium|high|xhigh|max)\)\s*$", re.I)
 
 # Perche' un'AI installata sul server non si puo' eseguire per i client (e con che cosa la si usa comunque protetta).
 _AGENT = ("agente che eseguirebbe comandi o modificherebbe file sul server: per sicurezza il server non lo esegue per "
@@ -245,18 +251,110 @@ def valid_model(model):
     return not model or bool(_MODEL_RE.match(model))
 
 
-def param_schema_for(tool_id, local=False):
-    """Schema dei parametri per il selettore dell'Harness: campi con etichette e note IT/EN, valori ammessi e
-    predefiniti effettivi. Su questo computer (local=True) Claude Code e Antigravity CLI partono in modalita'
-    massima (effort=max, skip_permissions=True, permessi/strumenti sbloccati, sempre disattivabili dal selettore).
+def agy_catalog(raw_models):
+    """Raggruppa l'elenco di «agy models» per modello base, estraendo per ciascuno i livelli di --effort realmente
+    supportati (es. gemini-4-neon -> low/medium/high/xhigh, gemini-3.8-flash -> low/medium/high, orchestrator -> []).
+    Evita sia le voci duplicate nell'elenco sia i conflitti --model <modello>-medium + --effort <altro>."""
+    if not raw_models:
+        return None
+    order = []
+    entries = {}
+    aliases = {}
+    for item in raw_models:
+        mid = str((item or {}).get("id") or "").strip()
+        if not mid or not valid_model(mid):
+            continue
+        name = str((item or {}).get("name") or mid).strip()
+        m = _AGY_SUFFIX_RE.search(mid)
+        if m:
+            base = mid[:m.start()]
+            eff = m.group(1).lower()
+            base_name = _AGY_LABEL_SUFFIX_RE.sub("", name).strip() or base
+        else:
+            base, eff, base_name = mid, None, name
+        if base not in entries:
+            order.append(base)
+            entries[base] = {"name": base_name, "raw_name": name, "efforts": []}
+        if eff and eff not in entries[base]["efforts"]:
+            entries[base]["efforts"].append(eff)
+        if m:
+            aliases[mid] = {"model": base, "effort": eff}
+    models, labels, model_efforts = [], {}, {}
+    default_efforts = None
+    for base in order:
+        info = entries[base]
+        effs = sorted(info["efforts"], key=lambda x: _EFFORT_RANK.get(x, 99))
+        models.append(base)
+        # Se un modello ha un solo livello fisso (es. gpt-oss-120b-medium), l'etichetta mostra quel livello fisso.
+        lbl = info["raw_name"] if len(effs) == 1 else info["name"]
+        if lbl and lbl != base:
+            labels[base] = lbl
+        model_efforts[base] = effs
+        if default_efforts is None and len(effs) >= 2:
+            default_efforts = list(effs)
+    return {"models": models, "model_labels": labels, "model_efforts": model_efforts,
+            "model_aliases": aliases, "default_efforts": default_efforts or ["low", "medium", "high", "xhigh"]}
+
+
+def _agy_effort_spec(model, catalog=None):
+    """(valori_ammessi, predefinito) per --effort su Antigravity CLI, specifici per il modello scelto.
+    Restituisce ((), None) se il modello non accetta --effort (es. orchestrator, modelli a livello fisso come
+    gpt-oss-120b, o ID che contengono gia' il suffisso di sforzo come gemini-3.8-flash-medium)."""
+    m = (model or "").strip()
+    if m in ("", "default"):
+        effs = tuple((catalog or {}).get("default_efforts") or ("low", "medium", "high", "xhigh"))
+        return (effs, effs[-1]) if len(effs) >= 2 else ((), None)
+    if _AGY_SUFFIX_RE.search(m):
+        return (), None
+    if catalog and m in (catalog.get("model_efforts") or {}):
+        effs = tuple(catalog["model_efforts"][m])
+        return (effs, effs[-1]) if len(effs) >= 2 else ((), None)
+    ml = m.lower()
+    if "orchestrator" in ml or "gpt-oss" in ml:
+        return (), None
+    if any(k in ml for k in ("neon", "hydrogen")):
+        return ("low", "medium", "high", "xhigh"), "xhigh"
+    if any(k in ml for k in ("carbon", "argon", "flash", "claude-opus-5", "claude-sonnet-5")):
+        return ("low", "medium", "high"), "high"
+    return ("low", "medium", "high", "xhigh"), "high"
+
+
+def _claude_effort_spec(model):
+    """(valori_ammessi, predefinito) per --effort su Claude Code, specifici per il modello scelto."""
+    ml = (model or "").strip().lower()
+    if ml in ("", "default", "fable", "opus") or ml.startswith((
+            "claude-fable", "claude-opus-5", "claude-opus-4-7", "claude-opus-4-8", "claude-opus-4.7", "claude-opus-4.8")):
+        return ("low", "medium", "high", "xhigh", "max"), "max"
+    if ml == "sonnet" or ml.startswith((
+            "claude-sonnet-5", "claude-opus-4-6", "claude-sonnet-4-6", "claude-opus-4.6", "claude-sonnet-4.6")):
+        return ("low", "medium", "high", "max"), "max"
+    if ml == "haiku" or ml.startswith(("claude-haiku-5",)):
+        return ("low", "medium", "high"), "high"
+    if ml.startswith((
+            "claude-haiku-4-5", "claude-haiku-4.5", "claude-sonnet-4-5", "claude-sonnet-4.5",
+            "claude-opus-4-5", "claude-opus-4.5", "claude-opus-4-1", "claude-opus-4-0",
+            "claude-sonnet-4-0", "claude-3")):
+        return (), None
+    return ("low", "medium", "high", "xhigh", "max"), "max"
+
+
+def param_schema_for(tool_id, local=False, model=None, catalog=None):
+    """Schema dei parametri per il selettore dell'Harness, adattato al modello scelto: campi con etichette e note
+    IT/EN, valori ammessi e predefiniti effettivi. Su questo computer (local=True) Claude Code e Antigravity CLI
+    partono al massimo sforzo reale del modello scelto e in modalita' YOLO (sempre disattivabili dal selettore).
     Dalla rete (local=False) i campi «local_only» non compaiono mai e validate_params li rifiuta con 403."""
     fields = []
     if tool_id == "claude-code":
-        fields = [
-            {"key": "effort", "type": "enum", "values": ["default"] + list(CLAUDE_EFFORTS), "default": "max",
-             "it": "Sforzo di ragionamento", "en": "Reasoning effort",
-             "note_it": "Passa --effort alla CLI (predefinito: max; scegli «auto · modello» per nessun flag).",
-             "note_en": "Passes --effort to the CLI (default: max; pick «auto · model» for no flag)."},
+        effs, eff_def = _claude_effort_spec(model)
+        if effs:
+            levels = ", ".join(effs)
+            fields.append(
+                {"key": "effort", "type": "enum", "values": ["default"] + list(effs), "default": eff_def,
+                 "it": "Sforzo di ragionamento", "en": "Reasoning effort",
+                 "note_it": f"Passa --effort alla CLI ({levels}; predefinito: {eff_def}; «auto · modello» = nessun flag).",
+                 "note_en": f"Passes --effort to the CLI ({levels}; default: {eff_def}; «auto · model» = no flag)."}
+            )
+        fields.extend([
             {"key": "permission_mode", "type": "enum",
              "values": ["restricted", "default"] + list(CLAUDE_PERMISSION_MODES), "default": "bypassPermissions",
              "local_only": True,
@@ -286,13 +384,18 @@ def param_schema_for(tool_id, local=False):
              "it": "Modello di riserva", "en": "Fallback model",
              "note_it": "--fallback-model: usato se il modello principale non e' disponibile.",
              "note_en": "--fallback-model: used when the main model is busy or unavailable."},
-        ]
+        ])
     elif tool_id == "agy":
-        fields = [
-            {"key": "effort", "type": "enum", "values": ["default"] + list(AGY_EFFORTS), "default": "max",
-             "it": "Sforzo di ragionamento", "en": "Reasoning effort",
-             "note_it": "Passa --effort alla CLI Antigravity (predefinito: max).",
-             "note_en": "Passes --effort to the Antigravity CLI (default: max)."},
+        effs, eff_def = _agy_effort_spec(model, catalog)
+        if effs:
+            levels = ", ".join(effs)
+            fields.append(
+                {"key": "effort", "type": "enum", "values": ["default"] + list(effs), "default": eff_def,
+                 "it": "Sforzo di ragionamento", "en": "Reasoning effort",
+                 "note_it": f"Passa --effort ad Antigravity CLI per questo modello ({levels}; predefinito: {eff_def}).",
+                 "note_en": f"Passes --effort to Antigravity CLI for this model ({levels}; default: {eff_def})."}
+            )
+        fields.extend([
             {"key": "permission_mode", "type": "enum",
              "values": ["strict", "default"] + list(AGY_PERMISSION_MODES), "default": "auto",
              "local_only": True, "danger": True,
@@ -307,16 +410,16 @@ def param_schema_for(tool_id, local=False):
                         "direttamente con Google senza Proxy; disattiva qui e scegli «strict» per la modalita' solo testo.",
              "note_en": "--dangerously-skip-permissions: enabled by default on this computer. Note: agy talks directly "
                         "to Google without the Proxy; turn off here and pick «strict» for text-only mode."},
-        ]
+        ])
     if not local:
         fields = [f for f in fields if not f.get("local_only")]
-    return {"tool": tool_id, "fields": fields}
+    return {"tool": tool_id, "model": (model if model and model != "default" else None), "fields": fields}
 
 
-def _default_params(tool_id, local=False):
-    """Parametri effettivi predefiniti per la CLI (per local=False esclude sempre tutti i campi local_only)."""
+def _default_params(tool_id, local=False, model=None, catalog=None):
+    """Parametri effettivi predefiniti per la CLI e il modello scelto (local=False esclude sempre local_only)."""
     out = {}
-    for f in param_schema_for(tool_id, local=local)["fields"]:
+    for f in param_schema_for(tool_id, local=local, model=model, catalog=catalog)["fields"]:
         d = f.get("default")
         if d is None or d == "":
             continue
@@ -324,26 +427,29 @@ def _default_params(tool_id, local=False):
     return out
 
 
-def validate_params(tool_id, raw, local=False):
-    """Parametri validati con whitelist esatta di chiavi e valori, range numerici e _MODEL_RE per i nomi dei
-    modelli, partendo dai predefiniti effettivi dello schema (effort=max e YOLO in locale; solo effort=max dalla
-    rete). Idempotente: conserva esplicitamente gli override come effort='default' o skip_permissions=False cosi'
-    una seconda chiamata (es. in command_line/stream_run) non ripristina i predefiniti. Le opzioni locali sono
-    sempre vietate dalla rete: ParamsForbidden (403)."""
-    out = _default_params(tool_id, local=local)
+def validate_params(tool_id, raw, local=False, model=None, catalog=None):
+    """Parametri validati con whitelist esatta di chiavi e valori relativi al modello scelto, range numerici e
+    _MODEL_RE per i nomi dei modelli, partendo dai predefiniti dello schema. Idempotente: conserva esplicitamente
+    gli override come effort='default' o skip_permissions=False cosi' una seconda chiamata non ripristina i
+    predefiniti. Le opzioni locali sono sempre vietate dalla rete: ParamsForbidden (403)."""
+    out = _default_params(tool_id, local=local, model=model, catalog=catalog)
     if raw is None or raw == {}:
         return out
     if not isinstance(raw, dict):
         raise ParamsError("I parametri devono essere un oggetto JSON.")
-    # schema COMPLETO (local=True): anche le opzioni locali vanno validate, per distinguerle da chiavi sconosciute
-    # e per vietarle esplicitamente a chi arriva dalla rete (ParamsForbidden, non un generico «sconosciuto»).
-    schema = {f["key"]: f for f in param_schema_for(tool_id, local=True)["fields"]}
+    # schema COMPLETO (local=True) per questo modello: anche le opzioni locali vanno validate per vietarle con 403
+    # dalla rete; le chiavi note della CLI non applicabili a questo specifico modello (es. effort su orchestrator)
+    # con valore vuoto/default si ignorano, mentre valori attivi non ammessi danno 400.
+    schema = {f["key"]: f for f in param_schema_for(tool_id, local=True, model=model, catalog=catalog)["fields"]}
     safe_local = {"skip_permissions": False, "tools_mode": "none",
                   "permission_mode": "strict" if tool_id == "agy" else "restricted"}
     for key, value in raw.items():
         f = schema.get(key)
         if f is None:
-            raise ParamsError(f"Parametro sconosciuto per {tool_id}: «{str(key)[:40]}».")
+            if key == "effort" and value in (None, "", "default"):
+                continue
+            raise ParamsError(f"Parametro non supportato per {tool_id}"
+                              + (f" ({model})" if model else "") + f": «{str(key)[:40]}».")
         if f.get("local_only") and not local:
             if value == safe_local.get(key) or value is None or value == "":
                 continue
@@ -354,7 +460,8 @@ def validate_params(tool_id, raw, local=False):
         typ = f["type"]
         if typ == "enum":
             if not isinstance(value, str) or value not in f["values"]:
-                raise ParamsError(f"Valore non valido per «{key}»: «{str(value)[:40]}».")
+                raise ParamsError(f"Valore non valido per «{key}»: «{str(value)[:40]}» "
+                                  f"(ammessi: {', '.join(f['values'])}).")
             out[key] = value
         elif typ == "bool":
             if not isinstance(value, bool):
@@ -488,17 +595,18 @@ def profile(tool_id, local=False):
     return (LOCAL_PROFILES if local else PROFILES).get(tool_id)
 
 
-def command_line(tool_id, exe, model=None, local=False, params=None):
+def command_line(tool_id, exe, model=None, local=False, params=None, catalog=None):
     """(profilo, argomenti) dell'esecuzione in streaming; profilo None se la CLI non e' eseguibile. Solo argomenti
-    fissi, il file delle impostazioni di Germano, il modello validato e i parametri validati (whitelist): il testo
-    passa dallo standard input. Con skip_permissions, permessi diversi da «restricted» o strumenti sbloccati (solo
-    in locale) --restricted viene omesso; su agy in locale YOLO passa --mode auto e --dangerously-skip-permissions."""
+    fissi, il file delle impostazioni di Germano, il modello validato e i parametri validati (whitelist) relativi
+    al modello scelto: il testo passa dallo standard input. Con skip_permissions, permessi diversi da «restricted»
+    o strumenti sbloccati (solo in locale) --restricted viene omesso; su agy in locale YOLO passa --mode auto e
+    --dangerously-skip-permissions."""
     prof = profile(tool_id, local)
     if not prof or not prof.get("stream_args") or not valid_model(model):
         return None, []
-    params = validate_params(tool_id, params, local)
     if model == "default":
         model = None
+    params = validate_params(tool_id, params, local, model=model, catalog=catalog)
     args = list(prof["stream_args"])
     allow_tools = False
     if tool_id == "claude-code":
@@ -515,7 +623,7 @@ def command_line(tool_id, exe, model=None, local=False, params=None):
                 args.append("--dangerously-skip-permissions")
             elif mode not in ("restricted", "default"):
                 args += ["--permission-mode", mode]
-        if params.get("effort") not in (None, "", "default"):
+        if params.get("effort") not in (None, "", "default") and _claude_effort_spec(model)[0]:
             args += ["--effort", params["effort"]]
         if params.get("max_turns"):
             args += ["--max-turns", str(params["max_turns"])]
@@ -524,12 +632,13 @@ def command_line(tool_id, exe, model=None, local=False, params=None):
     elif tool_id == "agy":
         allow_tools = agy_allow_tools(params, local)
         if local:
+            skip = bool(params.get("skip_permissions"))
             mode = params.get("permission_mode", "strict")
-            if mode in AGY_PERMISSION_MODES:
-                args += ["--mode", mode]
-            if params.get("skip_permissions"):
+            if skip:
                 args.append("--dangerously-skip-permissions")
-        if params.get("effort") not in (None, "", "default"):
+            elif mode in AGY_PERMISSION_MODES:
+                args += ["--mode", mode]
+        if params.get("effort") not in (None, "", "default") and _agy_effort_spec(model, catalog)[0]:
             args += ["--effort", params["effort"]]
     extra = [prof["settings_flag"], agy_settings_file(allow_tools=allow_tools)] if prof.get("settings_flag") else []
     return prof, [exe] + args + extra + ([prof["model_flag"], model] if model else [])
@@ -617,15 +726,15 @@ def _agy_event(obj, emit, parts, usage, st, allow_tools=False):
 
 
 def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", local=False, cancel=None,
-               timeout=RUN_TIMEOUT, params=None):
+               timeout=RUN_TIMEOUT, params=None, catalog=None):
     """Esegue la CLI in streaming (stream-json) per l'Harness AI. emit(tipo, dato) per ogni evento: "delta" (testo
     della risposta, con le etichette), "thinking", "usage", "cli" (righe della CLI non riconosciute, troncate).
     cancel: oggetto con is_set() e bind_process(proc) (glass.Run). params: parametri validati (validate_params).
     Restituisce {"answer", "seconds", "usage"}; solleva HarnessError (o HarnessInterrupted se l'utente interrompe)."""
     if cancel is not None and cancel.is_set():
         raise HarnessInterrupted()
-    eff_params = validate_params(tool_id, params, local)
-    prof, args = command_line(tool_id, exe, model, local, eff_params)
+    eff_params = validate_params(tool_id, params, local, model=model, catalog=catalog)
+    prof, args = command_line(tool_id, exe, model, local, eff_params, catalog=catalog)
     if not prof:
         raise HarnessError(f"{tool_id} non e' tra le CLI che Germano sa eseguire nell'Harness.")
     allow_tools = agy_allow_tools(eff_params, local) if tool_id == "agy" else False
@@ -775,7 +884,7 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                                      f"disponibile): nessun dato e' uscito. Dettaglio: {detail}")
             if re.search(r"unknown option|--include-partial-messages|--restricted|stream-json", detail, re.I):
                 raise HarnessError(f"La versione di {tool_id} installata non supporta l'esecuzione in streaming "
-                                   f"richiesta da Germano 0.98: aggiornala (es. «claude update»). Dettaglio: {detail}")
+                                   f"richiesta da Germano 0.99: aggiornala (es. «claude update»). Dettaglio: {detail}")
             raise HarnessError(f"{tool_id} ha terminato con errore (codice {proc.returncode}): {detail}")
         return {"answer": _clean(final if final is not None else text, MAX_ANSWER), "seconds": seconds,
                 "usage": usage}
