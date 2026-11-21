@@ -1,11 +1,11 @@
-# Germano AI 0.97 — Suite completa per Linux
+# Germano AI 0.98 — Suite completa per Linux
 
 ## Installazione
-Scarica **`germano-0.97.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-0.98.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure da terminale:
 
 ```bash
-sudo apt install ./germano-0.97.deb
+sudo apt install ./germano-0.98.deb
 ```
 
 Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, gli 8 modelli IA,
@@ -36,6 +36,12 @@ automatica, 8182/udp solo dalla rete locale.
 
 Il pacchetto `.deb` non apre Germano alla fine dell'installazione: apt e il Centro app installano come amministratore,
 fuori dalla sessione grafica dell'utente.
+
+## Novità della 0.98: selettore AI pulito e tendina completa dei modelli
+Aprendo il menu modelli vedi subito **solo le AI rilevate e pronte all'uso**; tutti gli altri servizi sono
+raccolti sotto la freccina espandibile **› Altri modelli e servizi** (chiusa di default, si apre al clic o con la
+ricerca). La tendina `<select>` del modello elenca sempre **tutte** le opzioni con nome leggibile e ID (es. tutti i
+modelli di Antigravity CLI), più *Predefinito (auto)* e *Altro modello…*.
 
 ## Novità della 0.97: sforzo di ragionamento per Qwen e per tutti i modelli
 Nel selettore **Parametri** lo **Sforzo di ragionamento** (`reasoning_effort`: `none`, `low`, `medium`, `high`,

@@ -1,4 +1,4 @@
-/* Germano AI 0.97 - Harness AI e Glass Window.
+/* Germano AI 0.98 - Harness AI e Glass Window.
    Componente condiviso dalla Dashboard (index.html), dal Remote Control (/remote) e dal pannello di Germano Client:
    stessa interfaccia ovunque, stesse rotte del server (/api/harness/v2/*), che applica le regole di chi chiede
    (questo computer o un dispositivo della rete).
@@ -67,6 +67,7 @@
         gLocal: ['Modelli locali (rilevati in automatico)', 'Local models (detected automatically)'],
         gLocalRemote: ['Modelli locali del server', 'Server local models'], gCloud: ['Servizi via API (filtrati da Germano)', 'API services (filtered by Germano)'],
         gOther: ['Non utilizzabili per Chatbot e Agenti', 'Not usable for Chatbot & Agents'],
+        gMoreCollapsed: ['Altri modelli e servizi', 'Other models & services'],
         redetect: ['Rileva di nuovo', 'Detect again'], autoDetect: ['Rilevamento automatico ogni 12 s', 'Automatic detection every 12 s'],
         keyNeeded: ['serve la chiave API', 'API key needed'], enterKey: ['Chiave', 'Key'],
         keyServer: ['chiave di questo computer', 'this computer\'s key'], keyServerRemote: ['chiave condivisa dal server', 'key shared by the server'],
@@ -77,6 +78,7 @@
         keyNote: ['La chiave non viene salvata dal server: viaggia solo con le tue richieste e nella Glass Window compare oscurata.', 'The key is not saved by the server: it travels only with your requests and is masked in the Glass Window.'],
         model: ['Modello', 'Model'], modelPh: ['nome del modello (es. quello suggerito)', 'model name (e.g. the suggested one)'],
         modelOptional: ['Modello (facoltativo, es. sonnet)', 'Model (optional, e.g. sonnet)'], listModels: ['Elenca', 'List'],
+        modelAuto: ['Predefinito (auto)', 'Default (auto)'], modelCustom: ['Altro modello (scrivi nome)…', 'Custom model (type name)…'],
         // selettore dei parametri (turno 31): etichette e note dei campi arrivano dallo schema del server (IT/EN)
         params: ['Parametri', 'Parameters'],
         paramsTitle: ['Parametri del modello e della CLI (si adattano alla destinazione scelta)', 'Model and CLI parameters (they adapt to the chosen destination)'],
@@ -742,8 +744,10 @@
                 case 'params-model': {
                     const cur = this.currentTarget();
                     if (cur) {
+                        this.customModelFor = null;
                         this.setModel(cur, t.dataset.model === 'default' ? '' : t.dataset.model);
                         this.renderPickerButton();
+                        this.renderPickerDetail();
                         this.renderParamsButton();
                         this.renderParamsBody();
                     }
@@ -1077,7 +1081,7 @@
                 const prev = this.targets;
                 this.meta = data;
                 this.targets = data.targets || [];
-                const sig = JSON.stringify(this.targets.map(t => [t.id, t.enabled, t.key, t.reason]));
+                const sig = JSON.stringify(this.targets.map(t => [t.id, t.enabled, t.key, t.reason, (t.models || []).length]));
                 if (force || sig !== this.targetSig) {
                     const before = new Set((prev || []).filter(t => this.usable(t)).map(t => t.id));
                     this.targetSig = sig;
@@ -1086,7 +1090,9 @@
                         if (fresh.length) this.toast((this.lang === 'en' ? 'Detected automatically: ' : 'Rilevata in automatico: ') + fresh.slice(0, 3).map(t => t.name).join(', '), 'success');
                     }
                     this.ensureSelection(Boolean(prev));
+                    const editingPicker = !this.$pickerPop.hidden && this.$pickerDetail.contains(document.activeElement);
                     if (this.$pickerPop.hidden || force) this.renderPicker();
+                    else if (!editingPicker) this.renderPickerDetail();
                 }
                 if (force) this.toast(this.lang === 'en' ? 'AI detection updated.' : 'Rilevamento delle AI aggiornato.', 'info');
                 this.renderShield();
@@ -1182,6 +1188,7 @@
             this.$pickerPop.hidden = false;
             this.$pickerBtn.setAttribute('aria-expanded', 'true');
             this.$pickerSearch.value = '';
+            this.pickerExpanded = false;
             this.renderPicker();
             this.clampPop(this.$pickerPop);
             this.refreshTargets(false);
@@ -1192,39 +1199,117 @@
             this.$pickerBtn.setAttribute('aria-expanded', 'false');
             this.renderPickerButton();
         }
+        modelsListFor(t) {
+            if (!t) return [];
+            return Array.from(new Set([...(t.models || []), ...((this.fetchedModels || {})[t.service] || [])]))
+                .filter(m => m && m !== 'default');
+        }
+        modelControlHtml(t, prefix, showPills) {
+            const models = this.modelsListFor(t);
+            const cur = this.modelFor(t);
+            const labels = t.model_labels || {};
+            const isCli = t.kind === 'cli';
+            const inList = !cur || models.includes(cur);
+            const customOpen = Boolean((cur && !inList) || this.customModelFor === `${prefix}:${t.id}`);
+            let html = '';
+            if (showPills && models.length > 0 && models.length <= 8) {
+                const pills = isCli ? ['default', ...models] : models;
+                html += `<div class="hx-params-models">${pills.map(m => `<button type="button" class="hx-params-model${(m === cur || (m === 'default' && !cur)) ? ' is-active' : ''}" data-act="params-model" data-model="${esc(m)}">${esc(m === 'default' ? this.T('modelAuto') : m)}</button>`).join('')}</div>`;
+            }
+            if (models.length) {
+                const opts = [];
+                if (isCli) opts.push(`<option value=""${(!cur && !customOpen) ? ' selected' : ''}>${esc(this.T('modelAuto'))}</option>`);
+                for (const m of models) {
+                    const txt = labels[m] ? `${labels[m]} — ${m}` : m;
+                    opts.push(`<option value="${esc(m)}"${(cur === m && !customOpen) ? ' selected' : ''}>${esc(txt)}</option>`);
+                }
+                opts.push(`<option value="__custom__"${customOpen ? ' selected' : ''}>${esc(this.T('modelCustom'))}</option>`);
+                html += `<span class="hx-row"><select data-${prefix}-select>${opts.join('')}</select>` +
+                    `${t.kind === 'cloud' ? `<button type="button" class="hx-mini" data-act="list-models" data-service="${esc(t.service)}">${esc(this.T('listModels'))}</button>` : ''}</span>`;
+                if (customOpen) {
+                    html += `<span class="hx-row"><input type="text" data-${prefix}-input value="${esc(cur)}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off"></span>`;
+                }
+            } else {
+                html += `<span class="hx-row"><input type="text" data-${prefix}-input value="${esc(cur)}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off">` +
+                    `${t.kind === 'cloud' ? `<button type="button" class="hx-mini" data-act="list-models" data-service="${esc(t.service)}">${esc(this.T('listModels'))}</button>` : ''}</span>`;
+            }
+            return html;
+        }
+        bindModelControl(container, t, prefix, rerender) {
+            const sel = container.querySelector(`[data-${prefix}-select]`);
+            if (sel) sel.addEventListener('change', () => {
+                if (sel.value === '__custom__') {
+                    this.customModelFor = `${prefix}:${t.id}`;
+                    rerender();
+                    const inp = container.querySelector(`[data-${prefix}-input]`);
+                    if (inp) inp.focus();
+                    return;
+                }
+                if (this.customModelFor === `${prefix}:${t.id}`) this.customModelFor = null;
+                this.setModel(t, sel.value);
+                this.renderPickerButton();
+                this.renderParamsButton();
+                if (prefix === 'model' && !this.$paramsPop.hidden) this.renderParamsBody();
+                if (prefix === 'params-model') { this.renderPickerDetail(); rerender(); }
+            });
+            const inp = container.querySelector(`[data-${prefix}-input]`);
+            if (inp) inp.addEventListener('change', () => {
+                const v = inp.value.trim();
+                this.setModel(t, v === 'default' ? '' : v);
+                if (!v || this.modelsListFor(t).includes(v)) this.customModelFor = null;
+                this.renderPickerButton();
+                this.renderParamsButton();
+                if (prefix === 'model' && !this.$paramsPop.hidden) this.renderParamsBody();
+                if (prefix === 'params-model') { this.renderPickerDetail(); rerender(); }
+            });
+        }
         renderPicker() {
             this.renderPickerButton();
             if (this.$pickerPop.hidden) return;
             const q = (this.$pickerSearch.value || '').trim().toLowerCase();
             const all = this.orderedTargets().filter(t => !q || `${t.name} ${t.vendor || ''} ${t.model || ''} ${t.service || ''}`.toLowerCase().includes(q));
-            const groups = [['protect', 'gProtect'], ['local', this.remote ? 'gLocalRemote' : 'gLocal'], ['cli', this.remote ? 'gCliRemote' : 'gCli'], ['cloud', 'gCloud']];
+            const groups = [['local', this.remote ? 'gLocalRemote' : 'gLocal'], ['cli', this.remote ? 'gCliRemote' : 'gCli'],
+                ['cloud', 'gCloud'], ['protect', 'gProtect']];
             const cur = this.selectedId;
-            let html = '';
             const row = t => {
                 const ok = this.usable(t);
                 const sub = t.kind === 'cloud' ? (t.key === 'server' ? this.T(this.remote ? 'keyServerRemote' : 'keyServer') : (this.key(t.service) ? this.T('keyDevice') : this.T('keyNeeded')))
                     : t.kind === 'cli' ? (t.version ? `v${t.version}` : (t.vendor || '')) : t.kind === 'local' ? (t.vendor || '') : (t.vendor || '');
                 const keyBtn = t.kind === 'cloud' && t.key !== 'server' ? `<span class="hx-pick-key" role="button" data-key-for="${esc(t.service)}">${esc(this.T('enterKey'))}</span>` : '';
-                // Assistente di configurazione (solo su questo computer): «Installa CLI», «Avvia», «Recupera chiave»…
                 const assistBtn = !this.remote && t.assist && !(t.kind === 'cloud' && ok && !t.assist_hint)
                     ? `<span class="hx-pick-assist" role="button" data-assist-for="${esc(t.assist)}" title="${esc(t.assist_hint || this.T('assistKicker'))}">${esc(t.assist_label || this.T('assistOpen'))}</span>` : '';
                 const tag = ok ? (t.kind === 'local' ? `<span class="hx-pick-tag ok">${this.remote ? 'LAN' : 'locale'}</span>` : '') : `<span class="hx-pick-tag">${esc(t.assist_hint || this.reason(t))}</span>`;
                 return `<li class="hx-pick" role="option" data-pick="${esc(t.id)}" aria-selected="${t.id === cur}" aria-disabled="${!ok}" tabindex="-1">
-                    <span class="hx-dot ${ok ? 'ok' : ''}"></span><span class="hx-pick-main"><span class="hx-pick-name">${esc(t.kind === 'protect' ? t.name : t.name)}</span>
+                    <span class="hx-dot ${ok ? 'ok' : ''}"></span><span class="hx-pick-main"><span class="hx-pick-name">${esc(t.name)}</span>
                     <span class="hx-pick-sub">${esc(sub)}</span></span>${tag}${keyBtn}${assistBtn}</li>`;
             };
-            groups.forEach(([kind, label]) => {
-                const items = all.filter(t => t.kind === kind);
-                if (!items.length) return;
-                html += `<li class="hx-pick-group" role="presentation"><span>${esc(this.T(label))}</span><span>${items.filter(t => this.usable(t)).length}/${items.length}</span></li>`;
-                html += items.map(row).join('');
-            });
-            const others = all.filter(t => t.kind === 'other');
-            if (others.length) {
-                html += `<li class="hx-pick-more" role="presentation"><details${q ? ' open' : ''}><summary>${esc(this.T('gOther'))} (${others.length})</summary>
-                    <ul class="hx-picker-list" style="padding:0">${others.map(row).join('')}</ul></details></li>`;
+            const renderGroups = list => {
+                let out = '';
+                groups.forEach(([kind, label]) => {
+                    const items = list.filter(t => t.kind === kind);
+                    if (!items.length) return;
+                    out += `<li class="hx-pick-group" role="presentation"><span>${esc(this.T(label))}</span><span>${items.length}</span></li>`;
+                    out += items.map(row).join('');
+                });
+                const others = list.filter(t => t.kind === 'other');
+                if (others.length) {
+                    out += `<li class="hx-pick-group" role="presentation"><span>${esc(this.T('gOther'))}</span><span>${others.length}</span></li>`;
+                    out += others.map(row).join('');
+                }
+                return out;
+            };
+            const ready = all.filter(t => this.usable(t));
+            const rest = all.filter(t => !this.usable(t));
+            let html = renderGroups(ready);
+            if (rest.length) {
+                const open = Boolean(q || this.pickerExpanded);
+                html += `<li class="hx-pick-more" role="presentation"><details class="hx-pick-expand" data-picker-expand${open ? ' open' : ''}>` +
+                    `<summary><span class="hx-pick-chev">${svg('chevron')}</span><span>${esc(this.T('gMoreCollapsed'))}</span><span class="hx-pick-count">${rest.length}</span></summary>` +
+                    `<ul class="hx-picker-list">${renderGroups(rest)}</ul></details></li>`;
             }
             this.$pickerList.innerHTML = html || `<li class="hx-pick-group">${esc(this.T('noMatch'))}</li>`;
+            const det = this.$pickerList.querySelector('[data-picker-expand]');
+            if (det) det.addEventListener('toggle', () => { if (!q) this.pickerExpanded = det.open; });
             this.renderPickerDetail();
         }
         renderPickerDetail(keyFor) {
@@ -1232,11 +1317,8 @@
             const service = keyFor || (t && t.kind === 'cloud' ? t.service : null);
             let html = '';
             if (t && (t.kind === 'cloud' || t.kind === 'cli' || (t.kind === 'local' && !t.model)) && !keyFor) {
-                const models = Array.from(new Set([...(t.models || []), ...(this.fetchedModels?.[t.service] || [])]));
-                html += `<label class="hx-field"><span>${esc(this.T(t.kind === 'cli' ? 'modelOptional' : 'model'))}</span>
-                    <span class="hx-row"><input type="text" data-model-input list="hx-models-${esc(t.id)}" value="${esc(this.modelFor(t))}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off">
-                    ${t.kind === 'cloud' ? `<button type="button" class="hx-mini" data-act="list-models" data-service="${esc(t.service)}">${esc(this.T('listModels'))}</button>` : ''}</span>
-                    <datalist id="hx-models-${esc(t.id)}">${models.map(m => `<option value="${esc(m)}">`).join('')}</datalist></label>`;
+                html += `<label class="hx-field"><span>${esc(this.T(t.kind === 'cli' ? 'modelOptional' : 'model'))}</span>` +
+                    this.modelControlHtml(t, 'model', false) + `</label>`;
             }
             if (service) {
                 const svc = (this.targets || []).find(x => x.kind === 'cloud' && x.service === service);
@@ -1254,12 +1336,7 @@
                 }
             }
             this.$pickerDetail.innerHTML = html;
-            const mi = this.$pickerDetail.querySelector('[data-model-input]');
-            if (mi && t) mi.addEventListener('change', () => {
-                this.setModel(t, mi.value.trim());
-                this.renderPickerButton();
-                if (!this.$paramsPop.hidden) this.renderParamsBody();
-            });
+            if (t && !keyFor) this.bindModelControl(this.$pickerDetail, t, 'model', () => this.renderPickerDetail());
             const ki = this.$pickerDetail.querySelector('[data-key-input]');
             if (ki) {
                 ki.addEventListener('focus', () => { if (ki.value === '••••••••') ki.value = ''; });
@@ -1458,15 +1535,8 @@
             const hasModel = t.kind === 'cli' || t.kind === 'cloud' || (t.kind === 'local' && !t.model);
             let html = '';
             if (hasModel) {
-                const models = Array.from(new Set([...(t.models || []), ...((this.fetchedModels || {})[t.service] || [])]));
-                const cur = this.modelFor(t);
-                html += `<div class="hx-params-sec"><div class="hx-params-k">${esc(this.T(t.kind === 'cli' ? 'modelOptional' : 'model'))}</div>`;
-                if (models.length) {
-                    html += `<div class="hx-params-models">${models.map(m => `<button type="button" class="hx-params-model${(m === cur || (m === 'default' && !cur)) ? ' is-active' : ''}" data-act="params-model" data-model="${esc(m)}">${esc(m)}</button>`).join('')}</div>`;
-                }
-                html += `<span class="hx-row"><input type="text" data-params-model-input list="hx-pmodels-${esc(t.id)}" value="${esc(cur)}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off">
-                    ${t.kind === 'cloud' ? `<button type="button" class="hx-mini" data-act="list-models" data-service="${esc(t.service)}">${esc(this.T('listModels'))}</button>` : ''}</span>
-                    <datalist id="hx-pmodels-${esc(t.id)}">${models.map(m => `<option value="${esc(m)}">`).join('')}</datalist></div>`;
+                html += `<div class="hx-params-sec"><div class="hx-params-k">${esc(this.T(t.kind === 'cli' ? 'modelOptional' : 'model'))}</div>` +
+                    this.modelControlHtml(t, 'params-model', true) + `</div>`;
             }
             for (const f of fields) {
                 if (f.show_if && Object.entries(f.show_if).some(([k, v]) => p[k] !== v)) continue;
@@ -1490,13 +1560,7 @@
             this.$paramsBody.innerHTML = html;
             this.$paramsTarget.textContent = t.name;
             this.$paramsBody.querySelectorAll('[data-param]').forEach(el => el.addEventListener('change', () => this.onParamInput(t, el)));
-            const mi = this.$paramsBody.querySelector('[data-params-model-input]');
-            if (mi) mi.addEventListener('change', () => {
-                this.setModel(t, mi.value.trim() === 'default' ? '' : mi.value.trim());
-                this.renderPickerButton();
-                this.renderParamsButton();
-                this.renderParamsBody();
-            });
+            if (hasModel) this.bindModelControl(this.$paramsBody, t, 'params-model', () => this.renderParamsBody());
         }
         onParamInput(t, el) {
             const key = el.dataset.param;

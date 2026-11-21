@@ -2,7 +2,7 @@
 
  *Read this in other languages: [English](README.en.md)*
 
-**Versione 0.97** (20 novembre 2026): sforzo di ragionamento (`reasoning_effort`: `none`, `low`, `medium`, `high`, `xhigh`, `max`) esteso a **Qwen** e a **tutti i modelli** cloud e locali (incluso `output_config.effort` per Anthropic) nel selettore parametri; pannello allineato al Germano Server 0.97. Novità nel [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.md) della suite.
+**Versione 0.98** (21 novembre 2026): selettore AI pulito all'apertura (solo modelli pronti + freccina espandibile per gli altri) e tendina completa `<select>` con tutte le opzioni di ogni modello, oltre ai predefiniti `max`/`xhigh`; pannello allineato al Germano Server 0.98. Novità nel [CHANGELOG](https://github.com/germano-ai/germano-ai-standalone/blob/main/windows/germano/CHANGELOG.md) della suite.
 
 **Germano AI Client** è l'applicazione client leggera (circa 22 MB su Windows) progettata per connettere qualsiasi postazione di lavoro (notebook, PC standard) a un **Germano Server** attivo sulla rete locale (LAN).
 
@@ -59,13 +59,13 @@ Non richiede modelli di intelligenza artificiale pesanti né GPU dedicate in loc
 Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](https://download.germano.ai/)** e includono il proprio Python con tutte le librerie: l'installazione non scarica nulla da Internet. Il client non crea cartelle di lavoro in Documenti: le sue impostazioni (indirizzo del server, sessione, opzioni) restano nella cartella tecnica dell'utente.
 
 ### Windows (10 / 11 e Windows Server 2019 o successivo, a 64 bit, anche in macchina virtuale)
-1. **Download:** scarica `germano-client-0.97.exe` (circa 22 MB).
+1. **Download:** scarica `germano-client-0.98.exe` (circa 22 MB).
 2. **Installazione:** doppio clic sull'installer. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client` **senza diritti di amministratore (nessuna richiesta UAC)**, con i collegamenti sul Desktop e nel menu Start e la voce in Impostazioni > App. Le impostazioni del client sono in `%LOCALAPPDATA%\Germano AI Client`.
 3. **Avvio:** al termine dell'installazione il client si apre da solo; poi dal collegamento **Germano AI Client** sul Desktop o nel menu Start (finestra dedicata, senza terminale; nome diverso da quello della suite, così le due edizioni possono stare sullo stesso computer).
 4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI Client.
 
 ### macOS (Apple Silicon e Intel, macOS 11 o successivo)
-1. **Download:** scarica `germano-client-0.97.pkg`.
+1. **Download:** scarica `germano-client-0.98.pkg`.
 2. **Installazione:** doppio clic sul pacchetto e, alla scelta della destinazione, **Installa solo per me**: l'app va in `~/Applications/Germano AI Client/Germano.app` **senza password di amministratore** (con «Installa per tutti gli utenti» va in `/Applications/Germano AI Client` e macOS chiede la password). Le impostazioni sono in `~/Library/Application Support/Germano AI Client`.
 3. **Avvio:** apri **Germano** da Launchpad o dalla cartella Applicazioni > Germano AI Client.
 4. **Disinstallazione:** trascina la cartella `Germano AI Client` nel Cestino.
@@ -73,12 +73,12 @@ Gli installer ufficiali del Client sono singoli file su **[download.germano.ai](
 Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema > Privacy e sicurezza** e scegli **Apri comunque**.
 
 ### Linux (Ubuntu / Debian a 64 bit)
-1. **Download:** scarica `germano-client-0.97.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva.
-2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-client-0.97.deb` (password di amministratore, come per ogni pacchetto di sistema). Il programma va in `/opt/germano-client`, con la voce **Germano AI Client** nel menu delle applicazioni e il comando `germano-ai-client`; le impostazioni sono in `~/.local/state/germano-client`.
+1. **Download:** scarica `germano-client-0.98.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva.
+2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-client-0.98.deb` (password di amministratore, come per ogni pacchetto di sistema). Il programma va in `/opt/germano-client`, con la voce **Germano AI Client** nel menu delle applicazioni e il comando `germano-ai-client`; le impostazioni sono in `~/.local/state/germano-client`.
 3. **Avvio:** dal menu delle applicazioni.
 4. **Disinstallazione:** `sudo apt remove germano-ai-client`.
 
-**Requisiti:** un Germano Server in modalità Server sulla stessa rete locale, versione 0.70 o successiva (consigliata la 0.97: con un server 0.60 resta utilizzabile solo la riga di comando).
+**Requisiti:** un Germano Server in modalità Server sulla stessa rete locale, versione 0.70 o successiva (consigliata la 0.98: con un server 0.60 resta utilizzabile solo la riga di comando).
 
 ---
 

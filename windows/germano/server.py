@@ -2498,15 +2498,21 @@ def _harness_targets(local, sharing, lang="it"):
         elif not local and prof.get("needs") and not os.environ.get(prof["needs"]):
             why = L(f"il server non ha la chiave {prof['needs']}", f"the server has no {prof['needs']} key")
         models = list(harness.CLAUDE_MODELS) if tid == "claude-code" else []
+        model_labels = None
         if tid == "agy" and local and t.get("path"):
             try:    # modelli rilevati da «agy models» (cache dell'assistente: mai attese qui)
-                models = [m["id"] for m in (gassist.agy_status(t["path"], refresh_if_stale=False).get("models") or [])]
+                agy_ms = gassist.agy_status(t["path"], refresh_if_stale=False).get("models") or []
+                models = [m["id"] for m in agy_ms]
+                model_labels = {m["id"]: m["name"] for m in agy_ms if m.get("name") and m["name"] != m["id"]}
             except Exception:
                 models = []
-        out.append({"id": f"cli:{tid}", "kind": "cli", "tool": tid, "name": t.get("name") or spec.get("name") or tid,
+        item_cli = {"id": f"cli:{tid}", "kind": "cli", "tool": tid, "name": t.get("name") or spec.get("name") or tid,
                     "vendor": spec.get("vendor"), "version": t.get("version"), "enabled": why is None, "reason": why,
                     "models": models, "model_optional": True, "param_schema": harness.param_schema_for(tid, local),
-                    "where": L("questo computer", "this computer") if local else L("server", "server")})
+                    "where": L("questo computer", "this computer") if local else L("server", "server")}
+        if model_labels:
+            item_cli["model_labels"] = model_labels
+        out.append(item_cli)
     ports = _listening_ports(det)
     installed = _local_models(det)
     for sid, spec in gproviders.SERVICES.items():

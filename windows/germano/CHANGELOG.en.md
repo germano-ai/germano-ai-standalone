@@ -6,6 +6,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [0.98] - 2026-11-21
+
+### Improved
+- **Clean model picker on open (`static/harness.js`, `static/harness.css`, `remote/harness.js`/`.css`):** opening the AI picker at the bottom right now shows **only detected, ready-to-use models** first (running local models, detected CLIs such as Antigravity CLI and Claude Code, already configured cloud services and *Protection only*). All other unconfigured or stopped services are grouped under a collapsible **› Other models & services** row, closed by default and expandable by clicking the arrow (or automatically when typing in the search box).
+- **Full model dropdown (`<select>`) with human-readable labels (`germano/ai_assist.py`, `server.py`, `static/harness.js`):** replaced `<input list>` (`<datalist>`) with a native `<select>` in both the model picker and the *Parameters* popover, so clicking the dropdown **always shows every available option** regardless of the currently selected model (e.g. all 27 Antigravity CLI models with readable names and IDs, plus *Default (auto)* and *Custom model (type name)…*).
+- **Reactive model list refresh:** periodic detection refreshes the dropdown as soon as `agy models` finishes loading in the background without disrupting active edits.
+
+### Verified
+- Edge headless UI verification of the redesigned picker (collapsed ready-only list, arrow expansion, full 29-option dropdown on Antigravity CLI with `gemini-3.8-flash-medium` active, 0 console errors, 0 overflow at 1280 px and 390 px): **7/7** passed; backend effort+YOLO suite **85/85**; 6-tree coherence **4/4**, 164 `.py`, IT/EN guide parity **15/15** chapters.
+
 ## [0.97] - 2026-11-20
 
 ### Added

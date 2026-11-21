@@ -5,6 +5,16 @@
 Tutte le modifiche a questo progetto saranno documentate in questo file.
 Il formato è basato su [Keep a Changelog](https://keepachangelog.com/it-IT/1.0.0/).
 
+## [0.98] - 2026-11-21
+
+### Migliorato
+- **Menu modelli pulito all'apertura (`static/harness.js`, `static/harness.css`, `remote/harness.js`/`.css`):** aprendo il selettore delle AI in basso a destra vengono mostrati immediatamente **solo i modelli rilevati e pronti all'uso** (modelli locali in esecuzione, CLI rilevate come Antigravity CLI e Claude Code, servizi cloud già configurati e *Solo protezione*). Tutti gli altri servizi non avviati o senza chiave API sono raccolti nella riga collassabile **› Altri modelli e servizi**, chiusa di default e apribile con un clic sulla freccina (o automaticamente durante la ricerca).
+- **Tendina completa dei modelli (`<select>`) con etichette leggibili (`germano/ai_assist.py`, `server.py`, `static/harness.js`):** sostituito l'`<input list>` (`<datalist>`) con un vero `<select>` sia nel selettore AI sia nel popover *Parametri*, così cliccando la tendina compaiono **sempre tutte le opzioni disponibili** indipendentemente dal modello già selezionato (ad es. tutti i 27 modelli di Antigravity CLI con nome leggibile e ID, come *Gemini 4 Neon (XHigh)*, *Claude Opus 5.5 (High)*, *Gemini 3.8 Flash (Medium)*, più *Predefinito (auto)* e *Altro modello (scrivi nome)…* per nomi personalizzati).
+- **Aggiornamento reattivo elenco modelli:** il rilevamento periodico aggiorna automaticamente la tendina appena i modelli di `agy models` terminano il caricamento in background, senza chiudere i campi in modifica.
+
+### Verificato
+- Collaudo UI in Edge headless sul selettore modelli (menu collassato solo rilevati, espansione via freccina, tendina completa a 29 opzioni su Antigravity CLI con `gemini-3.8-flash-medium` già attivo, 0 errori console, 0 overflow a 1280 px e 390 px): **7/7** superati; suite backend effort+YOLO **85/85**; coerenza 6 alberi **4/4**, 164 `.py`, parità guida IT/EN **15/15** capitoli.
+
 ## [0.97] - 2026-11-20
 
 ### Aggiunto

@@ -264,7 +264,7 @@ def get_version():
                 return v
     except Exception:
         pass
-    return "0.97"
+    return "0.98"
 
 
 def ensure_dirs():

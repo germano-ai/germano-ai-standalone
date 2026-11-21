@@ -1,4 +1,4 @@
-# Germano AI 0.97 — Client leggero per Linux
+# Germano AI 0.98 — Client leggero per Linux
 
 Pacchetto leggero (**senza modelli IA**) per i PC Linux che si collegano a un **Germano Server** della rete: apre il
 **pannello del client** in una finestra dedicata, lo stesso **Remote Control** che il server offre a qualsiasi browser
@@ -8,14 +8,14 @@ e archivi compressi), impostazioni e guida, più la ricerca del server in rete e
 libero oppure, se il server lo richiede, con utente e password. Con un Germano Server 0.90 o successivo le richieste
 del client passano nella corsia preferenziale del server, davanti ai documenti in coda; con un server 0.91 compaiono
 anche i servizi Qwen 4 Max e GLM 5.3; con un server 0.95 `client mcp` e `client utcp`
-portano su questo PC il Server MCP e il manuale UTCP del server (con il token delle integrazioni); nel pannello 0.97 lo sforzo di ragionamento (`reasoning_effort`: `none`…`xhigh`/`max`) e gli altri parametri (`temperature`, `max_tokens`, `top_p`, `thinking`, `enable_thinking`) sono disponibili per Qwen e per tutti i modelli cloud, locali e CLI.
+portano su questo PC il Server MCP e il manuale UTCP del server (con il token delle integrazioni); nel pannello 0.98 il menu mostra subito solo i modelli pronti (con freccina espandibile per gli altri), la tendina `<select>` mostra tutte le opzioni di ogni AI e lo sforzo di ragionamento (`max`/`xhigh`) è disponibile per Qwen e per tutti i modelli cloud, locali e CLI.
 
 ## Installazione
-Scarica **`germano-client-0.97.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-client-0.98.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure:
 
 ```bash
-sudo apt install ./germano-client-0.97.deb
+sudo apt install ./germano-client-0.98.deb
 ```
 
 Contiene il proprio Python e Qt WebEngine per la finestra, **non dipende da altri pacchetti** e non scarica nulla;

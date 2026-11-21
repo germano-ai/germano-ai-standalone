@@ -1,4 +1,4 @@
-"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-0.97/releases/.
+"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-0.98/releases/.
 
 Per ogni piattaforma: nome del file, dimensione esatta e impronta SHA-256, calcolate DIRETTAMENTE dal file su disco
 in una sola lettura. Le chiavi «windows», «macos», «linux» sono quelle lette dall'updater della suite; le voci
@@ -39,9 +39,9 @@ DOWNLOAD_BASE = "https://download.germano.ai/"
 FILES = {"windows": "windows/germano-{v}.exe", "macos": "macos/germano-{v}.pkg", "linux": "linux/germano-{v}.deb",
          "windows-client": "windows/germano-client-{v}.exe", "macos-client": "macos/germano-client-{v}.pkg",
          "linux-client": "linux/germano-client-{v}.deb"}
-NOTES = ("Germano AI v{v} - Sforzo di ragionamento (reasoning_effort: none..xhigh/max) esteso a Qwen e a tutti i "
-         "modelli cloud, locali e CLI con predefiniti massimi (max/xhigh) e modalita' YOLO predefinita in locale "
-         "per Claude Code e Antigravity CLI (sempre disattivabile e bloccata 403 dalla rete), con step-down HTTP 400")
+NOTES = ("Germano AI v{v} - Selettore AI ridisegnato: all'apertura mostra solo i modelli rilevati e pronti, "
+         "con freccina espandibile per gli altri servizi; tendina completa (<select>) con tutte le opzioni e "
+         "nomi leggibili dei modelli (es. tutti i 27 modelli di Antigravity CLI) + effort massimo e YOLO locale")
 SFX_MAGIC = b"GERMANO.SFX.0001"
 SFX_TRAILER = struct.Struct("<16sQQQQ")
 WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # Windows non avvia eseguibili da 4 GB in su

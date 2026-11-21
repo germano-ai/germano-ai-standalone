@@ -1,7 +1,7 @@
-# Germano AI 0.97 — Suite completa per macOS
+# Germano AI 0.98 — Suite completa per macOS
 
 ## Installazione
-Scarica **`germano-0.97.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
+Scarica **`germano-0.98.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
 **macOS 14 Sonoma** o successivo: PyTorch non è più pubblicato per i Mac Intel, che usano il client leggero) e fai
 doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, gli 8 modelli IA, llama.cpp per il
 Sistema 2 e 7-Zip per gli archivi) e non scarica nulla.
@@ -30,6 +30,12 @@ questo computer filtrate da Germano e la Glass Window, sanitizzazione manuale di
 profilo PA). Di base l'accesso è libero; con la gestione utenti (Impostazioni › Modalità e rete › Accesso dalla rete)
 servono utente e password. Alla prima attivazione macOS può chiedere di consentire le connessioni in entrata a Python:
 rispondi **Consenti**.
+
+## Novità della 0.98: selettore AI pulito e tendina completa dei modelli
+Aprendo il menu modelli vedi subito **solo le AI rilevate e pronte all'uso**; tutti gli altri servizi sono
+raccolti sotto la freccina espandibile **› Altri modelli e servizi** (chiusa di default, si apre al clic o con la
+ricerca). La tendina `<select>` del modello elenca sempre **tutte** le opzioni con nome leggibile e ID (es. tutti i
+modelli di Antigravity CLI), più *Predefinito (auto)* e *Altro modello…*.
 
 ## Novità della 0.97: sforzo di ragionamento per Qwen e per tutti i modelli
 Nel selettore **Parametri** lo **Sforzo di ragionamento** (`reasoning_effort`: `none`, `low`, `medium`, `high`,

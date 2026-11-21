@@ -1,4 +1,4 @@
-/* Germano AI 0.97 - Harness AI e Glass Window (componente condiviso: Dashboard, Remote Control, Germano Client).
+/* Germano AI 0.98 - Harness AI e Glass Window (componente condiviso: Dashboard, Remote Control, Germano Client).
    Tema scuro, nessuna risorsa esterna. Variabili di base condivise anche da style.css e remote.css. */
 :root {
     --bg: #0b0f19;
@@ -570,15 +570,38 @@
 .hx-pick-tag.ok { border-color: rgba(52, 211, 153, 0.35); color: #6ee7b7; }
 .hx-pick-key { border: 1px solid rgba(251, 191, 36, 0.4); background: var(--warn-soft); color: #fde68a; font-size: 11.5px; font-weight: 600; border-radius: 6px; padding: 2px 8px; cursor: pointer; font-style: normal; }
 .hx-pick-key:hover { background: rgba(251, 191, 36, 0.2); }
-.hx-pick-more { padding: 4px 8px 8px; }
-.hx-pick-more summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 6px 2px; }
+.hx-pick-more { padding: 6px 2px 8px; }
+.hx-pick-more summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 6px 8px; }
+.hx-pick-expand > summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 9px;
+    border: 1px dashed var(--line);
+    background: rgba(11, 15, 25, 0.45);
+    color: var(--text-2);
+    font-weight: 600;
+    padding: 8px 10px;
+    user-select: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.hx-pick-expand > summary::-webkit-details-marker { display: none; }
+.hx-pick-expand > summary:hover { background: rgba(56, 189, 248, 0.08); border-color: rgba(56, 189, 248, 0.45); color: var(--text); }
+.hx-pick-expand > summary .hx-pick-chev { display: inline-flex; transform: rotate(-90deg); transition: transform 0.16s var(--ease); color: var(--accent); flex: none; }
+.hx-pick-expand > summary .hx-pick-chev .hx-icon-svg { width: 14px; height: 14px; }
+.hx-pick-expand[open] > summary .hx-pick-chev { transform: rotate(0deg); }
+.hx-pick-expand > summary .hx-pick-count { margin-left: auto; font-size: 11px; color: var(--faint); font-weight: 700; }
+.hx-pick-expand > .hx-picker-list { padding: 4px 0 0; overflow: visible; overflow-x: hidden; }
+.hx-pick-expand .hx-pick { padding: 7px 6px; gap: 7px; }
 .hx-picker-detail { border-top: 1px solid var(--line-soft); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: rgba(11, 15, 25, 0.5); }
 .hx-picker-detail:empty { display: none; }
 .hx-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .hx-field input, .hx-field select { height: 32px; border-radius: 8px; border: 1px solid var(--line); background: rgba(11, 15, 25, 0.7); color: var(--text); padding: 0 9px; font: inherit; font-size: 13px; }
+.hx-field select option { background: #0f172a; color: #f1f5f9; }
 .hx-field input:focus, .hx-field select:focus { outline: none; border-color: var(--accent); }
 .hx-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.hx-row > input { flex: 1; min-width: 120px; }
+.hx-row > input, .hx-row > select { flex: 1; min-width: 120px; max-width: 100%; }
 .hx-picker-foot { padding: 8px 12px; border-top: 1px solid var(--line-soft); display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--faint); }
 .hx-small-note { font-size: 11.5px; color: var(--faint); }
 
