@@ -450,8 +450,28 @@ def rename_retry(src, dst, attempts=20):
             time.sleep(0.25 * min(i + 1, 8))
 
 
+def recover_probe(path):
+    """Rimette a posto la cartella del programma se un controllo precedente (folder_in_use) è stato interrotto a metà
+    - computer spento, processo terminato, file bloccato dall'antivirus oltre i tentativi - lasciandola con il nome
+    di prova «<programma>.verifica»: senza, il programma installato sparirebbe (collegamenti rotti) e la cartella
+    resterebbe sul disco per sempre. Se il programma è al suo posto, un resto con quel nome viene eliminato."""
+    probe = path + ".verifica"
+    if not os.path.isdir(probe):
+        return
+    try:
+        if os.path.exists(path):
+            remove_tree(probe)
+            log(f"eliminata la cartella di prova rimasta da un controllo interrotto: {probe}")
+        else:
+            rename_retry(probe, path, attempts=8)
+            log(f"cartella del programma ripristinata dopo un controllo interrotto: {path}")
+    except OSError as e:
+        log(f"cartella di prova {probe} non ripristinata: {e}")
+
+
 def folder_in_use(path):
     """True se la cartella non si può spostare: un file è aperto (programma in esecuzione) o bloccato."""
+    recover_probe(path)
     if not os.path.isdir(path):
         return False
     probe = path + ".verifica"
@@ -1061,6 +1081,8 @@ class InstallJob:
             f"dati={p['data']} tecnici={p['tech']} file={len(p['files'])} byte={p['total']}"
             + (" [preparazione in background]" if self.stage_only else "")
             + (" [sostituzione con la copia preparata]" if self.use_staged else ""))
+        if not self.stage_only:
+            recover_probe(p["app"])       # programma rimasto con il nome di prova dopo un controllo interrotto
         staged = self.use_staged and not self.stage_only and self.staged_copy_valid()
         if self.close_first and not self.stage_only and not staged:
             self.phase = "closing"

@@ -824,7 +824,11 @@ def process_archive(in_path, out_path, ctx):
                     ctx.report(f"archivio: file {k + 1}" + (f"/{n_items}" if n_items else "") + f" ({_show(base)[:60]})")
                     supported = is_supported(base)
                     if not supported and ctx.anonymize:
-                        guard.chunk(m.size)      # non estratto, ma la sua dimensione conta nei limiti
+                        if not hasattr(reader, "set_guard"):
+                            guard.chunk(m.size)  # non estratto, ma la sua dimensione conta nei limiti
+                        # 7Z e RAR: i dati arrivano in un unico flusso e vanno letti comunque; li conta il lettore
+                        # (iterate) mentre li scarta. Contarli anche qui raddoppiava i byte dei file esclusi: un
+                        # archivio con 2,5 GB di video e pochi documenti veniva rifiutato come «oltre 4 GB».
                         excluded.append((shown, "formato non supportato"))
                         report.append(_entry(where, "escluso", "formato non supportato"))
                         continue

@@ -87,6 +87,11 @@ def process_xls(in_path, out_path, ctx):
             row_units = []
             for c in range(sheet.ncols):
                 v = sheet.cell_value(r, c)
+                if isinstance(v, float) and sheet.cell_type(r, c) == xlrd.XL_CELL_NUMBER \
+                        and v == int(v) and 1e7 <= abs(v) < 1e15:
+                    # numero lungo (8-15 cifre): telefono o partita IVA digitati come numeri; se risulta un dato
+                    # personale la cella diventa testo con l'etichetta (prima i numeri non venivano mai analizzati)
+                    v = str(int(v))
                 if isinstance(v, str) and v.strip():
                     u = Unit(v, sep=" | ")
                     units.append(u)

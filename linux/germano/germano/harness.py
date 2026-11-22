@@ -42,7 +42,8 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 IS_MAC = sys.platform == "darwin"
 MAX_PROMPT = 100_000          # caratteri per richiesta
 MAX_ANSWER = 400_000          # caratteri di risposta restituiti al client
-RUN_TIMEOUT = 300             # secondi per una richiesta
+RUN_TIMEOUT = 300             # secondi: durata totale per i client della rete, silenzio massimo su questo computer
+LOCAL_RUN_MAX = 3600          # durata totale massima di una richiesta di chi usa questo computer
 _SLOTS = threading.BoundedSemaphore(2)   # richieste contemporanee: le CLI sono processi pesanti
 _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}$")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -739,11 +740,17 @@ def _agy_event(obj, emit, parts, usage, st, allow_tools=False):
 
 
 def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", local=False, cancel=None,
-               timeout=RUN_TIMEOUT, params=None, catalog=None):
+               timeout=RUN_TIMEOUT, params=None, catalog=None, total_timeout=None):
     """Esegue la CLI in streaming (stream-json) per l'Harness AI. emit(tipo, dato) per ogni evento: "delta" (testo
     della risposta, con le etichette), "thinking", "usage", "cli" (righe della CLI non riconosciute, troncate).
     cancel: oggetto con is_set() e bind_process(proc) (glass.Run). params: parametri validati (validate_params).
-    Restituisce {"answer", "seconds", "usage"}; solleva HarnessError (o HarnessInterrupted se l'utente interrompe)."""
+    Restituisce {"answer", "seconds", "usage"}; solleva HarnessError (o HarnessInterrupted se l'utente interrompe).
+
+    Tempo massimo. Per i client della rete `timeout` resta la durata TOTALE (le CLI condivise sono risorse del
+    server). Per chi usa questo computer e' il SILENZIO massimo: con lo sforzo massimo e gli strumenti (predefiniti
+    locali) una risposta puo' durare piu' di 300 secondi mentre la CLI sta ancora scrivendo, e prima veniva terminata
+    comunque a meta'. Resta un tetto totale (`total_timeout`, in locale LOCAL_RUN_MAX), oltre alla Glass Window per
+    interrompere in qualsiasi momento. Lo stesso criterio (silenzio, non durata) vale gia' per i servizi via API."""
     if cancel is not None and cancel.is_set():
         raise HarnessInterrupted()
     eff_params = validate_params(tool_id, params, local, model=model, catalog=catalog)
@@ -788,17 +795,26 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                 pass
 
         expired = []
+        total_limit = total_timeout or (max(timeout, LOCAL_RUN_MAX) if local else timeout)
+        last_output = [t0]
+        finished = threading.Event()
 
-        def on_timeout():
-            expired.append(True)
-            _kill_tree(proc)
+        def watchdog():
+            while not finished.wait(0.5):
+                now = time.time()
+                if now - t0 > total_limit:
+                    expired.append("total")
+                elif local and now - last_output[0] > timeout:
+                    expired.append("idle")
+                else:
+                    continue
+                _kill_tree(proc)
+                return
 
         threading.Thread(target=feed, daemon=True).start()
         err_thread = threading.Thread(target=read_err, daemon=True)
         err_thread.start()
-        timer = threading.Timer(timeout, on_timeout)
-        timer.daemon = True
-        timer.start()
+        threading.Thread(target=watchdog, daemon=True, name="germano-harness-timeout").start()
         parts, parts_len, usage, final, is_error, streamed = [], 0, {}, None, False, False
         st = {"blocked": None, "error": None}
         _MAX_LINE_BYTES = 2 * 1024 * 1024
@@ -814,6 +830,7 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                 raw = proc.stdout.readline(_MAX_LINE_BYTES)
                 if not raw:
                     break
+                last_output[0] = time.time()      # la CLI sta scrivendo: il tempo di silenzio riparte
                 line = raw.decode("utf-8", "replace").strip()
                 if not line:
                     continue
@@ -879,7 +896,7 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
                             if k in obj}
                     emit("cli", json.dumps({"system": info}, ensure_ascii=False)[:2000])
         finally:
-            timer.cancel()
+            finished.set()
             try:
                 proc.wait(timeout=15)
             except subprocess.TimeoutExpired:
@@ -906,6 +923,10 @@ def stream_run(tool_id, exe, prompt, port, emit, model=None, scope="harness", lo
         if cancel is not None and cancel.is_set():
             raise HarnessInterrupted()
         if expired:
+            if expired[0] == "idle":
+                raise HarnessError(f"{tool_id} non ha prodotto alcun output per {timeout} s: richiesta interrotta.")
+            if local:
+                raise HarnessError(f"{tool_id} non ha concluso entro {int(total_limit)} s: richiesta interrotta.")
             raise HarnessError(f"{tool_id} non ha risposto entro {timeout} s: richiesta interrotta.")
         if st["blocked"]:
             raise HarnessError(f"Antigravity ha chiesto di usare lo strumento «{st['blocked']}»: Germano ha interrotto "

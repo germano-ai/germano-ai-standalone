@@ -14,6 +14,7 @@ from ..analyzer import Unit
 
 MIN_SIDE = 48
 _ALLOWED_TIFF_COMPRESSION = {"tiff_lzw", "group4", "tiff_adobe_deflate", "raw", "packbits", "jpeg"}
+_RENDER_INFO = {"transparency", "duration", "loop", "disposal", "blend", "background"}
 # Volti, firme, targhe e OCR di un'immagine sono modelli indipendenti (ognuno con il proprio lock nel motore): girano
 # in parallelo (turno 26; prima uno dopo l'altro). Con il motore remoto (modalita' Client) partono insieme le quattro
 # richieste al Germano Server.
@@ -43,7 +44,16 @@ def scan_image(ctx, img_rgb, allow_plates=True, allow_ocr=True):
             tasks.append(("signatures", eng.detect_signatures, Image.fromarray(img_rgb)))
         if allow_plates and s.get("enable_plate_vision", True):
             tasks.append(("plates", eng.detect_plates, Image.fromarray(img_rgb)))
-    if allow_ocr and s.get("enable_ocr", True) and eng.ocr_reader is not None:
+    if allow_ocr and s.get("enable_ocr", True):
+        if getattr(eng, "ocr_reader", None) is None:
+            # Un modello attivo nelle impostazioni non viene mai saltato in silenzio (come Privacy Filter e Italian
+            # NER): senza OCR il testo di una scansione uscirebbe in chiaro senza che nessuno se ne accorga. Prima
+            # l'immagine veniva elaborata lo stesso, solo con volti, firme e targhe.
+            from . import ProcessingError
+            raise ProcessingError(
+                "OCR attivo nelle impostazioni ma non disponibile su questo motore: il testo delle immagini e delle "
+                "scansioni non puo' essere controllato. Reinstalla Germano (o aggiorna il Germano Server che esegue "
+                "il motore) oppure disattiva «OCR» nelle Impostazioni (profilo PD) per proseguire senza.")
         tasks.append(("ocr", eng.ocr, img_rgb))
     out = {"faces": [], "signatures": [], "plates": [], "ocr": None}
     if not PARALLEL_VISION or len(tasks) < 2:
@@ -314,6 +324,11 @@ def _save_frames(frames, dest, fmt, info):
         params["loop"] = info.get("loop", 0)
     elif fmt == "BMP":
         frames = [f.convert("RGB") if f.mode not in ("RGB", "L", "1", "P") else f for f in frames]
+    # Pillow, quando un metadato non viene indicato al salvataggio, lo ripesca da image.info: cosi' il commento dei
+    # JPEG e delle GIF («COM»: autore, descrizione, programma) sopravviveva alla riesportazione nonostante i metadati
+    # dovessero essere rimossi. In image.info restano solo le informazioni di resa (trasparenza, tempi dei fotogrammi).
+    for f in frames:
+        f.info = {k: v for k, v in f.info.items() if k in _RENDER_INFO}
     if len(frames) > 1 and fmt in ("TIFF", "GIF", "WEBP", "PNG"):
         frames[0].save(dest, format=fmt, save_all=True, append_images=frames[1:], **params)
     else:
@@ -337,24 +352,33 @@ def process_image(in_path, out_path, ctx):
 
 
 def _prepare_bytes(data, ctx):
-    """Immagine incorporata: stato della prima fase, oppure None se non c'e' nulla da fare (illeggibile, troppo
-    piccola). Gli errori della visione risalgono a chi chiama."""
+    """Immagine incorporata: stato della prima fase, oppure None se non c'e' nulla da fare (troppo piccola e senza
+    metadati). Gli errori della visione risalgono a chi chiama.
+
+    Un'immagine che non si riesce ad aprire (danneggiata, di un formato diverso da quello dichiarato, oltre il limite
+    di dimensione di Pillow) NON e' «nulla da fare»: non si puo' controllare. Fino alla 1.00 valeva None e il
+    documento la ricopiava cosi' com'era, senza nemmeno un avviso; ora e' un errore, e chi la contiene la sostituisce
+    (immagine bianca) o la toglie."""
     from PIL import Image
+    from . import ProcessingError
     try:
         im = Image.open(io.BytesIO(data))
         im.load()
-    except Exception:
-        return None
+    except Exception as e:
+        raise ProcessingError(f"immagine non leggibile ({type(e).__name__})") from None
     try:
         try:
             has_meta = (
                 bool(im.info.get("exif")) or bool(im.getexif()) or bool(im.info.get("xmp"))
-                or bool(im.info.get("comment"))
+                or bool(im.info.get("comment")) or bool(im.info.get("photoshop"))
                 or any(isinstance(v, str) and v.strip() for k, v in (im.info or {}).items()
                        if k not in ("compression", "dpi", "transparency", "loop", "duration", "gamma"))
+                # segmenti APPn di un JPEG diversi da JFIF/Adobe e dal profilo colore (IPTC, XMP esteso, anteprime)
+                or any(m not in ("APP0", "APP14") and not (m == "APP2" and d[:11] == b"ICC_PROFILE")
+                       for m, d in (getattr(im, "applist", None) or []))
             )
         except Exception:
-            has_meta = False
+            has_meta = True                      # metadati presenti ma illeggibili: l'immagine si riscrive comunque
         if min(im.size) < MIN_SIDE and not has_meta:
             return None
         return {"fmt": im.format, "info": dict(im.info), "has_meta": has_meta,

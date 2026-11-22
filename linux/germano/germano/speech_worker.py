@@ -116,7 +116,18 @@ def main():
                         return None, total / float(SAMPLE_RATE)
         if not chunks:
             return np.zeros(0, dtype=np.float32), 0.0
-        pcm = np.concatenate(chunks).astype(np.float32) / 32768.0
+        # Conversione a float32 senza copie intermedie: «np.concatenate(chunks).astype(np.float32) / 32768.0» teneva
+        # in memoria insieme i blocchi, la loro unione, la copia float32 e il risultato della divisione (12 byte per
+        # campione: circa 2,7 GB per quattro ore di registrazione). Ora al massimo 6 byte per campione, che scendono
+        # a 4 man mano che i blocchi vengono liberati; il risultato e' identico (32768 e' una potenza di due).
+        pcm = np.empty(total, dtype=np.float32)
+        pos = 0
+        for k in range(len(chunks)):
+            part = chunks[k]
+            chunks[k] = None
+            pcm[pos:pos + part.size] = part
+            pos += part.size
+        pcm *= np.float32(1.0 / 32768.0)
         return pcm, len(pcm) / float(SAMPLE_RATE)
 
     def transcribe(req):

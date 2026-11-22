@@ -677,6 +677,7 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
 
     def _post_sync(url, payload, headers, fmt):
         cur = payload
+        detail = ""
         for _ in range(4):
             try:
                 resp = http.post(url, json=cur, headers=headers, timeout=TIMEOUT, stream=True, allow_redirects=False)
@@ -691,7 +692,9 @@ def chat(service_id, model, messages, api_key="", max_tokens=4096, params=None):
                     continue
                 raise ServiceError(f"{spec['name']} ha risposto con errore 400: {_scrub_key(detail[:300], api_key)}")
             return resp
-        return resp
+        # quattro adattamenti e ancora 400: la risposta e' gia' stata letta e chiusa (prima veniva restituita cosi'
+        # e l'errore mostrato all'utente restava senza il motivo)
+        raise ServiceError(f"{spec['name']} ha risposto con errore 400: {_scrub_key(detail[:300], api_key)}")
 
     if spec.get("openai"):
         headers = {"Content-Type": "application/json"}

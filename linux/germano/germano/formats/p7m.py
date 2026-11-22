@@ -110,32 +110,16 @@ def extract_signed_content(raw):
 
 
 def _guess_ext(content):
-    head = content[:2048].lstrip()
-    if head.startswith(b"%PDF"):
-        return ".pdf"
-    if head.startswith(b"{\\rtf"):
-        return ".rtf"
-    if head.startswith(b"<?xml") or head.startswith(b"<"):
-        return ".xml"
-    if content.startswith(b"PK\x03\x04"):
-        import io
-        import zipfile
-        try:
-            names = set(zipfile.ZipFile(io.BytesIO(content)).namelist())
-            if "word/document.xml" in names:
-                return ".docx"
-            if "xl/workbook.xml" in names:
-                return ".xlsx"
-            if "ppt/presentation.xml" in names:
-                return ".pptx"
-            if "content.xml" in names:
-                return ".odt"
-        except Exception:
-            pass
-        return ".zip"
-    if content[:4] == b"\x30\x80" or content[:1] == b"\x30":
-        return ".p7m"
-    return ".txt"
+    """Estensione del documento firmato, dal suo contenuto: «» se e' un binario che non si riconosce. Fino alla 1.00
+    tutto cio' che non era PDF/RTF/XML/ZIP valeva «.txt»: una foto firmata senza estensione interna («foto.p7m») o una
+    busta S/MIME («smime.p7m», un messaggio MIME con gli allegati in Base64) venivano «analizzate» come testo e
+    uscivano identiche, con i dati in chiaro."""
+    from . import sniff_ext
+    return sniff_ext(content) or ""
+
+
+# estensioni «di testo» dichiarate nel nome che non valgono se il contenuto e' riconoscibilmente un altro formato
+_TEXT_DECLARED = (".txt", ".csv", ".md", ".log")
 
 
 def process_p7m(in_path, out_path, ctx):
@@ -150,10 +134,14 @@ def process_p7m(in_path, out_path, ctx):
     base = out_path[:-4] if out_path.lower().endswith(".p7m") else out_path
     guessed = _guess_ext(content)
     declared = os.path.splitext(os.path.basename(base))[1].lower()
-    if not declared:
-        base += guessed
-    elif declared in (".txt", ".csv", ".md", ".log") and guessed in (".pdf", ".docx", ".xlsx", ".pptx", ".odt", ".zip", ".rtf", ".p7m"):
-        base = os.path.splitext(base)[0] + guessed
+    if not declared or declared in _TEXT_DECLARED:
+        if not guessed:
+            raise ProcessingError("Il documento firmato dentro il file .p7m non e' di un tipo riconosciuto: rinomina il "
+                                  "file con l'estensione del documento (es. documento.pdf.p7m) e riprova.")
+        if not declared:
+            base += guessed
+        elif guessed not in (".txt", ".xml", ".html", ".eml"):      # un testo dichiarato resta il testo che e'
+            base = os.path.splitext(base)[0] + guessed
     with ctx.tempdir() as d:
         inner_in = os.path.join(d, os.path.basename(base))
         with open(inner_in, "wb") as f:

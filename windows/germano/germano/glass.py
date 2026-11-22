@@ -109,7 +109,13 @@ def cap_obj(obj, limit=MAX_EVENT_CHARS):
 
 
 def ndjson(event):
-    return (json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    """Un evento come riga NDJSON. Un surrogato isolato nel testo (un'emoji che il fornitore o la CLI spezzano fra due
+    frammenti) non si puo' codificare in UTF-8 e interrompeva l'intero flusso con UnicodeEncodeError: in quel caso
+    la riga usa le sequenze JSON \\uXXXX, valide per ogni lettore, e la pagina ricompone la coppia unendo i frammenti."""
+    try:
+        return (json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    except UnicodeEncodeError:
+        return (json.dumps(event, ensure_ascii=True, separators=(",", ":")) + "\n").encode("ascii")
 
 
 # ------------------------------------------------------------------------------------------------ esecuzioni

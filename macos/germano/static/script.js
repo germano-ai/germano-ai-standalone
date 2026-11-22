@@ -325,9 +325,9 @@ function mountHarness() {
         persistDefault: true,
         canStartEngine: true,
         engine: engineSnapshot,
-        startEngine: async () => { await startEngine(); await pollStatus(); },
+        startEngine: async () => { await startEngine(); await pollStatus(true); },
         engineState: async () => {
-            await pollStatus();
+            await pollStatus(true);
             return { ready: currentStatus === 'running', running: engineActive(), failed: currentStatus === 'error' };
         },
         toast: (msg, type) => showToast(msg, type === 'success' ? 'success' : type),
@@ -544,7 +544,7 @@ async function ensureEngineRunning() {
     showToast(updText('Avvio del motore in corso...', 'Starting the engine...'), 'info');
     try {
         await startEngine();
-        await pollStatus();
+        await pollStatus(true);
         return true;
     } catch (e) {
         return false;
@@ -554,7 +554,7 @@ async function ensureEngineRunning() {
 async function waitForEngineReady(maxSeconds = 300) {
     const start = Date.now();
     while (Date.now() - start < maxSeconds * 1000) {
-        await pollStatus();
+        await pollStatus(true);
         if (currentStatus === 'running') return true;
         if (currentStatus === 'error' || currentStatus === 'stopped') return false;
         await new Promise(r => setTimeout(r, 1500));
@@ -966,58 +966,62 @@ function renderLiveStats(data) {
     }
 }
 
-let pollStatusBusy = false;
-async function pollStatus() {
-    if (pollStatusBusy) return;
-    pollStatusBusy = true;
-    try {
-        let data;
-        try {
-            const r = await fetch('/api/status', { cache: 'no-store' });
-            if (!r.ok) return;
-            data = await r.json();
-            setServerDown(false);
-        } catch (e) {
-            setServerDown(true);
-            return;
-        }
-        if (pageVersion && data.version && data.version !== pageVersion) {
-            location.reload();  // Germano è stato aggiornato: si carica la nuova Dashboard
-            return;
-        }
-        pageVersion = pageVersion || data.version;
-        lastStatus = data;
-        currentStatus = data.status;
-        renderUpdate(data.update);
-        if (data.profile && data.profile !== currentComplianceMode) {
-            currentComplianceMode = data.profile;
-            updatePresetButtons();
-        }
-        if (typeof data.locked === 'boolean' && data.locked !== settingsLocked) {
-            settingsLocked = data.locked;
-            updateProfilePill();
-        }
-        renderEngine(data);
-        if (data.stats) {
-            renderCounts(data.stats);
-            const sig = [data.stats.pending, data.stats.outputs, data.stats.failed, data.stats.processed,
-                (data.progress || {}).current || ''].join('|');
-            if (currentTab === 'sanitize' && (sig !== filesSignature || Date.now() - lastFilesFetch > 10000)) {
-                filesSignature = sig;
-                fetchFiles();
-            }
-        }
-        renderJob(data);
-        if (currentTab === 'sanitize') {
-            renderFileManager();
-            if (!fmPaths) loadFmPaths();
-        }
-        renderSystem(data);
-        renderLiveStats(data);
-        renderModeChip(data);
-    } finally {
-        pollStatusBusy = false;
+let pollStatusRun = null;       // controllo in corso (mai due insieme)
+let pollStatusNext = null;      // un solo controllo successivo in coda, per chi ha appena cambiato lo stato del motore
+function pollStatus(fresh = false) {
+    if (!pollStatusRun) {
+        pollStatusRun = pollStatusOnce().finally(() => { pollStatusRun = null; });
+        return pollStatusRun;
     }
+    if (fresh !== true) return pollStatusRun;
+    if (!pollStatusNext) pollStatusNext = pollStatusRun.catch(() => {}).then(() => { pollStatusNext = null; return pollStatus(); });
+    return pollStatusNext;
+}
+async function pollStatusOnce() {
+    let data;
+    try {
+        const r = await fetch('/api/status', { cache: 'no-store' });
+        if (!r.ok) return;
+        data = await r.json();
+        setServerDown(false);
+    } catch (e) {
+        setServerDown(true);
+        return;
+    }
+    if (pageVersion && data.version && data.version !== pageVersion) {
+        location.reload();  // Germano è stato aggiornato: si carica la nuova Dashboard
+        return;
+    }
+    pageVersion = pageVersion || data.version;
+    lastStatus = data;
+    currentStatus = data.status;
+    renderUpdate(data.update);
+    if (data.profile && data.profile !== currentComplianceMode) {
+        currentComplianceMode = data.profile;
+        updatePresetButtons();
+    }
+    if (typeof data.locked === 'boolean' && data.locked !== settingsLocked) {
+        settingsLocked = data.locked;
+        updateProfilePill();
+    }
+    renderEngine(data);
+    if (data.stats) {
+        renderCounts(data.stats);
+        const sig = [data.stats.pending, data.stats.outputs, data.stats.failed, data.stats.processed,
+            (data.progress || {}).current || ''].join('|');
+        if (currentTab === 'sanitize' && (sig !== filesSignature || Date.now() - lastFilesFetch > 10000)) {
+            filesSignature = sig;
+            fetchFiles();
+        }
+    }
+    renderJob(data);
+    if (currentTab === 'sanitize') {
+        renderFileManager();
+        if (!fmPaths) loadFmPaths();
+    }
+    renderSystem(data);
+    renderLiveStats(data);
+    renderModeChip(data);
 }
 
 // ------------------------------------------------------------------ DOCUMENTI

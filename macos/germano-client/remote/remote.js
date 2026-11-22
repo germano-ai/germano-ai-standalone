@@ -7,7 +7,7 @@
     const CLIENT = Boolean(window.GERMANO_CLIENT);
     const $ = id => document.getElementById(id);
     const MAX_FILES = 12;
-    const K = { lang: 'germano_lang', opts: 'germano_rc_options', map: 'germano_rc_map', keys: 'germano_rc_keys', tab: 'germano_rc_tab' };
+    const K = { lang: 'germano_lang', opts: 'germano_rc_options', map: 'germano_rc_map', keys: 'germano_rc_keys', tab: 'germano_rc_tab', user: 'germano_rc_user' };
     let lang = 'it';
     let info = null;
     let protFiles = [];
@@ -193,6 +193,11 @@
             showLogin();
             return;
         }
+        // altro utente sullo stesso browser (sessione scaduta o revocata, poi nuovo accesso): via i dati del precedente
+        const who = (info.auth.enabled && info.auth.user) || '';
+        const last = load('local', K.user, null);
+        if (last !== null && last !== who) forgetUserData(false);
+        store('local', K.user, who);
         $('rcLogin').hidden = true;
         $('rcApp').hidden = false;
         $('rcTabs').hidden = false;
@@ -300,20 +305,29 @@
         await loadInfo(true);
     }
 
-    async function logout() {
-        await api('/api/auth/logout', { method: 'POST', json: {}, noLoginRedirect: true });
+    // Dati di chi stava usando la pagina: archivio del browser, memoria e schermo. keepConvs: Germano Client conserva
+    // le conversazioni salvate sul proprio computer (e le rimostra), tutto il resto viene tolto.
+    function forgetUserData(keepConvs) {
         restoreMap = {};
         store('session', K.map);
         store('session', K.keys);
         if (!CLIENT) store('local', K.keys);
         const convKey = CLIENT ? 'germano_client_harness_v1' : 'germano_rc_harness_v1';
-        store('session', convKey);
-        if (!CLIENT) store('local', convKey);
-        if (harness) {
-            harness.convs = [];
-            harness.currentId = null;
-            harness.renderAll();
-        }
+        if (!keepConvs) { store('session', convKey); store('local', convKey); }
+        if (harness) harness.reset(keepConvs);
+        protFiles = [];
+        ['rcProtText', 'rcRestoreIn'].forEach(id => { $(id).value = ''; });
+        ['rcProtMeta', 'rcProtText2', 'rcRestoreOut', 'rcRestoreInfo'].forEach(id => { $(id).textContent = ''; });
+        $('rcProtOut').hidden = true;
+        $('rcRestoreOut').hidden = true;
+        $('rcProtFiles').replaceChildren();
+        $('rcFileResults').replaceChildren();
+        applyLang();                           // i testi fissi (es. nota del ripristino dei file) tornano quelli della pagina
+    }
+
+    async function logout() {
+        forgetUserData(CLIENT);                // prima dell'uscita: la richiesta in corso si interrompe con la sessione ancora valida
+        await api('/api/auth/logout', { method: 'POST', json: {}, noLoginRedirect: true });
         await loadInfo(true);
     }
 

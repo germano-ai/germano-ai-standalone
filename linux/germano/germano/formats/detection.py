@@ -82,11 +82,29 @@ def sample_text(path, max_chars=3_000_000, depth=0, audio=None, headers=False, l
     ext = os.path.splitext(path)[1].lower()
     if ext in AUDIO_EXTS:
         return audio(path, label or os.path.basename(path))[:max_chars] if audio is not None else ""
-    if ext in TEXT_EXTS or ext in (".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".xml", ".html", ".htm", ".xhtml", ".eml"):
+    if ext == ".eml":
+        # Il sorgente grezzo di una email non e' il suo testo: corpi in Base64 o quoted-printable e intestazioni
+        # «=?UTF-8?B?...?=» arrivavano cosi' com'erano agli allegati dell'Harness e di Studio AI, dove l'anonimizzazione
+        # non riconosce nulla in un blocco codificato (ma l'AI che lo riceve lo decodifica).
+        with open(path, "rb") as f:
+            data = f.read(_MAX_FILE)
+        try:
+            from .eml import plain_text as _eml_text
+            return _eml_text(data, max_chars)
+        except Exception as e:
+            from . import reraise_control
+            reraise_control(e)
+            from .textlike import decode_bytes
+            return decode_bytes(data)[0][:max_chars]
+    if ext in TEXT_EXTS or ext in (".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".xml", ".html", ".htm", ".xhtml"):
         with open(path, "rb") as f:
             data = f.read(_MAX_FILE)
         from .textlike import decode_bytes
-        return decode_bytes(data)[0][:max_chars]
+        text = decode_bytes(data)[0]
+        if ext in (".xml", ".html", ".htm", ".xhtml"):
+            # entita' e riferimenti numerici («Niccol&ograve;», «&#77;ario») risolti: nel testo grezzo spezzano i nomi
+            text = html.unescape(text[:max_chars * 2])
+        return text[:max_chars]
     if ext in OOXML_EXTS or ext in ODF_EXTS:
         out = []
         size = 0

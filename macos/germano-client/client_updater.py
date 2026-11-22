@@ -575,16 +575,22 @@ def launch_install():
     ready = read_ready()
     if not ready:
         raise UpdateError("Nessun aggiornamento pronto da installare.")
-    inst = _verify_ready_package(ready)
-    if platform() != "windows":
-        open_package(inst)
-        return "opened"
-    ready["attempts"] = int(ready.get("attempts") or 0) + 1
-    ready["launched"] = time.time()
-    _write_json(READY_FILE, ready)
-    _remove(RESULT_FILE)
-    subprocess.Popen([inst, "--update", "--silent", "--result", RESULT_FILE], cwd=UPDATE_DIR,
-                     creationflags=0x00000008 | 0x00000200, close_fds=True)   # DETACHED_PROCESS | NEW_PROCESS_GROUP
+    try:
+        inst = _verify_ready_package(ready)
+        if platform() != "windows":
+            open_package(inst)
+            return "opened"
+        ready["attempts"] = int(ready.get("attempts") or 0) + 1
+        ready["launched"] = time.time()
+        _write_json(READY_FILE, ready)
+        _remove(RESULT_FILE)
+        subprocess.Popen([inst, "--update", "--silent", "--result", RESULT_FILE], cwd=UPDATE_DIR,
+                         creationflags=0x00000008 | 0x00000200, close_fds=True)   # DETACHED_PROCESS | NEW_PROCESS_GROUP
+    except OSError as e:
+        # installer bloccato o tolto da un antivirus, programma di installazione del sistema assente (xdg-open), disco
+        # pieno: e' un esito dell'aggiornamento da mostrare a chi l'ha chiesto, non un errore interno del pannello
+        ulog(f"Avvio dell'installer non riuscito: {e}")
+        raise UpdateError(f"Avvio dell'installer di aggiornamento non riuscito ({e.strerror or e}).") from None
     ulog(f"Aggiornamento silenzioso a Germano AI Client {ready['version']} avviato (tentativo {ready['attempts']}).")
     return "silent"
 

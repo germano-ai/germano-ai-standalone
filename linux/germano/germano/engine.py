@@ -542,8 +542,20 @@ class Engine:
         cancel = cancel or NO_CANCEL
         results = [[] for _ in texts]
         self._ensure_privacy_filter(settings)
-        use_pf = bool(settings.get("enable_model_velvet", True)) and self.pf is not None
-        use_ita = bool(settings.get("enable_model_italian_ner", True)) and (self.ita_onnx is not None or self.ita is not None)
+        want_pf = bool(settings.get("enable_model_velvet", True))
+        want_ita = bool(settings.get("enable_model_italian_ner", True))
+        use_pf = want_pf and self.pf is not None
+        use_ita = want_ita and (self.ita_onnx is not None or self.ita is not None)
+        # Un modello attivo nelle impostazioni non viene mai saltato in silenzio. All'avvio lo garantisce load(); qui
+        # vale per cio' che cambia DOPO l'avvio: Italian NER riattivato nelle impostazioni (o chiesto da un client, o
+        # imposto dal profilo PA) su un motore partito senza, oppure un motore non ancora caricato. Prima il testo
+        # veniva analizzato lo stesso, senza quel modello e senza nessun avviso.
+        missing = [name for name, want, use in (("Privacy Filter", want_pf, use_pf), ("Italian NER", want_ita, use_ita))
+                   if want and not use]
+        if missing:
+            raise RuntimeError(f"{' e '.join(missing)} attivo nelle impostazioni ma non caricato nel motore: testo non "
+                               "analizzato per sicurezza. Riavvia il motore dalla Dashboard (oppure disattiva il "
+                               "modello nelle Impostazioni, profilo PD, per proseguire senza).")
         if not (use_pf or use_ita):
             return results
         thr = float(settings.get("ai_threshold", 0.0) or 0.0)
@@ -553,6 +565,7 @@ class Engine:
         for ti, text in enumerate(texts):
             if not isinstance(text, str) or not text.strip():
                 continue
+            text = common.no_lone_surrogates(text)       # i tokenizer rifiutano i surrogati isolati (TypeError)
             for a, b, klo, khi in make_chunks(text):
                 chunk = text[a:b]
                 if not chunk.strip():

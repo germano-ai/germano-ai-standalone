@@ -179,7 +179,15 @@ class Sessions:
     def _load(self):
         if self._data is None:
             raw = common.read_json(self.path, {}) or {}
-            self._data = {k: v for k, v in raw.items() if isinstance(v, dict) and isinstance(v.get("user"), str)}
+            if not isinstance(raw, dict):
+                raw = {}                 # file valido ma non un oggetto (es. «[]»): prima era un errore a ogni richiesta
+
+            def _num(v):
+                return isinstance(v, (int, float)) and not isinstance(v, bool)
+            # solo voci complete: una scadenza non numerica mandava in errore (ValueError) ogni controllo di sessione
+            self._data = {k: v for k, v in raw.items()
+                          if isinstance(k, str) and isinstance(v, dict) and isinstance(v.get("user"), str)
+                          and _num(v.get("expires")) and _num(v.get("last", 0))}
         return self._data
 
     def _save(self):

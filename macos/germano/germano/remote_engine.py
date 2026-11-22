@@ -247,6 +247,8 @@ class RemoteEngine:
         cancel = cancel or NO_CANCEL
         sub = {k: settings.get(k) for k in TEXT_SETTINGS}
         flags = json.dumps(sub, sort_keys=True)
+        # un surrogato isolato non si puo' codificare nel JSON della richiesta (UnicodeEncodeError): stessa lunghezza
+        texts = [common.no_lone_surrogates(t) if isinstance(t, str) else t for t in texts]
         results = [[] for _ in texts]
         pending = []
         for i, t in enumerate(texts):

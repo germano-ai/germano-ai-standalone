@@ -73,6 +73,15 @@ def _is_locked(path):
             return True
 
 
+def path_too_long(path, windows=None):
+    """True se il percorso supera il limite classico di Windows (MAX_PATH, 260 caratteri). Solo su Windows: Linux e
+    macOS accettano percorsi molto piu' lunghi (4096 e 1024 byte) e prima un documento in una cartella profonda
+    veniva rifiutato anche li', con un messaggio che parlava di Windows."""
+    if windows is None:
+        windows = os.name == "nt"
+    return bool(windows) and len(os.path.abspath(path)) >= 259
+
+
 def _friendly_error(err, rel):
     """Motivo comprensibile per gli errori delle librerie sui file danneggiati (senza percorsi ne' nomi tecnici)."""
     name = type(err).__name__
@@ -401,7 +410,7 @@ class Daemon:
         fail_reason = None
         self.vault.begin_job()
         try:
-            if len(os.path.abspath(tmp_out)) >= 259:
+            if path_too_long(tmp_out):
                 raise formats.ProcessingError(
                     "Percorso troppo lungo per Windows (oltre 260 caratteri): sposta Germano in una cartella piu' "
                     "corta (es. C:\\GermanoAI) oppure accorcia i nomi di cartelle e file.")

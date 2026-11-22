@@ -847,7 +847,10 @@ def h_anonymize_file(args, ctx):
                    notes=[str(n) for n in (res.get("notes") or [])][:50],
                    system2=_system2_summary([{"system2": res.get("system2") or []}], _s2_enabled(use_s2)))
         if placeholders:
-            out["restore_scope"] = SCOPES.create(ctx.principal, placeholders)
+            # con la generazione del Vault, come germano_anonymize_text: _restore_source la confronta con quella
+            # corrente e, senza, dopo il primo svuotamento del Vault (generazione >= 1) l'ambito risultava sempre
+            # «sconosciuto o scaduto» (404) per i file e per il ciclo completo
+            out["restore_scope"] = SCOPES.create(ctx.principal, placeholders, generation=_vault_gen(ctx))
         if _opt_bool(args, "return_mapping", False, ctx):
             out["mapping"] = _mapping(entities)
         ctx.backend.session_log(entities)
@@ -1100,7 +1103,7 @@ def h_workflow_roundtrip(args, ctx):
            "residual_entities": residual, "placeholders": own, "replacements": len(entities),
            "categories": dict(Counter(category_of(e) for e in entities)), "steps": steps}
     if own:
-        out["restore_scope"] = SCOPES.create(ctx.principal, own)
+        out["restore_scope"] = SCOPES.create(ctx.principal, own, generation=_vault_gen(ctx))
     ctx.backend.session_log(entities)
     out["elapsed_ms"] = _ms(t0)
     return _clean(out)

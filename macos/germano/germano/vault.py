@@ -678,13 +678,24 @@ class VaultReader:
         return bool(row and row[0] == "1")      # migrazione dal JSON non ancora conclusa: si legge il JSON
 
     def _update(self):
-        """Voci aggiunte dall'ultima lettura; tutto da capo solo se il Vault e' stato svuotato o reimportato."""
+        """Voci aggiunte dall'ultima lettura; tutto da capo solo se il Vault e' stato svuotato o reimportato.
+        Generazione e voci nuove si leggono nella STESSA transazione (un'unica istantanea del database): con due
+        SELECT separate, uno svuotamento del motore seguito da nuove voci proprio fra l'una e l'altra lasciava per
+        una lettura le voci di prima insieme alle nuove (etichette ripartite da 1, dati del Vault precedente)."""
         conn = self._conn
-        row = conn.execute("SELECT v FROM meta WHERE k='generation'").fetchone()
-        gen = row[0] if row else "0"
+        conn.execute("BEGIN")
+        try:
+            row = conn.execute("SELECT v FROM meta WHERE k='generation'").fetchone()
+            gen = row[0] if row else "0"
+            last_id = self._last_id if gen == self._gen else 0
+            rows = conn.execute("SELECT id, tag, word FROM tags WHERE id > ? ORDER BY id", (last_id,)).fetchall()
+        finally:
+            try:
+                conn.execute("COMMIT")
+            except sqlite3.Error:
+                pass
         if gen != self._gen:
             self._gen, self._last_id, self._items, self._map = gen, 0, {}, {}
-        rows = conn.execute("SELECT id, tag, word FROM tags WHERE id > ? ORDER BY id", (self._last_id,)).fetchall()
         if rows:
             new_items = dict(self._items)
             new_map = dict(self._map)                 # chi ha gia' una mappa la usa intatta (oggetto non modificato)

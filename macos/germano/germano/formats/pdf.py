@@ -222,6 +222,172 @@ def process_pdf(in_path, out_path, ctx):
     return None
 
 
+_INFO_KEYS = ("title", "author", "subject", "keywords", "creator", "producer", "creationDate", "modDate", "trapped")
+_STRUCT_TEXT_KEYS = ("Alt", "ActualText", "E", "T")
+_STRUCT_MAX_NODES = 400_000
+_REF_RE = None
+
+
+def _xref_of(value):
+    """Numero d'oggetto di un riferimento «12 0 R» (None se non lo e')."""
+    parts = str(value or "").split()
+    return int(parts[0]) if len(parts) == 3 and parts[0].isdigit() and parts[2] == "R" else None
+
+
+def _has_key(doc, xref, key):
+    try:
+        return doc.xref_get_key(xref, key)[0] != "null"
+    except Exception:
+        return False
+
+
+def _unhide_cropped(doc, ctx):
+    """Pagine ritagliate (CropBox piu' piccolo del MediaBox): il contenuto fuori dal ritaglio non si vede, ma resta nel
+    file e chi estrae il testo lo trova. MuPDF non lo estrae, quindi non verrebbe ne' analizzato ne' rimosso: il
+    ritaglio viene tolto, cosi' tutta la pagina viene letta e anonimizzata come il resto."""
+    n = 0
+    for page in doc:
+        try:
+            if any(abs(a - b) > 0.5 for a, b in zip(page.cropbox, page.mediabox)):
+                page.set_cropbox(page.mediabox)
+                n += 1
+        except Exception:
+            try:
+                doc.xref_set_key(page.xref, "CropBox", "null")
+                n += 1
+            except Exception as e:
+                raise ProcessingError(f"PDF con una pagina ritagliata che non si puo' controllare per intero ({e}).") from None
+    if n:
+        ctx.note(f"PDF: {n} pagine avevano un'area ritagliata (nascosta ma ancora presente nel file); il ritaglio e' "
+                 "stato tolto per poterla controllare e anonimizzare.")
+
+
+def _struct_elements(doc):
+    """Oggetti della struttura logica del PDF (documenti «accessibili»): radice e tutti i discendenti."""
+    import re
+    global _REF_RE
+    if _REF_RE is None:
+        _REF_RE = re.compile(r"(\d+) 0 R")
+    root = _xref_of(doc.xref_get_key(doc.pdf_catalog(), "StructTreeRoot")[1]) \
+        if doc.xref_get_key(doc.pdf_catalog(), "StructTreeRoot")[0] == "xref" else None
+    if not root:
+        return []
+    out, seen, queue = [], {root}, [root]
+    while queue and len(seen) < _STRUCT_MAX_NODES:
+        x = queue.pop()
+        try:
+            keys = doc.xref_get_keys(x)
+            kids = doc.xref_get_key(x, "K")[1] if "K" in keys else ""
+        except Exception:
+            continue
+        if x != root:
+            if "S" not in keys or "Subtype" in keys:
+                continue                         # non e' un elemento di struttura (pagina, annotazione, immagine)
+            out.append((x, keys))
+        for m in _REF_RE.finditer(kids or ""):
+            k = int(m.group(1))
+            if k not in seen:
+                seen.add(k)
+                queue.append(k)
+    return out
+
+
+def _sanitize_hidden(doc, ctx, fitz):
+    """Copie nascoste dei dati che il passaggio sulle pagine non tocca (solo in anonimizzazione):
+    - Info: le chiavi non standard (Company, Manager, _AuthorEmail..., le proprieta' personalizzate che Acrobat
+      PDFMaker ricopia da Word) restavano perche' set_metadata aggiorna solo quelle standard;
+    - catalogo: /DSS (certificati del firmatario delle firme PAdES con validazione a lungo termine), /Perms (la
+      firma di certificazione), /PieceInfo (dati privati dei programmi: Illustrator vi salva l'intero disegno);
+    - modulo XFA: una copia in XML di tutti i valori dei campi;
+    - pagine: la miniatura (/Thumb, immagine della pagina originale) e /PieceInfo."""
+    cat = doc.pdf_catalog()
+    for key in ("DSS", "Perms", "PieceInfo"):
+        if _has_key(doc, cat, key):
+            doc.xref_set_key(cat, key, "null")
+    typ, val = doc.xref_get_key(cat, "AcroForm")
+    form = _xref_of(val) if typ == "xref" else None
+    had_xfa = False
+    if form:
+        had_xfa = _has_key(doc, form, "XFA")
+        for key in ("XFA", "SigFlags"):
+            if _has_key(doc, form, key):
+                doc.xref_set_key(form, key, "null")
+    elif typ == "dict":
+        had_xfa = "/XFA" in val
+        for key in ("XFA", "SigFlags"):
+            if "/" + key in val:
+                doc.xref_set_key(cat, "AcroForm/" + key, "null")
+    if had_xfa:
+        ctx.note("PDF: i dati del modulo XFA sono stati rimossi (copia nascosta dei valori dei campi, non analizzabile).")
+    for page in doc:
+        for key in ("Thumb", "PieceInfo"):
+            if _has_key(doc, page.xref, key):
+                doc.xref_set_key(page.xref, key, "null")
+
+
+def _remove_signatures(doc, sign_widgets, fitz):
+    """Toglie le firme digitali: il dizionario della firma (/V: certificato del firmatario con nome e codice fiscale,
+    /Name, /Reason, /Location, /ContactInfo) viene svuotato, poi il campo viene tolto dalla pagina e dal modulo. Si
+    cercano anche i campi firma raggiungibili solo dall'elenco dei campi del modulo. Restituisce quante firme c'erano.
+    Se una firma non si riesce a togliere il file non riesce: i dati del firmatario resterebbero in chiaro."""
+    import re
+    done = 0
+    gone = set()
+
+    def wipe(field_xref):
+        typ, val = doc.xref_get_key(field_xref, "V")
+        sig = _xref_of(val) if typ == "xref" else None
+        if sig:
+            doc.update_object(sig, "<<>>")
+        elif typ != "null":
+            doc.xref_set_key(field_xref, "V", "null")
+
+    try:
+        for pno, xref in sign_widgets:
+            page = doc[pno]
+            for w in list(page.widgets() or ()):
+                if w.xref == xref:
+                    wipe(xref)
+                    page.delete_widget(w)
+                    gone.add(xref)
+                    done += 1
+                    break
+        cat = doc.pdf_catalog()
+        typ, val = doc.xref_get_key(cat, "AcroForm")
+        form = _xref_of(val) if typ == "xref" else None
+        path = "Fields" if form else "AcroForm/Fields"
+        holder = form or cat
+        typ, val = doc.xref_get_key(holder, path) if (form or typ == "dict") else ("null", "")
+        if typ == "array":
+            seen, queue = set(), [int(m) for m in re.findall(r"(\d+) 0 R", val)]
+            while queue and len(seen) < 100_000:
+                x = queue.pop()
+                if x in seen or x in gone:
+                    continue
+                seen.add(x)
+                try:
+                    keys = doc.xref_get_keys(x)
+                    is_sig = "FT" in keys and doc.xref_get_key(x, "FT")[1] == "/Sig"
+                    kids = doc.xref_get_key(x, "Kids")[1] if "Kids" in keys else ""
+                except Exception:
+                    continue                     # oggetto gia' eliminato o non leggibile: non e' un campo
+                if is_sig:
+                    if doc.xref_get_key(x, "V")[0] != "null":
+                        done += 1
+                    wipe(x)
+                    gone.add(x)
+                queue.extend(int(m) for m in re.findall(r"(\d+) 0 R", kids))
+            kept = [m for m in re.findall(r"(\d+) 0 R", val) if int(m) not in gone]
+            if len(kept) != len(re.findall(r"(\d+) 0 R", val)):
+                doc.xref_set_key(holder, path, "[" + " ".join(f"{m} 0 R" for m in kept) + "]")
+    except ProcessingError:
+        raise
+    except Exception as e:
+        raise ProcessingError(f"PDF firmato: non e' stato possibile togliere la firma digitale ({type(e).__name__}: "
+                              f"{e}); il file non viene prodotto per non lasciare i dati del firmatario.") from None
+    return done
+
+
 def _process_doc(doc, ctx, fitz):
     n_pages = len(doc)
     units, appliers = [], []
@@ -232,6 +398,8 @@ def _process_doc(doc, ctx, fitz):
             appliers.append(applier)
 
     person = "[PERSONA]" if ctx.settings.get("censor_person", True) else None
+    if ctx.anonymize:
+        _unhide_cropped(doc, ctx)
 
     # --- Passo 1: testo digitale delle pagine ---------------------------------------------------
     page_data = []
@@ -292,6 +460,24 @@ def _process_doc(doc, ctx, fitz):
         if isinstance(v, str) and v.strip():
             add(v, lambda nv, f=field: new_meta.__setitem__(f, nv), force=person if field == "author" else None)
 
+    # Struttura logica dei PDF accessibili: testo alternativo delle figure (/Alt: «Firma di Mario Rossi»), testo
+    # sostitutivo (/ActualText), espansioni (/E) e titoli (/T). Non fanno parte della pagina: prima restavano.
+    struct_updates = {}
+    try:
+        elements = _struct_elements(doc)
+    except Exception:
+        elements = []
+    for x, keys in elements:
+        for key in _STRUCT_TEXT_KEYS:
+            if key not in keys:
+                continue
+            try:
+                typ, val = doc.xref_get_key(x, key)
+            except Exception:
+                continue
+            if typ == "string" and val.strip():
+                add(val, lambda nv, k=(x, key): struct_updates.__setitem__(k, nv))
+
     results = ctx.analyze(units)
 
     page_repls = {}
@@ -335,63 +521,97 @@ def _process_doc(doc, ctx, fitz):
             page_data[pno] = None
 
     # --- Passo 3: campi modulo, commenti, link, segnalibri, metadati -----------------------------
+    # Un campo o un commento che non si riesce ad aggiornare NON resta com'era (con il dato in chiaro e una semplice
+    # nota, come fino alla 1.00): in anonimizzazione viene tolto e, se nemmeno questo riesce, il file non riesce.
     for pno in range(n_pages):
         page = doc[pno]
         if widget_updates:
-            try:
-                for w in page.widgets():
-                    nv = widget_updates.get((pno, w.xref))
-                    if nv is not None:
-                        w.field_value = nv
-                        w.update()
-            except Exception as e:
-                ctx.note(f"campo modulo non aggiornabile a pagina {pno + 1}: {e}")
+            for w in list(page.widgets() or ()):
+                nv = widget_updates.get((pno, w.xref))
+                if nv is None:
+                    continue
+                try:
+                    w.field_value = nv
+                    w.update()
+                    for key in ("DV", "RV"):             # valore predefinito e copia in formato ricco del valore
+                        if _has_key(doc, w.xref, key):
+                            doc.xref_set_key(w.xref, key, "null")
+                except Exception as e:
+                    if not ctx.anonymize:
+                        ctx.note(f"campo modulo non aggiornabile a pagina {pno + 1}: {e}")
+                        continue
+                    try:
+                        page.delete_widget(w)
+                    except Exception:
+                        raise ProcessingError(f"PDF con un campo modulo che non si puo' ne' aggiornare ne' togliere "
+                                              f"(pagina {pno + 1}): {e}") from None
+                    ctx.note(f"campo modulo non aggiornabile a pagina {pno + 1}, rimosso per sicurezza: {e}")
         if annot_updates:
-            try:
-                for a in page.annots():
-                    upd = annot_updates.get((pno, a.xref))
-                    if upd:
-                        a.set_info(**upd)
-                        a.update()
-            except Exception as e:
-                ctx.note(f"commento non aggiornabile a pagina {pno + 1}: {e}")
+            for a in list(page.annots() or ()):
+                upd = annot_updates.get((pno, a.xref))
+                if not upd:
+                    continue
+                try:
+                    a.set_info(**upd)
+                    a.update()
+                except Exception as e:
+                    if not ctx.anonymize:
+                        ctx.note(f"commento non aggiornabile a pagina {pno + 1}: {e}")
+                        continue
+                    try:
+                        page.delete_annot(a)
+                    except Exception:
+                        raise ProcessingError(f"PDF con un commento che non si puo' ne' aggiornare ne' togliere "
+                                              f"(pagina {pno + 1}): {e}") from None
+                    ctx.note(f"commento non aggiornabile a pagina {pno + 1}, rimosso per sicurezza: {e}")
         if ctx.anonymize:
             try:
                 for link in page.get_links():
                     uri = (link.get("uri") or "").lower()
-                    if uri.startswith(("mailto:", "tel:", "sms:", "callto:", "file:", "http://", "https://")):
+                    # anche i collegamenti che aprono un file (percorso con il nome dell'utente o del cliente)
+                    if uri.startswith(("mailto:", "tel:", "sms:", "callto:", "file:", "http://", "https://")) \
+                            or link.get("file"):
                         page.delete_link(link)
             except Exception:
                 pass
-    if ctx.anonymize and sign_widgets:
-        for pno, xref in sign_widgets:
-            try:
-                page = doc[pno]
-                for w in page.widgets():
-                    if w.xref == xref:
-                        page.delete_widget(w)
-                        break
-            except Exception:
-                pass
-        ctx.note("Firma digitale rimossa dal PDF (conteneva i dati del firmatario; dopo la modifica non sarebbe piu' valida).")
+    if ctx.anonymize:
+        if _remove_signatures(doc, sign_widgets, fitz):
+            ctx.note("Firma digitale rimossa dal PDF (conteneva i dati del firmatario; dopo la modifica non sarebbe piu' valida).")
     if toc_changed[0]:
         try:
             doc.set_toc(toc)
         except Exception as e:
             ctx.note(f"segnalibri non aggiornati: {e}")
-    if new_meta:
-        md = {k: meta.get(k) or "" for k in ("title", "author", "subject", "keywords", "creator", "producer",
-                                           "creationDate", "modDate", "trapped")}
+    for (x, key), nv in struct_updates.items():
+        try:
+            doc.xref_set_key(x, key, fitz.get_pdf_str(nv))
+        except Exception as e:
+            if not ctx.anonymize:
+                ctx.note(f"testo alternativo non aggiornabile: {e}")
+                continue
+            try:
+                doc.xref_set_key(x, key, "null")
+            except Exception:
+                raise ProcessingError(f"PDF con un testo alternativo che non si puo' aggiornare ({e}).") from None
+    if new_meta or ctx.anonymize:
+        md = {k: meta.get(k) or "" for k in _INFO_KEYS}
         md.update(new_meta)
         try:
+            if ctx.anonymize:
+                # dizionario Info nuovo, con le sole chiavi standard: quelle personalizzate (Company, Manager,
+                # _AuthorEmail...) non vengono ricopiate
+                doc.xref_set_key(-1, "Info", "null")
             doc.set_metadata(md)
-        except Exception:
-            pass
+        except Exception as e:
+            if ctx.anonymize:
+                raise ProcessingError(f"Metadati del PDF non aggiornabili ({e}).") from None
+            ctx.note(f"metadati non aggiornati: {e}")
     if ctx.anonymize:
         try:
             doc.del_xml_metadata()
         except Exception:
             pass
+        _sanitize_hidden(doc, ctx, fitz)
 
     _process_attachments(doc, ctx, fitz)
     if total_regions:
@@ -688,6 +908,14 @@ def _replace_embedded(doc, name, data, info, new_name=None):
     doc.embfile_add(name, data, filename=fname, ufilename=fname, desc="")
 
 
+def _drop_embedded(doc, name):
+    """Toglie un allegato del documento; se non ci riesce il file non riesce (l'allegato resterebbe in chiaro)."""
+    try:
+        doc.embfile_del(name)
+    except Exception as e:
+        raise ProcessingError(f"PDF con un allegato che non si puo' ne' elaborare ne' togliere ({name}: {e}).") from None
+
+
 def _process_attachments(doc, ctx, fitz):
     # File incorporati (portfolio / allegati del documento)
     try:
@@ -702,11 +930,8 @@ def _process_attachments(doc, ctx, fitz):
             data = doc.embfile_get(name)
         except Exception as e:
             if ctx.anonymize:
-                try:
-                    doc.embfile_del(name)
-                    ctx.note(f"Allegato incorporato illeggibile rimosso per sicurezza ({name}: {e}).")
-                except Exception:
-                    pass
+                _drop_embedded(doc, name)
+                ctx.note(f"Allegato incorporato illeggibile rimosso per sicurezza ({name}: {e}).")
             continue
         base = str(fname).replace("\\", "/").split("/")[-1] or "allegato.bin"
         if is_supported(base):
@@ -723,11 +948,8 @@ def _process_attachments(doc, ctx, fitz):
         else:
             reason = "formato non supportato"
         if ctx.anonymize:
-            try:
-                doc.embfile_del(name)
-                ctx.note(f"Allegato incorporato rimosso per sicurezza ({base}: {reason}).")
-            except Exception:
-                pass
+            _drop_embedded(doc, name)
+            ctx.note(f"Allegato incorporato rimosso per sicurezza ({base}: {reason}).")
     # Annotazioni "file allegato"
     for pno in range(len(doc)):
         page = doc[pno]
@@ -741,8 +963,19 @@ def _process_attachments(doc, ctx, fitz):
                 base = str(fi.get("filename") or "allegato.bin").replace("\\", "/").split("/")[-1]
                 data = a.get_file()
                 if is_supported(base):
-                    new_data, _ = process_bytes(data, base, ctx.child())
-                    a.update_file(buffer_=new_data)
+                    from . import transform_filename
+                    new_data, out_name = process_bytes(data, base, ctx.child())
+                    # anche il nome del file («CV Mario Rossi.pdf») passa dal filtro, come per gli allegati del documento
+                    clean_name = transform_filename(out_name or base, ctx)
+                    a.update_file(buffer_=new_data, filename=clean_name, ufilename=clean_name)
+                    # la descrizione (testo libero: di solito il nome originale del file) non viene conservata;
+                    # update_file ignora una descrizione vuota, quindi si toglie la chiave
+                    typ, val = doc.xref_get_key(a.xref, "FS")
+                    fs = _xref_of(val) if typ == "xref" else None
+                    if fs and _has_key(doc, fs, "Desc"):
+                        doc.xref_set_key(fs, "Desc", "null")
+                    elif typ == "dict" and "/Desc" in val:
+                        doc.xref_set_key(a.xref, "FS/Desc", "null")
                     continue
                 if ctx.anonymize:
                     page.delete_annot(a)
@@ -752,6 +985,7 @@ def _process_attachments(doc, ctx, fitz):
                 if ctx.anonymize:
                     try:
                         page.delete_annot(a)
-                        ctx.note(f"Allegato in annotazione rimosso per sicurezza ({e}).")
                     except Exception:
-                        pass
+                        raise ProcessingError(f"PDF con un allegato in annotazione che non si puo' ne' elaborare ne' "
+                                              f"togliere ({e}).") from None
+                    ctx.note(f"Allegato in annotazione rimosso per sicurezza ({e}).")

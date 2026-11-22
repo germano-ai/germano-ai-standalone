@@ -10,12 +10,48 @@ from ..analyzer import Unit, apply_replacements
 BLOCK_CHARS = 50000
 
 
+def _wide_without_bom(data):
+    """Codifica di un testo UTF-16/UTF-32 SENZA BOM, riconosciuta dalla posizione dei byte NUL (None se non lo e').
+
+    Un file cosi' e' anche UTF-8 valido (NUL e' un carattere ammesso): letto come UTF-8 ha un NUL fra una lettera e
+    l'altra, quindi ne' i modelli ne' le regole riconoscono piu' nulla e il file usciva identico, con i dati in chiaro.
+    Si accetta solo se tutto il contenuto si decodifica senza errori (ritorno byte per byte identico)."""
+    sample = data[:8192]
+    n4 = len(sample) // 4
+    if n4 >= 2 and len(data) % 4 == 0:
+        zeros = [sample[k:n4 * 4:4].count(0) for k in range(4)]
+        for enc, nul, txt in (("utf-32-le", (1, 2, 3), 0), ("utf-32-be", (0, 1, 2), 3)):
+            if all(zeros[k] >= 0.9 * n4 for k in nul) and zeros[txt] <= 0.05 * n4:
+                return enc
+    n2 = len(sample) // 2
+    if n2 >= 2 and len(data) % 2 == 0:
+        even, odd = sample[0:n2 * 2:2].count(0), sample[1:n2 * 2:2].count(0)
+        if odd >= 0.6 * n2 and even <= 0.05 * n2:
+            return "utf-16-le"
+        if even >= 0.6 * n2 and odd <= 0.05 * n2:
+            return "utf-16-be"
+    return None
+
+
 def decode_bytes(data):
     """Restituisce (testo, codifica). Mai perdita silenziosa di caratteri (niente errors='ignore')."""
     if data.startswith(codecs.BOM_UTF8):
         return data[len(codecs.BOM_UTF8):].decode("utf-8", errors="replace"), "utf-8-sig"
+    if len(data) % 4 == 0 and (data.startswith(codecs.BOM_UTF32_LE) or data.startswith(codecs.BOM_UTF32_BE)):
+        # il BOM UTF-32 LE (FF FE 00 00) inizia come quello UTF-16 LE: va provato prima
+        try:
+            return data.decode("utf-32"), "utf-32"
+        except UnicodeDecodeError:
+            pass
     if data.startswith(codecs.BOM_UTF16_LE) or data.startswith(codecs.BOM_UTF16_BE):
         return data.decode("utf-16", errors="replace"), "utf-16"
+    if b"\x00" in data[:8192]:
+        wide = _wide_without_bom(data)
+        if wide:
+            try:
+                return data.decode(wide), wide
+            except UnicodeDecodeError:
+                pass
     try:
         return data.decode("utf-8"), "utf-8"
     except UnicodeDecodeError:
@@ -85,6 +121,12 @@ def process_csv(in_path, out_path, ctx):
                 dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
             except csv.Error:
                 dialect = csv.excel
+        if not getattr(dialect, "doublequote", True) and not getattr(dialect, "escapechar", None):
+            # Sniffer mette doublequote=False ogni volta che nel campione non vede apici raddoppiati (quasi sempre):
+            # in scrittura una cella con un apice (es. «Monitor 19" LG») dava csv.Error «need to escape, but no
+            # escapechar set» e il file finiva tra i non riusciti; in lettura "a ""b""" oltre il campione veniva
+            # letto male. Lo standard dei CSV (RFC 4180, Excel, LibreOffice) e' l'apice raddoppiato.
+            dialect = type("dialect", (dialect,), {"doublequote": True})
         rows = list(csv.reader(io.StringIO(text, newline=""), dialect))
     except csv.Error:
         return process_text(in_path, out_path, ctx)
@@ -112,23 +154,40 @@ def process_csv(in_path, out_path, ctx):
     write_text_file(out_path, buf.getvalue(), enc)
 
 
-def _collect_json(obj, units, setters, key=""):
+def _embedded(value, ctx, key):
+    """File incorporato in un valore JSON (URI «data:...» o blocco Base64): elaborato col suo formato e rimesso al suo
+    posto (o tolto, in anonimizzazione, se non e' elaborabile). None se il valore e' un testo normale."""
+    if ctx is None or len(value) < 32:
+        return None
+    from . import embedded_text
+    return embedded_text(value, ctx, "", f"contenuto incorporato in «{str(key)[:40]}»")
+
+
+def _collect_json(obj, units, setters, key="", ctx=None):
     if isinstance(obj, dict):
         for k, v in obj.items():
             if isinstance(v, str):
                 if v.strip():
+                    nv = _embedded(v, ctx, k)
+                    if nv is not None:
+                        obj[k] = nv
+                        continue
                     units.append(Unit(v, context=f"{k}: "))
                     setters.append((obj, k))
             else:
-                _collect_json(v, units, setters, k)
+                _collect_json(v, units, setters, k, ctx)
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
             if isinstance(v, str):
                 if v.strip():
+                    nv = _embedded(v, ctx, key)
+                    if nv is not None:
+                        obj[i] = nv
+                        continue
                     units.append(Unit(v, context=f"{key}: " if key else ""))
                     setters.append((obj, i))
             else:
-                _collect_json(v, units, setters, key)
+                _collect_json(v, units, setters, key, ctx)
 
 
 def _json_indent(text):
@@ -158,7 +217,7 @@ def process_json(in_path, out_path, ctx):
 
     units, setters = [], []
     holder = [objs]
-    _collect_json(holder, units, setters)
+    _collect_json(holder, units, setters, ctx=ctx)
     res = ctx.analyze(units) if units else []
     for (container, k), u, r in zip(setters, units, res):
         if r:

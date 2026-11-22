@@ -350,15 +350,17 @@ def parse_server(text):
         raise ClientError("indirizzo del server vuoto.", ERR_USAGE)
     if "://" not in raw:
         raw = "http://" + raw
-    u = urllib.parse.urlsplit(raw)
     try:
-        port = u.port
-    except ValueError:
-        port = -1
-    if u.scheme not in ("http", "https") or not u.hostname or port == -1 or " " in raw:
+        u = urllib.parse.urlsplit(raw)
+        port, host = u.port, u.hostname or ""
+        if not host.isascii():
+            host.encode("idna")   # nome non rappresentabile (etichetta vuota o troppo lunga, caratteri vietati)
+    except ValueError:            # parentesi IPv6 sbagliate («[::1»), porta non numerica, nome non valido (UnicodeError)
+        u, port, host = None, -1, ""
+    if u is None or u.scheme not in ("http", "https") or not host or port == -1 or " " in raw:
         raise ClientError(f"indirizzo del server non valido: «{_clean(text)}» (esempio: http://192.168.1.10:8181).",
                           ERR_USAGE)
-    host = f"[{u.hostname}]" if ":" in u.hostname else u.hostname
+    host = f"[{host}]" if ":" in host else host
     base = f"{u.scheme}://{host}:{port or (443 if u.scheme == 'https' else DEFAULT_SERVER_PORT)}"
     m = re.match(r"^/g/([^/]+)", u.path or "")
     return base, (m.group(1) if m else None)
@@ -458,9 +460,9 @@ def _network_problem(reason, url, timeout):
 def _request(method, url, data=None, headers=None, timeout=6.0, response_headers=None):
     """(stato HTTP, corpo). Solleva ClientError se non si riesce a dialogare con il server.
     `response_headers`: dizionario che riceve le intestazioni della risposta (es. il nome del file restituito)."""
-    req = urllib.request.Request(url, data=data, headers=dict(headers or {}), method=method)
-    req.add_header("User-Agent", f"GermanoClient/{get_version()}")
     try:
+        req = urllib.request.Request(url, data=data, headers=dict(headers or {}), method=method)
+        req.add_header("User-Agent", f"GermanoClient/{get_version()}")
         with _HTTP.open(req, timeout=timeout) as r:
             if response_headers is not None:
                 response_headers.update(r.headers.items())
@@ -477,6 +479,9 @@ def _request(method, url, data=None, headers=None, timeout=6.0, response_headers
     except http.client.HTTPException as e:
         raise ClientError(f"{_where(url)} non risponde come un server web ({e.__class__.__name__}): non e' un "
                           "Germano Server.") from None
+    except ValueError as e:   # nome del server non rappresentabile (IDNA: UnicodeError), indirizzo o intestazione non validi
+        raise ClientError(f"indirizzo del server non valido ({e.__class__.__name__}: {_clean(e, 120)}): correggilo con  "
+                          "client config --server <indirizzo>.", ERR_USAGE) from None
 
 
 def _json(body):
@@ -1333,6 +1338,12 @@ def _integration_token(args):
     return tok
 
 
+def _is_jsonrpc(data):
+    """True se `data` e' un messaggio JSON-RPC 2.0 o un gruppo di messaggi: gli unici ammessi sullo stdout del ponte MCP."""
+    items = data if isinstance(data, list) else [data]
+    return bool(items) and all(isinstance(m, dict) and m.get("jsonrpc") == "2.0" for m in items)
+
+
 def cmd_mcp(args):
     """Server MCP stdio su QUESTO PC che inoltra i messaggi al Server MCP del Germano Server (POST /mcp), con il
     token. Per Claude Desktop, Claude Code, Cursor... dei PC della rete: command = client.py (o START.bat) con «mcp».
@@ -1399,9 +1410,13 @@ def cmd_mcp(args):
                 write({"jsonrpc": "2.0", "id": rid, "error": {"code": -32001, "message":
                        "Germano Server: accesso richiesto (token delle integrazioni: client config --api-token <token>)"}})
             continue
-        if data is None:
+        if not _is_jsonrpc(data):
+            # corpo che non e' un messaggio MCP (guardia del server: 403, 413...; pagina di errore; altro servizio): sullo
+            # stdout del protocollo va solo JSON-RPC, quindi chi ha chiesto riceve un errore con il motivo del server
+            reason = _clean(data.get("error") or data.get("message") or "", 300) if isinstance(data, dict) else ""
             for rid in ids:
-                write({"jsonrpc": "2.0", "id": rid, "error": {"code": -32603, "message": f"Germano Server: HTTP {st}"}})
+                write({"jsonrpc": "2.0", "id": rid, "error": {"code": -32603, "message":
+                       f"Germano Server: HTTP {st}" + (f" - {reason}" if reason else "")}})
             continue
         if is_init and isinstance(data, dict) and isinstance(data.get("result"), dict):
             state["version"] = data["result"].get("protocolVersion")

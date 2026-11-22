@@ -226,6 +226,48 @@ SECRET_RES = [
 ]
 
 
+_EMAIL_LOCAL = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._%+-")
+_EMAIL_FIRST = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+# la parte di EMAIL_RE dopo la chiocciola (dominio)
+_EMAIL_DOMAIN_RE = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,24}(?![\w\-])"
+)
+
+
+def email_spans(text):
+    """Stessi risultati di EMAIL_RE.finditer(text) - [(inizio, fine)] - in tempo lineare.
+
+    EMAIL_RE cerca la parte locale da ogni posizione di partenza ammessa: su un testo con «%» frequenti (dati
+    URL-encoded: dopo «%» puo' iniziare un indirizzo) ogni partenza rilegge tutto il resto della sequenza prima di
+    scoprire che la chiocciola non c'e'. Tempo quadratico: 1,1 s per 40.000 caratteri, minuti per un file di qualche MB.
+    Qui si parte dalle chiocciole: per ciascuna si verifica il dominio e si risale alla prima partenza valida della
+    sequenza che la precede (stessa regola: carattere iniziale alfanumerico, non preceduto da [\\w.+-])."""
+    out = []
+    last_end = 0
+    a = text.find("@")
+    while a != -1:
+        m = _EMAIL_DOMAIN_RE.match(text, a + 1) if a > last_end else None
+        if m is not None:
+            r = a
+            while r > last_end and text[r - 1] in _EMAIL_LOCAL:
+                r -= 1
+            p = r
+            while p < a:
+                if text[p] in _EMAIL_FIRST:
+                    prev = text[p - 1] if p else ""
+                    if not prev or not (prev in ".+-_" or prev.isalnum()):
+                        break
+                p += 1
+            if p < a:
+                out.append((p, m.end()))
+                last_end = m.end()
+                a = text.find("@", last_end)
+                continue
+        a = text.find("@", a + 1)
+    return out
+
+
 def _add(spans, s, e, group, score=1.0):
     if e > s:
         spans.append((s, e, group, score))
@@ -274,8 +316,9 @@ def regex_spans(text, ocr=False):
     spans = []
     if not isinstance(text, str) or not text:
         return spans
-    for m in EMAIL_RE.finditer(text):
-        _add(spans, m.start(), m.end(), "private_email")
+    if "@" in text:
+        for s, e in email_spans(text):
+            _add(spans, s, e, "private_email")
     for m in CF_RE.finditer(text):
         _add(spans, m.start(), m.end(), "cf_iva")
     if ocr:
@@ -534,7 +577,14 @@ _PROP_STOP = {
 
 
 class Propagator:
-    """Indice delle entita' gia' rilevate, per trovarne altre occorrenze (match per token, O(n))."""
+    """Indice delle entita' gia' rilevate, per trovarne altre occorrenze (match per token, O(n)).
+
+    L'indice e' un albero di token (trie): `index[token] = [figli | None, (etichetta, gruppo, chiave) | None]`. Fino
+    alla 1.00 era un elenco per primo token, riordinato a ogni inserimento e scorso per intero a ogni occorrenza di quel
+    token: con migliaia di entita' che iniziano con la stessa parola (gli indirizzi «via ...» di un'anagrafe, i «sig.»)
+    la ricerca era quadratica - 27,7 s per 8.000 indirizzi, ore per 80.000 (file oltre il tempo massimo). Il risultato
+    e' lo stesso di prima: a ogni posizione vince la sequenza piu' lunga che corrisponde; a parita' di sequenza,
+    l'etichetta inserita per prima."""
 
     def __init__(self):
         self.index = {}
@@ -558,9 +608,18 @@ class Propagator:
         if sig in self.seen:
             return
         self.seen.add(sig)
-        lst = self.index.setdefault(toks[0], [])
-        lst.append((toks, label, group, key))
-        lst.sort(key=lambda x: -len(x[0]))
+        node = self.index.get(toks[0])
+        if node is None:
+            node = self.index[toks[0]] = [None, None]
+        for t in toks[1:]:
+            if node[0] is None:
+                node[0] = {}
+            nxt = node[0].get(t)
+            if nxt is None:
+                nxt = node[0][t] = [None, None]
+            node = nxt
+        if node[1] is None:
+            node[1] = (label, group, key)
 
     def __bool__(self):
         return bool(self.index)
@@ -585,33 +644,36 @@ class Propagator:
             return False
 
         toks = [(m.start(), m.end(), m.group(0).casefold()) for m in _TOKEN_RE.finditer(text)]
+        index = self.index
         i = 0
         nt = len(toks)
         while i < nt:
-            cands = self.index.get(toks[i][2])
+            node = index.get(toks[i][2])
             matched = False
-            if cands:
-                for seq, label, group, key in cands:
-                    L = len(seq)
-                    if i + L > nt:
-                        continue
-                    ok = True
-                    for j in range(1, L):
-                        if toks[i + j][2] != seq[j]:
-                            ok = False
-                            break
-                        gap = text[toks[i + j - 1][1]:toks[i + j][0]]
-                        if "\n" in gap or "|" in gap or len(gap) > 3:
-                            ok = False
-                            break
-                    if ok:
-                        a, b = toks[i][0], toks[i + L - 1][1]
-                        if _overlaps_tag(a, b):
-                            continue
-                        out.append((a, b, label, group, key))
-                        i += L
-                        matched = True
+            if node is not None:
+                # si scende nell'albero finche' i token coincidono e non c'e' un a capo, un «|» o piu' di 3 caratteri
+                # fra un token e il successivo; `found`: le sequenze complete incontrate, dalla piu' corta
+                found = [(1, node[1])] if node[1] is not None else []
+                j = i + 1
+                while node[0] and j < nt:
+                    nxt = node[0].get(toks[j][2])
+                    if nxt is None:
                         break
+                    gap = text[toks[j - 1][1]:toks[j][0]]
+                    if "\n" in gap or "|" in gap or len(gap) > 3:
+                        break
+                    node = nxt
+                    j += 1
+                    if node[1] is not None:
+                        found.append((j - i, node[1]))
+                for L, (label, group, key) in reversed(found):
+                    a, b = toks[i][0], toks[i + L - 1][1]
+                    if _overlaps_tag(a, b):
+                        continue
+                    out.append((a, b, label, group, key))
+                    i += L
+                    matched = True
+                    break
             if not matched:
                 i += 1
         return out

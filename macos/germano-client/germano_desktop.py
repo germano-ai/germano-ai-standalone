@@ -320,11 +320,14 @@ def _wait_server(port, proc, timeout=180):
 def _browser_procs(psutil):
     needle = f"--user-data-dir={WEBVIEW_PROFILE}".lower()
     found = []
-    for p in psutil.process_iter(["name", "cmdline"]):
+    # Questa ricerca gira una volta al secondo finche' la finestra e' aperta. Prima chiedeva la riga di comando di
+    # TUTTI i processi del computer (circa 15 ms di processore a giro con 180 processi, molto di piu' su un server con
+    # molte sessioni); ora si legge solo il nome e la riga di comando si chiede ai soli browser: dieci volte meno.
+    for p in psutil.process_iter(["name"]):
         try:
-            if (p.info["name"] or "").lower() in _BROWSER_NAMES and needle in " ".join(p.info["cmdline"] or []).lower():
+            if (p.info["name"] or "").lower() in _BROWSER_NAMES and needle in " ".join(p.cmdline() or []).lower():
                 found.append(p)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except psutil.Error:
             continue
     return found
 

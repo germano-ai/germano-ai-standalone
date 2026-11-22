@@ -48,6 +48,7 @@ import psutil  # noqa: E402
 import requests  # noqa: E402
 from flask import (Flask, Response, g, jsonify, redirect, render_template, request, send_file,  # noqa: E402
                    stream_with_context)
+from werkzeug.exceptions import RequestEntityTooLarge  # noqa: E402
 
 from germano.vault import (TAG_RE, VaultReader, contains_strict_tags, contains_tags,  # noqa: E402
                            normalize_tag, restore_text)
@@ -101,9 +102,17 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 MODE_LABELS = {"standalone": "Standalone", "server": "Server", "client": "Client", "server+client": "Server + Client"}
 
 
+_THREAD_LANG = threading.local()    # lingua di una richiesta per il lavoro che prosegue fuori dal suo contesto
+
+
 def _lang():
     """Lingua dei messaggi: intestazione X-Germano-Lang (API, script) oppure il cookie germano_lang che la Dashboard
-    imposta con le bandierine IT/EN. Senza indicazioni si risponde in italiano, come nelle versioni precedenti."""
+    imposta con le bandierine IT/EN. Senza indicazioni si risponde in italiano, come nelle versioni precedenti.
+    Il flusso dell'Harness e i suoi thread lavorano dopo la fine della richiesta: la lingua scelta resta in
+    _THREAD_LANG (prima i loro messaggi, es. «Motore IA non raggiungibile», uscivano sempre in italiano)."""
+    forced = getattr(_THREAD_LANG, "value", None)
+    if forced:
+        return forced
     try:
         value = request.headers.get("X-Germano-Lang") or request.cookies.get("germano_lang") or ""
     except RuntimeError:   # fuori da una richiesta HTTP (es. all'avvio)
@@ -446,23 +455,50 @@ def _sync_engine(prev_mode, new_mode, prev_remote, cfg):
     return None
 
 
-# Limiti per-rotta sulla dimensione del corpo (evitano OOM su rotte JSON/auth anche se MAX_CONTENT_LENGTH e' 4 GB)
+# Limiti per-rotta sulla dimensione del corpo (evitano OOM su rotte JSON/auth anche se MAX_CONTENT_LENGTH e' 4 GB).
+# Turno 37: la tabella copre tutte le rotte che ricevono un corpo (le altre /api/ hanno un tetto predefinito) e il
+# limite vale anche SENZA Content-Length (Transfer-Encoding: chunked): _guard lo imposta come max_content_length della
+# richiesta, cosi' Werkzeug smette di leggere al tetto della rotta invece che ai 4 GB globali. Prima il controllo
+# guardava solo Content-Length e le rotte del motore condiviso, dell'Harness e del Remote Control non avevano tetto.
+_MB = 1024 * 1024
+ATTACH_MAX_COUNT = 12                 # allegati per richiesta (Studio, Harness AI, Remote Control)
+ATTACH_MAX_BYTES = 150 * _MB          # dimensione di un allegato (oltre: scheda Sanitizzazione manuale)
+_ATTACH_BODY_MAX = ATTACH_MAX_COUNT * ATTACH_MAX_BYTES + 64 * _MB    # allegati + prompt, cronologia e opzioni
+_DEFAULT_API_BODY = 4 * _MB           # rotte /api/ non elencate: JSON di comando, mai file
 _ROUTE_BODY_LIMITS = (
     (("/api/auth/",), 32 * 1024),
     (("/api/settings", "/api/mode", "/api/clear_vault", "/api/clear_logs", "/api/file_action",
-      "/api/retry_failed", "/api/harness/v2/preview", "/api/integrations"), 4 * 1024 * 1024),
+      "/api/retry_failed", "/api/harness/v2/preview", "/api/integrations"), 4 * _MB),
     (("/api/v1/anonymize-text", "/api/v1/inspect-entities", "/api/v1/leak-check",
-      "/api/v1/deanonymize-text", "/api/v1/workflow-roundtrip"), 8 * 1024 * 1024),
-    (("/v1/", "/chat/completions", "/responses", "/messages"), 64 * 1024 * 1024),
-    (("/mcp", "/api/v1/anonymize-file", "/api/v1/deanonymize-file"), 100 * 1024 * 1024),
+      "/api/v1/deanonymize-text", "/api/v1/workflow-roundtrip"), 8 * _MB),
+    (("/v1/", "/chat/completions", "/responses", "/messages"), 64 * _MB),
+    (("/mcp", "/api/v1/anonymize-file", "/api/v1/deanonymize-file"), 100 * _MB),
+    # motore condiviso con i client della rete (stessi limiti che le rotte applicano al contenuto)
+    (("/api/engine/v1/classify",), 16 * _MB),
+    (("/api/engine/v1/transcribe",), 200 * _MB),
+    (("/api/engine/v1/",), 80 * _MB),
+    # chat protetta con allegati: Dashboard, Remote Control e Germano Client
+    (("/api/harness/v2/run", "/api/studio/send", "/api/remote/v1/protect", "/api/remote/v1/ask"), _ATTACH_BODY_MAX),
+    (("/api/remote/v1/anonymize_file", "/api/remote/v1/restore_file"), ATTACH_MAX_BYTES + 16 * _MB),
+    # API REST di questo computer: testi lunghi; i file della Sanitizzazione manuale restano al limite globale (None)
+    (("/api/v1/anonymize_text", "/api/v1/deanonymize_text"), 64 * _MB),
+    (("/api/upload_files", "/api/v1/anonymize", "/api/v1/deanonymize_file"), None),
 )
+# Moduli multipart con campi di testo lunghi (prompt fino a 400.000 caratteri, cronologia, mappa di ripristino):
+# Werkzeug 3.1 rifiuta con 413 ogni campo non-file oltre 500.000 byte, meno di quanto queste rotte dichiarano di
+# accettare. Per loro il tetto di un campo sale a 8 MB, con al massimo 64 parti (memoria massima invariata).
+_FORM_TEXT_ROUTES = ("/api/harness/v2/run", "/api/studio/send", "/api/remote/v1/protect", "/api/remote/v1/ask",
+                     "/api/remote/v1/restore_file")
+_FORM_FIELD_MAX = 8 * _MB
+_FORM_PARTS_MAX = 64
 
 
 def _route_body_limit(path):
+    """Tetto del corpo per la rotta, in byte (None = solo il limite globale MAX_CONTENT_LENGTH)."""
     for prefixes, limit in _ROUTE_BODY_LIMITS:
-        if any(path == p or path.startswith(p) for p in prefixes):
+        if _path_matches(path, prefixes):
             return limit
-    return None
+    return _DEFAULT_API_BODY if path.startswith("/api/") else None
 
 
 def _read_bounded_body(limit):
@@ -470,10 +506,25 @@ def _read_bounded_body(limit):
     cl = request.content_length
     if cl is not None and cl > limit:
         return None
-    data = request.stream.read(limit + 1)
+    try:
+        data = request.stream.read(limit + 1)
+    except RequestEntityTooLarge:      # tetto della rotta raggiunto da un corpo senza Content-Length
+        return None
     if len(data) > limit:
         return None
     return data
+
+
+def _too_large_response():
+    msg = _L("Richiesta troppo grande.", "Request body too large.")
+    return jsonify({"status": "error", "code": "payload_too_large", "error": msg, "message": msg}), 413
+
+
+@app.errorhandler(413)
+def _on_too_large(_exc):
+    """Corpo, campo di un modulo o numero di parti oltre il limite: sempre JSON (prima la pagina riceveva l'HTML di
+    Werkzeug e mostrava solo «HTTP 413»)."""
+    return _too_large_response()
 
 
 # ------------------------------------------------------------------------------------------------
@@ -485,11 +536,17 @@ def _guard():
         return jsonify({"error": _L("Host non consentito: usa l'indirizzo IP del server.",
                                     "Host not allowed: use the server's IP address.")}), 403
 
-    limit = _route_body_limit(request.path)
-    if limit is not None and request.method not in ("GET", "HEAD", "OPTIONS"):
-        if request.content_length is not None and request.content_length > limit:
-            return jsonify({"status": "error", "code": "payload_too_large",
-                            "error": _L("Richiesta troppo grande.", "Request body too large.")}), 413
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        limit = _route_body_limit(request.path)
+        if limit is not None:
+            if request.content_length is not None and request.content_length > limit:
+                return _too_large_response()
+            # +1: chi legge il corpo intero (get_data) riconosce il superamento e risponde 413 invece di elaborare
+            # un contenuto troncato; i moduli multipart si fermano da soli con 413 (vedi _on_too_large).
+            request.max_content_length = limit + 1
+        if _path_matches(request.path, _FORM_TEXT_ROUTES):
+            request.max_form_memory_size = _FORM_FIELD_MAX
+            request.max_form_parts = _FORM_PARTS_MAX
 
     g.remote_user = None
     if not _remote_is_local():
@@ -1756,7 +1813,11 @@ def api_deanonymize_text():
     if not isinstance(data, dict) or "text" not in data:
         return jsonify({"error": _L("Fornire un JSON con il campo 'text'.", "Send a JSON body with the 'text' field.")}), 400
     tag_map = vault_reader.tag_map()
-    return jsonify({"status": "success", "restored": restore_text(str(data["text"]), tag_map), "vault_count": len(tag_map)})
+    try:
+        restored = restore_text(str(data["text"]), tag_map)
+    except ValueError as e:        # tetto anti-amplificazione del ripristino: errore chiaro, non un 500 di Flask
+        return jsonify({"status": "error", "error": str(e)}), 413
+    return jsonify({"status": "success", "restored": restored, "vault_count": len(tag_map)})
 
 
 @app.route("/api/v1/deanonymize_file", methods=["POST"])
@@ -1880,9 +1941,38 @@ def api_anonymize_file():
 # Studio AI: protezione di prompt e allegati prima dell'invio a un'AI
 # ------------------------------------------------------------------------------------------------
 STUDIO_MAX_PROMPT = 400_000      # caratteri del prompt
-STUDIO_MAX_ATTACH = 12           # numero di allegati per invio
+STUDIO_MAX_ATTACH = ATTACH_MAX_COUNT             # numero di allegati per invio
 STUDIO_ATTACH_CHARS = 200_000    # caratteri estratti per allegato
-STUDIO_ENGINE_ATTACH_MAX = 150 * 1024 * 1024   # audio e archivi allegati: passano dal motore (trascrizione, apertura)
+STUDIO_ENGINE_ATTACH_MAX = ATTACH_MAX_BYTES      # dimensione massima di un allegato (documenti, audio, archivi)
+
+
+def _attachment_too_large():
+    return _L("file troppo grande come allegato (massimo 150 MB): usa la scheda Sanitizzazione manuale",
+              "file too large as an attachment (at most 150 MB): use the Manual Sanitization tab")
+
+
+def _upload_size(f):
+    """Dimensione di un file caricato senza leggerlo in memoria (oltre 500 KB Werkzeug lo ha gia' messo su disco)."""
+    try:
+        pos = f.stream.tell()
+        f.stream.seek(0, os.SEEK_END)
+        size = f.stream.tell()
+        f.stream.seek(pos)
+        return size
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _attachment_data(f):
+    """(contenuto, dimensione) di un allegato caricato; contenuto None se supera ATTACH_MAX_BYTES: in quel caso non
+    viene letto in memoria (prima ogni allegato veniva letto per intero, fino al limite globale di 4 GB)."""
+    size = _upload_size(f)
+    if size is not None and size > ATTACH_MAX_BYTES:
+        return None, size
+    data = f.read(ATTACH_MAX_BYTES + 1)
+    if len(data) > ATTACH_MAX_BYTES:
+        return None, max(size or 0, len(data))
+    return data, len(data)
 
 
 def _engine_attachment_text(name, data, op=None):
@@ -1890,8 +1980,7 @@ def _engine_attachment_text(name, data, op=None):
     (aperti in sicurezza, con gli eventuali audio interni). Restituisce (testo, motivo se non e' stato possibile).
     Il testo non e' ancora protetto: viene anonimizzato subito dopo, prima di mostrarlo o inviarlo."""
     if len(data) > STUDIO_ENGINE_ATTACH_MAX:
-        return "", _L("file troppo grande come allegato (massimo 150 MB): usa la scheda Sanitizzazione manuale",
-                      "file too large as an attachment (at most 150 MB): use the Manual Sanitization tab")
+        return "", _attachment_too_large()
     staged = _stage_bytes(data, name)
     payload = {"filename": name, "src_path": staged, "max_chars": STUDIO_ATTACH_CHARS}
     if op:
@@ -1916,6 +2005,10 @@ def _studio_attachment_text(filename, data, op=None, why=None):
     from germano import formats
     name = common.safe_filename(filename or "allegato")
     ext = os.path.splitext(name)[1].lower()
+    if data is None:                 # allegato oltre ATTACH_MAX_BYTES: mai letto in memoria (_attachment_data)
+        if why is not None:
+            why.append(_attachment_too_large())
+        return ""
     if ext in formats.AUDIO_EXTS or ext in formats.ARCHIVE_EXTS:
         text, reason = _engine_attachment_text(name, data, op)
         if why is not None and not text.strip():
@@ -1965,7 +2058,9 @@ def _studio_attachments(files):
     for f in files:
         name = common.safe_filename(f.filename)
         why = []
-        text = _studio_attachment_text(f.filename, f.read(), why=why)
+        data, _size = _attachment_data(f)
+        text = _studio_attachment_text(f.filename, data, why=why)
+        del data
         textual = bool(text.strip())
         attachments.append({"name": name, "chars": len(text), "textual": textual})
         if why:
@@ -2232,6 +2327,18 @@ def _client_options(raw, cfg):
             raise _lock_refusal(cfg)
         return None
     return common.validate_options(raw, cfg)
+
+
+def _restore_answer(text, tag_map):
+    """(risposta con i dati ripristinati, avviso | None). Se il ripristino supera il tetto anti-amplificazione di
+    restore_text la risposta dell'AI non va persa: torna com'e', con le etichette, insieme al motivo (prima
+    l'eccezione faceva rispondere 500 o «errore imprevisto» a risposta gia' ricevuta)."""
+    if not tag_map:
+        return text, None
+    try:
+        return restore_text(text, tag_map), None
+    except ValueError as e:
+        return text, str(e)
 
 
 def _entity_map(entities):
@@ -2527,7 +2634,7 @@ def api_remote_ask():
         return jsonify({"status": "error", "message": msg}), e.status
     _session_log(entities)
     tag_map = _entity_map(entities) if masking == "numbered" else {}
-    answer = restore_text(answer_protected, tag_map) if tag_map else answer_protected
+    answer, restore_note = _restore_answer(answer_protected, tag_map)
     seconds = round(time.time() - t0, 1)
     # Turno dell'utente in chiaro (i suoi dati) per la cronologia: al turno successivo viene di nuovo protetto qui
     user_text = prompt
@@ -2535,11 +2642,14 @@ def api_remote_ask():
         user_text += f"\n\n----- {nm} -----\n{text[:REMOTE_ATTACH_HISTORY]}"
     common.log(f"Remote Control: {target} per {g.remote_user or request.remote_addr} ({len(current)} caratteri "
                f"protetti, {len(entities)} dati oscurati, {seconds} s).")
-    return jsonify({"status": "success", "target": target, "target_name": target_name, "model": model,
-                    "answer": answer, "answer_protected": answer_protected, "protected": current,
-                    "user_text": user_text.strip(), "attachments": attachments, "entity_count": len(entities),
-                    "labels": sorted({e["label"] for e in entities if e.get("label")}), "masking": masking,
-                    "seconds": seconds})
+    body = {"status": "success", "target": target, "target_name": target_name, "model": model,
+            "answer": answer, "answer_protected": answer_protected, "protected": current,
+            "user_text": user_text.strip(), "attachments": attachments, "entity_count": len(entities),
+            "labels": sorted({e["label"] for e in entities if e.get("label")}), "masking": masking,
+            "seconds": seconds}
+    if restore_note:
+        body["restore_note"] = restore_note
+    return jsonify(body)
 
 
 @app.route("/api/remote/v1/models")
@@ -2736,7 +2846,8 @@ def api_harness_targets():
                     "profile": cfg.get("compliance_mode"), "locked": common.options_locked(cfg),
                     "masking": common.server_options(cfg)["masking"], "label_hint": True,
                     "limits": {"attachments": STUDIO_MAX_ATTACH, "prompt_chars": STUDIO_MAX_PROMPT,
-                               "history_turns": HARNESS_HISTORY_TURNS, "preview_chars": HARNESS_PREVIEW_CHARS}})
+                               "history_turns": HARNESS_HISTORY_TURNS, "history_chars": HARNESS_HISTORY_CHARS,
+                               "attachment_bytes": ATTACH_MAX_BYTES, "preview_chars": HARNESS_PREVIEW_CHARS}})
 
 
 def _harness_history(raw):
@@ -2780,15 +2891,16 @@ def _anonymize_cached(texts, options, cfg, owner=None):
 
 
 def _attachments_from_bytes(items, op=None):
-    """[(nome, bytes)] -> (descrizione degli allegati, [(nome, testo)] di quelli con testo). `op`: identificativo
-    dell'esecuzione, per poter annullare nel motore una trascrizione lunga."""
+    """[(nome, bytes | None, dimensione)] -> (descrizione degli allegati, [(nome, testo)] di quelli con testo). `op`:
+    identificativo dell'esecuzione, per poter annullare nel motore una trascrizione lunga. bytes None = allegato
+    troppo grande (non letto): resta fuori, con il motivo."""
     attachments, parts = [], []
-    for name, data in items:
+    for name, data, size in items:
         safe = common.safe_filename(name)
         why = []
         text = _studio_attachment_text(name, data, op=op, why=why)
         textual = bool(text.strip())
-        attachments.append({"name": safe, "size": len(data), "chars": len(text), "textual": textual})
+        attachments.append({"name": safe, "size": size, "chars": len(text), "textual": textual})
         if why:
             attachments[-1]["note"] = why[0]
         if textual:
@@ -2926,7 +3038,7 @@ def api_harness_run_v2():
             raise _Refused(400, {"status": "error", "message": str(e)})
         if not daemon_ready():
             raise _engine_blocked()
-        file_items = [(f.filename, f.read()) for f in files]
+        file_items = [(f.filename,) + _attachment_data(f) for f in files]     # (nome, bytes | None, dimensione)
         run = gglass.RUNS.register(_requester(), local, target, eff_model)
         if run is None:
             raise _Refused(429, {"status": "error", "message": _L(
@@ -2972,18 +3084,20 @@ def _harness_stream(run, ctx):
     kind, dest, cfg = ctx["kind"], ctx["dest"], ctx["cfg"]
     scrub = not ctx["local"]
     t0 = time.time()
+    _THREAD_LANG.value = lang            # il flusso gira dopo la fine della richiesta: vedi _lang()
     try:
         yield ev("start", run_id=run.id, target=ctx["target"], target_name=dest.get("name"), kind=kind,
                  model=ctx["model"] or None, local=ctx["local"], review=ctx["review"], version=APP_VERSION)
         yield ev("original", prompt=gglass.cap(ctx["prompt"]), system=gglass.cap(ctx["system"]),
                  history=[{"role": h["role"], "chars": len(h["text"])} for h in ctx["history"]],
-                 attachments=[{"name": common.safe_filename(n), "size": len(b)} for n, b in ctx["files"]])
+                 attachments=[{"name": common.safe_filename(n), "size": size} for n, _b, size in ctx["files"]])
         # ---------------------------------------------------------------- protezione con il motore di Germano
         run.phase = "protecting"
         yield ev("phase", phase="protecting")
         box = {}
 
         def protect():
+            _THREAD_LANG.value = lang
             try:
                 attachments, parts = _attachments_from_bytes(ctx["files"], op=run.id)
                 system_text = ctx["system"]
@@ -3036,7 +3150,7 @@ def _harness_stream(run, ctx):
         tag_map = _entity_map(entities) if masking == "numbered" else {}
         hint = _LABEL_HINT["en" if lang == "en" else "it"] if ctx["label_hint"] and tag_map else ""
         sys_out = "\n\n".join(x for x in (hint, p_system) if x)
-        _session_log(entities)
+        _session_log(entities, "/api/harness/v2/run")
         cur_entities = [e for r in results[idx + n:] for e in (r.get("extracted_data") or [])]
         yield ev("entities", items=gglass.public_entities(cur_entities, "request"),
                  history_items=gglass.public_entities([e for r in results[:idx + n] for e in (r.get("extracted_data") or [])],
@@ -3277,22 +3391,28 @@ def _harness_stream(run, ctx):
         answer_protected = res.get("answer") if isinstance(res.get("answer"), str) else "".join(parts)
         usage = res.get("usage") or usage
         restored_n = sum(1 for m in TAG_RE.finditer(answer_protected) if normalize_tag(m.group(0)) in tag_map)
-        answer = restore_text(answer_protected, tag_map) if tag_map else answer_protected
+        answer, restore_note = _restore_answer(answer_protected, tag_map)
+        if restore_note:
+            restored_n = 0
         run.phase = "done"
         seconds = round(time.time() - t0, 1)
         common.log(f"Harness: {ctx['target']} per {ctx['who']} ({len(current)} caratteri protetti, "
                    f"{len(cur_entities)} dati oscurati, {seconds} s).")
+        extra = {"restore_note": restore_note} if restore_note else {}
         yield ev("done", answer=gglass.cap(answer), answer_protected=gglass.cap(answer_protected),
                  elapsed_ms=run.elapsed_ms(), protect_ms=protect_ms, first_token_ms=first_ms, usage=usage,
                  entity_count=len(cur_entities), restored=restored_n, chars=len(answer_protected),
                  words=len(answer_protected.split()), user_text=user_text.strip(), masking=masking,
-                 target_name=dest.get("name"), model=ctx["model"] or None)
+                 target_name=dest.get("name"), model=ctx["model"] or None, **extra)
     except GeneratorExit:
         run.abort("client")        # la pagina si e' chiusa o ha interrotto la lettura: si ferma tutto
         raise
     except Exception as e:
         # Errore imprevisto (turno 26, rilievo del turno 25): prima il flusso si chiudeva senza nessun evento e la
         # pagina restava in attesa. Ora arriva sempre un evento «error», con l'indicazione se qualcosa era gia' partito.
+        # Turno 37: l'invio ancora in corso (connessione con il servizio o processo della CLI) viene fermato; prima
+        # proseguiva da solo, senza piu' nessuno a leggerne la risposta.
+        run.abort("error")
         common.log(f"Harness: errore imprevisto ({type(e).__name__}: {e}).")
         yield ev("error", status="error", transmitted=bool(run.transmitted), message=L(
             f"Errore imprevisto di Germano ({type(e).__name__}): "
@@ -3302,6 +3422,7 @@ def _harness_stream(run, ctx):
             + ("the request had already been sent to the AI service." if run.transmitted
                else "no data was sent to the AI service.")))
     finally:
+        _THREAD_LANG.value = None
         gglass.RUNS.finish(run)
 
 
@@ -3919,6 +4040,10 @@ def mcp_endpoint():
 # --- Server MCP: SSE legacy (2024-11-05) per n8n e client meno recenti ---
 @app.route("/mcp/sse", methods=["GET"])
 def mcp_sse():
+    if request.method == "HEAD":
+        # Nessun flusso da aprire: il corpo di una risposta HEAD non viene mai letto, quindi la sessione aperta qui
+        # non si chiuderebbe piu' (dopo 32 richieste HEAD il trasporto SSE restava «occupato» fino al riavvio).
+        return Response(status=200, mimetype="text/event-stream", headers={"Cache-Control": "no-cache"})
     principal = "local" if _remote_is_local() else (getattr(g, "integration_principal", None) or "remote")
     session = gmcp.SSE_HUB.open(principal)
     if session is None:
@@ -3929,6 +4054,7 @@ def mcp_sse():
     endpoint = f"{prefix}/mcp/messages?session_id={session.id}"
 
     def stream():
+        session.attached = True          # il flusso e' partito: da qui la chiusura e' garantita dal finally
         try:
             yield f"event: endpoint\ndata: {endpoint}\n\n"
             while not session.closed:
@@ -4150,13 +4276,18 @@ def _resp_headers(r):
     return out
 
 
-def _session_log(extracted):
+def _session_log(extracted, path=None):
+    """Corrispondenze della richiesta nel registro delle sessioni (extracted/proxy_sessions), se attivo. `path`: da
+    indicare quando si scrive fuori dal contesto della richiesta (flusso dell'Harness): li' request.path solleva
+    RuntimeError e, inghiottito dall'except qui sotto, il registro dell'Harness non veniva mai scritto."""
     if not extracted or not common.load_config().get("save_proxy_logs", True):
         return
     try:
+        if path is None:
+            path = request.path
         d = os.path.join(common.EXTRACTED_DIR, "proxy_sessions")
         os.makedirs(d, exist_ok=True)
-        line = json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "path": request.path,
+        line = json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "path": path,
                            "map": {e["label"]: e["word"] for e in extracted}}, ensure_ascii=False)
         with open(os.path.join(d, time.strftime("%Y-%m-%d") + ".jsonl"), "a", encoding="utf-8") as f:
             f.write(line + "\n")
@@ -4359,18 +4490,18 @@ def _proxy(kind, sub=""):
                     continue
                 for name, data, other in parser.feed(chunk):
                     for n2, d2 in rewriter.process(name, data):
-                        yield gproxy.serialize_event(n2, d2, other)
+                        yield gproxy.encode_event(gproxy.serialize_event(n2, d2, other))
                         other = ()
             if rewriter is not None:
                 for name, data, other in parser.close():
                     for n2, d2 in rewriter.process(name, data):
-                        yield gproxy.serialize_event(n2, d2, other)
+                        yield gproxy.encode_event(gproxy.serialize_event(n2, d2, other))
                         other = ()
                 for n2, d2 in rewriter.flush():
-                    yield gproxy.serialize_event(n2, d2)
+                    yield gproxy.encode_event(gproxy.serialize_event(n2, d2))
         except Exception as e:
             err = {"type": "error", "error": {"type": "api_error", "message": f"Stream interrotto: {e}"}}
-            yield gproxy.serialize_event("error", json.dumps(err))
+            yield gproxy.encode_event(gproxy.serialize_event("error", json.dumps(err)))
         finally:
             r.close()
 

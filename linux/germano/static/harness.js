@@ -225,6 +225,11 @@
     function esc(v) {
         return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
+    // Numeri che arrivano dal server o dal servizio di AI (token, conteggi): mai inseriti come HTML
+    function num(v, alt = '?') {
+        const n = typeof v === 'number' ? v : (typeof v === 'string' && /^\d{1,15}$/.test(v) ? Number(v) : NaN);
+        return Number.isFinite(n) ? String(n) : alt;
+    }
     function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
     function normTag(base, num) { return '[' + base.trim().replace(/[ _]+/g, '_').toUpperCase() + '_' + String(parseInt(num, 10)) + ']'; }
     function fmtBytes(n) {
@@ -305,6 +310,10 @@
         }
         let out = '', i = 0, plain = '';
         while (i < code.length) {
+            if (code[i] === '\uE000') {      // segnaposto \uE000n\uE001 di un dato da ripristinare: resta intero, nessuna regola lo spezza
+                const end = code.indexOf('\uE001', i + 1);
+                if (end > i && end - i <= 9 && /^\d+$/.test(code.slice(i + 1, end))) { plain += code.slice(i, end + 1); i = end + 1; continue; }
+            }
             let hit = null;
             for (const [re, cls] of rules) {
                 re.lastIndex = i;
@@ -354,13 +363,14 @@
             links.push(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer nofollow" title="${esc(u)}">${fmtEmphasis(label)}</a>`);
             return `\uE012${links.length - 1}\uE013`;
         });
-        s = s.replace(/(^|[\s(])((?:https?:\/\/)[^\s<>"']+[^\s<>"'.,;:!?)])/g, (m, pre, url) => {
+        s = s.replace(/(^|[\s(])(https?:\/\/(?:(?!&(?:quot|#39|lt|gt);)[^\s])*(?:(?!&(?:quot|#39|lt|gt);)[^\s.,;:!?)]))/g, (m, pre, url) => {
             const u = safeHref(url, marks);
             links.push(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer nofollow">${esc(u)}</a>`);
             return `${pre}\uE012${links.length - 1}\uE013`;
         });
         s = fmtEmphasis(s);
-        s = s.replace(/\uE012(\d+)\uE013/g, (m, n) => (links[+n] !== undefined ? links[+n] : m));
+        const putLinks = t => t.replace(/\uE012(\d+)\uE013/g, (m, n) => (links[+n] !== undefined ? links[+n] : ''));
+        s = putLinks(putLinks(s));        // due passate: un'immagine puo' stare dentro l'etichetta di un collegamento
         s = s.replace(/\uE010(\d+)\uE011/g, (m, n) => (codes[+n] !== undefined ? `<code>${esc(codes[+n])}</code>` : m));
         return s;
     }
@@ -373,7 +383,7 @@
         const out = [];
         let i = 0;
         const isFence = l => /^\s{0,3}(```|~~~)/.test(l);
-        const isTableSep = l => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(l);
+        const isTableSep = l => { const t = l.trim(); return t.length <= 2000 && /^\|?\s*:?-{2,}:?(\s*\|\s*:?-{2,}:?)*\s*\|?$/.test(t); };
         const splitRow = l => l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
         while (i < lines.length) {
             const line = lines[i];
@@ -907,6 +917,37 @@
             save('session', this.o.convKey, undefined);
             this.renderAll();
         }
+        // Uscita o cambio utente (Remote Control, Germano Client): niente di chi c'era prima resta in pagina o in memoria
+        reset(keepStored = false) {
+            const run = this.active;
+            if (run) {
+                run.stopRequested = true;
+                if (run.id) this.api(`/api/harness/v2/runs/${encodeURIComponent(run.id)}/abort`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+                try { run.ctrl.abort(); } catch (e) { /* gia' chiusa */ }
+            }
+            clearTimeout(this.previewTimer);
+            if (this.previewCtrl) this.previewCtrl.abort();
+            this.active = null;
+            this.runs = [];
+            this.glassRun = null;
+            this.preview = null;
+            this.follow = true;
+            this.files = [];
+            this.fetchedModels = {};
+            this.$input.value = '';
+            this.$search.value = '';
+            this.systemOpen = false;
+            this.convs = keepStored ? this.loadConvs() : [];
+            this.currentId = this.convs[0] ? this.convs[0].id : null;
+            this.closeGlass();
+            this.closePicker();
+            this.autosize();
+            this.renderAll();
+            this.renderRunSelect();
+            this.renderGlass();
+            this.$runSelect.innerHTML = '';
+            this.$gwBody.innerHTML = '';
+        }
         toggleSystem() {
             this.systemOpen = !this.systemOpen || this.$systemBar.hidden;
             if (this.$systemBar.hidden) { this.$systemBar.hidden = false; this.systemOpen = true; this.$system.focus(); }
@@ -988,10 +1029,10 @@
             } else {
                 title = esc(this.T('filterDone'));
             }
-            const n = m.count || 0;
+            const n = Number(num(m.count, '0'));
             const count = m.state === 'working' || m.state === 'blocked' ? '' :
                 `<span class="hx-filter-meta">· ${n ? `${n} ${esc(this.T(n === 1 ? 'maskedOne' : 'masked'))}` : esc(this.T('noneMasked'))}` +
-                `${m.protect_ms != null ? ` · ${fmtSec(m.protect_ms)}` : ''}${m.cached ? ` · ${m.cached} ${esc(this.T('fromCache'))}` : ''}</span>`;
+                `${m.protect_ms != null ? ` · ${fmtSec(m.protect_ms)}` : ''}${Number(num(m.cached, '0')) > 0 ? ` · ${num(m.cached)} ${esc(this.T('fromCache'))}` : ''}</span>`;
             const skipped = (m.skipped || []).length ? `<span class="hx-filter-meta">${esc(this.T('skipped'))}${esc(m.skipped.join(', '))}</span>` : '';
             const prot = m.protected ? `<div class="gw-pre">${highlightLabels(m.protected)}</div>
                 <div class="hx-filter-actions"><button type="button" class="hx-mini primary" data-act="copy-protected">${svg('copy')}${esc(this.T('copyProtected'))}</button></div>` : '';
@@ -1029,10 +1070,10 @@
                 const b = [];
                 if (meta.elapsed_ms != null) b.push(`<span class="hx-badge" title="${esc(this.T('badgeTime'))}">${svg('clock')} <b>${fmtSec(meta.elapsed_ms)}</b></span>`);
                 if (meta.first_token_ms != null) b.push(`<span class="hx-badge" title="${esc(this.T('badgeFirst'))}">${svg('zap')} ${fmtSec(meta.first_token_ms)}</span>`);
-                if (u.input_tokens != null || u.output_tokens != null) b.push(`<span class="hx-badge">${svg('hash')} <b>${u.input_tokens ?? '?'}</b> → <b>${u.output_tokens ?? '?'}</b> ${esc(this.T('badgeTokens'))}</span>`);
-                else if (meta.words != null) b.push(`<span class="hx-badge">≈ <b>${meta.words}</b> ${esc(this.T(meta.words === 1 ? 'badgeWord1' : 'badgeWords'))}</span>`);
-                if (meta.entity_count != null) b.push(`<span class="hx-badge ok">${svg('shield')} <b>${meta.entity_count}</b> ${esc(this.T(meta.entity_count === 1 ? 'badgeMasked1' : 'badgeMasked'))}</span>`);
-                if (meta.restored) b.push(`<span class="hx-badge info">↩ <b>${meta.restored}</b> ${esc(this.T(meta.restored === 1 ? 'badgeRestored1' : 'badgeRestored'))}</span>`);
+                if (u.input_tokens != null || u.output_tokens != null) b.push(`<span class="hx-badge">${svg('hash')} <b>${num(u.input_tokens)}</b> → <b>${num(u.output_tokens)}</b> ${esc(this.T('badgeTokens'))}</span>`);
+                else if (meta.words != null) b.push(`<span class="hx-badge">≈ <b>${num(meta.words)}</b> ${esc(this.T(meta.words === 1 ? 'badgeWord1' : 'badgeWords'))}</span>`);
+                if (meta.entity_count != null) b.push(`<span class="hx-badge ok">${svg('shield')} <b>${num(meta.entity_count)}</b> ${esc(this.T(meta.entity_count === 1 ? 'badgeMasked1' : 'badgeMasked'))}</span>`);
+                if (meta.restored) b.push(`<span class="hx-badge info">↩ <b>${num(meta.restored)}</b> ${esc(this.T(meta.restored === 1 ? 'badgeRestored1' : 'badgeRestored'))}</span>`);
                 badges = `<div class="hx-badges">${b.join('')}</div>`;
             }
             const actions = m.status === 'done' ? `<div class="hx-msg-actions">
@@ -1047,6 +1088,8 @@
         }
 
         updateMsg(m) {
+            const cur = this.conv;
+            if (!cur || !cur.messages.includes(m)) return;   // messaggio tolto (interruzione, errore) o di una conversazione non piu' mostrata
             const el = this.$thread.querySelector(`[data-mid="${CSS.escape(m.id)}"]`);
             const html = this.msgHtml(m);
             if (!el) { this.$thread.insertAdjacentHTML('beforeend', html); }
@@ -1124,9 +1167,12 @@
             const r = await fetch(path, Object.assign({}, init, { headers, credentials: 'same-origin', cache: 'no-store' }));
             return r;
         }
-        async refreshTargets(force) {
-            if (this.detecting) return;
-            this.detecting = true;
+        refreshTargets(force) {
+            if (this.detecting) return force ? this.detecting.then(() => this.refreshTargets(true)) : this.detecting;
+            this.detecting = this.detectOnce(force).finally(() => { this.detecting = null; });
+            return this.detecting;
+        }
+        async detectOnce(force) {
             try {
                 const r = await this.api('/api/harness/v2/targets' + (force ? '?refresh=1' : ''));
                 if (r.status === 401) { if (this.o.onAuthRequired) this.o.onAuthRequired(); return; }
@@ -1161,8 +1207,6 @@
                 }
             } catch (e) {
                 /* Germano non risponde: si riprova al prossimo giro */
-            } finally {
-                this.detecting = false;
             }
         }
         keys() { return Object.assign({}, load('local', this.o.keysKey, {}), load('session', this.o.keysKey, {})); }
@@ -1392,7 +1436,7 @@
                 } else if (f.type === 'bool') {
                     control = `<span class="hx-params-switch"><input type="checkbox" data-param="${esc(f.key)}"${val ? ' checked' : ''}><span>${esc(this.T('paramsEnable'))}</span></span>`;
                 } else if (f.type === 'int' || f.type === 'number') {
-                    control = `<input type="number" data-param="${esc(f.key)}" min="${f.min}" max="${f.max}" step="${f.step || 1}" value="${val == null ? '' : esc(val)}" placeholder="${esc(this.T('paramsDefault'))}">`;
+                    control = `<input type="number" data-param="${esc(f.key)}" min="${esc(f.min)}" max="${esc(f.max)}" step="${esc(f.step || 1)}" value="${val == null ? '' : esc(val)}" placeholder="${esc(this.T('paramsDefault'))}">`;
                 } else {
                     control = `<input type="text" data-param="${esc(f.key)}" value="${esc(val || '')}" placeholder="${esc(this.T('modelPh'))}" spellcheck="false" autocapitalize="off"${listId ? ` list="${esc(listId)}"` : ''}>`;
                 }
@@ -2040,7 +2084,17 @@
                 if (m.role === 'user' && m.done) out.push({ role: 'user', text: m.userText || m.text || '' });
                 else if (m.role === 'assistant' && m.status === 'done' && m.text) out.push({ role: 'assistant', text: m.text });
             }
-            return out.filter(h => h.text.trim());
+            // Stessi limiti che il server applica (_harness_history): ultimi history_turns turni e history_chars
+            // caratteri. Prima partiva TUTTA la conversazione a ogni richiesta: il campo cresceva senza limite e,
+            // oltre il tetto del modulo, il server rispondeva 413 a ogni nuovo messaggio di quella conversazione.
+            const lim = (this.meta && this.meta.limits) || {};
+            const maxItems = Math.max(2, (lim.history_turns || 40) * 2);
+            const maxChars = lim.history_chars || 200000;
+            const items = out.filter(h => h.text.trim()).slice(-maxItems)
+                .map(h => (h.text.length > maxChars ? { role: h.role, text: h.text.slice(0, maxChars) } : h));
+            let total = items.reduce((n, h) => n + h.text.length, 0);
+            while (items.length && total > maxChars) total -= items.shift().text.length;
+            return items;
         }
 
         async run(text, files, target, opts = {}) {
@@ -2582,7 +2636,7 @@
                 b2 += this.system2Html(ent.system2);
                 b2 += `<div class="gw-note">${esc(this.T('gwVaultNote'))}</div>`;
             }
-            html += this.sec(2, 'gwSec2', ent ? `${ent.count || 0} · ${fmtSec(ent.protect_ms)}${ent.cached ? ' · cache ' + ent.cached : ''}` : '', b2, run.phase === 'protecting', keepOpen[2] !== 'false');
+            html += this.sec(2, 'gwSec2', ent ? `${num(ent.count, '0')} · ${fmtSec(ent.protect_ms)}${Number(num(ent.cached, '0')) > 0 ? ' · cache ' + num(ent.cached) : ''}` : '', b2, run.phase === 'protecting', keepOpen[2] !== 'false');
             // 3. testo inviato
             const s = run.sanitized;
             let b3;
@@ -2647,10 +2701,11 @@
             box.innerHTML = run.raw ? highlightLabels(run.raw) : `<span class="gw-note">${esc(run.done && run.done.protect_only ? this.T('gwNotSent') : this.T('gwWaitingStream'))}</span>`;
             if (nearEnd || full) box.scrollTop = box.scrollHeight;
             const secs = run.receivedAt ? ((run.ended || Date.now()) - run.receivedAt) / 1000 : 0;
-            const toks = (run.usage && run.usage.output_tokens) || Math.round(run.raw.length / 4);
+            const outTok = run.usage ? Number(num(run.usage.output_tokens, '0')) : 0;
+            const toks = outTok > 0 ? outTok : Math.round(run.raw.length / 4);
             const counters = this.$gwBody.querySelector('[data-gw-counters]');
             if (counters) counters.innerHTML = `<span class="gw-tag">${run.raw.length} ${esc(this.T('gwChars'))}</span>
-                <span class="gw-tag">${run.usage && run.usage.output_tokens != null ? '' : '≈'}${toks} ${esc(this.T('badgeTokens'))}</span>
+                <span class="gw-tag">${outTok > 0 ? '' : '≈'}${toks} ${esc(this.T('badgeTokens'))}</span>
                 ${secs > 0.3 ? `<span class="gw-tag">${(toks / secs).toFixed(1)} ${esc(this.T('gwTps'))}</span>` : ''}
                 ${run.firstToken != null ? `<span class="gw-tag info">⚡ ${fmtSec(run.firstToken)}</span>` : ''}`;
             const meta = this.$gwBody.querySelector('[data-ref-stream-meta]');

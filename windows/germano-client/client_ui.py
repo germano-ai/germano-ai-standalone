@@ -10,6 +10,7 @@ aggiornamenti silenziosi del client (client_updater.py). Prima di inoltrare qual
 all'indirizzo risponda davvero un Germano Server (nessun dato verso servizi sconosciuti).
 """
 import argparse
+import http.client
 import json
 import os
 import re
@@ -314,10 +315,10 @@ def proxy_harness_run():
         base, tok = _server()
     except client.ClientError as e:
         return jsonify({"status": "error", "error": str(e), "message": str(e)}), 502
-    req = urllib.request.Request(base + "/api/harness/v2/run", data=request.get_data(), headers=_headers(tok),
-                                 method="POST")
-    req.add_header("User-Agent", f"GermanoClient/{APP_VERSION}")
     try:
+        req = urllib.request.Request(base + "/api/harness/v2/run", data=request.get_data(), headers=_headers(tok),
+                                     method="POST")
+        req.add_header("User-Agent", f"GermanoClient/{APP_VERSION}")
         upstream = client._HTTP.open(req, timeout=900)
     except urllib.error.HTTPError as e:
         try:
@@ -328,6 +329,11 @@ def proxy_harness_run():
     except (urllib.error.URLError, OSError) as e:
         msg = client._network_problem(getattr(e, "reason", e), base, 900)
         return jsonify({"status": "error", "error": msg, "message": msg}), 502
+    except (http.client.HTTPException, ValueError) as e:
+        # risposta che non e' HTTP (servizio diverso, server che si riavvia) o intestazione non valida: come in
+        # client._request, un errore leggibile per la pagina invece di un 500 del pannello
+        msg = f"{client._where(base)} non risponde come un Germano Server ({e.__class__.__name__})."
+        return jsonify({"status": "error", "error": msg, "message": msg}), 502
 
     def relay():
         try:
@@ -336,7 +342,7 @@ def proxy_harness_run():
                 if not chunk:
                     break
                 yield chunk
-        except OSError:
+        except (OSError, http.client.HTTPException):   # anche il flusso a blocchi troncato (IncompleteRead)
             return
         finally:
             try:

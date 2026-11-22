@@ -541,6 +541,23 @@ def remove_quietly(path):
         pass
 
 
+_LONE_SURROGATE_RE = re.compile("[\ud800-\udfff]")
+
+
+def no_lone_surrogates(text):
+    """Il testo con i surrogati isolati sostituiti da U+FFFD (stessa lunghezza: le posizioni non cambiano).
+
+    Un surrogato isolato arriva da dati malformati ma reali: un'emoji spezzata in un JSON («\\ud83d» senza la sua
+    meta'), un RTF, il nome di un file in un archivio TAR. Non e' codificabile in UTF-8: i tokenizer dei modelli
+    rispondono «TextEncodeInput must be Union[...]» e l'invio al motore remoto fallisce nella codifica JSON, cosi'
+    l'intero documento finiva tra i non riusciti. Va usato solo sul testo da ANALIZZARE, non su quello da scrivere."""
+    try:
+        text.encode("utf-8")
+        return text
+    except UnicodeEncodeError:
+        return _LONE_SURROGATE_RE.sub("�", text)
+
+
 # ----------------------------------------------------------------------------------------
 # Configurazione
 # ----------------------------------------------------------------------------------------
@@ -832,7 +849,8 @@ def save_users(users):
 # Nomi file
 # ----------------------------------------------------------------------------------------
 
-_WIN_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)} | {f"LPT{i}" for i in range(1, 10)}
+_WIN_RESERVED = {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"} | {f"COM{i}" for i in "123456789¹²³"} \
+    | {f"LPT{i}" for i in "123456789¹²³"}
 _INVALID_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
@@ -840,17 +858,20 @@ def safe_filename(name, max_len=150, fallback="file"):
     """Nome file sicuro per Windows che preserva lettere accentate e caratteri Unicode."""
     name = unicodedata.normalize("NFC", str(name or ""))
     name = name.replace("\\", "/").split("/")[-1]
-    name = _INVALID_CHARS_RE.sub("_", name).strip().strip(".").strip()
+    # spazi e punti in testa e in coda tolti INSIEME: «a. .» diventava «a.» (Windows toglie da solo il punto finale e
+    # il file creato non ha il nome atteso)
+    name = _INVALID_CHARS_RE.sub("_", name).strip(" .\t")
     if not name:
         name = fallback
     base, ext = os.path.splitext(name)
-    if base.upper().split(".")[0] in _WIN_RESERVED:
+    # nome riservato anche se seguito da spazi («con .txt», «NUL  .log»): per Windows fino alla 10 e' la periferica
+    if base.upper().split(".")[0].strip() in _WIN_RESERVED:
         base = "_" + base
     if len(ext) > 16:
         base, ext = base + ext, ""
     if len(base) + len(ext) > max_len:
         base = base[: max(1, max_len - len(ext))]
-    return base + ext
+    return (base + ext).rstrip(" .") or fallback
 
 
 def safe_relpath(rel, max_depth=12):

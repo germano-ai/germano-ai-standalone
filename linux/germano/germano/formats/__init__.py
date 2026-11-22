@@ -1,8 +1,12 @@
 """Elaborazione dei formati di file (anonimizzazione e ripristino) con un unico dispatcher."""
+import base64
+import binascii
 import contextlib
 import os
+import re
 import shutil
 import tempfile
+import urllib.parse
 
 from .. import common
 from ..analyzer import Anonymizer, Restorer, Unit, apply_replacements
@@ -257,6 +261,180 @@ def process_bytes(data, filename, ctx):
         with open(real_out, "rb") as f:
             out = f.read()
         return out, os.path.basename(real_out)
+
+
+# ------------------------------------------------------------------------------------------
+# Contenuti binari incorporati in un formato di testo (turno 37)
+# ------------------------------------------------------------------------------------------
+# Un allegato scritto in Base64 dentro un elemento XML (FatturaPA <Attachment>, certificati <X509Certificate>), un
+# valore JSON o un URI «data:» di una pagina HTML e' un FILE, non un testo: analizzato come testo non rivela nulla ai
+# modelli e usciva identico (chi lo riceve lo decodifica). Qui viene riconosciuto, elaborato col proprio formato e
+# rimesso al suo posto; in anonimizzazione, se non e' riconoscibile o non e' elaborabile, viene tolto (come gli
+# allegati non supportati delle email).
+_B64_BLOB_MIN = 200                     # caratteri Base64: sotto non e' un file incorporato
+_B64_BODY_RE = re.compile(r"[A-Za-z0-9+/]+")
+_DATA_URI_RE = re.compile(r"\s*data:([^,;]*)((?:;[^,;]*)*),(.*)", re.I | re.S)
+_MIME_EXT = {
+    "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg", "image/pjpeg": ".jpg", "image/gif": ".gif",
+    "image/bmp": ".bmp", "image/tiff": ".tif", "image/webp": ".webp", "image/svg+xml": ".xml",
+    "application/pdf": ".pdf", "text/plain": ".txt", "text/html": ".html", "text/csv": ".csv",
+    "application/json": ".json", "text/xml": ".xml", "application/xml": ".xml", "application/rtf": ".rtf",
+    "text/rtf": ".rtf", "message/rfc822": ".eml",
+}
+_TEXT_HINTS = TEXT_EXTS | {".csv", ".tsv", ".json", ".jsonl", ".ndjson", ".xml", ".html", ".htm", ".xhtml", ".eml"}
+_OID_SIGNED_DATA = bytes.fromhex("2a864886f70d010702")
+_MIME_HEAD_RE = re.compile(rb"\A(?:[A-Za-z][A-Za-z0-9\-]*:[ \t]?[^\r\n]*\r?\n(?:[ \t][^\r\n]*\r?\n)*)+")
+_OLE_STREAMS = (("WordDocument", ".doc"), ("Workbook", ".xls"), ("PowerPoint Document", ".ppt"))
+
+
+def sniff_ext(content):
+    """Estensione del formato riconosciuto dal CONTENUTO (firma dei primi byte). Un testo vale «.txt»; un binario
+    che non si riconosce vale None: non va mai trattato come testo (uscirebbe identico, con i dati in chiaro)."""
+    if not content:
+        return None
+    head = bytes(content[:4096])
+    if head.startswith(b"PK\x03\x04"):
+        import io
+        import zipfile
+        try:
+            with zipfile.ZipFile(io.BytesIO(content)) as z:
+                names = set(z.namelist())
+                if "word/document.xml" in names:
+                    return ".docx"
+                if "xl/workbook.xml" in names:
+                    return ".xlsx"
+                if "ppt/presentation.xml" in names:
+                    return ".pptx"
+                if "content.xml" in names:
+                    kind = b""
+                    if "mimetype" in names and z.getinfo("mimetype").file_size < 200:
+                        kind = z.read("mimetype")
+                    return ".ods" if b"spreadsheet" in kind else (".odp" if b"presentation" in kind else ".odt")
+        except Exception:
+            pass
+        return ".zip"
+    if head.startswith(b"\xd0\xcf\x11\xe0"):
+        for stream, ext in _OLE_STREAMS:
+            if stream.encode("utf-16-le") in content:
+                return ext
+        return None
+    for magic, ext in ((b"\xff\xd8\xff", ".jpg"), (b"\x89PNG\r\n\x1a\n", ".png"), (b"GIF87a", ".gif"),
+                       (b"GIF89a", ".gif"), (b"II*\x00", ".tif"), (b"MM\x00*", ".tif"),
+                       (b"7z\xbc\xaf\x27\x1c", ".7z"), (b"Rar!\x1a\x07", ".rar")):
+        if head.startswith(magic):
+            return ext
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return ".webp"
+    if head[:2] == b"BM" and len(content) >= 26 and int.from_bytes(head[2:6], "little") == len(content):
+        return ".bmp"
+    if head[:1] == b"\x30" and _OID_SIGNED_DATA in head[:64]:
+        return ".p7m"
+    text = head.lstrip(b"\xef\xbb\xbf \t\r\n")
+    if text.startswith(b"%PDF"):
+        return ".pdf"
+    if text.startswith(b"{\\rtf"):
+        return ".rtf"
+    low = text[:1024].lower()
+    if low.startswith(b"<"):
+        return ".html" if (b"<html" in low or b"<!doctype html" in low) else ".xml"
+    m = _MIME_HEAD_RE.match(head)
+    if m:
+        hdr = m.group(0).lower()
+        if b"content-type:" in hdr or b"mime-version:" in hdr or (b"from:" in hdr and (b"subject:" in hdr or b"to:" in hdr)):
+            return ".eml"
+    if head.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return ".txt"                                       # testo UTF-16/UTF-32 con BOM
+    if b"\x00" in head:
+        from .textlike import _wide_without_bom
+        return ".txt" if _wide_without_bom(content) else None
+    control = sum(1 for b in head if b < 32 and b not in (9, 10, 12, 13))
+    return ".txt" if control <= len(head) // 100 else None
+
+
+def embedded_blob(text):
+    """Bytes di un contenuto binario scritto in Base64 dentro un elemento XML o un valore JSON; None se `text` e'
+    un testo normale. Un testo ha parole corte separate da spazi; un blocco Base64 e' una sola sequenza (o righe
+    lunghe) dell'alfabeto Base64, di lunghezza multipla di 4."""
+    if not isinstance(text, str) or len(text) < _B64_BLOB_MIN:
+        return None
+    tokens = text.split()
+    if not tokens or any(len(t) < 40 for t in tokens[:-1]):
+        return None
+    s = "".join(tokens)
+    body = s.rstrip("=")
+    if len(s) < _B64_BLOB_MIN or len(s) % 4 or len(s) - len(body) > 2 or not _B64_BODY_RE.fullmatch(body):
+        return None
+    try:
+        return base64.b64decode(s, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+
+
+def process_embedded(data, ctx, name_hint=""):
+    """Elabora un contenuto binario incorporato come il file che e' (riconosciuto dal contenuto; `name_hint` aiuta solo
+    a distinguere i formati di testo). Restituisce (nuovi bytes, motivo). In anonimizzazione i bytes sono None se il
+    contenuto va tolto (tipo non riconosciuto o non elaborabile); in ripristino resta com'e'."""
+    import hashlib
+    ext = sniff_ext(data)
+    hint = os.path.splitext(str(name_hint or ""))[1].lower()
+    if ext == ".txt" and hint in _TEXT_HINTS:
+        ext = hint
+    if not ctx.anonymize and (ext is None or ext in IMAGE_EXTS):
+        return data, ""                                     # in ripristino immagini e binari restano come sono
+    if ext is None or processor_for(ext) is None:
+        return (None if ctx.anonymize else data), "tipo di contenuto non riconosciuto"
+    cache = ctx.shared.setdefault("embedded_cache", {})     # la stessa icona ripetuta cento volte si elabora una volta
+    key = (ctx.mode, ext, hashlib.sha256(data).hexdigest())
+    if key in cache:
+        return cache[key], ""
+    try:
+        out, _name = process_bytes(data, "incorporato" + ext, ctx.child())
+    except Exception as e:
+        reraise_control(e)
+        reason = str(e) or type(e).__name__
+        if "incorporato" in reason:              # Pillow e MuPDF citano il percorso del file temporaneo: non serve
+            reason = type(e).__name__
+        return (None if ctx.anonymize else data), reason
+    if len(cache) < 512 and len(out) <= 262144:
+        cache[key] = out
+    return out, ""
+
+
+def embedded_text(text, ctx, name_hint="", what="contenuto incorporato"):
+    """Se `text` e' un contenuto binario incorporato (URI «data:...» oppure blocco Base64) lo elabora e restituisce
+    il nuovo testo; restituisce None se `text` e' un testo normale (da analizzare come sempre)."""
+    if not isinstance(text, str) or len(text) < 32:
+        return None
+    if text.lstrip()[:5].lower() == "data:":
+        m = _DATA_URI_RE.fullmatch(text)
+        if not m:
+            return None
+        is_b64 = ";base64" in (m.group(2) or "").lower()
+        try:
+            data = (base64.b64decode("".join(m.group(3).split()), validate=False) if is_b64
+                    else urllib.parse.unquote_to_bytes(m.group(3)))
+        except (binascii.Error, ValueError):
+            data = b""
+        if not data:
+            return None if not ctx.anonymize or not m.group(3).strip() else "data:,"
+        mime = (m.group(1) or "text/plain").strip().lower()
+        new, reason = process_embedded(data, ctx, "x" + _MIME_EXT.get(mime, ""))
+        if new is None:
+            ctx.note(f"{what} («data:{mime[:40]}») rimosso per sicurezza: {reason}.")
+            return "data:,"
+        if new == data:
+            return text
+        return f"data:{m.group(1).strip()};base64," + base64.b64encode(new).decode("ascii")
+    data = embedded_blob(text)
+    if data is None:
+        return None
+    new, reason = process_embedded(data, ctx, name_hint)
+    if new is None:
+        ctx.note(f"{what} (Base64, {len(data)} byte) rimosso per sicurezza: {reason}.")
+        return ""
+    if new == data:
+        return text
+    return base64.b64encode(new).decode("ascii")
 
 
 def transform_filename(name, ctx):

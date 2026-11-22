@@ -599,13 +599,18 @@ class Updater:
         """Legge esclusivamente version.json da download.germano.ai (nessun ripiego HTML privo di impronta SHA-256)."""
         s = s or self._session()
         base = source()[0]
-        with self._get(s, urllib.parse.urljoin(base, INDEX_FILE), timeout=15) as r:
+        # L'indice si legge in flusso e al massimo per 1 MB: «r.content[:1 << 20]» scaricava prima TUTTA la risposta in
+        # memoria (qualunque dimensione avesse) e solo dopo la tagliava.
+        with self._get(s, urllib.parse.urljoin(base, INDEX_FILE), stream=True, timeout=15) as r:
             if r.status_code != 200:
                 raise UpdateError(f"download.germano.ai ha risposto con il codice {r.status_code}.")
             try:
-                release = parse_index(json.loads(r.content[:1 << 20].decode("utf-8-sig")), base)
-            except ValueError:
+                body = r.raw.read((1 << 20) + 1, decode_content=True)
+                release = parse_index(json.loads(body.decode("utf-8-sig")), base) if len(body) <= 1 << 20 else None
+            except (ValueError, OSError):
                 release = None
+            except Exception as e:           # connessione caduta a meta' lettura (eccezioni di urllib3)
+                raise UpdateError(f"Lettura dell'indice degli aggiornamenti interrotta: {type(e).__name__}") from None
         if not release:
             raise UpdateError("Indice degli aggiornamenti (version.json) non valido o incompleto.")
         return release

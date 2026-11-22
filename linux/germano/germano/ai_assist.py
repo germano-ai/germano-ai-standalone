@@ -684,8 +684,10 @@ def agy_refresh(path, wait=False):
             error = None if rc == 0 and models else scrub((err or out).strip()[-400:]) or f"codice {rc}"
         except subprocess.TimeoutExpired:
             version, models, error = None, None, "timeout"
-        except OSError as e:
-            version, models, error = None, None, str(e)
+        except Exception as e:
+            # qualunque errore (non solo OSError): se il thread morisse qui «busy» resterebbe True per sempre e
+            # l'elenco dei modelli di Antigravity non si aggiornerebbe piu' fino al riavvio di Germano
+            version, models, error = None, None, scrub(str(e)) or type(e).__name__
         with _LOCK:
             _agy_state.update(key=_agy_key(path), at=time.time(), models=models, error=error, busy=False,
                               version=version or _agy_state.get("version"))

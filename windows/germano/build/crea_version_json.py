@@ -214,16 +214,32 @@ def online(index_path, base):
 
 def scarta_se_superato(package_path):
     """Chiamata dai costruttori dopo aver (ri)creato un pacchetto: se releases/version.json lo elenca con una
-    dimensione diversa, quell'indice descrive una costruzione precedente e viene cancellato (va rigenerato a fine
-    costruzione con questo script). Restituisce True se l'indice e' stato cancellato."""
+    dimensione diversa, oppure con la stessa dimensione ma un'altra impronta SHA-256, quell'indice descrive una
+    costruzione precedente e viene cancellato (va rigenerato a fine costruzione con questo script). Restituisce True
+    se l'indice e' stato cancellato.
+    La sola dimensione non basta: ricostruendo dopo una piccola modifica il pacchetto puo' risultare lungo uguale con
+    un contenuto diverso, e l'impronta rimasta nell'indice (quella che gli updater verificano) farebbe scartare
+    l'aggiornamento a ogni controllo. Un version.json che non e' un indice (non un oggetto) non ferma la costruzione."""
     try:
         with open(DEFAULT_OUT, encoding="utf-8-sig") as f:
             data = json.load(f)
     except (OSError, ValueError):
         return False
+    files = data.get("files") if isinstance(data, dict) else None
+    if not isinstance(files, dict):
+        return False
     name, size = os.path.basename(package_path), os.path.getsize(package_path)
-    for entry in (data.get("files") or {}).values():
-        if isinstance(entry, dict) and entry.get("file") == name and entry.get("size") != size:
+    digest = None
+    for entry in files.values():
+        if not isinstance(entry, dict) or entry.get("file") != name:
+            continue
+        stale = entry.get("size") != size
+        declared = str(entry.get("sha256") or "").strip().lower()
+        if not stale and declared:
+            if digest is None:
+                digest = measure(package_path)[1]      # una sola lettura del pacchetto, solo se serve
+            stale = declared != digest
+        if stale:
             os.remove(DEFAULT_OUT)
             print(f"  ATTENZIONE: releases/version.json descriveva un {name} diverso ed e' stato cancellato: "
                   "rigenerarlo con crea_version_json.py quando tutti i pacchetti sono pronti.", flush=True)

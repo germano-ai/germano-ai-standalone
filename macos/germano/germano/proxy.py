@@ -163,6 +163,23 @@ def _free_string(job, container, key, value):
     job.text(value, setter, (container, key))
 
 
+_INLINE_MEDIA_RE = re.compile(r"data:[\w.+\-]+/[\w.+\-]+(?:;[\w\-]+=[^;,]*)*;base64,", re.I)
+
+
+def _envelope_string(job, container, key, value):
+    """Stringa della busta del protocollo sotto una chiave che la visita non conosce. Un contenuto binario in linea
+    (data:<tipo>;base64,...: es. video_url.url o audio_url.url dei servizi compatibili con OpenAI) non e' testo:
+    passa dagli allegati, quindi viene anonimizzato come file se il tipo e' tra quelli supportati e altrimenti la
+    richiesta e' BLOCCATA (415), come gia' avveniva per image_url. Prima finiva tra i testi e usciva cosi' com'era."""
+    def setter(nv, c=container, k=key):
+        c[k] = nv
+    if value[:5].lower() == "data:" and _INLINE_MEDIA_RE.match(value[:400]):
+        if not _data_url(job, value, setter, loc=(container, key)):
+            raise ProxyBlock("Contenuto binario in linea non riconosciuto: richiesta bloccata per sicurezza.", 415)
+        return
+    job.text(value, setter, (container, key))
+
+
 def _rename_keys(node, renames):
     """Chiavi anonimizzate di un oggetto libero, nello stesso ordine (stessa istanza di dict)."""
     if not any(renames.get(k, k) != k for k in node):
@@ -221,7 +238,7 @@ def _walk(node, job, free_keys=()):
     if isinstance(node, list):
         for i, v in enumerate(node):
             if isinstance(v, str):
-                job.text(v, lambda nv, c=node, k=i: c.__setitem__(k, nv), (node, i))
+                _envelope_string(job, node, i, v)
             else:
                 _walk(v, job)
         return
@@ -331,7 +348,7 @@ def _walk(node, job, free_keys=()):
             else:
                 _walk_free(v, job)                 # argomenti gia' come oggetto (alcuni servizi compatibili)
         elif isinstance(v, str):
-            job.text(v, lambda nv, c=node, kk=k: c.__setitem__(kk, nv), (node, k))
+            _envelope_string(job, node, k, v)
         elif k in _FREE_CHILD_KEYS and isinstance(v, dict):
             _walk(v, job, _FREE_CHILD_KEYS[k])
         else:
@@ -590,6 +607,20 @@ def serialize_event(name, data, other=()):
     if data is not None:
         lines.extend("data: " + ln for ln in data.split("\n"))
     return "\n".join(lines) + "\n\n"
+
+
+_SURROGATE_RE = re.compile("[\ud800-\udfff]")
+
+
+def encode_event(text):
+    """Evento SSE in byte UTF-8. Un surrogato isolato (un'emoji che il fornitore spezza fra due frammenti: «\\ud83d» in
+    un evento e «\\ude00» nel successivo) non si puo' codificare in UTF-8: dopo la riscrittura del JSON l'evento
+    faceva fallire la risposta e interrompeva lo streaming. Torna alla sequenza JSON \\uXXXX com'era nel flusso del
+    fornitore: il client ricompone la coppia quando unisce i frammenti."""
+    try:
+        return text.encode("utf-8")
+    except UnicodeEncodeError:
+        return _SURROGATE_RE.sub(lambda m: "\\u%04x" % ord(m.group()), text).encode("utf-8")
 
 
 class StreamRewriter:

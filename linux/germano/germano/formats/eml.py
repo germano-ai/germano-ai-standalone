@@ -1,26 +1,34 @@
 """Email .eml: intestazioni, corpo testo/HTML, allegati (elaborati o rimossi se non supportati),
 messaggi inoltrati annidati."""
+import base64
 import email
+import html as _html
 import os
+import quopri
 import re
 from email import policy
+from email.headerregistry import HeaderRegistry, UnstructuredHeader
 
 from .. import common
 from ..analyzer import Unit, apply_replacements
-from . import is_supported, process_bytes, reraise_control, transform_filename
+from . import ProcessingError, is_supported, process_bytes, reraise_control, transform_filename
 
-_HEADERS = {
-    "from", "to", "cc", "bcc", "reply-to", "sender", "return-path", "delivered-to", "x-original-to",
-    "disposition-notification-to", "resent-from", "resent-to", "resent-cc", "x-sender", "x-receiver",
-    "errors-to", "subject", "thread-topic", "comments", "keywords", "organization", "x-originating-ip",
-    "received", "message-id", "in-reply-to", "references", "x-ms-exchange-organization-authas",
-    "x-forwarded-to", "x-forwarded-for", "list-unsubscribe", "dkim-signature", "authentication-results",
-    "received-spf", "x-original-sender", "x-real-ip", "return-receipt-to", "final-recipient",
-    "original-recipient", "x-ricevuta", "x-trasporto", "x-riferimento-message-id", "x-verifica-sicurezza",
+# Intestazioni che NON si analizzano: struttura MIME, date e marcatori tecnici senza dati personali. TUTTE le altre
+# si' (elenco aperto). Fino alla 1.00 valeva un elenco chiuso di intestazioni note: quelle fuori elenco, come
+# Envelope-To (Exim), X-Apparently-To, ARC-Authentication-Results («smtp.mailfrom=...» delle email scaricate da
+# Gmail), Diagnostic-Code e X-Postfix-Sender delle notifiche di mancata consegna, uscivano in chiaro.
+_STRUCTURAL = {
+    "mime-version", "content-type", "content-transfer-encoding", "content-disposition", "content-id",
+    "content-length", "content-md5", "content-language", "accept-language", "date", "resent-date", "delivery-date",
+    "expires", "x-priority", "x-msmail-priority", "importance", "priority", "precedence", "sensitivity", "x-mailer",
+    "user-agent", "x-mimeole", "thread-index", "auto-submitted", "x-auto-response-suppress", "x-ms-has-attach",
+    "x-ms-tnef-correlator", "x-spam-flag", "x-spam-level", "x-spam-score",
 }
-_HEADER_PREFIXES = ("x-pec", "x-original-", "x-forwarded-", "x-ms-exchange-")
 _UNFOLD_RE = re.compile(r"\r?\n[ \t]+")
 _IMAGE_SUBTYPES = {"png", "jpeg", "jpg", "gif", "bmp", "tiff", "webp"}
+_ENCODED_CTE = ("base64", "quoted-printable")
+# intestazioni lette e scritte come testo semplice, qualunque sia il loro nome (vedi _header_text e _store_header)
+_PLAIN = HeaderRegistry(default_class=UnstructuredHeader, use_default_map=False)
 
 
 def _ext_for(part):
@@ -50,6 +58,67 @@ def _get_text(part):
             return payload.decode("utf-8", errors="replace")
 
 
+def _header_text(part, name, value):
+    """Valore DECODIFICATO di un'intestazione, su una riga sola. `_headers` conserva il testo grezzo del file: le
+    parole codificate RFC 2047 («=?UTF-8?B?TWFyaW8gUm9zc2k=?=», normali appena c'e' una lettera accentata) vanno
+    decodificate PRIMA dell'analisi, altrimenti il nome o l'indirizzo che contengono non viene riconosciuto e resta
+    nel file (chi lo riceve lo decodifica); in ripristino le etichette dentro una parola codificata non si
+    troverebbero. Si decodifica come testo semplice, qualunque sia l'intestazione: il parser «strutturato» di Python
+    per gli indirizzi rilegge «[PERSONA_1] <[EMAIL_2]>» come «<>» e in ripristino le etichette sparirebbero."""
+    raw = _UNFOLD_RE.sub(" ", str(value)).replace("\r", " ").replace("\n", " ")
+    try:
+        return str(_PLAIN(name, raw))
+    except Exception:
+        return raw
+
+
+def _store_header(part, name, text):
+    """Intestazione riscritta, pronta per `_headers`. Se contiene un'etichetta («[PERSONA_1] <[EMAIL_2]>»,
+    «<[EMAIL_4]>») va scritta come testo semplice: il parser degli indirizzi la interpreterebbe a modo suo e quello dei
+    Message-ID va in errore (IndexError). Cio' che non e' ASCII viene ricodificato in entrambi i casi."""
+    if "[" not in text:
+        try:
+            return part.policy.header_store_parse(name, text)
+        except Exception:
+            pass
+    return (name, _PLAIN(name, text))
+
+
+def _encoded_message(part):
+    """Parte message/* con Content-Transfer-Encoding base64 o quoted-printable: RFC 2046 lo vieta ma alcuni
+    programmi la producono (messaggi inoltrati come allegato). Il parser di Python non la decodifica: ne leggerebbe
+    il contenuto codificato come un testo qualunque, senza trovarci nulla."""
+    if part.get_content_maintype() != "message":
+        return False
+    return str(part.get("Content-Transfer-Encoding") or "").strip().lower() in _ENCODED_CTE
+
+
+def _walk(msg):
+    """Come Message.walk(), ma senza entrare nel contenuto (non decodificato) delle parti di _encoded_message."""
+    yield msg
+    if msg.is_multipart() and not _encoded_message(msg):
+        for sub in msg.get_payload():
+            yield from _walk(sub)
+
+
+def _encoded_message_bytes(part, pol):
+    """Il messaggio annidato di una parte _encoded_message, decodificato."""
+    cte = str(part.get("Content-Transfer-Encoding") or "").strip().lower()
+    payload = part.get_payload()
+    inner = payload[0] if isinstance(payload, list) and payload else payload
+    if isinstance(inner, (bytes, bytearray)):
+        raw = bytes(inner)
+    elif isinstance(inner, str):
+        raw = inner.encode("ascii", "surrogateescape")
+    else:
+        raw = inner.as_bytes(policy=pol)
+        if not getattr(inner, "_headers", None):
+            raw = raw.lstrip(b"\r\n")           # nessuna intestazione letta: la riga vuota iniziale e' del generatore
+    if cte == "base64":
+        return base64.b64decode(raw, validate=False)
+    return quopri.decodestring(raw)
+
+
 def process_eml(in_path, out_path, ctx):
     with open(in_path, "rb") as f:
         raw = f.read()
@@ -57,30 +126,28 @@ def process_eml(in_path, out_path, ctx):
     msg = email.message_from_bytes(raw, policy=pol)
 
     units, appliers = [], []
-    html_parts, att_parts = [], []
+    html_parts, att_parts, encoded_parts = [], [], []
     person = "[PERSONA]" if ctx.settings.get("censor_person", True) else None
 
-    for part in msg.walk():
-        # intestazioni (anche dei messaggi inoltrati come allegato)
+    for part in _walk(msg):
+        # intestazioni (anche dei messaggi inoltrati come allegato e delle notifiche di consegna)
         hdrs = getattr(part, "_headers", None)
         if hdrs:
             for idx, (name, value) in enumerate(list(hdrs)):
-                low = name.lower()
-                if low in _HEADERS or low.startswith(_HEADER_PREFIXES):
-                    sval = _UNFOLD_RE.sub(" ", str(value)).replace("\r", " ").replace("\n", " ")
-                    if sval.strip():
-                        units.append(Unit(sval, context=f"{name}: "))
+                if name.lower() in _STRUCTURAL:
+                    continue
+                sval = _header_text(part, name, value)
+                if sval.strip():
+                    units.append(Unit(sval, context=f"{name}: "))
 
-                        def _ap(new, p=part, i=idx, nm=name):
-                            clean = _UNFOLD_RE.sub(" ", str(new)).replace("\r", " ").replace("\n", " ")
-                            try:
-                                p._headers[i] = p.policy.header_store_parse(nm, clean)
-                            except Exception:
-                                if ctx.anonymize:
-                                    p._headers[i] = p.policy.header_store_parse(nm, "[DATO_OSCURATO]")
-                                else:
-                                    raise
-                        appliers.append(_ap)
+                    def _ap(new, p=part, i=idx, nm=name):
+                        clean = _UNFOLD_RE.sub(" ", str(new)).replace("\r", " ").replace("\n", " ")
+                        clean = "".join(" " if c in "\x0b\x0c\x1c\x1d\x1e\x85  " else c for c in clean)
+                        p._headers[i] = _store_header(p, nm, clean)
+                    appliers.append(_ap)
+        if _encoded_message(part):
+            encoded_parts.append(part)
+            continue
         if part.is_multipart() or part.get_content_maintype() == "message":
             continue
         disp = part.get_content_disposition()
@@ -118,6 +185,10 @@ def process_eml(in_path, out_path, ctx):
             try:
                 ap(apply_replacements(u.text, r))
             except Exception as e:
+                if ctx.anonymize:
+                    # mai proseguire con il testo originale: l'email uscirebbe con il dato in chiaro e una semplice nota
+                    raise ProcessingError(f"Email non anonimizzabile: un'intestazione o un testo non si puo' "
+                                          f"aggiornare ({type(e).__name__}: {e}).") from None
                 ctx.note(f"intestazione/testo email non aggiornabile: {e}")
 
     if html_parts:
@@ -133,10 +204,37 @@ def process_eml(in_path, out_path, ctx):
         ctx.check()
         _process_attachment(part, ctx, person)
 
+    for part in encoded_parts:
+        ctx.check()
+        _process_encoded_message(part, ctx, pol)
+
     data = msg.as_bytes(policy=pol)
     with open(out_path, "wb") as f:
         f.write(data)
     return None
+
+
+def _process_encoded_message(part, ctx, pol):
+    """Messaggio annidato codificato (base64/quoted-printable): decodificato, elaborato come una email a se' e rimesso
+    al suo posto senza codifica. Se non si riesce, in anonimizzazione la parte viene sostituita da una nota."""
+    try:
+        data = _encoded_message_bytes(part, pol)
+        new_data, _name = process_bytes(data, "messaggio.eml", ctx.child())
+        inner = email.message_from_bytes(new_data, policy=pol)
+        del part["Content-Transfer-Encoding"]
+        part.set_payload([inner])
+        common.log("Email: messaggio inoltrato (codificato) elaborato.")
+        return
+    except Exception as e:
+        reraise_control(e)
+        reason = str(e) or type(e).__name__
+    if ctx.anonymize:
+        note = (f"Messaggio inoltrato rimosso da Germano AI per proteggere i dati personali ({reason}).\r\n"
+                "L'originale e' conservato nella cartella 'processed'.")
+        part.clear_content()
+        part.set_content(note, subtype="plain", charset="utf-8", disposition="attachment",
+                         filename="messaggio_RIMOSSO.txt")
+        ctx.note(f"Messaggio inoltrato rimosso per sicurezza ({reason}).")
 
 
 def _process_attachment(part, ctx, person):
@@ -171,3 +269,43 @@ def _process_attachment(part, ctx, person):
         part.set_content(note, subtype="plain", charset="utf-8", disposition="attachment",
                          filename=os.path.splitext(new_name)[0] + "_RIMOSSO.txt")
         ctx.note(f"Allegato email rimosso per sicurezza ({base}: {reason}).")
+
+
+def plain_text(raw, max_chars=3_000_000, depth=0):
+    """Testo leggibile di un messaggio: intestazioni decodificate, corpi di testo decodificati, nomi degli allegati,
+    messaggi inoltrati. Serve a riconoscere i file di ritorno dall'AI e agli allegati dell'Harness e di Studio AI, che
+    lo anonimizzano prima di inviarlo. Il sorgente grezzo non basta: un corpo in Base64 o un nome scritto come
+    «=?UTF-8?B?...?=» non vengono riconosciuti dai modelli, ma chi li riceve li decodifica senza fatica."""
+    msg = email.message_from_bytes(raw, policy=policy.default)
+    out, size = [], 0
+
+    def add(text):
+        nonlocal size
+        if text:
+            out.append(text)
+            size += len(text) + 1
+
+    for part in _walk(msg):
+        if size > max_chars:
+            break
+        for name, value in list(getattr(part, "_headers", None) or []):
+            if name.lower() not in _STRUCTURAL:
+                add(f"{name}: {_header_text(part, name, value)}")
+        if _encoded_message(part):
+            if depth < 3:
+                try:
+                    add("\n" + plain_text(_encoded_message_bytes(part, policy.default), max_chars, depth + 1))
+                except Exception:
+                    pass
+            continue
+        if part.is_multipart() or part.get_content_maintype() == "message":
+            add("")
+            continue
+        fname = part.get_filename()
+        if fname or part.get_content_disposition() == "attachment":
+            add(f"[allegato: {fname or 'senza nome'}]")
+        elif part.get_content_maintype() == "text":
+            text = _get_text(part)
+            if isinstance(text, str) and text.strip():
+                add("\n" + (_html.unescape(text) if part.get_content_subtype() == "html" else text))
+    return "\n".join(out)[:max_chars]

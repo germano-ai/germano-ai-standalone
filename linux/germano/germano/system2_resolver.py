@@ -504,7 +504,7 @@ class System2Resolver:
             self._cleanup_stale()
             port, key = self._free_port(), secrets.token_urlsafe(24)
             args = [self.server_path, "-m", self.model_path, "--host", "127.0.0.1", "--port", str(port),
-                    "--api-key", key, "-c", str(CTX_PER_SLOT * SLOTS), "-np", str(SLOTS), "-t", str(self.threads),
+                    "-c", str(CTX_PER_SLOT * SLOTS), "-np", str(SLOTS), "-t", str(self.threads),
                     "--no-webui", "--no-slots", "--reasoning", "off", "--sleep-idle-seconds", str(IDLE_SLEEP_S),
                     "--timeout", str(REQUEST_TIMEOUT_S), "--log-verbosity", "1"]
             os.makedirs(common.STATE_DIR, exist_ok=True)
@@ -516,6 +516,10 @@ class System2Resolver:
             elif sys.platform.startswith("linux"):
                 kw["preexec_fn"] = _linux_parent_death
             env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("LLAMA_", "GGML_"))}
+            # La chiave del server locale passa dall'ambiente del processo (LLAMA_API_KEY), non dalla riga di comando:
+            # su Linux e macOS la riga di comando di ogni processo e' leggibile da tutti gli utenti del computer
+            # («ps», /proc/<pid>/cmdline), l'ambiente solo dal proprietario.
+            env["LLAMA_API_KEY"] = key
             with open(log_path, "wb") as logf:
                 proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=logf, stderr=subprocess.STDOUT,
                                         cwd=os.path.dirname(self.server_path), env=env, **kw)

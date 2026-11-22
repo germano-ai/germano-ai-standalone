@@ -153,6 +153,7 @@ class SseSession(Session):
         super().__init__(principal, "mcp-sse")
         self.queue = queue.Queue(maxsize=1000)
         self.closed = False
+        self.attached = False       # True quando il flusso della risposta e' partito (server.py, mcp_sse)
 
 
 class SseHub:
@@ -160,13 +161,23 @@ class SseHub:
 
     MAX = 32
     MAX_PER_PRINCIPAL = 8
+    ATTACH_GRACE = 30               # secondi entro cui il flusso deve partire dopo l'apertura della sessione
 
     def __init__(self):
         self._lock = threading.Lock()
         self._items = {}
 
+    def _drop_unattached(self, now):
+        """Sessioni aperte il cui flusso non e' mai partito (risposta scartata prima del primo byte): nessun
+        «finally» le chiuderebbe e occuperebbero un posto fino al riavvio."""
+        for sid in [k for k, v in self._items.items() if not v.attached and now - v.created > self.ATTACH_GRACE]:
+            s = self._items.pop(sid, None)
+            if s is not None:
+                s.closed = True
+
     def open(self, principal):
         with self._lock:
+            self._drop_unattached(time.time())
             if principal != "local":
                 mine = sum(1 for v in self._items.values() if v.principal == principal)
                 if mine >= self.MAX_PER_PRINCIPAL:
