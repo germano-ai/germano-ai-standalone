@@ -28,6 +28,11 @@ SAMPLE_RATE = 16000
 # di un numero di telefono). Sotto il minuto i due modi danno lo stesso testo: resta il modo in serie.
 BATCH_MIN_SECONDS = 60
 BATCH_SIZE = 8
+PARAKEET_MAX_CHUNK_S = 24.0
+PARAKEET_LANGS = frozenset({
+    "it", "en", "fr", "de", "es", "pt", "nl", "ro", "pl", "uk", "ru", "hr",
+    "sl", "bg", "hu", "cs", "sk", "sv", "da", "fi", "el", "et", "lt", "lv", "mt",
+})
 # etichette dei metadati utili (le altre sono tecniche: codificatore, marche del contenitore...)
 TAG_KEYS = ("title", "artist", "album", "album_artist", "albumartist", "composer", "author", "performer", "lyricist",
             "conductor", "comment", "description", "synopsis", "date", "year", "creation_time", "genre", "track",
@@ -50,9 +55,11 @@ def main():
     def log(msg):
         print(time.strftime("[%Y-%m-%d %H:%M:%S] ") + msg, file=sys.stderr, flush=True)
 
-    state = {"model": None, "model_dir": None}
+    state = {"model": None, "model_dir": None, "parakeet": None, "parakeet_dir": None}
 
     def load(cfg):
+        if not cfg.get("model_dir"):
+            return 0.0
         if state["model"] is not None and state["model_dir"] == cfg["model_dir"]:
             return 0.0
         t0 = time.time()
@@ -60,8 +67,102 @@ def main():
         state["model"] = WhisperModel(cfg["model_dir"], device="cpu", compute_type=cfg.get("compute_type") or "int8",
                                       cpu_threads=int(cfg.get("threads") or 0), num_workers=1, local_files_only=True)
         state["model_dir"] = cfg["model_dir"]
-        log(f"modello vocale caricato in {time.time() - t0:.1f} s ({cfg['model_dir']})")
+        log(f"modello vocale Whisper caricato in {time.time() - t0:.1f} s ({cfg['model_dir']})")
         return time.time() - t0
+
+    def load_parakeet(cfg):
+        pdir = cfg.get("parakeet_dir")
+        if not pdir:
+            return 0.0
+        if state["parakeet"] is not None and state["parakeet_dir"] == pdir:
+            return 0.0
+        t0 = time.time()
+        import onnx_asr
+        import onnxruntime as ort
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = max(1, int(cfg.get("threads") or 2))
+        opts.inter_op_num_threads = 1
+        try:
+            m = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v3", path=pdir, quantization="int8",
+                                    sess_options=opts, providers=["CPUExecutionProvider"])
+        except TypeError:
+            m = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v3", path=pdir, quantization="int8")
+        state["parakeet"] = m.with_timestamps()
+        state["parakeet_dir"] = pdir
+        log(f"modello vocale Parakeet v3 ONNX caricato in {time.time() - t0:.1f} s ({pdir})")
+        return time.time() - t0
+
+    def _parakeet_chunk_text(pcm_slice):
+        """Trascrive un segmento audio con Parakeet v3 ONNX (spezzando in blocchi <=24 s se lungo)."""
+        import numpy as np
+        n = len(pcm_slice)
+        if n < int(0.15 * SAMPLE_RATE):
+            return ""
+        max_n = int(PARAKEET_MAX_CHUNK_S * SAMPLE_RATE)
+        parts = []
+        pos = 0
+        while pos < n:
+            end = min(n, pos + max_n)
+            if end < n:
+                # Cerca il punto di minima energia negli ultimi 4 secondi del blocco per non tagliare parole
+                win_start = max(pos + int(16 * SAMPLE_RATE), end - int(4 * SAMPLE_RATE))
+                win = pcm_slice[win_start:end]
+                step = int(0.05 * SAMPLE_RATE)
+                if len(win) > step * 2:
+                    frames = win[:len(win) - (len(win) % step)].reshape(-1, step)
+                    energy = np.mean(frames * frames, axis=1)
+                    end = win_start + int(np.argmin(energy)) * step + step // 2
+            res = state["parakeet"].recognize(pcm_slice[pos:end], sample_rate=SAMPLE_RATE)
+            txt = (res.text if hasattr(res, "text") else str(res)).strip()
+            if txt:
+                parts.append(txt)
+            pos = max(end, pos + int(1.0 * SAMPLE_RATE))
+        return " ".join(parts).strip()
+
+    def _parakeet_segments(audio):
+        """Modalita' solo Parakeet: trascrive in blocchi <=24 s e raggruppa per frasi/pause usando i timestamp."""
+        import numpy as np
+        n = len(audio)
+        max_n = int(PARAKEET_MAX_CHUNK_S * SAMPLE_RATE)
+        segs = []
+        pos = 0
+        while pos < n:
+            end = min(n, pos + max_n)
+            if end < n:
+                win_start = max(pos + int(16 * SAMPLE_RATE), end - int(4 * SAMPLE_RATE))
+                win = audio[win_start:end]
+                step = int(0.05 * SAMPLE_RATE)
+                if len(win) > step * 2:
+                    frames = win[:len(win) - (len(win) % step)].reshape(-1, step)
+                    energy = np.mean(frames * frames, axis=1)
+                    end = win_start + int(np.argmin(energy)) * step + step // 2
+            base_s = pos / float(SAMPLE_RATE)
+            res = state["parakeet"].recognize(audio[pos:end], sample_rate=SAMPLE_RATE)
+            toks = getattr(res, "tokens", None) or []
+            ts = getattr(res, "timestamps", None) or []
+            if toks and ts and len(toks) == len(ts):
+                cur_txt, cur_start, cur_end = [], None, base_s
+                for tok, t_rel in zip(toks, ts):
+                    t_abs = base_s + float(t_rel)
+                    if cur_start is None:
+                        cur_start = t_abs
+                    if cur_txt and (t_abs - cur_end >= 0.85 or (cur_txt[-1].rstrip().endswith((".", "!", "?")) and len("".join(cur_txt)) >= 60)):
+                        joined = "".join(cur_txt).strip()
+                        if joined:
+                            segs.append((cur_start, max(cur_end, cur_start + 0.1), joined))
+                        cur_txt, cur_start = [], t_abs
+                    cur_txt.append(str(tok))
+                    cur_end = t_abs
+                if cur_txt:
+                    joined = "".join(cur_txt).strip()
+                    if joined:
+                        segs.append((cur_start or base_s, end / float(SAMPLE_RATE), joined))
+            else:
+                txt = (res.text if hasattr(res, "text") else str(res)).strip()
+                if txt:
+                    segs.append((base_s, end / float(SAMPLE_RATE), txt))
+            pos = max(end, pos + int(1.0 * SAMPLE_RATE))
+        return segs
 
     def probe(path):
         import av
@@ -148,8 +249,38 @@ def main():
         if seconds < 0.2:
             send({"ev": "done", "segments": 0, "elapsed": round(time.time() - t0, 2), "duration": seconds})
             return
-        load_s = load(req)
         language = req.get("language") or None
+        engine_pref = str(req.get("speech_engine") or "ensemble").lower()
+        has_w = bool(req.get("model_dir"))
+        has_p = bool(req.get("parakeet_dir"))
+        lang_ok_p = (language is None) or (language in PARAKEET_LANGS)
+
+        # Modalita' solo Parakeet (5x piu' veloce sulle 25 lingue europee)
+        if engine_pref == "parakeet" and has_p and lang_ok_p:
+            load_s = load_parakeet(req)
+            send({"ev": "info", "language": language or "eu", "language_probability": 0.0,
+                  "duration": seconds, "speech": seconds, "load_s": round(load_s, 2),
+                  "mode": "parakeet", "model_label": "NVIDIA Parakeet TDT 0.6B v3 (INT8)"})
+            n = 0
+            for s0, e0, txt in _parakeet_segments(audio):
+                n += 1
+                send({"ev": "segment", "start": float(s0), "end": float(e0), "text": txt})
+            send({"ev": "done", "segments": n, "elapsed": round(time.time() - t0, 2), "duration": seconds})
+            return
+
+        if not has_w and has_p:
+            load_s = load_parakeet(req)
+            send({"ev": "info", "language": language or "eu", "language_probability": 0.0,
+                  "duration": seconds, "speech": seconds, "load_s": round(load_s, 2),
+                  "mode": "parakeet", "model_label": "NVIDIA Parakeet TDT 0.6B v3 (INT8)"})
+            n = 0
+            for s0, e0, txt in _parakeet_segments(audio):
+                n += 1
+                send({"ev": "segment", "start": float(s0), "end": float(e0), "text": txt})
+            send({"ev": "done", "segments": n, "elapsed": round(time.time() - t0, 2), "duration": seconds})
+            return
+
+        load_s = load(req)
         beam = int(req.get("beam_size") or 5)
         segments = info = None
         mode = "serie"
@@ -171,16 +302,40 @@ def main():
                 audio, language=language, task="transcribe", beam_size=beam, vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500}, condition_on_previous_text=True,
                 word_timestamps=False)
-        send({"ev": "info", "language": info.language, "language_probability": float(info.language_probability or 0),
+        det_lang = getattr(info, "language", None) or language
+        use_ensemble = (engine_pref == "ensemble" and has_p and (det_lang in PARAKEET_LANGS))
+        if use_ensemble:
+            try:
+                load_s += load_parakeet(req)
+            except Exception as e:
+                log(f"Avviso: Parakeet v3 non caricabile per ensemble ({type(e).__name__}: {e}): uso solo Whisper")
+                use_ensemble = False
+        model_lbl = ("Ensemble NVIDIA Parakeet TDT 0.6B v3 + Whisper small (INT8)"
+                     if use_ensemble else "Whisper small (INT8)")
+        send({"ev": "info", "language": det_lang, "language_probability": float(info.language_probability or 0),
               "duration": float(info.duration or seconds), "speech": float(getattr(info, "duration_after_vad", 0) or 0),
-              "load_s": round(load_s, 2), "mode": mode})
+              "load_s": round(load_s, 2), "mode": ("ensemble+" + mode) if use_ensemble else mode,
+              "model_label": model_lbl})
         n = 0
         for seg in segments:
             text = (seg.text or "").strip()
             if not text:
                 continue
+            s0, e0 = float(seg.start), float(seg.end)
+            alt_text = ""
+            if use_ensemble:
+                try:
+                    a0 = max(0, int((s0 - 0.15) * SAMPLE_RATE))
+                    a1 = min(len(audio), int((e0 + 0.15) * SAMPLE_RATE))
+                    alt_text = _parakeet_chunk_text(audio[a0:a1])
+                except Exception as e:
+                    log(f"Avviso: segmento Parakeet non riuscito ({e})")
+                    alt_text = ""
             n += 1
-            send({"ev": "segment", "start": float(seg.start), "end": float(seg.end), "text": text})
+            ev = {"ev": "segment", "start": s0, "end": e0, "text": text}
+            if alt_text:
+                ev["alt_text"] = alt_text
+            send(ev)
         send({"ev": "done", "segments": n, "elapsed": round(time.time() - t0, 2), "duration": seconds})
 
     log("processo vocale avviato (pid %d)" % os.getpid())

@@ -1,5 +1,5 @@
 'use strict';
-/* Germano AI 1.00 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
+/* Germano AI 1.10 - Dashboard: Harness AI (scheda predefinita, static/harness.js), Sanitizzazione manuale e Vault
    (cartelle di lavoro, documenti, testo), Impostazioni (modalita' e rete, protezione, AI e chiavi, Proxy e API, sistema,
    aggiornamenti silenziosi) e Guida offline. */
 
@@ -32,7 +32,7 @@ let currentTab = 'harness';
 let currentPane = 'general';
 
 const ALL_MODEL_IDS = [
-    'enable_model_velvet', 'enable_model_italian_ner', 'enable_ocr',
+    'enable_model_velvet', 'enable_model_italian_ner', 'enable_model_gliner2', 'enable_ocr',
     'enable_faces', 'enable_signatures', 'enable_plate_vision', 'enable_regex'
 ];
 const ALL_CATEGORY_IDS = [
@@ -40,7 +40,7 @@ const ALL_CATEGORY_IDS = [
     'censor_cf_iva', 'censor_email', 'censor_phone', 'censor_account',
     'censor_financial', 'censor_date', 'censor_org', 'censor_plates_docs',
     'censor_medical', 'censor_medicine', 'censor_legal', 'censor_civil_status',
-    'censor_secret', 'censor_url'
+    'censor_secret', 'censor_url', 'censor_custom'
 ];
 const ESSENTIAL_CATEGORIES = new Set(['censor_person', 'censor_address', 'censor_cf_iva', 'censor_email', 'censor_phone']);
 
@@ -420,7 +420,7 @@ function updateProfilePill() {
     if (settingsLocked) pill.title += updText(' Impostazioni bloccate dall\'amministratore.', ' Settings locked by the administrator.');
     document.body.classList.toggle('settings-locked', settingsLocked);
     $('lockedBanner').hidden = !settingsLocked;
-    document.querySelectorAll('.model-check, .cat-check, .btn-preset, #ai_threshold, #check_updates, #auto_update, #enable_system2, #speech_language').forEach(el => {
+    document.querySelectorAll('.model-check, .cat-check, .btn-preset, #ai_threshold, #check_updates, #auto_update, #enable_system2, #speech_language, #speech_engine, #ocr_mode, #custom_pii_labels').forEach(el => {
         el.disabled = settingsLocked;
     });
 }
@@ -463,8 +463,11 @@ function gatherSettings() {
         ai_threshold: parseFloat(val('ai_threshold', '0')) || 0.0,
         hardware_mode: val('hardware_mode', 'gpu_fallback'),
         precision: val('precision', 'auto'),
+        ocr_mode: val('ocr_mode', 'ensemble'),
         file_timeout_minutes: parseInt(val('file_timeout_minutes', '60'), 10) || 60,
+        speech_engine: val('speech_engine', 'ensemble'),
         speech_language: val('speech_language', 'auto'),
+        custom_pii_labels: (val('custom_pii_labels', '') || '').trim(),
         anonymize_filenames: $('anonymize_filenames')?.checked ?? false,
         check_updates: $('check_updates')?.checked ?? true,
         auto_update: $('auto_update')?.checked ?? true,
@@ -495,8 +498,11 @@ function applySettingsToUi(cfg) {
     updateThresholdBadge(cfg.ai_threshold);
     setVal('hardware_mode', cfg.hardware_mode);
     setVal('precision', cfg.precision);
+    setVal('ocr_mode', cfg.ocr_mode || 'ensemble');
     setVal('file_timeout_minutes', cfg.file_timeout_minutes);
+    setVal('speech_engine', cfg.speech_engine || 'ensemble');
     setVal('speech_language', cfg.speech_language || 'auto');
+    setVal('custom_pii_labels', cfg.custom_pii_labels || '');
     setVal('target_api_url', cfg.target_api_url);
     setVal('target_anthropic_url', cfg.target_anthropic_url);
     $('anonymize_filenames').checked = Boolean(cfg.anonymize_filenames);
@@ -1628,9 +1634,12 @@ const TIPS = [
     ['.option:has(.cat-check)', optTitle, (el) => `Etichetta usata nei documenti: ${(el.querySelector('.option-desc')?.textContent || '').trim()}. Clicca per oscurare o lasciare in chiaro questa categoria.`],
     ['#netSummary', 'Modalità e rete', 'Stato attuale: ascolto sulla rete, collegamento al Germano Server e accesso dalla rete (libero o con utente e password).'],
     ['.field:has(#hardware_mode)', 'Calcolo', 'Automatico usa una scheda video NVIDIA se presente, altrimenti il processore.'],
-    ['.field:has(#precision)', 'Precisione del modello', 'FP32 è più veloce ma usa più memoria; BF16 la dimezza ed è più lento sui processori meno recenti. Vale dal prossimo avvio del motore.'],
+    ['.field:has(#precision)', 'Precisione del modello (ripiego PyTorch)', 'Con il Privacy Filter ONNX Q4 predefinito il consumo è già ~645 MB di RAM. Questa scelta vale solo se si ripiega su PyTorch al prossimo avvio del motore.'],
+    ['.field:has(#ocr_mode)', 'Motore OCR', 'Ensemble (consigliato): esegue RapidOCR PP-OCRv5 ed EasyOCR in parallelo per la massima copertura sulle scansioni. Solo RapidOCR PP-OCRv5 è 4,5× più veloce.'],
+    ['.field:has(#custom_pii_labels)', 'Categorie personalizzate (zero-shot)', 'Elenca fino a 20 tipi di dato specifici del tuo contesto separati da virgola (es. numero pratica, codice cliente, nome progetto): GLiNER2-PII li individua senza addestramento e li oscura come [DATO_PERSONALIZZATO].'],
     ['.field:has(#file_timeout_minutes)', 'Tempo massimo per documento', 'Oltre questo tempo il documento viene interrotto e spostato tra i non riusciti. Per le registrazioni audio il tempo si allunga da solo in base alla durata.'],
-    ['.field:has(#speech_language)', 'Lingua delle registrazioni audio', 'I file audio vengono trascritti su questo computer, senza Internet, e la trascrizione passa dal filtro di privacy come ogni altro documento. «Automatica» riconosce la lingua dai primi secondi di parlato; se le tue registrazioni sono sempre in una lingua, sceglila.'],
+    ['.field:has(#speech_engine)', 'Motore di trascrizione audio', 'Ensemble (consigliato): combina NVIDIA Parakeet TDT v3 ONNX ed OpenAI Whisper sulle 25 lingue europee per massimizzare il rilevamento di nomi e cifre parlate. Solo Parakeet è 5× più veloce; solo Whisper copre 99 lingue.'],
+    ['.field:has(#speech_language)', 'Lingua delle registrazioni audio', 'I file audio vengono trascritti su questo computer (Parakeet TDT v3 + Whisper, senza Internet) e la trascrizione passa dal filtro di privacy come ogni altro documento. «Automatica» riconosce la lingua dai primi secondi di parlato; se le tue registrazioni sono sempre in una lingua, sceglila.'],
     ['.check-row:has(#anonymize_filenames)', 'Anonimizza i nomi dei file', 'Anche i nomi di file e cartelle in uscita vengono anonimizzati (es. CV_[PERSONA_1].pdf).'],
     ['.check-row:has(#check_updates)', 'Controllo aggiornamenti', 'Solo quando il sistema segnala una connessione a Internet, Germano controlla in silenzio se esiste una nuova versione.'],
     ['.check-row:has(#auto_update)', 'Aggiornamento automatico', 'Scarica e prepara gli aggiornamenti in background, a bassa priorità, e li applica al successivo avvio di Germano in pochi secondi.'],
@@ -1737,7 +1746,11 @@ const TIPS_EN = {
     '.check-row:has(#check_updates)': ['Update check', 'Only when the system reports an Internet connection, Germano silently checks whether a new version exists.'],
     '.check-row:has(#auto_update)': ['Automatic update', 'Downloads and prepares updates in the background, at low priority, and applies them at the next start of Germano in a few seconds.'],
     '.option:has(#enable_system2)': ['System 2', 'Only for the cases where the models are uncertain: a local language model (Qwen3.5 with llama.cpp, no data leaves the computer) reads the context and decides. It releases data only when it is sure it is not personal; when off, all doubtful cases stay masked.'],
-    '.field:has(#speech_language)': ['Language of audio recordings', 'Audio files are transcribed on this computer, without Internet, and the transcript goes through the privacy filter like any other document. «Automatic» recognizes the language from the first seconds of speech; if your recordings are always in one language, choose it.'],
+    '.field:has(#precision)': ['Model precision (PyTorch fallback)', 'With the default Privacy Filter ONNX Q4, RAM usage is already ~645 MB. This setting applies only if falling back to PyTorch on the next engine start.'],
+    '.field:has(#ocr_mode)': ['OCR engine', 'Ensemble (recommended): runs RapidOCR PP-OCRv5 and EasyOCR in parallel for maximum PII coverage on scans. RapidOCR PP-OCRv5 alone is 4.5× faster.'],
+    '.field:has(#custom_pii_labels)': ['Custom categories (zero-shot)', 'List up to 20 domain-specific entity types separated by commas (e.g. case number, customer code, project name): GLiNER2-PII detects them zero-shot and masks them as [DATO_PERSONALIZZATO].'],
+    '.field:has(#speech_engine)': ['Audio transcription engine', 'Ensemble (recommended): combines NVIDIA Parakeet TDT v3 ONNX and OpenAI Whisper on 25 European languages for maximum spoken PII detection. Parakeet alone is 5× faster; Whisper alone covers 99 languages.'],
+    '.field:has(#speech_language)': ['Language of audio recordings', 'Audio files are transcribed locally (Parakeet TDT v3 + Whisper, offline) and the transcript goes through the privacy filter like any other document. «Automatic» recognizes the language from the first seconds of speech; if your recordings are always in one language, choose it.'],
     '#btnUpdateCheck': ['Check now', 'Checks right away whether a new version is available (even if the system reports no network).'],
     '#btnUpdateInstall': ['Restart to update', 'Closes Germano, applies the already prepared version and reopens it: a few seconds. Folders, archive and settings are not touched.'],
     '#sysUsagePill': ['Computer resources', 'Processor and memory usage; then the precision of the main model.'],
@@ -2726,8 +2739,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (parseFloat(threshold.value) > 0) currentComplianceMode = 'PD';
         persistSettings(true);
     });
-    ['hardware_mode', 'precision', 'target_api_url', 'target_anthropic_url', 'file_timeout_minutes', 'anonymize_filenames',
-        'check_updates', 'auto_update', 'enable_system2', 'speech_language']
+    ['hardware_mode', 'precision', 'ocr_mode', 'target_api_url', 'target_anthropic_url', 'file_timeout_minutes', 'anonymize_filenames',
+        'check_updates', 'auto_update', 'enable_system2', 'speech_engine', 'speech_language', 'custom_pii_labels']
         .forEach(id => $(id)?.addEventListener('change', () => persistSettings(true)));
 
     // Aggiornamenti silenziosi

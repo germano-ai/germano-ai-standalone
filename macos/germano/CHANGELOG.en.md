@@ -6,6 +6,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Releases up to 0.50-alpha are documented in Italian only, in [CHANGELOG.md](CHANGELOG.md).
 
+## [1.10] - 2026-11-25
+
+### Added
+- **Text: 3-Model Parallel GIL-Free ONNX Ensemble (`germano/engine_onnx.py`, `germano/engine.py`, `germano/common.py`, `germano/detect.py`):**
+  - **Official Privacy Filter 1.5B ONNX Q4 (`models/privacy-filter`):** replaces PyTorch BF16/FP32 weights (`2.8 GB` on disk, `5.3 GB` RAM in FP32) with the official ONNX Q4 model (`917 MB` on disk, **`~645 MB` RAM**, `-88%`), loading all text models and OCR in parallel in **~10 s** with automatic PyTorch fallback if present manually.
+  - **GLiNER2-PII ONNX (`models/gliner2-pii`, `enable_model_gliner2`):** third quantized ONNX neural model (`446 MB`, 31+ multilingual PII classes, 30-word sliding-window overlap past 510 subwords) running in parallel with Privacy Filter Q4 and Italian NER XXL v2 ONNX, lifting hard-document recall to **99.09% (`109/110`)** with **100%** Vault round-trip accuracy.
+  - **Custom zero-shot PII categories (`custom_pii_labels`, `censor_custom` → `[DATO_PERSONALIZZATO_N]`):** lets users enter up to 20 comma-separated domain-specific entity labels in *Settings › Protection & models* (e.g. *case number, customer code, project name*), detected zero-shot by GLiNER2-PII, protected in System 2 `NEVER_RELEASE`, and restored via the Vault.
+- **Parallel OCR Ensemble (`RapidOCR PP-OCRv5 Mobile Latin` + `EasyOCR`, `models/rapidocr-ppocrv5`, `ocr_mode`):** adds `RapidOCR PP-OCRv5` ONNX (`13.3 MB`, Apache 2.0) running in parallel with `EasyOCR` and merging detected boxes (`ensemble` default: **100% `60/60`** PII recall across 6 realistic skewed/fax/multilingual scans; `rapidocr` — **4.5× faster**, `59/60` = `98.3%` — and `easyocr` also selectable under *Settings › System & log*).
+- **Offline Audio Ensemble (`NVIDIA Parakeet TDT 0.6B v3` + `Whisper Small`, `models/parakeet-tdt-0.6b-v3`, `speech_engine`):** adds `Parakeet TDT 0.6B v3` ONNX INT8 (`670 MB`, CC-BY-4.0, 25 European languages) in the isolated `speech_worker.py` and `formats/audio.py` with per-segment best-transcript selection and fuzzy cross-redaction (digits ≥6 and names/orgs) of spoken PII (`ensemble` default; `parakeet` — **5× faster**, `5.8 s` for 36 s of speech — and `whisper` for 99 languages also selectable).
+- **`reasoning_effort` support for `Inkling 2` (Thinking Machines Lab):** recognized in `germano/providers.py` for local endpoints and OpenRouter.
+
+### Improved
+- **Bilingual IT/EN Dashboard UI (`templates/index.html`, `static/script.js`):** added controls, full IT/EN tooltips and `lock_settings`/PA enforcement for `enable_model_gliner2`, `censor_custom`, `custom_pii_labels`, `ocr_mode` and `speech_engine`.
+- **Shared Server/Client Engine (`germano/daemon_api.py`, `germano/remote_engine.py`, `server.py`):** forwards `enable_model_gliner2`, `custom_pii_labels`, `ocr_mode` and `speech_engine` (with `alt_segments`) across LAN Client/Server and exposes `gliner2_pii` and `ocr_rapidocr` in `/api/v1/status`.
+- **Smaller Installer Footprint (-735 MB on models):** despite adding 3 new models (11 local models total), `modelli/` shrinks from `4.29 GB` to **`3.55 GB`** with zero new compiled binary dependencies (6 pure-Python wheels identical across Windows, Linux and macOS).
+- **Offline & online documentation (`GUIDA_OFFLINE.html`, `templates/guide.html`, `README.md`, `README.en.md`):** updated all chapters covering the 11 models across 3 ONNX ensembles, 19 categories + zero-shot, performance and RAM requirements.
+
+### Verified
+- End-to-end real-engine verification (`test_v110_motore_reale.py`): parallel startup of all 11 models/ensembles in **10 s** (`onnx-q4` ~645 MB RAM), **109/110 (99.09%)** on the 12 hard documents with 100% Vault round-trip, custom zero-shot (`[DATO_PERSONALIZZATO_1]` + `NEVER_RELEASE`), OCR `rapidocr` **59/60 (98.3%)** and `ensemble` **60/60 (100%)** + `process_image` visual redaction, Audio `ensemble` and `parakeet` **0 leaks** across 3 recordings (including 8 kHz noisy call), `/api/settings` API and Edge headless UI controls.
+- Full non-regression suite **66/66 OK** on `germano.ai-1.10` (`test_fable_phase2.py` **42/42 OK**, `test_fable_audit.py` **10/10 OK**, `test_audit_fixes_100.py` **14/14 OK**), 6-tree coherence **4/4**, 9 identical guides with **15/15** IT/EN chapter parity, `0` `__pycache__`.
+
 ## [1.00] - 2026-11-22
 
 ### Improved

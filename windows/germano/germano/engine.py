@@ -162,25 +162,33 @@ def make_chunks(text, size=CHUNK_CHARS, overlap=CHUNK_OVERLAP):
 class Engine:
     def __init__(self, log=common.log):
         self.log = log
-        # un lock per modello (turno 26; prima un solo lock per tutti): modelli diversi lavorano in parallelo
-        self._pf_lock = PriorityLock()          # Privacy Filter (PyTorch) e il suo tokenizer
+        # un lock per modello (turno 26/38): i modelli ONNX (Privacy Filter Q4, Italian NER, GLiNER2-PII, RapidOCR)
+        # rilasciano il GIL e lavorano in parallelo sullo stesso lotto; i modelli PyTorch/OpenCV hanno lock dedicati.
+        self._pf_lock = PriorityLock()          # Privacy Filter (PyTorch ripiego)
         self._ita_pt_lock = threading.Lock()    # Italian NER in PyTorch (solo ripiego, senza ONNX Runtime)
-        self._ocr_lock = PriorityLock()         # EasyOCR
+        self._ocr_lock = PriorityLock()         # EasyOCR (PyTorch)
+        self._rapid_lock = PriorityLock()       # RapidOCR PP-OCRv5 (ONNX)
         self._face_lock = threading.Lock()      # YuNet (OpenCV): setInputSize cambia lo stato del rilevatore
         self._det_locks = {"sig": threading.Lock(), "plate": threading.Lock()}   # firme, targhe (YOLOS)
         self._load_lock = threading.RLock()     # caricamento su richiesta dei modelli
         self._cache_lock = threading.Lock()     # cache dei risultati per blocco di testo
-        self._ita_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="italian-ner")
+        self._ita_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="onnx-ner")
+        self._ocr_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ocr-ens")
         self.torch = None
         self.device = "cpu"
         self.precision = "fp32"
+        self._threads = 4
         self.pf = None
+        self.pf_onnx = None
         self._pf_dtype = None           # precisione scelta all'avvio, per caricare il Privacy Filter piu' tardi
         self.ita = None
         self.ita_onnx = None
+        self.gliner2_onnx = None
         self.system2 = None             # Sistema 2 (system2_resolver): si avvia solo alla prima analisi con dubbi
         self.speech = None              # trascrizione vocale (speech): processo separato, avviato al primo file audio
-        self.ocr_reader = None
+        self.rapid_ocr = None           # RapidOCR PP-OCRv5 Mobile Latin (ONNX, 13 MB, ~1,5 s/pag)
+        self.easy_ocr = None            # EasyOCR (CRAFT + latin_g2, usato in ensemble o su scelta)
+        self.ocr_reader = None          # sentinella non-None se almeno un motore OCR e' pronto
         self._face = None
         self._sig = None
         self._plate = None
@@ -202,6 +210,7 @@ class Engine:
             pass
 
         threads, threads_source = self._cpu_threads(torch, settings)
+        self._threads = threads
         capability = self._cpu_capability(torch)
         bf16_native = self._bf16_native(torch)
         vm = common.virtual_machine()
@@ -223,18 +232,27 @@ class Engine:
         mem = psutil.virtual_memory()
         total_gb, free_gb = mem.total / (1024 ** 3), mem.available / (1024 ** 3)
         dt, why = self._choose_dtype(torch, settings.get("precision", "auto"), total_gb, free_gb, bf16_native)
-        self.log(f"RAM totale {total_gb:.1f} GB ({free_gb:.1f} GB liberi): Privacy Filter in "
-                 f"{'BF16' if dt == torch.bfloat16 else 'FP32'} - {why}.")
+        pf_onnx_avail = self._pf_has_onnx()
+        if pf_onnx_avail:
+            self.log(f"RAM totale {total_gb:.1f} GB ({free_gb:.1f} GB liberi): Privacy Filter in ONNX Q4 (~645 MB RAM).")
+        else:
+            self.log(f"RAM totale {total_gb:.1f} GB ({free_gb:.1f} GB liberi): Privacy Filter in "
+                     f"{'BF16' if dt == torch.bfloat16 else 'FP32'} - {why}.")
 
         self._pf_dtype = dt
-        # Italian NER (ONNX) e OCR si caricano in parallelo al Privacy Filter (turno 26: prima uno dopo l'altro)
+        # Caricamento in parallelo di Italian NER (ONNX), GLiNER2-PII (ONNX), OCR (RapidOCR + EasyOCR) e Privacy Filter
         ita_path = os.path.join(common.MODELS_DIR, "italian-ner-xxl")
-        ita_box, ocr_box = {}, {}
+        gl_path = os.path.join(common.MODELS_DIR, "gliner2-pii")
+        ocr_mode = settings.get("ocr_mode") or "ensemble"
+        ita_box, gl_box, ocr_box = {}, {}, {}
         side = []
         if os.path.isdir(ita_path) and os.listdir(ita_path):
             side.append(threading.Thread(target=self._load_italian_onnx, args=(ita_path, threads, ita_box),
                                          name="carica-italian-ner", daemon=True))
-        side.append(threading.Thread(target=self._load_ocr, args=(ocr_box,), name="carica-ocr", daemon=True))
+        if bool(settings.get("enable_model_gliner2", True)) and os.path.isdir(gl_path) and os.listdir(gl_path):
+            side.append(threading.Thread(target=self._load_gliner2_onnx, args=(gl_path, threads, gl_box),
+                                         name="carica-gliner2", daemon=True))
+        side.append(threading.Thread(target=self._load_ocr, args=(ocr_box, ocr_mode), name="carica-ocr", daemon=True))
         for th in side:
             th.start()
         t_pf = time.time()
@@ -242,11 +260,12 @@ class Engine:
             self._load_privacy_filter()
         else:
             self.pf = None
-            self.precision = "fp32"
+            self.pf_onnx = None
+            self.precision = "onnx-q4" if pf_onnx_avail else "fp32"
             self.log("Privacy Filter 1.5B disattivato nelle impostazioni: si carica alla prima richiesta che lo usa.")
         for th in side:
             th.join()
-        self.log(f"Modelli del testo e OCR pronti in {time.time() - t_pf:.0f}s (caricamento in parallelo).")
+        self.log(f"Modelli del testo (ensemble) e OCR pronti in {time.time() - t_pf:.0f}s (caricamento in parallelo).")
 
         onnx_error = None
         if os.path.isdir(ita_path) and os.listdir(ita_path):
@@ -271,13 +290,19 @@ class Engine:
         else:
             onnx_error = FileNotFoundError(f"cartella modello assente o vuota: {ita_path}")
         if self.ita_onnx is None and self.ita is None:
-            # Un modello attivo nelle impostazioni non viene mai saltato in silenzio (come il Privacy Filter):
-            # senza Italian NER molti dati personali resterebbero in chiaro senza che nessuno se ne accorga.
             if bool(settings.get("enable_model_italian_ner", True)):
                 raise RuntimeError(f"il modello Italian NER non si carica ({type(onnx_error).__name__}: "
                                    f"{onnx_error}). Reinstalla Germano oppure disattiva «Italian NER» nelle "
                                    "Impostazioni (profilo PD) se vuoi proseguire senza.")
             self.log(f"Avviso: Italian_NER_XXL non caricato ({onnx_error}); e' disattivato nelle impostazioni.")
+
+        self.gliner2_onnx = gl_box.get("clf")
+        gl_err = gl_box.get("error")
+        if self.gliner2_onnx is None and bool(settings.get("enable_model_gliner2", True)):
+            if os.path.isdir(gl_path) and os.listdir(gl_path):
+                raise RuntimeError(f"il modello GLiNER2-PII non si carica ({type(gl_err).__name__}: {gl_err}). "
+                                   "Reinstalla Germano oppure disattiva «GLiNER2-PII» nelle Impostazioni (profilo PD).")
+            self.log("Avviso: modello GLiNER2-PII non presente in models/gliner2-pii.")
 
         try:
             from . import system2_resolver
@@ -304,7 +329,9 @@ class Engine:
             self.log(f"Avviso: trascrizione audio non disponibile ({e}).")
             self.speech = None
 
-        self.ocr_reader = ocr_box.get("reader")
+        self.rapid_ocr = ocr_box.get("rapid")
+        self.easy_ocr = ocr_box.get("easy")
+        self.ocr_reader = self.rapid_ocr or self.easy_ocr
         if self.ocr_reader is None:
             self.log(f"Avviso: OCR non disponibile ({ocr_box.get('error')}).")
 
@@ -317,10 +344,14 @@ class Engine:
             "cpu": capability,
             "bf16_native": bf16_native,
             "vm": vm,
-            "privacy_filter": self.pf is not None,
+            "privacy_filter": self.pf_onnx is not None or self.pf is not None,
+            "privacy_filter_onnx": self.pf_onnx is not None,
             "italian_ner_onnx": self.ita_onnx is not None,
             "italian_ner": self.ita is not None or self.ita_onnx is not None,
+            "gliner2_pii": self.gliner2_onnx is not None,
             "ocr": self.ocr_reader is not None,
+            "ocr_rapidocr": self.rapid_ocr is not None,
+            "ocr_easyocr": self.easy_ocr is not None,
             "system2": self.system2.info() if self.system2 is not None else {"available": False},
             "speech": self.speech.info() if self.speech is not None else {"available": False},
         }
@@ -343,20 +374,95 @@ class Engine:
         except Exception as e:
             box["error"] = e
 
-    def _load_ocr(self, box):
-        """Thread di avvio: EasyOCR (rilevatore CRAFT + riconoscitore per italiano e inglese)."""
-        self.log("Caricamento motore OCR (EasyOCR locale)...")
+    def _load_gliner2_onnx(self, gl_path, threads, box):
+        """Thread di avvio: GLiNER2-PII multilingua (ONNX Runtime) con prova sul testo di controllo."""
         try:
-            import easyocr
+            from . import engine_onnx
             t = time.time()
-            ocr_dir = os.path.join(common.MODELS_DIR, "easyocr")
-            box["reader"] = easyocr.Reader(
-                ["it", "en"], gpu=(self.device == "cuda"), verbose=False, download_enabled=False,
-                model_storage_directory=ocr_dir, user_network_directory=ocr_dir,
-            )
-            self.log(f"Motore OCR caricato in {time.time() - t:.1f}s.")
+            self.log("Caricamento modello GLiNER2-PII multilingua (ONNX Runtime, 31+ categorie + zero-shot)...")
+            clf = engine_onnx.OnnxGLiNER2(gl_path, threads=threads)
+            found = clf.predict([SELF_TEST_TEXT])[0]
+            if not found:
+                raise RuntimeError("la prova del modello GLiNER2-PII non ha riconosciuto nessun dato di controllo")
+            box["clf"] = clf
+            self.log(f"GLiNER2-PII pronto in {time.time() - t:.1f}s ({os.path.basename(clf.onnx_path)}, prova "
+                     f"superata: {len(found)} dati nel testo di controllo).")
         except Exception as e:
             box["error"] = e
+
+    @staticmethod
+    def _build_rapid_ocr():
+        """RapidOCR PP-OCRv5 Mobile Latin (ONNX, 13 MB, 100% offline con percorsi locali espliciti)."""
+        from rapidocr import RapidOCR, OCRVersion, LangRec, ModelType
+        rdir = os.path.join(common.MODELS_DIR, "rapidocr-ppocrv5")
+        det_p = os.path.join(rdir, "ch_PP-OCRv5_det_mobile.onnx")
+        cls_p = os.path.join(rdir, "ch_ppocr_mobile_v2.0_cls_mobile.onnx")
+        rec_p = os.path.join(rdir, "latin_PP-OCRv5_rec_mobile.onnx")
+        if not (os.path.isfile(det_p) and os.path.isfile(cls_p) and os.path.isfile(rec_p)):
+            return None
+        return RapidOCR(params={
+            "Det.ocr_version": OCRVersion.PPOCRV5, "Det.model_type": ModelType.MOBILE, "Det.model_path": det_p,
+            "Cls.model_path": cls_p,
+            "Rec.ocr_version": OCRVersion.PPOCRV5, "Rec.lang_type": LangRec.LATIN, "Rec.model_type": ModelType.MOBILE,
+            "Rec.model_path": rec_p,
+            "Global.return_word_box": False,
+        })
+
+    def _build_easy_ocr(self):
+        import easyocr
+        ocr_dir = os.path.join(common.MODELS_DIR, "easyocr")
+        if not (os.path.isdir(ocr_dir) and os.listdir(ocr_dir)):
+            return None
+        return easyocr.Reader(
+            ["it", "en"], gpu=(self.device == "cuda"), verbose=False, download_enabled=False,
+            model_storage_directory=ocr_dir, user_network_directory=ocr_dir,
+        )
+
+    def _load_ocr(self, box, ocr_mode="ensemble"):
+        """Thread di avvio: RapidOCR PP-OCRv5 (ONNX) e EasyOCR (caricato subito in ensemble/easyocr)."""
+        errs = []
+        t0 = time.time()
+        try:
+            self.log("Caricamento motore OCR RapidOCR PP-OCRv5 Mobile Latin (ONNX locale)...")
+            ro = self._build_rapid_ocr()
+            if ro is not None:
+                box["rapid"] = ro
+                self.log(f"RapidOCR PP-OCRv5 pronto in {time.time() - t0:.1f}s.")
+        except Exception as e:
+            errs.append(f"RapidOCR: {e}")
+            self.log(f"Avviso: RapidOCR non disponibile ({e}).")
+        if ocr_mode != "rapidocr" or "rapid" not in box:
+            try:
+                t1 = time.time()
+                self.log("Caricamento motore OCR EasyOCR locale (per ensemble/massima accuratezza)...")
+                ez = self._build_easy_ocr()
+                if ez is not None:
+                    box["easy"] = ez
+                    self.log(f"EasyOCR pronto in {time.time() - t1:.1f}s.")
+            except Exception as e:
+                errs.append(f"EasyOCR: {e}")
+                self.log(f"Avviso: EasyOCR non disponibile ({e}).")
+        if not box.get("rapid") and not box.get("easy"):
+            box["error"] = "; ".join(errs) or "nessun modello OCR trovato"
+
+    def _ensure_easy_ocr(self):
+        if self.easy_ocr is not None or "easy_ocr_fail" in self._tried:
+            return self.easy_ocr
+        with self._load_lock:
+            if self.easy_ocr is None and "easy_ocr_fail" not in self._tried:
+                try:
+                    t = time.time()
+                    self.easy_ocr = self._build_easy_ocr()
+                    if self.easy_ocr is not None:
+                        self.ocr_reader = self.rapid_ocr or self.easy_ocr
+                        if self.info:
+                            self.info["ocr_easyocr"] = True
+                            self.info["ocr"] = True
+                        self.log(f"EasyOCR caricato su richiesta in {time.time() - t:.1f}s.")
+                except Exception as e:
+                    self._tried.add("easy_ocr_fail")
+                    self.log(f"Avviso: EasyOCR su richiesta non riuscito ({e}).")
+        return self.easy_ocr
 
     # ------------------------------------------------------------------ audio
     def transcribe(self, path, settings=None, cancel=None, progress=None, extend=None):
@@ -413,18 +519,43 @@ class Engine:
                 except Exception:
                     pass
         self._ita_pool.shutdown(wait=False)
+        self._ocr_pool.shutdown(wait=False)
+
+    @staticmethod
+    def _pf_has_onnx():
+        pf_path = os.path.join(common.MODELS_DIR, "privacy-filter")
+        for name in ("model_q4.onnx", "model_quantized.onnx", "model_q4f16.onnx", "model.onnx"):
+            if os.path.isfile(os.path.join(pf_path, "onnx", name)) or os.path.isfile(os.path.join(pf_path, name)):
+                return True
+        return False
 
     def _load_privacy_filter(self):
-        """Carica il Privacy Filter (all'avvio o alla prima richiesta che lo usa). Solleva un'eccezione se non riesce:
-        un modello attivo nelle impostazioni non viene mai saltato in silenzio."""
-        torch = self.torch
-        from transformers import pipeline
-        dt = self._pf_dtype or torch.float32
+        """Carica il Privacy Filter (preferisce ONNX Q4 ufficiale OpenAI: ~645 MB RAM, senza GIL; ripiego PyTorch)."""
         pf_path = os.path.join(common.MODELS_DIR, "privacy-filter")
         if not os.path.isdir(pf_path) or not os.listdir(pf_path):
             raise FileNotFoundError(f"Modello locale non trovato in {pf_path}")
+        if self._pf_has_onnx():
+            from . import engine_onnx
+            t = time.time()
+            self.log("Caricamento modello Privacy Filter 1.5B (ONNX Runtime Q4, 100% offline)...")
+            clf = engine_onnx.OnnxPrivacyFilter(pf_path, threads=self._threads)
+            found = clf.predict([SELF_TEST_TEXT])[0]
+            if not found:
+                raise RuntimeError("la prova del Privacy Filter ONNX non ha riconosciuto nessun dato di controllo")
+            self.pf_onnx = clf
+            self.precision = clf.quant_label
+            if self.info:
+                self.info["privacy_filter"] = True
+                self.info["privacy_filter_onnx"] = True
+                self.info["precision"] = self.precision
+            self.log(f"Privacy Filter ONNX pronto in {time.time() - t:.1f}s ({os.path.basename(clf.onnx_path)}, "
+                     f"prova superata: {len(found)} dati nel testo di controllo).")
+            return
+        torch = self.torch
+        from transformers import pipeline
+        dt = self._pf_dtype or torch.float32
         t = time.time()
-        self.log("Caricamento modello Privacy Filter 1.5B (100% offline)...")
+        self.log("Caricamento modello Privacy Filter 1.5B (PyTorch, 100% offline)...")
         try:
             pf = self._load_pf(pipeline, pf_path, dt)
             if dt == torch.bfloat16:
@@ -449,11 +580,30 @@ class Engine:
 
     def _ensure_privacy_filter(self, settings):
         """Privacy Filter riattivato nelle impostazioni (o chiesto da un client) dopo un avvio senza: si carica ora."""
-        if self.pf is not None or self.torch is None or not bool(settings.get("enable_model_velvet", True)):
+        if (self.pf_onnx is not None or self.pf is not None) or self.torch is None \
+                or not bool(settings.get("enable_model_velvet", True)):
             return
         with self._load_lock:
-            if self.pf is None:
+            if self.pf_onnx is None and self.pf is None:
                 self._load_privacy_filter()
+
+    def _ensure_gliner2(self, settings):
+        """GLiNER2-PII riattivato nelle impostazioni dopo un avvio senza: si carica su richiesta."""
+        if self.gliner2_onnx is not None or not bool(settings.get("enable_model_gliner2", True)):
+            return
+        gl_path = os.path.join(common.MODELS_DIR, "gliner2-pii")
+        if not (os.path.isdir(gl_path) and os.listdir(gl_path)):
+            return
+        with self._load_lock:
+            if self.gliner2_onnx is None:
+                box = {}
+                self._load_gliner2_onnx(gl_path, self._threads, box)
+                if box.get("clf") is not None:
+                    self.gliner2_onnx = box["clf"]
+                    if self.info:
+                        self.info["gliner2_pii"] = True
+                elif box.get("error") is not None:
+                    raise RuntimeError(f"GLiNER2-PII non si carica: {box['error']}")
 
     # ------------------------------------------------------------------ processore e precisione
     @staticmethod
@@ -542,24 +692,27 @@ class Engine:
         cancel = cancel or NO_CANCEL
         results = [[] for _ in texts]
         self._ensure_privacy_filter(settings)
+        self._ensure_gliner2(settings)
         want_pf = bool(settings.get("enable_model_velvet", True))
         want_ita = bool(settings.get("enable_model_italian_ner", True))
-        use_pf = want_pf and self.pf is not None
+        want_gl = bool(settings.get("enable_model_gliner2", True))
+        use_pf = want_pf and (self.pf_onnx is not None or self.pf is not None)
         use_ita = want_ita and (self.ita_onnx is not None or self.ita is not None)
-        # Un modello attivo nelle impostazioni non viene mai saltato in silenzio. All'avvio lo garantisce load(); qui
-        # vale per cio' che cambia DOPO l'avvio: Italian NER riattivato nelle impostazioni (o chiesto da un client, o
-        # imposto dal profilo PA) su un motore partito senza, oppure un motore non ancora caricato. Prima il testo
-        # veniva analizzato lo stesso, senza quel modello e senza nessun avviso.
-        missing = [name for name, want, use in (("Privacy Filter", want_pf, use_pf), ("Italian NER", want_ita, use_ita))
+        use_gl = want_gl and self.gliner2_onnx is not None
+        # Un modello attivo nelle impostazioni non viene mai saltato in silenzio.
+        missing = [name for name, want, use in (("Privacy Filter", want_pf, use_pf),
+                                                ("Italian NER", want_ita, use_ita),
+                                                ("GLiNER2-PII", want_gl, use_gl))
                    if want and not use]
         if missing:
             raise RuntimeError(f"{' e '.join(missing)} attivo nelle impostazioni ma non caricato nel motore: testo non "
                                "analizzato per sicurezza. Riavvia il motore dalla Dashboard (oppure disattiva il "
                                "modello nelle Impostazioni, profilo PD, per proseguire senza).")
-        if not (use_pf or use_ita):
+        if not (use_pf or use_ita or use_gl):
             return results
         thr = float(settings.get("ai_threshold", 0.0) or 0.0)
-        flags = f"{int(use_pf)}{int(use_ita)}"
+        custom_raw = str(settings.get("custom_pii_labels") or "").strip() if use_gl else ""
+        flags = f"{int(use_pf)}{int(use_ita)}{int(use_gl)}|{custom_raw}"
 
         pending = []
         for ti, text in enumerate(texts):
@@ -585,12 +738,17 @@ class Engine:
             cancel.check()
             group = pending[i:i + batch]
             chunks = [g[4] for g in group]
-            ita_future = None
+            pf_future = ita_future = gl_future = None
+            if use_pf and self.pf_onnx is not None:
+                pf_future = self._ita_pool.submit(self.pf_onnx.predict, chunks)
             if use_ita and self.ita_onnx is not None:
-                # ONNX Runtime (C++, rilascia il GIL, sicuro fra thread) in parallelo al Privacy Filter sullo stesso
-                # lotto: stessi blocchi e stesso modello, quindi risultati identici a prima, in meno tempo
                 ita_future = self._ita_pool.submit(self.ita_onnx.predict, chunks)
-            if use_pf:
+            if use_gl and self.gliner2_onnx is not None:
+                gl_future = self._ita_pool.submit(self.gliner2_onnx.predict, chunks, custom_raw, 0.55, 0.45)
+
+            if pf_future is not None:
+                pf_out = pf_future.result()
+            elif use_pf and self.pf is not None:
                 with self._pf_lock:
                     pf_out = self._run_pipe(self.pf, chunks, batch_size=PF_BATCH)
             else:
@@ -603,12 +761,17 @@ class Engine:
                     ita_out = self._run_pipe(self.ita, chunks, batch_size=len(chunks), stride=64)
             else:
                 ita_out = [[] for _ in chunks]
-            for (ti, a, klo, khi, chunk, key), po, io in zip(group, pf_out, ita_out):
+
+            gl_out = gl_future.result() if gl_future is not None else [[] for _ in chunks]
+
+            for (ti, a, klo, khi, chunk, key), po, io, go in zip(group, pf_out, ita_out, gl_out):
                 spans = []
                 for r in po or []:
                     spans.append((int(r["start"]), int(r["end"]), str(r.get("entity_group", "PII")), float(r.get("score", 0.0)), 0))
                 for r in io or []:
                     spans.append((int(r["start"]), int(r["end"]), str(r.get("entity_group", "PII")), float(r.get("score", 0.0)), 1))
+                for r in go or []:
+                    spans.append((int(r["start"]), int(r["end"]), str(r.get("entity_group", "PII")), float(r.get("score", 0.0)), 2))
                 with self._cache_lock:
                     self._cache[key] = spans
                     if len(self._cache) > self._cache_max:
@@ -631,12 +794,97 @@ class Engine:
             self._cache.clear()
 
     # ------------------------------------------------------------------ OCR e visione
-    def ocr(self, img_rgb):
-        """[(box4punti, testo, confidenza)] su immagine numpy RGB."""
-        if self.ocr_reader is None:
+    def _run_rapid_ocr(self, img_rgb):
+        if self.rapid_ocr is None:
+            return []
+        with self._rapid_lock:
+            res = self.rapid_ocr(img_rgb)
+        if not res or getattr(res, "boxes", None) is None or not getattr(res, "txts", None):
+            return []
+        scores = getattr(res, "scores", None) or [1.0] * len(res.txts)
+        out = []
+        for box, txt, sc in zip(res.boxes, res.txts, scores):
+            if not txt or not str(txt).strip():
+                continue
+            pts = [[float(p[0]), float(p[1])] for p in box]
+            out.append((pts, str(txt), float(sc)))
+        return out
+
+    def _run_easy_ocr(self, img_rgb):
+        ez = self._ensure_easy_ocr()
+        if ez is None:
             return []
         with self._ocr_lock:
-            return self.ocr_reader.readtext(img_rgb, detail=1, paragraph=False)
+            return ez.readtext(img_rgb, detail=1, paragraph=False, batch_size=8)
+
+    @staticmethod
+    def _merge_ocr_results(rapid_res, easy_res):
+        """Fonde RapidOCR PP-OCRv5 (primario: CER 0,10%) ed EasyOCR (complementare su fax/scansioni estreme):
+        tiene tutti i riquadri di RapidOCR e aggiunge quelli di EasyOCR che non sono duplicati con lo stesso testo."""
+        if not rapid_res:
+            return list(easy_res or [])
+        if not easy_res:
+            return list(rapid_res)
+
+        def _bbox(pts):
+            xs = [float(p[0]) for p in pts]
+            ys = [float(p[1]) for p in pts]
+            return min(xs), min(ys), max(xs), max(ys)
+
+        def _norm(s):
+            return "".join(c.lower() for c in str(s) if c.isalnum())
+
+        def _iou(a, b):
+            ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+            iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+            inter = ix * iy
+            if inter <= 0:
+                return 0.0
+            aa = max(1.0, (a[2] - a[0]) * (a[3] - a[1]))
+            ab = max(1.0, (b[2] - b[0]) * (b[3] - b[1]))
+            return inter / min(aa, ab)
+
+        r_meta = [(_bbox(b), _norm(t)) for b, t, _ in rapid_res]
+        merged = list(rapid_res)
+        for box, txt, conf in easy_res:
+            et = _norm(txt)
+            if not et:
+                continue
+            eb = _bbox(box)
+            dup = False
+            for rb, rt in r_meta:
+                if _iou(eb, rb) >= 0.45 and (et == rt or et in rt):
+                    dup = True
+                    break
+            if not dup:
+                merged.append((box, txt, conf))
+        return merged
+
+    def ocr(self, img_rgb, mode="ensemble"):
+        """[(box4punti, testo, confidenza)] su immagine numpy RGB.
+        `mode`: 'ensemble' (RapidOCR PP-OCRv5 + EasyOCR in parallelo), 'rapidocr' (veloce ONNX), 'easyocr'."""
+        if self.ocr_reader is None:
+            return []
+        m = str(mode or "ensemble").lower()
+        if m == "rapidocr":
+            return self._run_rapid_ocr(img_rgb) if self.rapid_ocr is not None else self._run_easy_ocr(img_rgb)
+        if m == "easyocr":
+            return self._run_easy_ocr(img_rgb) if self._ensure_easy_ocr() is not None else self._run_rapid_ocr(img_rgb)
+        # ensemble: RapidOCR (ONNX C++, senza GIL) e EasyOCR (PyTorch) in parallelo sullo stesso fotogramma
+        if self.rapid_ocr is not None and self._ensure_easy_ocr() is not None:
+            high = is_interactive()
+
+            def _r():
+                with interactive_scope(high):
+                    return self._run_rapid_ocr(img_rgb)
+
+            fut = self._ocr_pool.submit(_r)
+            easy_res = self._run_easy_ocr(img_rgb)
+            rapid_res = fut.result()
+            return self._merge_ocr_results(rapid_res, easy_res)
+        if self.rapid_ocr is not None:
+            return self._run_rapid_ocr(img_rgb)
+        return self._run_easy_ocr(img_rgb)
 
     def _face_detector(self):
         with self._load_lock:

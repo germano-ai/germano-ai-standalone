@@ -54,7 +54,8 @@ def scan_image(ctx, img_rgb, allow_plates=True, allow_ocr=True):
                 "OCR attivo nelle impostazioni ma non disponibile su questo motore: il testo delle immagini e delle "
                 "scansioni non puo' essere controllato. Reinstalla Germano (o aggiorna il Germano Server che esegue "
                 "il motore) oppure disattiva «OCR» nelle Impostazioni (profilo PD) per proseguire senza.")
-        tasks.append(("ocr", eng.ocr, img_rgb))
+        ocr_mode = s.get("ocr_mode") or "ensemble"
+        tasks.append(("ocr", lambda im, m=ocr_mode: _call_ocr(eng, im, m), img_rgb))
     out = {"faces": [], "signatures": [], "plates": [], "ocr": None}
     if not PARALLEL_VISION or len(tasks) < 2:
         for kind, fn, arg in tasks:
@@ -190,9 +191,17 @@ def _regions_per_segment(ctx, segs):
     return out
 
 
+def _call_ocr(eng, img_rgb, mode="ensemble"):
+    try:
+        return eng.ocr(img_rgb, mode=mode)
+    except TypeError:
+        return eng.ocr(img_rgb)
+
+
 def ocr_regions(ctx, img_rgb, areas=None):
     """Legge il testo con l'OCR, lo analizza e restituisce i riquadri delle sole parti personali."""
-    segs = _ocr_segments(ctx.engine.ocr(img_rgb), areas)
+    mode = (ctx.settings or {}).get("ocr_mode") or "ensemble"
+    segs = _ocr_segments(_call_ocr(ctx.engine, img_rgb, mode), areas)
     if not segs:
         return []
     return [r for regions in _regions_per_segment(ctx, segs) for r in regions]

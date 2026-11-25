@@ -25,6 +25,7 @@ from . import common
 from .engine import NO_CANCEL
 
 MODEL_FOLDER_PREFIX = "whisper"          # models/whisper-small (la prima cartella «whisper*» che contiene model.bin)
+PARAKEET_FOLDER_PREFIX = "parakeet"      # models/parakeet-tdt-0.6b-v3 (ONNX INT8, 25 lingue europee)
 IDLE_STOP_S = 300                        # processo chiuso dopo 5 minuti senza richieste
 START_TIMEOUT_S = 120
 STALL_TIMEOUT_S = 900                    # nessun evento dal processo per 15 minuti: trascrizione interrotta
@@ -32,6 +33,7 @@ PROBE_TIMEOUT_S = 120
 SPEED_MARGIN = 4.0                       # tempo concesso = durata x 4 + 10 minuti (CPU lente comprese)
 SPEED_BASE_S = 600
 REQUIRED = ("faster_whisper", "ctranslate2", "av")
+REQUIRED_PARAKEET = ("onnx_asr", "onnxruntime", "av")
 LANGUAGE_NAMES = {"it": "italiano", "en": "inglese", "fr": "francese", "de": "tedesco", "es": "spagnolo",
                   "pt": "portoghese", "nl": "olandese", "ro": "rumeno", "pl": "polacco", "sq": "albanese",
                   "uk": "ucraino", "ru": "russo", "ar": "arabo", "zh": "cinese", "ca": "catalano", "el": "greco",
@@ -59,9 +61,25 @@ def locate_model():
     return None, {}
 
 
-def missing_packages():
+def locate_parakeet():
+    """(cartella Parakeet ONNX, manifesto germano.json) oppure (None, {})."""
+    forced = os.environ.get("GERMANO_PARAKEET_MODEL_DIR")
+    candidates = [forced] if forced else []
+    try:
+        candidates += [os.path.join(common.MODELS_DIR, d) for d in sorted(os.listdir(common.MODELS_DIR))
+                       if d.lower().startswith(PARAKEET_FOLDER_PREFIX)]
+    except OSError:
+        pass
+    for folder in candidates:
+        if folder and os.path.isfile(os.path.join(folder, "encoder-model.int8.onnx")) \
+                and os.path.isfile(os.path.join(folder, "decoder_joint-model.int8.onnx")):
+            return folder, (common.read_json(os.path.join(folder, "germano.json"), {}) or {})
+    return None, {}
+
+
+def missing_packages(pkgs=REQUIRED):
     out = []
-    for name in REQUIRED:
+    for name in pkgs:
         try:
             if importlib.util.find_spec(name) is None:
                 out.append(name)
@@ -75,7 +93,9 @@ class SpeechEngine:
         self.log = log
         self.threads = max(1, int(threads or min(4, common.cpus_available())))
         self.model_dir, self.manifest = locate_model()
-        self.missing = missing_packages()
+        self.parakeet_dir, self.parakeet_manifest = locate_parakeet()
+        self.missing = missing_packages(REQUIRED)
+        self.missing_parakeet = missing_packages(REQUIRED_PARAKEET)
         self._lock = threading.Lock()          # una trascrizione alla volta
         self._proc = None
         self._events = None
@@ -87,10 +107,20 @@ class SpeechEngine:
 
     # ------------------------------------------------------------------ stato
     @property
-    def available(self):
+    def has_whisper(self):
         return bool(self.model_dir) and not self.missing
 
+    @property
+    def has_parakeet(self):
+        return bool(self.parakeet_dir) and not self.missing_parakeet
+
+    @property
+    def available(self):
+        return self.has_whisper or self.has_parakeet
+
     def unavailable_reason(self):
+        if self.available:
+            return ""
         if self.missing:
             return "librerie della trascrizione non installate (" + ", ".join(self.missing) + ")"
         if not self.model_dir:
@@ -100,15 +130,24 @@ class SpeechEngine:
     def info(self):
         m = self.manifest or {}
         return {"available": self.available, "running": self._running(),
-                "model": m.get("name") or (os.path.basename(self.model_dir) if self.model_dir else None),
-                "quantization": m.get("quantization"), "runtime": m.get("runtime") or "faster-whisper (CTranslate2)",
+                "model": self.model_label(),
+                "whisper": self.has_whisper, "parakeet": self.has_parakeet,
+                "quantization": m.get("quantization") or "INT8",
+                "runtime": "Ensemble Parakeet ONNX + faster-whisper" if (self.has_whisper and self.has_parakeet)
+                else ("onnx-asr (ONNX Runtime)" if self.has_parakeet else (m.get("runtime") or "faster-whisper (CTranslate2)")),
                 "reason": self.unavailable_reason() or None, "error": self.last_error,
                 "files": self.stats["files"], "audio_seconds": round(self.stats["audio_seconds"], 1)}
 
     def model_label(self):
         m = self.manifest or {}
-        name = m.get("name") or (os.path.basename(self.model_dir) if self.model_dir else "Whisper")
-        return f"{name} ({m['quantization']})" if m.get("quantization") else name
+        w_name = m.get("name") or (os.path.basename(self.model_dir) if self.model_dir else "Whisper")
+        w_lbl = f"{w_name} ({m['quantization']})" if m.get("quantization") else w_name
+        pm = self.parakeet_manifest or {}
+        p_name = pm.get("name") or "NVIDIA Parakeet TDT 0.6B v3"
+        p_lbl = f"{p_name} ({pm.get('quantization') or 'INT8'})"
+        if self.has_whisper and self.has_parakeet:
+            return f"Ensemble {p_lbl} + {w_lbl}"
+        return p_lbl if self.has_parakeet else w_lbl
 
     # ------------------------------------------------------------------ processo
     def _running(self):
@@ -293,9 +332,12 @@ class SpeechEngine:
         tempo massimo in base alla durata della registrazione."""
         settings = settings or {}
         language = settings.get("speech_language") or "auto"
+        engine_pref = str(settings.get("speech_engine") or "ensemble").lower()
+        if engine_pref not in ("ensemble", "parakeet", "whisper"):
+            engine_pref = "ensemble"
         max_minutes = int(settings.get("speech_max_minutes") or common.DEFAULT_SETTINGS["speech_max_minutes"])
-        out = {"segments": [], "format": {}, "tags": {}, "language": None, "language_probability": None,
-               "duration": 0.0, "speech": 0.0, "model": self.model_label()}
+        out = {"segments": [], "alt_segments": [], "format": {}, "tags": {}, "language": None,
+               "language_probability": None, "duration": 0.0, "speech": 0.0, "model": self.model_label()}
         t0 = time.time()
 
         max_ext = (max_minutes * 60 + 5) * SPEED_MARGIN + SPEED_BASE_S
@@ -319,12 +361,18 @@ class SpeechEngine:
                 out["language"] = ev.get("language")
                 out["language_probability"] = ev.get("language_probability")
                 out["speech"] = float(ev.get("speech") or 0)
+                if ev.get("model_label"):
+                    out["model"] = str(ev["model_label"])
             elif kind == "segment":
                 out["segments"].append((float(ev["start"]), float(ev["end"]), str(ev["text"])))
+                out["alt_segments"].append(str(ev.get("alt_text") or ""))
                 if progress and out["duration"]:
                     progress(f"audio: trascrizione {_clock(ev['end'])} di {_clock(out['duration'])}")
 
-        req = {"cmd": "transcribe", "path": os.path.abspath(path), "model_dir": self.model_dir,
+        req = {"cmd": "transcribe", "path": os.path.abspath(path),
+               "model_dir": self.model_dir if self.has_whisper else None,
+               "parakeet_dir": self.parakeet_dir if self.has_parakeet else None,
+               "speech_engine": engine_pref,
                "threads": self.threads, "compute_type": "int8", "language": None if language == "auto" else language,
                "max_seconds": max_minutes * 60}
         with self._lock:

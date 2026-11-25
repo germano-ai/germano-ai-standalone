@@ -90,6 +90,8 @@ CATEGORY_MAP = {
     "LEGGE": ("[DATO_GIUDIZIARIO]", "censor_legal"),
     "REGIME_PATRIMONIALE": ("[STATO_CIVILE]", "censor_civil_status"),
     "STATO_CIVILE": ("[STATO_CIVILE]", "censor_civil_status"),
+    # Categorie personalizzate zero-shot (GLiNER2-PII)
+    "CUSTOM_PII": ("[DATO_PERSONALIZZATO]", "censor_custom"),
 }
 
 FALLBACK_LABEL = "[DATI_SENSIBILI]"

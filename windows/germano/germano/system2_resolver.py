@@ -99,6 +99,7 @@ DESCRIPTIONS = {
     "cf_iva": "un codice fiscale o una partita IVA", "CODICE_FISCALE": "un codice fiscale", "P_IVA": "una partita IVA",
     "private_url": "un indirizzo web o IP riconducibile a una persona", "URL": "un indirizzo web di una persona",
     "IP": "un indirizzo IP", "IPV6_1": "un indirizzo IP", "MAC": "un indirizzo MAC", "USER_AGENT": "un identificativo di un dispositivo",
+    "CUSTOM_PII": "un dato personalizzato indicato dall'utente",
 }
 GENERIC = "un dato personale"
 
@@ -158,6 +159,7 @@ NUMERIC_GROUPS = frozenset({
 NEVER_RELEASE = frozenset({
     "secret", "PASSWORD", "PIN", "private_email", "EMAIL", "cf_iva", "CODICE_FISCALE", "P_IVA", "account_number",
     "IBAN", "NUMERO_CARTA", "NUMERO_CONTO", "CVV", "NUM_ASSEGNO_BANCARIO", "private_url", "URL", "IP", "IPV6_1", "MAC",
+    "CUSTOM_PII",
 })
 # Motivo della decisione (per il registro e la Glass Window), dal tipo di domanda
 _RELEASE_REASON = {

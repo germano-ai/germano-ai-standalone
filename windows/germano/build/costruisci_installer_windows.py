@@ -1,6 +1,6 @@
 """Costruisce gli installer Windows IN UN SOLO FILE della release:
-  germano.ai-1.00/releases/windows/germano-1.00.exe          suite completa (runtime, modelli IA, interfaccia)
-  germano.ai-1.00/releases/windows/germano-client-1.00.exe   client leggero
+  germano.ai-1.10/releases/windows/germano-1.10.exe          suite completa (runtime, modelli IA, interfaccia)
+  germano.ai-1.10/releases/windows/germano-client-1.10.exe   client leggero
 partendo da sorgenti/windows/<edizione> (programma), dipendenze/windows/runtime-<edizione> (Python 3.11 con tutte
 le librerie e le DLL di Visual C++ accanto all'interprete: nessun ridistribuibile da installare), modelli/,
 dipendenze/windows/llama-server (llama.cpp per il Sistema 2, installato in runtime/llama) e dipendenze/windows/7zip
@@ -45,7 +45,7 @@ import crea_version_json  # noqa: E402
 
 WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # oltre, Windows rifiuta di avviare l'eseguibile
 
-RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-1.00
+RELEASE = os.path.abspath(os.path.join(TOOLS, "..", "..", "..", ".."))       # germano.ai-1.10
 SOURCES = os.path.join(RELEASE, "sorgenti", "windows")
 DEPS = os.path.join(RELEASE, "dipendenze", "windows")
 MODELS = os.path.join(RELEASE, "modelli")
@@ -280,9 +280,14 @@ def build(edition_key):
                      "models/qwen3.5-0.8b/germano.json", "models/qwen3.5-0.8b/Qwen3.5-0.8B-Q8_0.gguf",
                      # audio (0.80): modello vocale, processo separato e librerie
                      "models/whisper-small/model.bin", "models/whisper-small/germano.json",
+                     "models/privacy-filter/onnx/model_q4.onnx",
+                     "models/gliner2-pii/model.quantized.onnx",
+                     "models/rapidocr-ppocrv5/latin_PP-OCRv5_rec_mobile.onnx",
+                     "models/parakeet-tdt-0.6b-v3/encoder-model.int8.onnx",
                      "germano/speech.py", "germano/speech_worker.py", "germano/formats/audio.py",
                      "runtime/Lib/site-packages/faster_whisper/__init__.py",
                      "runtime/Lib/site-packages/ctranslate2/__init__.py", "runtime/Lib/site-packages/av/__init__.py",
+                     "runtime/Lib/site-packages/rapidocr/__init__.py", "runtime/Lib/site-packages/onnx_asr/__init__.py",
                      # archivi (0.80): console di 7-Zip
                      "germano/formats/archive.py", "runtime/7zip/7z.exe", "runtime/7zip/7z.dll",
                      "runtime/7zip/License.txt"]

@@ -50,9 +50,9 @@ EXT = {"windows": "exe", "macos": "pkg", "linux": "deb"}
 def get_version():
     try:
         with open(os.path.join(BASE_DIR, "VERSION"), encoding="utf-8-sig") as f:
-            return f.read().strip() or "1.00"
+            return f.read().strip() or "1.10"
     except OSError:
-        return "1.00"
+        return "1.10"
 
 
 def platform():

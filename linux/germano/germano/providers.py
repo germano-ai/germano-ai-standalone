@@ -112,11 +112,12 @@ _PARAM_RANGES = {"temperature": (0.0, 2.0), "top_p": (0.0, 1.0), "max_tokens": (
                  "thinking_budget": (1024, 32000)}
 _LOCAL_REASONING_HINTS = ("deepseek-r1", "qwq", "qwen3", "qwen4", "gpt-oss", "cogito", "phi4-reasoning",
                           "phi-4-reasoning", "magistral", "kimi-k2-thinking", "kimi-k3", "glm-4.5", "glm-4.6",
-                          "glm-4.7", "glm-5", "-thinking", "-reasoning", "r1-")
+                          "glm-4.7", "glm-5", "inkling", "-thinking", "-reasoning", "r1-")
 _OR_PREFIX_SERVICE = {
     "openai": "openai", "anthropic": "anthropic", "google": "gemini", "deepseek": "deepseek",
     "qwen": "qwen", "x-ai": "xai", "z-ai": "zai", "thudm": "zai", "moonshotai": "moonshot",
     "mistralai": "mistral", "meta-llama": "meta", "meta": "meta", "perplexity": "perplexity",
+    "thinkingmachines": "thinkingmachines",
 }
 
 
@@ -148,6 +149,10 @@ def _model_profile(service_id, model=None):
         m_raw = spec["models"][0]
     ml = m_raw.lower()
     base = ml.split("/", 1)[-1] if "/" in ml else ml
+
+    if sid == "thinkingmachines":
+        return _prof(effort=("none", "minimal", "low", "medium", "high", "xhigh"), effort_default="high",
+                     max_tokens_ui=(256, 65536))
 
     if sid == "openrouter":
         if "/" in ml:

@@ -1,4 +1,4 @@
-/* Germano AI 1.00 - Harness AI e Glass Window.
+/* Germano AI 1.10 - Harness AI e Glass Window.
    Componente condiviso dalla Dashboard (index.html), dal Remote Control (/remote) e dal pannello di Germano Client:
    stessa interfaccia ovunque, stesse rotte del server (/api/harness/v2/*), che applica le regole di chi chiede
    (questo computer o un dispositivo della rete).

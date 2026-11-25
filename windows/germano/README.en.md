@@ -2,7 +2,7 @@
 
  *Leggi questo documento in altre lingue: [Italiano](README.md)*
 
-**Version 1.00** (November 21, 2026): **quick model & effort dock** directly in the composer bar and **unified AI menu** with immediately configurable independent cards for every available system (Antigravity CLI, Claude Code, local and cloud), plus model-specific parameters and mobile grid fix. See [What's new in 1.00](#whats-new-in-100-quick-model--effort-dock--unified-per-system-menu) and the [CHANGELOG](CHANGELOG.en.md).
+**Version 1.10** (November 25, 2026): **upgraded anonymization engine with 3 local ONNX ensembles** — 3-model parallel text ensemble (*Privacy Filter ONNX Q4* ~645 MB RAM + *Italian NER XXL* + *GLiNER2-PII ONNX* with **custom zero-shot categories**), OCR Ensemble (*RapidOCR PP-OCRv5 + EasyOCR*, up to 100% PII recall on scans) and Audio Ensemble (*NVIDIA Parakeet TDT 0.6B v3 + Whisper*, with fuzzy cross-redaction of spoken PII). See [What's new in 1.10](#whats-new-in-110-upgraded-engine-with-3-onnx-ensembles--custom-zero-shot-categories) and the [CHANGELOG](CHANGELOG.en.md).
 
 *<span style="color: #007bff; font-weight: bold;">Use Case 1</span>: You simply have a large number of documents to anonymize on your computer or server or NAS. Germano works in standalone mode and returns the anonymized documents; it supports many formats and is highly configurable. You simply copy the folder containing the files into input and receive the anonymized files in the output folder. Germano maintains the original directory and subfolder structure. Germano anonymizes text, prompts and faces and is compatible with the GDPR; Germano is a local and offline Windows application (does not require internet access to work).*
 
@@ -26,6 +26,18 @@ Germano opens on the **Chatbot & AI Agents** tab, where you talk to the AI you p
  **Productivity Tip:** the protection engine starts by itself on the first send or when you add documents; while it is off no data leaves. You can add files *while the software is already working*: they are queued without restarting anything. **Export list** saves the list of ready or failed documents as CSV (for Excel), and the **«Manual text sanitization»** box anonymizes a text on the fly to paste into any AI (and restores the answer).
 
  **[DOWNLOAD GERMANO AI STANDALONE](https://download.germano.ai)**
+
+---
+
+## What's new in 1.10: upgraded engine with 3 ONNX ensembles + custom zero-shot categories
+
+Germano's local engine (100% offline, CPU-ready) upgrades to **3 parallel ONNX ensembles** powered by **11 local models**, with drastically lower RAM usage and a lighter installer:
+
+- **Text — 3-Model ONNX Ensemble + Custom Zero-Shot Categories:** *Velvet Privacy Filter 1.5B* now runs in official **ONNX Q4** (~645 MB RAM vs 5.3 GB, ~10 s cold parallel startup) alongside *Italian NER XXL ONNX* and the new **GLiNER2-PII ONNX** (31+ multilingual classes), reaching **99.1%** recall on hard documents with zero leaks and unlocking **custom zero-shot categories** (`custom_pii_labels` → `[DATO_PERSONALIZZATO_N]`, e.g. *case number, customer code, project name*, never released by System 2 and restored via the Vault).
+- **OCR — RapidOCR PP-OCRv5 + EasyOCR Ensemble:** the new *RapidOCR PP-OCRv5 Mobile Latin* (ONNX, 13 MB) runs in parallel with *EasyOCR* merging every detected text box (**100%** PII recall on scans, faxes and skewed photos); in *Settings › System & log* you can also switch to *RapidOCR PP-OCRv5 only* (**4.5× faster**, 98.3% PII) or *EasyOCR only*.
+- **Audio — NVIDIA Parakeet TDT 0.6B v3 + Whisper Small Ensemble:** the new *Parakeet TDT v3* (ONNX INT8, 25 European languages) pairs with *Whisper Small*, picking the most accurate transcript per segment and applying fuzzy cross-redaction for spoken PII (names, phones, VAT IDs) even on noisy calls; *Parakeet v3 only* (**5× faster**) and *Whisper only* (99 languages) are also selectable.
+
+Full details and benchmarks in [CHANGELOG](CHANGELOG.en.md).
 
 ---
 
@@ -146,29 +158,29 @@ Full details and measurements in the [CHANGELOG](CHANGELOG.en.md).
 
 ## Multiplatform Installation
 
-All official installers are single ready-to-use files on **[download.germano.ai](https://download.germano.ai/)** and contain everything needed: the program, its own Python with all libraries and (in the full suite) the 8 AI models. Installation downloads nothing from the Internet and works on a freshly installed system.
+All official installers are single ready-to-use files on **[download.germano.ai](https://download.germano.ai/)** and contain everything needed: the program, its own Python with all libraries and (in the full suite) the 11 local AI models (3 ONNX ensembles, vision and System 2). Installation downloads nothing from the Internet and works on a freshly installed system.
 
 | System | Full suite | Lightweight client |
 |---|---|---|
-| Windows 10/11 and Windows Server 2019/2022/2025 64-bit (also in a virtual machine) | `germano-1.00.exe` | `germano-client-1.00.exe` |
-| macOS | `germano-1.00.pkg` (Apple Silicon, macOS 14 or later) | `germano-client-1.00.pkg` (Apple Silicon and Intel, macOS 11 or later) |
-| Linux Ubuntu/Debian 64-bit | `germano-1.00.deb` | `germano-client-1.00.deb` |
+| Windows 10/11 and Windows Server 2019/2022/2025 64-bit (also in a virtual machine) | `germano-1.10.exe` | `germano-client-1.10.exe` |
+| macOS | `germano-1.10.pkg` (Apple Silicon, macOS 14 or later) | `germano-client-1.10.pkg` (Apple Silicon and Intel, macOS 11 or later) |
+| Linux Ubuntu/Debian 64-bit | `germano-1.10.deb` | `germano-client-1.10.deb` |
 
 ### Windows (10 / 11 64-bit)
-1. **Download:** download `germano-1.00.exe`.
+1. **Download:** download `germano-1.10.exe`.
 2. **Installation:** double-click the installer. **As soon as it opens it asks for administrator permission** (Windows UAC prompt: choose **Yes**): it is needed to allow access from the local network, always enabled, with a Windows Firewall rule that only applies to Germano's Python and only to private and domain networks (Server LAN mode). The program installs for the current user into `%LOCALAPPDATA%\Programs\Germano AI`, with the Desktop and Start menu shortcuts, the entry in Settings > Apps and the working folders in `Documents\Germano AI`; at the end the installer window closes and **Germano AI opens by itself**, with the user's normal permissions. The Microsoft Visual C++ libraries are already included: nothing else to install.
 3. **Launch:** **Germano AI** shortcut on the Desktop or in the Start menu (dedicated window, no black terminal windows).
 4. **Uninstall:** Settings > Apps > Installed apps > Germano AI (it asks for administrator permission to remove the firewall rule); you can choose whether to keep the working folders and the Vault.
 
 ### Windows Server and virtual machines
-- **Windows Server 2019, 2022 and 2025** (Standard and Datacenter) and **VMware, Hyper-V, Proxmox VE (KVM), VirtualBox** and cloud (AWS, Azure, Google Cloud) virtual machines: no GPU and no redistributable to install (the Visual C++ DLLs are included). 12 GB of RAM and 4 vCPUs recommended: threads adapt to the vCPUs and precision to the processor (FP32, or BF16 with little RAM).
+- **Windows Server 2019, 2022 and 2025** (Standard and Datacenter) and **VMware, Hyper-V, Proxmox VE (KVM), VirtualBox** and cloud (AWS, Azure, Google Cloud) virtual machines: no GPU and no redistributable to install (the Visual C++ DLLs are included). 8–12 GB of RAM and 4 vCPUs recommended: threads adapt to the vCPUs and the main model runs in ONNX Q4 (~645 MB RAM).
 - **Without a window** (servers, Server Core, scheduled tasks): `Germano.exe --no-browser --mode=server` starts server and engine with no windows and writes the local and network addresses to the log and the console; `Germano.exe --stop` stops it. On Windows Server 2019, which has no Microsoft Edge, Germano offers by itself to stay active this way (Internet Explorer is not used).
 - **Network**: the firewall rule applies to private and domain networks; if an adapter is classified as «Public» (common in VMs), if the rule is missing or if Group Policy ignores local rules, the server Dashboard reports it with the command to fix it. In VMs with NAT networking you need TCP port 8181 forwarding or a bridged adapter.
 
-The full suite installer is about 3.8 GB (it contains all the AI models): on the first double-click Microsoft Defender scans it, so the window may take a few seconds to appear. The installer is not digitally signed yet: if "Windows protected your PC" appears, choose **More info > Run anyway**.
+The full suite installer is about 3.4 GB (it contains all 11 ONNX AI models): on the first double-click Microsoft Defender scans it, so the window may take a few seconds to appear. The installer is not digitally signed yet: if "Windows protected your PC" appears, choose **More info > Run anyway**.
 
 ### macOS
-1. **Download:** download `germano-1.00.pkg`. The full suite requires a Mac with **Apple Silicon** (M1 or later) and **macOS 14 Sonoma** or later, because PyTorch is no longer published for Intel Macs; on Intel Macs use the lightweight client `germano-client-1.00.pkg`.
+1. **Download:** download `germano-1.10.pkg`. The full suite requires a Mac with **Apple Silicon** (M1 or later) and **macOS 14 Sonoma** or later, because PyTorch is no longer published for Intel Macs; on Intel Macs use the lightweight client `germano-client-1.10.pkg`.
 2. **Installation:** double-click the package. When choosing the destination select **Install for me only**: `Germano.app` goes into `~/Applications` **with no administrator password**. With "Install for all users of this computer" it goes into `/Applications` and macOS asks for the password. At the end Germano opens by itself.
 3. **Launch:** open **Germano** (`Germano.app`) from Launchpad or the Applications folder. On first launch it creates the working folders in `~/Documents/Germano AI` (in `~/Germano AI` if Documents is synced with iCloud).
 4. **Uninstall:** drag `Germano.app` to the Trash; the working folders stay where they are.
@@ -176,8 +188,8 @@ The full suite installer is about 3.8 GB (it contains all the AI models): on the
 The package is not signed by Apple yet: if macOS blocks it, go to **System Settings > Privacy & Security** and choose **Open Anyway**.
 
 ### Linux (Ubuntu / Debian 64-bit)
-1. **Download:** download `germano-1.00.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later (Ubuntu 22.04 or later, Debian 12 or later).
-2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-1.00.deb` in a terminal. As with any system package, the administrator password is required. The program goes into `/opt/germano`, with the **Germano AI** entry in the applications menu and the `germano-ai` command; no other packages are needed.
+1. **Download:** download `germano-1.10.deb`, designed for **Ubuntu 26.04 LTS** and suitable for Debian-based distributions with glibc 2.34 or later (Ubuntu 22.04 or later, Debian 12 or later).
+2. **Installation:** double-click the file (App Center) or run `sudo apt install ./germano-1.10.deb` in a terminal. As with any system package, the administrator password is required. The program goes into `/opt/germano`, with the **Germano AI** entry in the applications menu and the `germano-ai` command; no other packages are needed.
 3. **Launch:** from the applications menu. On first launch it creates the working folders in `Documents/Germano AI` (the Documents folder in the system language).
 4. **Uninstall:** `sudo apt remove germano-ai`; the working folders stay where they are.
 
@@ -234,19 +246,20 @@ With **Server** mode on, from a Windows, Mac or Linux PC, a tablet or a smartpho
 
 ## Main Features
 
-*   **100% Offline & ready on a freshly installed system:** every installer bundles its own Python 3.11 with all libraries (on Windows also the 64-bit Microsoft Visual C++ libraries, next to the interpreter: no redistributable to install), an offline Web UI free of external CDNs, and **8 pre-installed local AI models**.
-*   **All settings in one place:** **Mode & network** (Standalone, Server, Client, network access, user management), **Protection & models** (compliance profiles, sensitivity, **18 categories and 7 analysis engines**: Names, Professions/Titles, Addresses, Cadastral, Tax Codes/VAT, Email/PEC, Phone Numbers, IBAN/Bank accounts, Amounts/Finance, Dates, Companies/Entities, License Plates/IDs, Health Data (GDPR Art. 9), Medications/Therapies, Judicial Data (GDPR Art. 10), Marital Status, Passwords/Secrets, and URLs/IPs), **AI, keys & Chatbot** (detected AIs, keys and, since 0.91, the Configuration assistant), **Proxy & APIs** (Proxy URLs, per-tool setup, target services, REST examples), **MCP & UTCP integrations** (since 0.95: MCP, UTCP and OpenAPI addresses, 1-click connection to the clients, Input → Output flow test, network token), **System & log**, **Updates** (like Google Chrome's «About» page) and **About Germano**.
+*   **100% Offline & ready on a freshly installed system:** every installer bundles its own Python 3.11 with all libraries (on Windows also the 64-bit Microsoft Visual C++ libraries, next to the interpreter: no redistributable to install), an offline Web UI free of external CDNs, and **11 pre-installed local AI models across 3 ONNX ensembles**.
+*   **All settings in one place:** **Mode & network** (Standalone, Server, Client, network access, user management), **Protection & models** (compliance profiles, sensitivity, **19 categories** including **custom zero-shot categories** and local analysis engines: Names, Professions/Titles, Addresses, Cadastral, Tax Codes/VAT, Email/PEC, Phone Numbers, IBAN/Bank accounts, Amounts/Finance, Dates, Companies/Entities, License Plates/IDs, Health Data (GDPR Art. 9), Medications/Therapies, Judicial Data (GDPR Art. 10), Marital Status, Passwords/Secrets, URLs/IPs and Custom Categories `[DATO_PERSONALIZZATO]`), **AI, keys & Chatbot** (detected AIs, keys and Configuration assistant), **Proxy & APIs** (Proxy URLs, per-tool setup, target services, REST examples), **MCP & UTCP integrations** (MCP, UTCP and OpenAPI addresses, 1-click connection to the clients, Input → Output flow test, network token), **System & log** (OCR engine and Audio engine selection), **Updates** (like Google Chrome's «About» page) and **About Germano**.
 *   **Complete Offline Guide & Technical Documentation:** *"Guide"* tab integrated into the Dashboard (available at `/guide` and as standalone file `GUIDA_OFFLINE.html`), fully bilingual (Italian and English), featuring step-by-step guides, 5-folder workflow breakdown, REST API specifications, and setup instructions for Google Antigravity (also Antigravity CLI with the same account), OpenAI Codex, Cursor, and Claude Code.
 *   **Automatic De-Anonymization via API Proxy and Internal Folders:** When *"Ripristino automatico dei dati originali"* (Automatic data restoration) is active (default), Germano logs entity mappings in the local Vault (`extracted/deanonymize_vault.db`, with the portable copy `deanonymize_vault.json`). In API Proxy integrations (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` for **Claude Code, Codex, OpenCode, Aider** and the other tools that accept a service address) and in the local `input/` folder, AI responses and returned documents are **automatically de-anonymized** with their true original values.
-*   **8 Integrated 100% Offline AI Models (`models/`):**
-    1. **Velvet Privacy Filter (1.5B, BF16 weights):** Multilingual contextual Transformer model for PII (based on OpenAI Privacy Filter, Apache-2.0 license).
-    2. **Italian NER XXL v2 (58 classes):** Specialized NER model for legal, medical, banking, cadastral, and administrative Italian documents.
-    3. **EasyOCR (CRAFT + Latin G2):** Local Optical Character Recognition on scanned PDFs and photos.
-    4. **YuNet Face Detector (OpenCV 5 DNN):** Biometric face detection and redaction (`[VOLTO]`).
-    5. **YOLOS-Tiny Signature Detector:** Visual detection and redaction of handwritten signatures (`[FIRMA]`).
-    6. **YOLOS-Small License Plate Detector:** Visual detection and redaction of vehicle license plates (`[TARGA]`).
-    7. **Whisper Small INT8 (CTranslate2, 240 MB):** offline transcription of audio recordings, in batches for long ones.
-    8. **Qwen3.5-0.8B (GGUF Q8_0, 812 MB, run by llama.cpp) - System 2:** decides doubtful recognition cases in context: it leaves a doubtful item in clear only when it is sure it is not personal data, otherwise it stays masked.
+*   **11 Integrated 100% Offline AI Models across 3 ONNX Ensembles (`models/`):**
+    1. **Velvet Privacy Filter 1.5B (official ONNX Q4, ~645 MB RAM):** Multilingual contextual Transformer model for PII (OpenAI Privacy Filter, Apache-2.0 license).
+    2. **Italian NER XXL v2 (ONNX, 58 classes):** Specialized NER model for legal, medical, banking, cadastral, and administrative Italian documents.
+    3. **GLiNER2-PII (quantized ONNX, 31+ classes + zero-shot):** Completes the 3-model parallel text ensemble and enables **custom zero-shot categories** (`custom_pii_labels` → `[DATO_PERSONALIZZATO]`).
+    4. **RapidOCR PP-OCRv5 Mobile Latin (ONNX, 13 MB) + EasyOCR (CRAFT + Latin G2):** Parallel OCR ensemble on scanned PDFs and photos (RapidOCR-only mode also selectable, 4.5× faster).
+    5. **YuNet Face Detector (OpenCV 5 DNN):** Biometric face detection and redaction (`[VOLTO]`).
+    6. **YOLOS-Tiny Signature Detector:** Visual detection and redaction of handwritten signatures (`[FIRMA]`).
+    7. **YOLOS-Small License Plate Detector:** Visual detection and redaction of vehicle license plates (`[TARGA]`).
+    8. **NVIDIA Parakeet TDT 0.6B v3 (ONNX INT8, 25 European languages) + Whisper Small INT8 (CTranslate2, 99 languages):** Offline audio ensemble with per-segment selection and fuzzy cross-redaction of spoken PII (Parakeet-only mode also selectable, 5× faster).
+    9. **Qwen3.5-0.8B (GGUF Q8_0, 812 MB, run by llama.cpp) - System 2:** decides doubtful recognition cases in context: it leaves a doubtful item in clear only when it is sure it is not personal data, otherwise it stays masked.
 *   **Advanced Multi-Format Management with Layout Preservation:**
     *   **PDF & PDF Portfolios:** Character-level redaction, OCR and *visual redaction* on scans (including stamped scans), form fields, comments, bookmarks, metadata, and recursive redaction of embedded attachments. PAdES digital signatures cleanly stripped to prevent visual validation conflicts.
     *    **Images (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`, `GIF`):** Local OCR and visual redaction of faces, signatures, and license plates retaining original dimensions and resolution; EXIF/GPS metadata removed.
@@ -328,7 +341,7 @@ By default Germano updates itself **silently**, with no windows or notices inter
 3. On Windows the installer prepares the new version right away, silently and at low priority, in a folder next to the program's one (`Germano AI.nuovo`), while Germano stays open and the version in use is not touched.
 4. At the **next start** the new version replaces the old one in a few seconds and Germano opens already updated. Whoever wants to apply it right away only finds a discreet **«Restart to update»** at the top. Working folders in `Documents\Germano AI`, the Vault (`extracted\deanonymize_vault.db` and the copy `deanonymize_vault.json`) and the preferences `config.json` stay intact; if anything goes wrong, the version in use stays.
 
-**Settings › Updates**, like Chrome's «About» page, shows the status: «Germano AI is up to date (v1.00)» with the time of the last check, «Downloading the update in the background…» with the progress bar, «Restart Germano to apply the update». On macOS and Linux the `.pkg` / `.deb` package is downloaded the same way and opened with the system installer when you decide. Germano Client updates itself the same way.
+**Settings › Updates**, like Chrome's «About» page, shows the status: «Germano AI is up to date (v1.10)» with the time of the last check, «Downloading the update in the background…» with the progress bar, «Restart Germano to apply the update». On macOS and Linux the `.pkg` / `.deb` package is downloaded the same way and opened with the system installer when you decide. Germano Client updates itself the same way.
 
 Options (in Settings or in `config.json`): `"auto_update": false` only reports the new version, `"check_updates": false` disables the check. No document or text data is sent during the check.
 
@@ -354,8 +367,8 @@ This GitHub repository contains **exclusively clean source code and assets**. To
 ### What to download before running from source:
 
 1. **AI Models (`models/`):**
-   - Germano requires the 8 local AI models (privacy-filter, NER, EasyOCR, YuNet facial biometrics, license plate and signature detection, Whisper for audio and Qwen3.5 for System 2).
-   - All 8 AI models are bundled inside the official Germano AI installers: for development from source, copy the `models/` folder from the installed application into your chosen platform directory (e.g. `windows/germano/models/` or `linux/germano/models/`).
+   - Germano requires the 11 local AI models (3-model text ensemble Privacy Filter Q4 + Italian NER + GLiNER2-PII, OCR ensemble RapidOCR PP-OCRv5 + EasyOCR, YuNet facial biometrics, license plate and signature detection, audio ensemble Parakeet TDT v3 + Whisper and Qwen3.5 for System 2).
+   - All 11 AI models are bundled inside the official Germano AI installers: for development from source, copy the `models/` folder from the installed application into your chosen platform directory (e.g. `windows/germano/models/` or `linux/germano/models/`).
    - *Alternatively:* you can extract the `models/` folder directly from any official installer package on [download.germano.ai](https://download.germano.ai).
 
 2. **System Dependencies & Runtimes:**
@@ -392,13 +405,13 @@ python client.py
 
 ### Building the installers
 
-Every release has the same structure: `sorgenti/{windows,linux,macos}/{germano,germano-client}` (the content of this repository), `modelli/` (the 8 models), `dipendenze/{windows,linux,macos}` (Python and libraries for each system, llama.cpp, 7-Zip) and `releases/`. The scripts in `windows/germano/build/` run on Windows with the runtime's Python, with `-B` (no cache in the sources), and produce the six self-contained packages:
+Every release has the same structure: `sorgenti/{windows,linux,macos}/{germano,germano-client}` (the content of this repository), `modelli/` (the 11 local models), `dipendenze/{windows,linux,macos}` (Python and libraries for each system, llama.cpp, 7-Zip) and `releases/`. The scripts in `windows/germano/build/` run on Windows with the runtime's Python, with `-B` (no cache in the sources), and produce the six self-contained packages:
 
 ```bash
 python -B build/coerenza_sorgenti.py                    # Linux and macOS sources identical to the Windows ones in common files
-python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-1.00.exe and germano-client-1.00.exe
-python -B build/costruisci_deb.py tutti                 # releases/linux/germano-1.00.deb and germano-client-1.00.deb
-python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-1.00.pkg and germano-client-1.00.pkg
+python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-1.10.exe and germano-client-1.10.exe
+python -B build/costruisci_deb.py tutti                 # releases/linux/germano-1.10.deb and germano-client-1.10.deb
+python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-1.10.pkg and germano-client-1.10.pkg
 python -B build/crea_version_json.py                    # releases/version.json: sizes and SHA-256 read from the files
 ```
 

@@ -1,6 +1,6 @@
 """Costruisce i pacchetti Debian/Ubuntu AUTOSUFFICIENTI (nessuna dipendenza, nessun download all'installazione):
-  germano.ai-1.00/releases/linux/germano-1.00.deb          suite completa  -> /opt/germano
-  germano.ai-1.00/releases/linux/germano-client-1.00.deb   client leggero  -> /opt/germano-client
+  germano.ai-1.10/releases/linux/germano-1.10.deb          suite completa  -> /opt/germano
+  germano.ai-1.10/releases/linux/germano-client-1.10.deb   client leggero  -> /opt/germano-client
 partendo da sorgenti/linux/<edizione>, dipendenze/linux (Python portabile + librerie in versione Linux) e modelli/.
 
 Il .deb e' scritto direttamente (archivio «ar» con debian-binary, control.tar.gz e data.tar.gz), quindi si
@@ -302,11 +302,16 @@ def build(edition):
         n_llama = from_llama_tarball(entries, f"{root}/runtime/llama", f"usr/share/doc/{ed['package']}")
         n_7z = from_7zip_tarball(entries, f"{root}/runtime/7zip", f"usr/share/doc/{ed['package']}")
         for need in ("models/whisper-small/model.bin", "models/qwen3.5-0.8b/germano.json",
-                     "models/italian-ner-xxl/onnx/model.onnx", "germano/speech_worker.py", "germano/formats/archive.py",
+                     "models/italian-ner-xxl/onnx/model.onnx", "models/privacy-filter/onnx/model_q4.onnx",
+                     "models/gliner2-pii/model.quantized.onnx", "models/rapidocr-ppocrv5/latin_PP-OCRv5_rec_mobile.onnx",
+                     "models/parakeet-tdt-0.6b-v3/encoder-model.int8.onnx",
+                     "germano/speech_worker.py", "germano/formats/archive.py",
                      "runtime/lib/python3.11/site-packages/faster_whisper/__init__.py",
                      "runtime/lib/python3.11/site-packages/ctranslate2/__init__.py",
-                     "runtime/lib/python3.11/site-packages/av/__init__.py"):
-            assert f"{root}/{need}" in entries, f"manca {need} (modelli o librerie della 0.80 non pronti per Linux)"
+                     "runtime/lib/python3.11/site-packages/av/__init__.py",
+                     "runtime/lib/python3.11/site-packages/rapidocr/__init__.py",
+                     "runtime/lib/python3.11/site-packages/onnx_asr/__init__.py"):
+            assert f"{root}/{need}" in entries, f"manca {need} (modelli o librerie della 1.10 non pronti per Linux)"
     # comando, voce di menu, icone, copyright
     launcher = f"#!/bin/sh\n# {ed['title']}: avvia il programma installato in /{root}\nexec /{root}/germano.sh \"$@\"\n"
     put_file(entries, f"usr/bin/{ed['command']}", 0o755, int(time.time()), len(launcher),

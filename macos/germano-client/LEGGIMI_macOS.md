@@ -1,4 +1,4 @@
-# Germano AI 1.00 — Client leggero per macOS
+# Germano AI 1.10 — Client leggero per macOS
 
 Pacchetto leggero (**senza modelli IA**) per i Mac che si collegano a un **Germano Server** della rete: apre il
 **pannello del client** in una finestra dedicata, lo stesso **Remote Control** che il server offre a qualsiasi browser
@@ -11,7 +11,7 @@ anche i servizi Qwen 4 Max e GLM 5.3; con un server 0.95 `client mcp` e `client 
 portano su questo PC il Server MCP e il manuale UTCP del server (con il token delle integrazioni); nel pannello 1.00 cambi modello ed effort già nella barra in basso e aprendo il menu vedi tutti i sistemi pronti, ciascuno subito configurabile in modo indipendente (modello, effort e parametri specifici inline).
 
 ## Installazione
-Scarica **`germano-client-1.00.pkg`** da https://download.germano.ai/ (Apple Silicon e Intel, macOS 11 o successivo) e
+Scarica **`germano-client-1.10.pkg`** da https://download.germano.ai/ (Apple Silicon e Intel, macOS 11 o successivo) e
 fai doppio clic: contiene il proprio Python e non scarica nulla. Alla scelta della destinazione seleziona **Installa
 solo per me**: l'app va in `~/Applications/Germano AI Client/Germano.app` **senza password di amministratore** (con
 «Installa per tutti gli utenti» in `/Applications/Germano AI Client`, con la password); alla fine il client si apre da

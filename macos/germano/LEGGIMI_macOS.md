@@ -1,9 +1,9 @@
-# Germano AI 1.00 — Suite completa per macOS
+# Germano AI 1.10 — Suite completa per macOS
 
 ## Installazione
-Scarica **`germano-1.00.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
+Scarica **`germano-1.10.pkg`** da https://download.germano.ai/ (Mac con **Apple Silicon**, M1 o successivo, e
 **macOS 14 Sonoma** o successivo: PyTorch non è più pubblicato per i Mac Intel, che usano il client leggero) e fai
-doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, gli 8 modelli IA, llama.cpp per il
+doppio clic. Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, gli 11 modelli IA locali (3 ensemble ONNX, visione e Sistema 2), llama.cpp per il
 Sistema 2 e 7-Zip per gli archivi) e non scarica nulla.
 Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza
 password di amministratore** (con «Installa per tutti gli utenti» va in `/Applications` e macOS chiede la password).

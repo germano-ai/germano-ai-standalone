@@ -1,5 +1,5 @@
 'use strict';
-/* Germano AI 1.00 - Impostazioni > Integrazioni MCP e UTCP: indirizzi pronti all'uso (Server MCP Streamable HTTP, SSE e
+/* Germano AI 1.10 - Impostazioni > Integrazioni MCP e UTCP: indirizzi pronti all'uso (Server MCP Streamable HTTP, SSE e
    stdio, manuale UTCP, OpenAPI), configurazione da copiare per i client MCP, collegamento con 1 clic ai client
    rilevati (con copia di sicurezza del file), strumenti per i flussi in ingresso e in uscita, prova del ciclo
    Ingresso -> Uscita, token per la rete e politica dei percorsi. Usa le funzioni comuni di script.js. */

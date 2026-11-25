@@ -138,7 +138,9 @@ def handle_engine_image(daemon, body, kind):
     except Exception as e:
         raise ValueError(f"immagine non valida o troppo grande: {type(e).__name__}") from None
     if kind == "ocr":
-        out = eng.ocr(np.asarray(img))
+        ocr_mode = common._validate_value("ocr_mode", body.get("ocr_mode") or daemon.settings.get("ocr_mode"),
+                                          common.DEFAULT_SETTINGS["ocr_mode"])
+        out = eng.ocr(np.asarray(img), mode=ocr_mode)
         return {"results": [[[[float(p[0]), float(p[1])] for p in box], str(text), float(conf)]
                             for box, text, conf in out or []]}
     if kind == "faces":
@@ -169,7 +171,7 @@ def handle_engine_transcribe(daemon, body):
         raise ValueError("file audio mancante o troppo grande")
     raw = body.get("settings") if isinstance(body.get("settings"), dict) else {}
     settings = {k: common._validate_value(k, raw.get(k, daemon.settings.get(k)), common.DEFAULT_SETTINGS[k])
-                for k in ("speech_language", "speech_max_minutes")}
+                for k in ("speech_language", "speech_max_minutes", "speech_engine")}
     name = common.safe_filename(body.get("filename") or "audio.bin", max_len=80)
     ctx = _ctx(daemon, "anonymize", op=body.get("op"))
     with ctx.tempdir() as d:
@@ -186,6 +188,8 @@ def handle_engine_transcribe(daemon, body):
         except SpeechError as e:
             raise ValueError(str(e)) from None
     res["segments"] = [[float(s), float(e), str(t)] for s, e, t in res.get("segments") or []]
+    if res.get("alt_segments"):
+        res["alt_segments"] = [str(x or "") for x in res.get("alt_segments") or []]
     return res
 
 

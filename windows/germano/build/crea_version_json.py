@@ -1,4 +1,4 @@
-"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-1.00/releases/.
+"""Crea version.json per https://download.germano.ai/ dagli installer in germano.ai-1.10/releases/.
 
 Per ogni piattaforma: nome del file, dimensione esatta e impronta SHA-256, calcolate DIRETTAMENTE dal file su disco
 in una sola lettura. Le chiavi «windows», «macos», «linux» sono quelle lette dall'updater della suite; le voci
@@ -39,9 +39,10 @@ DOWNLOAD_BASE = "https://download.germano.ai/"
 FILES = {"windows": "windows/germano-{v}.exe", "macos": "macos/germano-{v}.pkg", "linux": "linux/germano-{v}.deb",
          "windows-client": "windows/germano-client-{v}.exe", "macos-client": "macos/germano-client-{v}.pkg",
          "linux-client": "linux/germano-client-{v}.deb"}
-NOTES = ("Germano AI v{v} - Dock rapido modello ed effort direttamente nella barra del compositore + menu AI "
-         "unificato con schede immediatamente configurabili per ogni sistema disponibile (Antigravity, Claude "
-         "Code, locali e cloud indipendenti), parametri dinamici per modello e fix layout schermi stretti")
+NOTES = ("Germano AI v{v} - Motore di anonimizzazione potenziato con 3 ensemble ONNX locali 100% offline: "
+         "Testo a 3 modelli paralleli (Privacy Filter ONNX Q4 + Italian NER XXL + GLiNER2-PII ONNX con categorie "
+         "personalizzate zero-shot), OCR ensemble (RapidOCR PP-OCRv5 + EasyOCR), Audio ensemble (NVIDIA Parakeet "
+         "TDT 0.6B v3 + Whisper), consumo RAM ridotto e pacchetto piu' leggero")
 SFX_MAGIC = b"GERMANO.SFX.0001"
 SFX_TRAILER = struct.Struct("<16sQQQQ")
 WINDOWS_EXE_MAX = 4 * 1024 ** 3 - 1          # Windows non avvia eseguibili da 4 GB in su

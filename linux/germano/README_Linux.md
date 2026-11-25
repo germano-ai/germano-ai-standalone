@@ -1,14 +1,14 @@
-# Germano AI 1.00 — Suite completa per Linux
+# Germano AI 1.10 — Suite completa per Linux
 
 ## Installazione
-Scarica **`germano-1.00.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-1.10.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure da terminale:
 
 ```bash
-sudo apt install ./germano-1.00.deb
+sudo apt install ./germano-1.10.deb
 ```
 
-Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, gli 8 modelli IA,
+Il pacchetto contiene tutto (programma, Python 3.11 con le librerie, Qt WebEngine per la finestra, gli 11 modelli IA locali (3 ensemble ONNX, visione e Sistema 2),
 llama.cpp per il Sistema 2 e 7-Zip per gli archivi) e **non dipende da altri pacchetti**: non scarica nulla. Come ogni
 pacchetto di sistema chiede la password di amministratore. Installa il programma in `/opt/germano`, la voce
 **Germano AI** nel menu delle applicazioni (con l'azione «Cartelle di lavoro») e il comando `germano-ai`.

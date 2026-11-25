@@ -482,7 +482,7 @@
                     <div class="panel-header">
                         <div>
                             <h3 class="panel-title" data-en="Analysis models">Modelli di analisi</h3>
-                            <p class="panel-desc" data-en="Six local models and a rule engine. Changes apply immediately, without restarting.">Sei modelli locali e un motore di regole. Le modifiche si applicano subito, senza riavviare.</p>
+                            <p class="panel-desc" data-en="100% offline local models and a deterministic rule engine. Changes apply immediately, without restarting.">Modelli locali 100% offline e un motore di regole deterministiche. Le modifiche si applicano subito, senza riavviare.</p>
                         </div>
                         <div class="btn-group">
                             <button type="button" class="btn btn-secondary btn-sm btn-preset" id="btnModelsAllOn" data-en="Enable all">Attiva tutti</button>
@@ -490,9 +490,10 @@
                         </div>
                     </div>
                     <div class="option-grid option-grid-2">
-                        <label class="option"><input type="checkbox" id="enable_model_velvet" class="model-check"><span class="option-body"><span class="option-title" data-en="Velvet Privacy Filter <span class='tag'>text</span>">Velvet Privacy Filter <span class="tag">testo</span></span><span class="option-desc" data-en="Multilingual contextual language model (1.5 billion parameters): names, contacts, codes and secrets.">Modello linguistico contestuale multilingue (1,5 miliardi di parametri): nomi, recapiti, codici e segreti.</span></span></label>
-                        <label class="option"><input type="checkbox" id="enable_model_italian_ner" class="model-check"><span class="option-body"><span class="option-title" data-en="Italian NER XXL <span class='tag'>text</span>">Italian NER XXL <span class="tag">testo</span></span><span class="option-desc" data-en="Specialized Italian model (58 classes): health, justice, land registry, finance, professions and organizations.">Modello specialistico italiano (58 classi): sanità, giustizia, catasto, finanza, professioni ed enti.</span></span></label>
-                        <label class="option"><input type="checkbox" id="enable_ocr" class="model-check"><span class="option-body"><span class="option-title" data-en="EasyOCR <span class='tag'>images</span>">EasyOCR <span class="tag">immagini</span></span><span class="option-desc" data-en="Reads the text of scans, photos and scanned PDFs so that it can be masked.">Legge il testo di scansioni, fotografie e PDF scansionati per poterlo oscurare.</span></span></label>
+                        <label class="option"><input type="checkbox" id="enable_model_velvet" class="model-check"><span class="option-body"><span class="option-title" data-en="Velvet Privacy Filter <span class='tag'>text · ONNX Q4</span>">Velvet Privacy Filter <span class="tag">testo · ONNX Q4</span></span><span class="option-desc" data-en="Multilingual contextual language model (1.5B parameters, official ONNX Q4, low RAM): names, contacts, codes and secrets.">Modello linguistico contestuale multilingue (1,5 miliardi di parametri, ONNX Q4 ufficiale, bassa memoria): nomi, recapiti, codici e segreti.</span></span></label>
+                        <label class="option"><input type="checkbox" id="enable_model_italian_ner" class="model-check"><span class="option-body"><span class="option-title" data-en="Italian NER XXL <span class='tag'>text · ONNX</span>">Italian NER XXL <span class="tag">testo · ONNX</span></span><span class="option-desc" data-en="Specialized Italian model (58 classes): health, justice, land registry, finance, professions and organizations.">Modello specialistico italiano (58 classi): sanità, giustizia, catasto, finanza, professioni ed enti.</span></span></label>
+                        <label class="option"><input type="checkbox" id="enable_model_gliner2" class="model-check"><span class="option-body"><span class="option-title" data-en="GLiNER2-PII <span class='tag'>text · zero-shot</span>">GLiNER2-PII <span class="tag">testo · zero-shot</span></span><span class="option-desc" data-en="Multilingual PII model (31+ classes) running in parallel in ONNX. Strengthens complex documents and enables custom zero-shot categories.">Modello PII multilingue (31+ classi) in parallelo in ONNX. Rafforza i documenti complessi e abilita le categorie personalizzate zero-shot.</span></span></label>
+                        <label class="option"><input type="checkbox" id="enable_ocr" class="model-check"><span class="option-body"><span class="option-title" data-en="OCR (RapidOCR PP-OCRv5 + EasyOCR) <span class='tag'>images</span>">OCR (RapidOCR PP-OCRv5 + EasyOCR) <span class="tag">immagini</span></span><span class="option-desc" data-en="Reads text in scans, photos and scanned PDFs so it can be masked (parallel ensemble or single engine, configurable under System).">Legge il testo di scansioni, fotografie e PDF scansionati per poterlo oscurare (ensemble parallelo o motore singolo, configurabile in Sistema).</span></span></label>
                         <label class="option"><input type="checkbox" id="enable_faces" class="model-check"><span class="option-body"><span class="option-title" data-en="Face detection (YuNet) <span class='tag'>images</span>">Rilevamento volti (YuNet) <span class="tag">immagini</span></span><span class="option-desc" data-en="Finds and masks faces and ID photos: <code>[VOLTO]</code>.">Individua e oscura volti e fototessere: <code>[VOLTO]</code>.</span></span></label>
                         <label class="option"><input type="checkbox" id="enable_signatures" class="model-check"><span class="option-body"><span class="option-title" data-en="Signature detection (YOLOS) <span class='tag'>images</span>">Rilevamento firme (YOLOS) <span class="tag">immagini</span></span><span class="option-desc" data-en="Finds and masks handwritten signatures and initials: <code>[FIRMA]</code>.">Individua e oscura firme autografe e sigle: <code>[FIRMA]</code>.</span></span></label>
                         <label class="option"><input type="checkbox" id="enable_plate_vision" class="model-check"><span class="option-body"><span class="option-title" data-en="License plate detection (YOLOS) <span class='tag'>images</span>">Rilevamento targhe (YOLOS) <span class="tag">immagini</span></span><span class="option-desc" data-en="Finds and masks vehicle license plates in photos: <code>[TARGA]</code>.">Individua e oscura le targhe dei veicoli nelle fotografie: <code>[TARGA]</code>.</span></span></label>
@@ -527,6 +528,12 @@
                         <label class="option"><input type="checkbox" id="censor_civil_status" class="cat-check"><span class="option-body"><span class="option-title" data-en="Marital status">Stato civile</span><span class="option-desc"><code>[STATO_CIVILE]</code></span></span></label>
                         <label class="option"><input type="checkbox" id="censor_secret" class="cat-check"><span class="option-body"><span class="option-title" data-en="Passwords, PINs and keys">Password, PIN e chiavi</span><span class="option-desc"><code>[SEGRETO]</code></span></span></label>
                         <label class="option"><input type="checkbox" id="censor_url" class="cat-check"><span class="option-body"><span class="option-title" data-en="IP and MAC addresses, URLs">Indirizzi IP, MAC e URL</span><span class="option-desc"><code>[URL]</code></span></span></label>
+                        <label class="option"><input type="checkbox" id="censor_custom" class="cat-check"><span class="option-body"><span class="option-title" data-en="Custom categories (zero-shot)">Categorie personalizzate (zero-shot)</span><span class="option-desc"><code>[DATO_PERSONALIZZATO]</code></span></span></label>
+                    </div>
+                    <div class="field" style="margin-top: 14px;">
+                        <label for="custom_pii_labels" data-en="Custom categories to detect with GLiNER2-PII (comma-separated)">Categorie personalizzate da rilevare con GLiNER2-PII (separate da virgola)</label>
+                        <input type="text" id="custom_pii_labels" class="input" maxlength="500" spellcheck="false" placeholder="es. numero pratica, codice cliente, nome progetto, numero lotto" data-en-placeholder="e.g. case number, customer code, project name, batch number">
+                        <div class="hint" data-en="Optional: enter up to 20 custom entity types in plain language (Italian or English). Detected values are masked as <code>[DATO_PERSONALIZZATO]</code> and restored via the Vault. Requires GLiNER2-PII enabled.">Facoltativo: inserisci fino a 20 tipi di dato personalizzati in linguaggio naturale (italiano o inglese). Vengono oscurati come <code>[DATO_PERSONALIZZATO]</code> e ripristinati dal Vault. Richiede GLiNER2-PII attivo.</div>
                     </div>
                 </div>
                 </div>
@@ -828,18 +835,36 @@
                                 </select>
                             </div>
                             <div class="field">
-                                <label for="precision" data-en="Precision of the main model">Precisione del modello principale</label>
+                                <label for="precision" data-en="Precision of the main model (PyTorch fallback)">Precisione del modello principale (ripiego PyTorch)</label>
                                 <select id="precision" class="input">
                                     <option value="auto" data-en="Automatic (FP32 with at least 12 GB of RAM, otherwise BF16)">Automatica (FP32 con almeno 12 GB di RAM, altrimenti BF16)</option>
                                     <option value="fp32" data-en="FP32 – faster (about 5.5 GB of RAM)">FP32 – più veloce (circa 5,5 GB di RAM)</option>
                                     <option value="bf16" data-en="BF16 – half the memory (about 2.8 GB), slower on older processors">BF16 – metà memoria (circa 2,8 GB), più lenta sui processori meno recenti</option>
                                 </select>
-                                <div class="hint" data-en="Applies from the next engine start.">Si applica al prossimo avvio del motore.</div>
+                                <div class="hint" data-en="With the default Privacy Filter ONNX Q4, RAM usage is already ~645 MB. This setting applies only if falling back to PyTorch on the next engine start.">Con il Privacy Filter ONNX Q4 predefinito il consumo di memoria è già ~645 MB. Questa impostazione vale solo come ripiego PyTorch al prossimo avvio.</div>
+                            </div>
+                            <div class="field">
+                                <label for="ocr_mode" data-en="OCR engine for scans and images">Motore OCR per scansioni e immagini</label>
+                                <select id="ocr_mode" class="input">
+                                    <option value="ensemble" data-en="Ensemble RapidOCR PP-OCRv5 + EasyOCR (highest accuracy, recommended)">Ensemble RapidOCR PP-OCRv5 + EasyOCR (massima accuratezza, consigliato)</option>
+                                    <option value="rapidocr" data-en="RapidOCR PP-OCRv5 only (ONNX, 4.5× faster)">Solo RapidOCR PP-OCRv5 (ONNX, 4,5× più veloce)</option>
+                                    <option value="easyocr" data-en="EasyOCR only (legacy compatibility)">Solo EasyOCR (compatibilità)</option>
+                                </select>
+                                <div class="hint" data-en="Ensemble runs RapidOCR PP-OCRv5 and EasyOCR in parallel and merges every detected text box for maximum PII recall on scans and photos.">L'ensemble esegue RapidOCR PP-OCRv5 ed EasyOCR in parallelo e unisce i riquadri trovati per la massima copertura dei dati personali su scansioni e foto.</div>
                             </div>
                             <div class="field">
                                 <label for="file_timeout_minutes" data-en="Maximum time per document (minutes)">Tempo massimo per documento (minuti)</label>
                                 <input type="number" id="file_timeout_minutes" class="input input-narrow" min="5" max="1440" step="5" value="60">
                                 <div class="hint" data-en="Increase it for very long scans (hundreds of pages).">Aumentalo per scansioni molto lunghe (centinaia di pagine).</div>
+                            </div>
+                            <div class="field">
+                                <label for="speech_engine" data-en="Audio transcription engine">Motore di trascrizione audio</label>
+                                <select id="speech_engine" class="input">
+                                    <option value="ensemble" data-en="Ensemble NVIDIA Parakeet TDT v3 + Whisper (highest accuracy, recommended)">Ensemble NVIDIA Parakeet TDT v3 + Whisper (massima accuratezza, consigliato)</option>
+                                    <option value="parakeet" data-en="NVIDIA Parakeet TDT v3 only (ONNX INT8, 5× faster, 25 European languages)">Solo NVIDIA Parakeet TDT v3 (ONNX INT8, 5× più veloce, 25 lingue europee)</option>
+                                    <option value="whisper" data-en="Whisper Small only (99 languages)">Solo Whisper Small (99 lingue)</option>
+                                </select>
+                                <div class="hint" data-en="In Ensemble mode, Parakeet TDT v3 and Whisper cross-check every speech segment on the 25 European languages (including Italian and English) and mask any personal data caught by either model.">In modalità Ensemble, Parakeet TDT v3 e Whisper verificano entrambi ogni segmento parlato nelle 25 lingue europee (tra cui italiano e inglese) e oscurano i dati personali individuati da uno qualsiasi dei due.</div>
                             </div>
                             <div class="field">
                                 <label for="speech_language" data-en="Language of audio recordings">Lingua delle registrazioni audio</label>
@@ -860,7 +885,7 @@
                                     <option value="ar" data-en="Arabic">Arabo</option>
                                     <option value="zh" data-en="Chinese">Cinese</option>
                                 </select>
-                                <div class="hint" data-en="MP3, WAV, M4A, OGG and FLAC files are transcribed on this computer (Whisper, offline) and the transcript goes through the privacy filter. Choosing the language helps with short or noisy recordings.">I file MP3, WAV, M4A, OGG e FLAC vengono trascritti su questo computer (Whisper, offline) e la trascrizione passa dal filtro di privacy. Indicare la lingua aiuta con le registrazioni brevi o rumorose.</div>
+                                <div class="hint" data-en="MP3, WAV, M4A, OGG and FLAC files are transcribed locally (Parakeet TDT v3 + Whisper, offline) and the transcript goes through the privacy filter. Choosing the language helps with short or noisy recordings.">I file MP3, WAV, M4A, OGG e FLAC vengono trascritti su questo computer (Parakeet TDT v3 + Whisper, offline) e la trascrizione passa dal filtro di privacy. Indicare la lingua aiuta con le registrazioni brevi o rumorose.</div>
                             </div>
                             <label class="check-row">
                                 <input type="checkbox" id="anonymize_filenames">
@@ -940,7 +965,7 @@
                     </div>
                     <p class="panel-desc" data-en="Germano AI protects personal data before they reach artificial intelligence services: everything is analyzed on this computer, with local models, 100% offline. The AI Harness, the Proxy, the Remote Control and the file processing all use the same engine and the same Vault.">Germano AI protegge i dati personali prima che arrivino ai servizi di intelligenza artificiale: tutto viene analizzato su questo computer, con modelli locali, 100% offline. L'Harness AI, il Proxy, il Remote Control e l'elaborazione dei file usano lo stesso motore e lo stesso Vault.</p>
                     <div class="net-summary about-facts">
-                        <div class="net-item"><div class="net-item-label" data-en="Version">Versione</div><div class="net-item-value">{{ version }}</div><div class="net-item-sub" data-en="Quick model &amp; effort dock in the composer bar + unified AI menu with immediate per-system cards">Cambio rapido modello ed effort nella barra + menu unificato con configurazione immediata per ogni sistema</div></div>
+                        <div class="net-item"><div class="net-item-label" data-en="Version">Versione</div><div class="net-item-value">{{ version }}</div><div class="net-item-sub" data-en="3-model ONNX text ensemble + custom zero-shot categories, OCR ensemble (RapidOCR PP-OCRv5 + EasyOCR) and Audio ensemble (Parakeet TDT v3 + Whisper)">Ensemble testo a 3 modelli ONNX + categorie personalizzate zero-shot, OCR ensemble (RapidOCR PP-OCRv5 + EasyOCR) e Audio ensemble (Parakeet TDT v3 + Whisper)</div></div>
                         <div class="net-item"><div class="net-item-label" data-en="License">Licenza</div><div class="net-item-value">GNU GPL v3</div><div class="net-item-sub">germano.ai</div></div>
                         <div class="net-item"><div class="net-item-label" data-en="Updates">Aggiornamenti</div><div class="net-item-value">download.germano.ai</div><div class="net-item-sub" data-en="the only update source">l'unica fonte degli aggiornamenti</div></div>
                     </div>

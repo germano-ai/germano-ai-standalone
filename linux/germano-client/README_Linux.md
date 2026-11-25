@@ -1,4 +1,4 @@
-# Germano AI 1.00 — Client leggero per Linux
+# Germano AI 1.10 — Client leggero per Linux
 
 Pacchetto leggero (**senza modelli IA**) per i PC Linux che si collegano a un **Germano Server** della rete: apre il
 **pannello del client** in una finestra dedicata, lo stesso **Remote Control** che il server offre a qualsiasi browser
@@ -11,11 +11,11 @@ anche i servizi Qwen 4 Max e GLM 5.3; con un server 0.95 `client mcp` e `client 
 portano su questo PC il Server MCP e il manuale UTCP del server (con il token delle integrazioni); nel pannello 1.00 cambi modello ed effort già nella barra in basso e aprendo il menu vedi tutti i sistemi pronti, ciascuno subito configurabile in modo indipendente (modello, effort e parametri specifici inline).
 
 ## Installazione
-Scarica **`germano-client-1.00.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
+Scarica **`germano-client-1.10.deb`** da https://download.germano.ai/ (pensato per **Ubuntu 26.04 LTS**; adatto alle
 distribuzioni Debian/Ubuntu a 64 bit con glibc 2.34 o successiva) e fai doppio clic (Centro app), oppure:
 
 ```bash
-sudo apt install ./germano-client-1.00.deb
+sudo apt install ./germano-client-1.10.deb
 ```
 
 Contiene il proprio Python e Qt WebEngine per la finestra, **non dipende da altri pacchetti** e non scarica nulla;

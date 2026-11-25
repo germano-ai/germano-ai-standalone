@@ -1,6 +1,6 @@
 """Costruisce i pacchetti di installazione macOS (.pkg) AUTOSUFFICIENTI (nessun download all'installazione):
-  germano.ai-1.00/releases/macos/germano-1.00.pkg          suite completa (Apple Silicon)
-  germano.ai-1.00/releases/macos/germano-client-1.00.pkg   client leggero (Apple Silicon e Intel)
+  germano.ai-1.10/releases/macos/germano-1.10.pkg          suite completa (Apple Silicon)
+  germano.ai-1.10/releases/macos/germano-client-1.10.pkg   client leggero (Apple Silicon e Intel)
 partendo da sorgenti/macos/<edizione>, dipendenze/macos (Python portabile + librerie per macOS) e modelli/.
 
 Il .pkg e' un «product archive» scritto direttamente, senza gli strumenti di Apple (pkgbuild/productbuild), quindi
@@ -658,10 +658,14 @@ def build(edition):
         stats.append(f"{from_7zip_tarball(nodes, f'{res}/runtime/7zip')} file di 7-Zip (archivi 7Z e RAR)")
         site_arm = f"{res}/{RUNTIME_DIR['arm64']}/lib/python3.11/site-packages"
         for need in (f"{res}/models/whisper-small/model.bin", f"{res}/models/qwen3.5-0.8b/germano.json",
-                     f"{res}/models/italian-ner-xxl/onnx/model.onnx", f"{res}/germano/speech_worker.py",
+                     f"{res}/models/italian-ner-xxl/onnx/model.onnx", f"{res}/models/privacy-filter/onnx/model_q4.onnx",
+                     f"{res}/models/gliner2-pii/model.quantized.onnx", f"{res}/models/rapidocr-ppocrv5/latin_PP-OCRv5_rec_mobile.onnx",
+                     f"{res}/models/parakeet-tdt-0.6b-v3/encoder-model.int8.onnx",
+                     f"{res}/germano/speech_worker.py",
                      f"{res}/germano/formats/archive.py", f"{site_arm}/faster_whisper/__init__.py",
-                     f"{site_arm}/ctranslate2/__init__.py", f"{site_arm}/av/__init__.py"):
-            assert need in nodes, f"manca {need} (modelli o librerie della 0.80 non pronti per macOS)"
+                     f"{site_arm}/ctranslate2/__init__.py", f"{site_arm}/av/__init__.py",
+                     f"{site_arm}/rapidocr/__init__.py", f"{site_arm}/onnx_asr/__init__.py"):
+            assert need in nodes, f"manca {need} (modelli o librerie della 1.10 non pronti per macOS)"
     for need in ("germano_desktop.py", "germano_window.py", "VERSION"):
         assert f"{res}/{need}" in nodes, need
     order = sorted(nodes, key=lambda p: p.split("/"))

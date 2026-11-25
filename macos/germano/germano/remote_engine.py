@@ -24,7 +24,8 @@ from .engine import NO_CANCEL
 API_PATH = "/api/engine/v1"
 API_VERSION = 1
 # Impostazioni che influiscono sull'analisi del testo: le altre si applicano comunque su questo computer.
-TEXT_SETTINGS = ("enable_model_velvet", "enable_model_italian_ner", "ai_threshold")
+TEXT_SETTINGS = ("enable_model_velvet", "enable_model_italian_ner", "enable_model_gliner2",
+                 "custom_pii_labels", "ai_threshold")
 _MAX_BATCH_TEXTS = 64
 _MAX_BATCH_CHARS = 200_000
 # Prova di funzionamento (turno 26, rilievo del turno 25): all'aggancio e poi ogni 10 minuti il client manda al server
@@ -181,7 +182,9 @@ class RemoteEngine:
             "mode": "remote", "server": self.base, "server_name": info.get("name"),
             "server_version": info.get("version"), "device": info.get("device"), "precision": info.get("precision"),
             "privacy_filter": bool(info.get("privacy_filter")), "italian_ner": bool(info.get("italian_ner")),
-            "ocr": bool(info.get("ocr")), "latency_ms": self.latency_ms, "ok": True, "error": "",
+            "gliner2_pii": bool(info.get("gliner2_pii")),
+            "ocr": bool(info.get("ocr")), "ocr_rapidocr": bool(info.get("ocr_rapidocr")),
+            "ocr_easyocr": bool(info.get("ocr_easyocr")), "latency_ms": self.latency_ms, "ok": True, "error": "",
             # trascrizione audio del server (dalla 0.80): {"available": bool, "model": ...}
             "speech": info.get("speech") if isinstance(info.get("speech"), dict) else {"available": False},
         }
@@ -192,10 +195,11 @@ class RemoteEngine:
     def self_test(self):
         """Prova di funzionamento: il server deve riconoscere il nome in una frase con dati finti casuali. Solleva
         EngineUnavailable (e blocca le richieste successive) se non lo riconosce. Saltata se nelle impostazioni di
-        questo computer entrambi i modelli sono spenti (allora il server non deve trovare nulla)."""
+        questo computer tutti i modelli del testo sono spenti (allora il server non deve trovare nulla)."""
         import random
         s = self._settings or {}
-        if not (s.get("enable_model_velvet", True) or s.get("enable_model_italian_ner", True)):
+        if not (s.get("enable_model_velvet", True) or s.get("enable_model_italian_ner", True)
+                or s.get("enable_model_gliner2", True)):
             return
         rnd = random.SystemRandom()
         name, surname, city = rnd.choice(_NAMES), rnd.choice(_SURNAMES), rnd.choice(_CITIES)
@@ -318,7 +322,8 @@ class RemoteEngine:
             extend(4 * 3600)             # la durata si conosce solo sul server: tempo ampio, poi vale la risposta
         query = urllib.parse.urlencode({
             "name": os.path.basename(path)[-80:], "speech_language": settings.get("speech_language") or "auto",
-            "speech_max_minutes": int(settings.get("speech_max_minutes") or 240)})
+            "speech_max_minutes": int(settings.get("speech_max_minutes") or 240),
+            "speech_engine": settings.get("speech_engine") or "ensemble"})
         try:
             out = self._call("/transcribe?" + query, raw=data, timeout=4 * 3600, rejected=(400, 404, 413, 422))
         except RemoteRejected as e:
@@ -327,6 +332,8 @@ class RemoteEngine:
                                   "versione 0.80 o successiva.") from None
             raise SpeechError(str(e) or "Trascrizione non riuscita sul Germano Server.") from None
         out["segments"] = [(float(s), float(e), str(t)) for s, e, t in out.get("segments") or []]
+        if out.get("alt_segments"):
+            out["alt_segments"] = [str(x or "") for x in out.get("alt_segments") or []]
         return out
 
     # ------------------------------------------------------------------ immagini
@@ -339,12 +346,14 @@ class RemoteEngine:
         img.save(buf, format="PNG", compress_level=1)   # senza perdita: OCR e riquadri identici al locale
         return buf.getvalue()
 
-    def ocr(self, img_rgb):
+    def ocr(self, img_rgb, mode="ensemble"):
         """[(box4punti, testo, confidenza)] come EasyOCR.readtext(detail=1)."""
+        import urllib.parse
         if self.ocr_reader is None:
             return []
         self._check_trusted()
-        out = self._call("/ocr", png=self._png(img_rgb), timeout=900)
+        q = urllib.parse.urlencode({"ocr_mode": str(mode or "ensemble")})
+        out = self._call("/ocr?" + q, png=self._png(img_rgb), timeout=900)
         return [([[float(p[0]), float(p[1])] for p in box], str(text), float(conf))
                 for box, text, conf in out.get("results") or []]
 

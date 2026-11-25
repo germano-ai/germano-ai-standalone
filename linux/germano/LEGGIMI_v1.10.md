@@ -1,15 +1,15 @@
-# Germano AI 1.00 — Suite completa per Windows
+# Germano AI 1.10 — Suite completa per Windows
 
 ## Installazione
-Scarica **`germano-1.00.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
-necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, gli 8 modelli IA) e non scarica
-nulla. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a
-consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows solo per il Python di
-Germano e solo per le reti private e di dominio. Si installa per l'utente corrente in
-`%LOCALAPPDATA%\Programs\Germano AI` e crea i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni › App e
-le cartelle di lavoro in `Documenti\Germano AI`; alla fine la finestra dell'installer si chiude e **Germano si apre da
-solo**, senza pagine di istruzioni. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC»
-scegli **Ulteriori informazioni › Esegui comunque**.
+Scarica **`germano-1.10.exe`** da https://download.germano.ai/ e fai doppio clic: è un solo file con tutto il
+necessario (programma, Python 3.11 con le librerie e le DLL di Microsoft Visual C++, gli 11 modelli IA locali organizzati
+in 3 ensemble ONNX, visione e Sistema 2) e non scarica nulla. **Appena si apre chiede i permessi di amministratore**
+(richiesta UAC di Windows: scegli **Sì**): servono a consentire l'accesso dalla rete locale, sempre attivo, con una
+regola del firewall di Windows solo per il Python di Germano e solo per le reti private e di dominio. Si installa per
+l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI` e crea i collegamenti sul Desktop e nel menu Start, la voce in
+Impostazioni › App e le cartelle di lavoro in `Documenti\Germano AI`; alla fine la finestra dell'installer si chiude e
+**Germano si apre da solo**, senza pagine di istruzioni. L'installer non ha ancora una firma digitale: se compare
+«Windows ha protetto il PC» scegli **Ulteriori informazioni › Esegui comunque**.
 
 ## Come si usa (plug & play)
 Apri **Germano AI** dal Desktop o dal menu Start: è l'**unico** programma (`Germano.exe`). Si apre una **finestra
@@ -42,6 +42,20 @@ Modalità operative (si scelgono e si cambiano in qualsiasi momento in Impostazi
 
 Per chiudere **tutto** basta la **X rossa**: si fermano anche il server Flask e il motore IA, senza lasciare processi in
 memoria.
+
+## Novità della 1.10: motore di anonimizzazione potenziato con 3 ensemble ONNX + categorie zero-shot
+- **Testo: Ensemble a 3 modelli ONNX in parallelo + categorie personalizzate zero-shot:** *Privacy Filter 1.5B* passa al
+  formato ufficiale **ONNX Q4** (~645 MB di RAM invece di 5,3 GB, avvio in ~10 s) e lavora in parallelo senza GIL con
+  *Italian NER XXL* ONNX e il nuovo **GLiNER2-PII ONNX** (31+ classi multilingua), portando il rilevamento fino al 99%
+  anche sui testi difficili e sbloccando le **categorie personalizzate zero-shot** (`custom_pii_labels` →
+  `[DATO_PERSONALIZZATO_N]`, mai rilasciate dal Sistema 2, ripristinate dal Vault).
+- **OCR Ensemble (RapidOCR PP-OCRv5 + EasyOCR):** il nuovo *RapidOCR PP-OCRv5 Mobile Latin* (ONNX, 13 MB) gira in
+  parallelo con *EasyOCR* fondendo tutti i riquadri rilevati (fino al 100% dei PII su scansioni, fax e foto storte); in
+  *Impostazioni › Sistema e registro* è selezionabile anche il solo *RapidOCR* (4,5× più veloce) o il solo *EasyOCR*.
+- **Audio Ensemble (NVIDIA Parakeet TDT 0.6B v3 + Whisper Small):** il nuovo *Parakeet TDT v3* (ONNX INT8, 25 lingue
+  europee) affianca *Whisper Small* con fusione per segmento e cross-redazione fuzzy dei dati personali parlati (nomi,
+  telefoni, P.IVA) anche in telefonate rumorose; selezionabile anche il solo *Parakeet* (5× più veloce) o il solo
+  *Whisper* (99 lingue).
 
 ## Novità della 1.00: dock rapido modello ed effort + menu unificato per ogni sistema
 Nella barra del compositore in basso a destra puoi cambiare **modello** ed **effort** direttamente in un clic

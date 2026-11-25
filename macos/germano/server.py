@@ -1180,7 +1180,8 @@ def api_engine_transcribe():
     if len(data) > ENGINE_AUDIO_MAX:
         return jsonify({"error": _L("File audio troppo grande per il motore condiviso (massimo 200 MB).",
                                     "Audio file too large for the shared engine (at most 200 MB).")}), 413
-    settings = {k: request.args.get(k) for k in ("speech_language", "speech_max_minutes") if request.args.get(k)}
+    settings = {k: request.args.get(k) for k in ("speech_language", "speech_max_minutes", "speech_engine")
+                if request.args.get(k)}
     name = common.safe_filename(request.args.get("name") or "audio.bin", max_len=80)
     staged = _stage_bytes(data, name)
     del data
@@ -1203,8 +1204,10 @@ def api_engine_image(kind):
         return jsonify({"error": _L("Immagine mancante.", "Image missing.")}), 400
     if len(data) > 80 * 1024 * 1024:
         return jsonify({"error": _L("Immagine troppo grande.", "Image too large.")}), 413
-    return _engine_forward(f"/internal/engine/{kind}", {"png_b64": base64.b64encode(data).decode("ascii")},
-                           timeout=1800)
+    payload = {"png_b64": base64.b64encode(data).decode("ascii")}
+    if kind == "ocr" and request.args.get("ocr_mode"):
+        payload["ocr_mode"] = request.args.get("ocr_mode")
+    return _engine_forward(f"/internal/engine/{kind}", payload, timeout=1800)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -3835,8 +3838,9 @@ class _IntegrationBackend:
                   "mode": eng.get("mode") or ("remote" if common.mode_flags(common.effective_operating_mode(cfg))[1]
                                               and not eng else "local"),
                   "system1": {"ready": ready, "privacy_filter": bool(eng.get("privacy_filter")),
-                              "italian_ner": bool(eng.get("italian_ner")), "regex": bool(cfg.get("enable_regex", True)),
-                              "ocr": bool(eng.get("ocr"))},
+                              "italian_ner": bool(eng.get("italian_ner")), "gliner2_pii": bool(eng.get("gliner2_pii")),
+                              "regex": bool(cfg.get("enable_regex", True)),
+                              "ocr": bool(eng.get("ocr")), "ocr_rapidocr": bool(eng.get("ocr_rapidocr"))},
                   "system2": {"enabled": bool(cfg.get("enable_system2", True)), "available": bool(s2.get("available")),
                               "model": s2.get("model") or ""}}
         if eng.get("device"):

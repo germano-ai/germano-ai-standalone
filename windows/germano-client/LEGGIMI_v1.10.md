@@ -1,10 +1,10 @@
-# Germano AI 1.00 — Client leggero per Windows
+# Germano AI 1.10 — Client leggero per Windows
 
 Installer leggero (circa 22 MB, **senza modelli IA**) per i PC che si collegano a un **Germano Server** della rete (la
 suite completa installata sul PC più potente dell'ufficio, in modalità Server).
 
 ## Installazione
-Scarica **`germano-client-1.00.exe`** da https://download.germano.ai/ e fai doppio clic: contiene il proprio Python e
+Scarica **`germano-client-1.10.exe`** da https://download.germano.ai/ e fai doppio clic: contiene il proprio Python e
 non scarica nulla. Si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI Client`, **senza diritti di
 amministratore**, con i collegamenti **Germano AI Client** sul Desktop e nel menu Start; alla fine il client si apre da
 solo. Le impostazioni del client (server, sessione e opzioni) sono in `%LOCALAPPDATA%\Germano AI Client`.
@@ -37,6 +37,12 @@ Disinstallazione: Impostazioni › App › App installate › Germano AI Client.
 
 Prima di inviare qualsiasi dato il client verifica, **senza inviare dati personali**, che risponda un vero Germano
 Server, che l'accesso sia consentito e che il motore sia pronto; altrimenti non invia nulla.
+
+## Novità della 1.10
+- **Motore remoto allineato ai 3 ensemble ONNX del Server 1.10:** propaga le impostazioni del nuovo ensemble testo a 3
+  modelli (`GLiNER2-PII` + categorie personalizzate zero-shot `custom_pii_labels`), della modalità OCR (`ensemble` /
+  `rapidocr` / `easyocr`) e del motore audio (`ensemble` / `parakeet` / `whisper`), oltre a tutti i miglioramenti della
+  1.00 (dock rapido modello ed effort + menu unificato per sistema).
 
 ## Novità della 1.00
 - **Dock rapido + menu unificato:** cambi modello ed effort direttamente nella barra in basso; aprendo il menu

@@ -78,13 +78,13 @@ OUTPUTS_FILE = os.path.join(STATE_DIR, "outputs.json")  # documento pronto -> es
 TMP_PREFIX = "~gtmp_"
 
 FEATURE_KEYS = [
-    "enable_model_velvet", "enable_model_italian_ner", "enable_ocr",
+    "enable_model_velvet", "enable_model_italian_ner", "enable_model_gliner2", "enable_ocr",
     "enable_faces", "enable_signatures", "enable_plate_vision", "enable_regex",
     "censor_person", "censor_profession", "censor_address", "censor_cadastre",
     "censor_email", "censor_phone", "censor_account", "censor_financial",
     "censor_url", "censor_date", "censor_secret", "censor_cf_iva",
     "censor_org", "censor_plates_docs", "censor_medical", "censor_medicine",
-    "censor_legal", "censor_civil_status",
+    "censor_legal", "censor_civil_status", "censor_custom",
 ]
 
 DEFAULT_SETTINGS = {
@@ -129,10 +129,13 @@ DEFAULT_SETTINGS = {
     # --- Sistema 2 (turno 23): i casi dubbi del Sistema 1 si decidono nel contesto con un modello linguistico locale
     # (Qwen3.5 con llama.cpp, solo 127.0.0.1). Spento: tutti i dubbi restano oscurati, come prima.
     "enable_system2": True,
-    # --- Audio (v0.80): trascrizione offline del parlato (Whisper, in un processo separato). Lingua: «auto» la
-    # riconosce dai primi secondi di voce; indicarla evita errori sulle registrazioni brevi o rumorose.
+    # --- Audio (v1.10): trascrizione offline (Ensemble Parakeet TDT v3 + Whisper, solo Parakeet o solo Whisper). ---
     "speech_language": "auto",
+    "speech_engine": "ensemble",     # ensemble | parakeet | whisper
     "speech_max_minutes": 240,       # durata massima di una registrazione (oltre, il file finisce tra i non riusciti)
+    # --- OCR & Categorie personalizzate zero-shot (v1.10) ---
+    "ocr_mode": "ensemble",          # ensemble | rapidocr | easyocr
+    "custom_pii_labels": "",         # categorie aggiuntive zero-shot per GLiNER2-PII (separate da virgola)
     # --- Integrazioni MCP e UTCP (0.95): flussi di lavoro in ingresso e in uscita (germano/integrations.py) ---
     "integration_token": "",                # token per MCP e API v1 dalla rete locale (creato alla prima necessita')
     "integrations_autostart_engine": True,  # una richiesta MCP/UTCP avvia il motore se e' fermo (e ne attende il caricamento)
@@ -148,6 +151,8 @@ _BOOL_KEYS = set(FEATURE_KEYS) | {
 OPERATING_MODES = ("standalone", "server", "client", "server+client")
 # Lingue del parlato selezionabili (codici di Whisper); «auto» = riconoscimento automatico
 SPEECH_LANGUAGES = ("auto", "it", "en", "fr", "de", "es", "pt", "nl", "ro", "pl", "sq", "uk", "ru", "ar", "zh")
+OCR_MODES = ("ensemble", "rapidocr", "easyocr")
+SPEECH_ENGINES = ("ensemble", "parakeet", "whisper")
 _ENUM_KEYS = {
     "ui_mode": ("simple", "advanced"),
     "compliance_mode": ("PA", "PD"),
@@ -155,6 +160,8 @@ _ENUM_KEYS = {
     "precision": ("auto", "fp32", "bf16"),
     "operating_mode": OPERATING_MODES,
     "speech_language": SPEECH_LANGUAGES,
+    "ocr_mode": OCR_MODES,
+    "speech_engine": SPEECH_ENGINES,
 }
 _FLOAT_KEYS = {"ai_threshold": (0.0, 0.95)}
 _INT_KEYS = {"file_timeout_minutes": (5, 1440), "port": (1024, 65535), "discovery_port": (1024, 65535),
@@ -163,7 +170,7 @@ _URL_KEYS = ("target_api_url", "target_anthropic_url", "remote_server")
 _HOST_KEYS = {"bind_host"}                       # 0.0.0.0, loopback o un IP letterale
 # stringhe libere (lunghezza massima)
 _STR_KEYS = {"lan_token": 128, "remote_token": 128, "server_name": 48, "instance_id": 64, "instance_host": 128,
-             "remote_user": 64, "integration_token": 128}
+             "remote_user": 64, "integration_token": 128, "custom_pii_labels": 500}
 _TOKEN_KEYS = {"lan_token", "remote_token", "instance_id", "integration_token"}   # solo caratteri sicuri in URL e intestazioni
 # Chiavi modificabili anche quando l'amministratore ha bloccato le impostazioni (preferenze dell'interfaccia).
 # La modalita' operativa NO: decide se il computer si espone alla rete.
@@ -264,7 +271,7 @@ def get_version():
                 return v
     except Exception:
         pass
-    return "1.00"
+    return "1.10"
 
 
 def ensure_dirs():

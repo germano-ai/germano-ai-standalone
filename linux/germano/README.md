@@ -2,7 +2,7 @@
 
  *Read this in other languages: [English](README.en.md)*
 
-**Versione 1.00** (21 novembre 2026): **dock rapido modello ed effort** direttamente nella barra del compositore e **menu AI unificato** con schede immediatamente configurabili in modo indipendente per ogni sistema disponibile (Antigravity CLI, Claude Code, locali e cloud), insieme ai parametri dinamici per modello e al fix layout mobile. Vedi [Novità della 1.00](#novità-della-100-dock-rapido-modello-ed-effort--menu-unificato-per-ogni-sistema) e il [CHANGELOG](CHANGELOG.md).
+**Versione 1.10** (25 novembre 2026): **motore di anonimizzazione potenziato con 3 ensemble ONNX locali** — Testo a 3 modelli paralleli (*Privacy Filter ONNX Q4* ~645 MB RAM + *Italian NER XXL* + *GLiNER2-PII ONNX* con **categorie personalizzate zero-shot**), OCR Ensemble (*RapidOCR PP-OCRv5 + EasyOCR*, fino al 100% dei PII su scansioni) e Audio Ensemble (*NVIDIA Parakeet TDT 0.6B v3 + Whisper*, con cross-redazione fuzzy dei PII parlati). Vedi [Novità della 1.10](#novità-della-110-motore-potenziato-con-3-ensemble-onnx--categorie-personalizzate-zero-shot) e il [CHANGELOG](CHANGELOG.md).
 
 *<span style="color: #007bff; font-weight: bold;">Caso d'Uso 1</span>: Hai semplicemente un gran numero di documenti da anonimizzare sul tuo computer o server o NAS. Germano funziona in modalità standalone e restituisce i documenti anonimizzati; supporta molti formati ed è altamente configurabile. Tu semplicemente copi la cartella contenente i file dentro ad input e ricevi i file anonimizzati nella cartella output. Germano mantiene la struttura della directory e delle sottocartelle originali. Germano anonimizza testo, prompt e volti ed è compatibile con il GDPR; Germano è un'applicazione Windows locale e offline (non richiede accesso ad internet per funzionare).*
 
@@ -26,6 +26,18 @@ Germano si apre sulla scheda **Chatbot e Agenti AI**, dove parli con l'AI che pr
  **Tip Produttività:** il motore di protezione si avvia da solo al primo invio o quando aggiungi documenti; finché è spento nessun dato esce. Puoi aggiungere file *mentre il software sta già lavorando*: vengono messi in coda senza riavviare nulla. **Esporta elenco** salva in CSV (per Excel) l'elenco dei documenti pronti o non riusciti, e il riquadro **«Sanitizzazione manuale di un testo»** anonimizza al volo un testo da incollare in qualsiasi AI (e ripristina la risposta).
 
  **[SCARICA GERMANO AI STANDALONE](https://download.germano.ai)**
+
+---
+
+## Novità della 1.10: motore potenziato con 3 ensemble ONNX + categorie personalizzate zero-shot
+
+Il motore locale di Germano (100% offline, senza GPU) passa a **3 ensemble paralleli ONNX** con **11 modelli locali** e un installer ancora più compatto e leggero in RAM:
+
+- **Testo — Ensemble 3 modelli ONNX + Categorie personalizzate zero-shot:** *Velvet Privacy Filter 1.5B* usa ora il modello ufficiale **ONNX Q4** (~645 MB di RAM invece di 5,3 GB, avvio in ~10 s) in parallelo senza GIL con *Italian NER XXL ONNX* e il nuovo **GLiNER2-PII ONNX** (31+ classi multilingua), raggiungendo il **99,1%** sui documenti difficili con 0 leak e sbloccando le **categorie personalizzate zero-shot** (`custom_pii_labels` → `[DATO_PERSONALIZZATO_N]`, es. *numero pratica, codice cliente, nome progetto*, mai rilasciate dal Sistema 2 e ripristinate dal Vault).
+- **OCR — Ensemble RapidOCR PP-OCRv5 + EasyOCR:** il nuovo *RapidOCR PP-OCRv5 Mobile Latin* (ONNX, 13 MB) lavora in parallelo con *EasyOCR* fondendo tutti i riquadri rilevati (**100%** di copertura PII su scansioni, fax e foto storte); in *Impostazioni › Sistema e registro* è selezionabile anche il solo *RapidOCR PP-OCRv5* (**4,5× più veloce**, 98,3% PII) o il solo *EasyOCR*.
+- **Audio — Ensemble NVIDIA Parakeet TDT 0.6B v3 + Whisper Small:** il nuovo *Parakeet TDT v3* (ONNX INT8, 25 lingue europee) affianca *Whisper Small* con selezione del trascritto migliore per segmento e cross-redazione fuzzy dei PII parlati (nomi, telefoni, P.IVA) anche in registrazioni rumorose; selezionabile anche il solo *Parakeet v3* (**5× più veloce**) o il solo *Whisper* (99 lingue).
+
+Dettagli e misure complete nel [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -146,29 +158,29 @@ Dettagli e misure complete nel [CHANGELOG](CHANGELOG.md).
 
 ## Installazione Multipiattaforma
 
-Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.germano.ai](https://download.germano.ai/)** e contengono tutto il necessario: il programma, il proprio Python con tutte le librerie e (nella suite) gli 8 modelli IA. L'installazione non scarica nulla da Internet e funziona su un sistema appena installato.
+Tutti gli installer ufficiali sono singoli file pronti all'uso su **[download.germano.ai](https://download.germano.ai/)** e contengono tutto il necessario: il programma, il proprio Python con tutte le librerie e (nella suite) gli 11 modelli IA locali (3 ensemble ONNX, visione e Sistema 2). L'installazione non scarica nulla da Internet e funziona su un sistema appena installato.
 
 | Sistema | Suite completa | Client leggero |
 |---|---|---|
-| Windows 10/11 e Windows Server 2019/2022/2025 a 64 bit (anche in macchina virtuale) | `germano-1.00.exe` | `germano-client-1.00.exe` |
-| macOS | `germano-1.00.pkg` (Apple Silicon, macOS 14 o successivo) | `germano-client-1.00.pkg` (Apple Silicon e Intel, macOS 11 o successivo) |
-| Linux Ubuntu/Debian a 64 bit | `germano-1.00.deb` | `germano-client-1.00.deb` |
+| Windows 10/11 e Windows Server 2019/2022/2025 a 64 bit (anche in macchina virtuale) | `germano-1.10.exe` | `germano-client-1.10.exe` |
+| macOS | `germano-1.10.pkg` (Apple Silicon, macOS 14 o successivo) | `germano-client-1.10.pkg` (Apple Silicon e Intel, macOS 11 o successivo) |
+| Linux Ubuntu/Debian a 64 bit | `germano-1.10.deb` | `germano-client-1.10.deb` |
 
 ### Windows (10 / 11 a 64 bit)
-1. **Download:** scarica `germano-1.00.exe`.
+1. **Download:** scarica `germano-1.10.exe`.
 2. **Installazione:** doppio clic sull'installer. **Appena si apre chiede i permessi di amministratore** (richiesta UAC di Windows: scegli **Sì**): servono a consentire l'accesso dalla rete locale, sempre attivo, con una regola del firewall di Windows valida solo per il Python di Germano e solo per le reti private e di dominio (modalità Server LAN). Il programma si installa per l'utente corrente in `%LOCALAPPDATA%\Programs\Germano AI`, con i collegamenti sul Desktop e nel menu Start, la voce in Impostazioni > App e le cartelle di lavoro in `Documenti\Germano AI`; al termine la finestra dell'installer si chiude e **Germano AI si apre da solo**, con i permessi normali dell'utente. Le librerie Microsoft Visual C++ sono già incluse: non serve installare altro.
 3. **Avvio:** collegamento **Germano AI** sul Desktop o nel menu Start (finestra dedicata, senza finestre nere di terminale).
 4. **Disinstallazione:** Impostazioni > App > App installate > Germano AI (chiede i permessi di amministratore per togliere la regola del firewall); puoi scegliere se conservare le cartelle di lavoro e il Vault.
 
 ### Windows Server e macchine virtuali
-- **Windows Server 2019, 2022 e 2025** (Standard e Datacenter) e macchine virtuali **VMware, Hyper-V, Proxmox VE (KVM), VirtualBox** e cloud (AWS, Azure, Google Cloud): nessuna GPU e nessun ridistribuibile da installare (le DLL di Visual C++ sono incluse). Consigliati 12 GB di RAM e 4 vCPU: i thread si adattano alle vCPU e la precisione al processore (FP32, oppure BF16 con poca RAM).
+- **Windows Server 2019, 2022 e 2025** (Standard e Datacenter) e macchine virtuali **VMware, Hyper-V, Proxmox VE (KVM), VirtualBox** e cloud (AWS, Azure, Google Cloud): nessuna GPU e nessun ridistribuibile da installare (le DLL di Visual C++ sono incluse). Consigliati 8–12 GB di RAM e 4 vCPU: i thread si adattano alle vCPU e il modello principale gira in ONNX Q4 (~645 MB RAM).
 - **Senza finestra** (server, Server Core, attività pianificate): `Germano.exe --no-browser --mode=server` avvia server e motore senza finestre e scrive gli indirizzi locali e di rete nel registro e nella console; `Germano.exe --stop` lo arresta. Su Windows Server 2019, che non ha Microsoft Edge, Germano propone da solo di restare attivo così (Internet Explorer non viene usato).
 - **Rete**: la regola del firewall vale per le reti private e di dominio; se una scheda è classificata come «Pubblica» (frequente nelle VM), se la regola manca o se i criteri di gruppo ignorano le regole locali, la Dashboard del server lo segnala con il comando per correggerlo. Nelle VM con rete NAT servono l'inoltro della porta TCP 8181 o una scheda in modalità bridge.
 
-L'installer della suite pesa circa 3,8 GB (contiene tutti i modelli IA): al primo doppio clic Microsoft Defender lo analizza e la finestra può comparire dopo qualche secondo. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC» scegli **Ulteriori informazioni > Esegui comunque**.
+L'installer della suite pesa circa 3,4 GB (contiene tutti gli 11 modelli IA in ONNX): al primo doppio clic Microsoft Defender lo analizza e la finestra può comparire dopo qualche secondo. L'installer non ha ancora una firma digitale: se compare «Windows ha protetto il PC» scegli **Ulteriori informazioni > Esegui comunque**.
 
 ### macOS
-1. **Download:** scarica `germano-1.00.pkg`. La suite completa richiede un Mac con **Apple Silicon** (M1 o successivo) e **macOS 14 Sonoma** o successivo, perché PyTorch non è più pubblicato per i Mac Intel; sui Mac Intel si usa il client leggero `germano-client-1.00.pkg`.
+1. **Download:** scarica `germano-1.10.pkg`. La suite completa richiede un Mac con **Apple Silicon** (M1 o successivo) e **macOS 14 Sonoma** o successivo, perché PyTorch non è più pubblicato per i Mac Intel; sui Mac Intel si usa il client leggero `germano-client-1.10.pkg`.
 2. **Installazione:** doppio clic sul pacchetto. Alla scelta della destinazione seleziona **Installa solo per me**: `Germano.app` va in `~/Applications` **senza password di amministratore**. Con «Installa per tutti gli utenti» va in `/Applications` e macOS chiede la password. Al termine Germano si apre da solo.
 3. **Avvio:** apri **Germano** (`Germano.app`) da Launchpad o dalla cartella Applicazioni. Al primo avvio crea le cartelle di lavoro in `~/Documents/Germano AI` (in `~/Germano AI` se Documenti è sincronizzata con iCloud).
 4. **Disinstallazione:** trascina `Germano.app` nel Cestino; le cartelle di lavoro restano dove sono.
@@ -176,8 +188,8 @@ L'installer della suite pesa circa 3,8 GB (contiene tutti i modelli IA): al prim
 Il pacchetto non è ancora firmato da Apple: se macOS ne blocca l'apertura, vai in **Impostazioni di Sistema > Privacy e sicurezza** e scegli **Apri comunque**.
 
 ### Linux (Ubuntu / Debian a 64 bit)
-1. **Download:** scarica `germano-1.00.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva (Ubuntu 22.04 o successive, Debian 12 o successive).
-2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-1.00.deb`. Come per ogni pacchetto di sistema viene chiesta la password di amministratore. Il programma va in `/opt/germano`, con la voce **Germano AI** nel menu delle applicazioni e il comando `germano-ai`; non servono altri pacchetti.
+1. **Download:** scarica `germano-1.10.deb`, pensato per **Ubuntu 26.04 LTS** e adatto alle distribuzioni basate su Debian con glibc 2.34 o successiva (Ubuntu 22.04 o successive, Debian 12 o successive).
+2. **Installazione:** doppio clic sul file (Centro app) oppure da terminale `sudo apt install ./germano-1.10.deb`. Come per ogni pacchetto di sistema viene chiesta la password di amministratore. Il programma va in `/opt/germano`, con la voce **Germano AI** nel menu delle applicazioni e il comando `germano-ai`; non servono altri pacchetti.
 3. **Avvio:** dal menu delle applicazioni. Al primo avvio crea le cartelle di lavoro in `Documenti/Germano AI` (la cartella Documenti nella lingua del sistema).
 4. **Disinstallazione:** `sudo apt remove germano-ai`; le cartelle di lavoro restano dove sono.
 
@@ -234,19 +246,20 @@ Con la modalità **Server** attiva, da un PC Windows, Mac o Linux, da un tablet 
 
 ## Funzionalità Principali
 
-*   **100% Offline & pronto su un sistema appena installato:** ogni installer include il proprio Python 3.11 con tutte le librerie (su Windows anche le librerie Microsoft Visual C++ x64, accanto all'interprete: nessun ridistribuibile da installare), l'interfaccia Web priva di CDN esterni e **8 modelli IA locali pre-installati**.
-*   **Impostazioni in un solo posto:** **Modalità e rete** (Standalone, Server, Client, accesso dalla rete, gestione utenti), **Protezione e modelli** (profilo, sensibilità, **18 categorie e 7 motori di analisi**: Nomi, Professioni/Titoli, Indirizzi, Catasto, Codici Fiscali/P.IVA, Email/PEC, Telefoni, IBAN/Conti, Importi/Finanza, Date, Aziende/Enti, Targhe/Documenti, Dati Sanitari (Art. 9 GDPR), Farmaci/Terapie, Dati Giudiziari (Art. 10 GDPR), Stato Civile, Password/Segreti e URL/IP), **AI, chiavi e Chatbot** (AI rilevate, chiavi e, dalla 0.91, l'Assistente di configurazione), **Proxy e API** (indirizzi del Proxy, configurazione per ogni strumento, servizi di destinazione, esempi REST), **Integrazioni MCP e UTCP** (dalla 0.95: indirizzi MCP, UTCP e OpenAPI, collegamento con 1 clic ai client, prova del flusso Ingresso → Uscita, token per la rete), **Sistema e registro**, **Aggiornamenti** (come la pagina «Informazioni» di Google Chrome) e **Informazioni**.
+*   **100% Offline & pronto su un sistema appena installato:** ogni installer include il proprio Python 3.11 con tutte le librerie (su Windows anche le librerie Microsoft Visual C++ x64, accanto all'interprete: nessun ridistribuibile da installare), l'interfaccia Web priva di CDN esterni e **11 modelli IA locali pre-installati in 3 ensemble ONNX**.
+*   **Impostazioni in un solo posto:** **Modalità e rete** (Standalone, Server, Client, accesso dalla rete, gestione utenti), **Protezione e modelli** (profilo, sensibilità, **19 categorie** incluse le **categorie personalizzate zero-shot** e i motori di analisi locali: Nomi, Professioni/Titoli, Indirizzi, Catasto, Codici Fiscali/P.IVA, Email/PEC, Telefoni, IBAN/Conti, Importi/Finanza, Date, Aziende/Enti, Targhe/Documenti, Dati Sanitari (Art. 9 GDPR), Farmaci/Terapie, Dati Giudiziari (Art. 10 GDPR), Stato Civile, Password/Segreti, URL/IP e Categorie Personalizzate `[DATO_PERSONALIZZATO]`), **AI, chiavi e Chatbot** (AI rilevate, chiavi e Assistente di configurazione), **Proxy e API** (indirizzi del Proxy, configurazione per ogni strumento, servizi di destinazione, esempi REST), **Integrazioni MCP e UTCP** (indirizzi MCP, UTCP e OpenAPI, collegamento con 1 clic ai client, prova del flusso Ingresso → Uscita, token per la rete), **Sistema e registro** (scelta motore OCR e motore Audio), **Aggiornamenti** (come la pagina «Informazioni» di Google Chrome) e **Informazioni**.
 *   **Guida Completa & Documentazione Offline:** scheda *"Guida"* integrata nella Dashboard (disponibile su `/guide` e come file autonomo `GUIDA_OFFLINE.html`), bilingue (italiano e inglese commutabile all'istante), con spiegazioni a prova di errore, guida alle 5 cartelle, specifiche REST API e setup passo-passo per Google Antigravity (anche Antigravity CLI con lo stesso account), OpenAI Codex, Cursor e Claude Code.
 *   **De-Anonimizzazione Automatica tramite Proxy API e Cartelle Interne:** Con l'interruttore *"Ripristino automatico dei dati originali"* attivo (predefinito), Germano memorizza nel Vault locale (`extracted/deanonymize_vault.db`, con la copia portabile `deanonymize_vault.json`) i dati associati a `[PERSONA_1]`, `[INDIRIZZO_1]`, ecc. Nelle integrazioni via Proxy API locale (`/v1/chat/completions`, `/v1/responses`, `/v1/messages` per **Claude Code, Codex, OpenCode, Aider** e gli altri strumenti che accettano un indirizzo del servizio) e nella cartella interna `input/`, le risposte e i file restituiti dall'AI vengono rimessi in chiaro con tutti i dati veri in modo **completamente automatico** (senza mai controllare cartelle esterne al programma).
-*   **8 Modelli di Intelligenza Artificiale 100% Offline Integrati (`models/`):**
-    1. **Velvet Privacy Filter (1.5B, pesi BF16):** Modello linguistico contestuale multilingue per dati personali (basato su OpenAI Privacy Filter, licenza Apache-2.0).
-    2. **Italian NER XXL v2 (58 classi):** Modello specializzato nel dominio legale, sanitario, bancario, catastale e burocratico italiano.
-    3. **EasyOCR (CRAFT + Latin G2):** Riconoscimento ottico dei caratteri su PDF scansionati e foto.
-    4. **YuNet Face Detector (OpenCV 5 DNN):** Oscuramento biometrico dei volti e fototessere (`[VOLTO]`).
-    5. **YOLOS-Tiny Signature Detector:** Rilevamento visivo e oscuramento delle firme autografe manoscritte (`[FIRMA]`).
-    6. **YOLOS-Small License Plate Detector:** Rilevamento visivo e oscuramento delle targhe di veicoli nelle foto (`[TARGA]`).
-    7. **Whisper Small INT8 (CTranslate2, 240 MB):** trascrizione offline delle registrazioni audio, a lotti per quelle lunghe.
-    8. **Qwen3.5-0.8B (GGUF Q8_0, 812 MB, eseguito da llama.cpp) - Sistema 2:** decide nel contesto i casi dubbi del riconoscimento: lascia in chiaro un dubbio solo se è sicuro che non sia un dato personale, altrimenti resta oscurato.
+*   **11 Modelli di Intelligenza Artificiale 100% Offline Integrati in 3 Ensemble ONNX (`models/`):**
+    1. **Velvet Privacy Filter 1.5B (ONNX Q4 ufficiale, ~645 MB RAM):** Modello linguistico contestuale multilingue per dati personali (OpenAI Privacy Filter, Apache-2.0).
+    2. **Italian NER XXL v2 (ONNX, 58 classi):** Modello specializzato nel dominio legale, sanitario, bancario, catastale e burocratico italiano.
+    3. **GLiNER2-PII (ONNX quantizzato, 31+ classi + zero-shot):** Completa l'ensemble a 3 modelli sul testo in parallelo e abilita le **categorie personalizzate zero-shot** (`custom_pii_labels` → `[DATO_PERSONALIZZATO]`).
+    4. **RapidOCR PP-OCRv5 Mobile Latin (ONNX, 13 MB) + EasyOCR (CRAFT + Latin G2):** Ensemble OCR parallelo su PDF scansionati e foto (selezionabile anche il solo RapidOCR 4,5× più veloce).
+    5. **YuNet Face Detector (OpenCV 5 DNN):** Oscuramento biometrico dei volti e fototessere (`[VOLTO]`).
+    6. **YOLOS-Tiny Signature Detector:** Rilevamento visivo e oscuramento delle firme autografe manoscritte (`[FIRMA]`).
+    7. **YOLOS-Small License Plate Detector:** Rilevamento visivo e oscuramento delle targhe di veicoli nelle foto (`[TARGA]`).
+    8. **NVIDIA Parakeet TDT 0.6B v3 (ONNX INT8, 25 lingue europee) + Whisper Small INT8 (CTranslate2, 99 lingue):** Ensemble audio offline con fusione per segmento e cross-redazione fuzzy dei PII parlati (selezionabile anche il solo Parakeet 5× più veloce).
+    9. **Qwen3.5-0.8B (GGUF Q8_0, 812 MB, eseguito da llama.cpp) - Sistema 2:** decide nel contesto i casi dubbi del riconoscimento: lascia in chiaro un dubbio solo se è sicuro che non sia un dato personale, altrimenti resta oscurato.
 *   **Gestione Multi-Formato Avanzata con Preservazione Formattazione:**
     *   **PDF & Portfolio PDF:** Censura a livello di carattere, OCR e *censura visiva* sulle scansioni (anche miste con timbro digitale), campi modulo, commenti, segnalibri, metadati e anonimizzazione ricorsiva degli allegati incorporati. Firme digitali PAdES rimosse per evitare inconsistenze.
     *    **Immagini (`PNG`, `JPG`, `JPEG`, `BMP`, `TIFF`, `WEBP`, `GIF`):** OCR locale e oscuramento biometrico di volti, firme e targhe con formato e risoluzione originali; metadati EXIF/GPS rimossi.
@@ -328,7 +341,7 @@ Di default Germano si aggiorna da solo **in silenzio**, senza finestre né avvis
 3. Su Windows l'installer prepara subito la nuova versione, in silenzio e a bassa priorità, in una cartella accanto a quella del programma (`Germano AI.nuovo`), mentre Germano resta aperto e la versione in uso non viene toccata.
 4. Al **successivo avvio** la nuova versione prende il posto della vecchia in pochi secondi e Germano si apre già aggiornato. Chi vuole applicarla subito trova soltanto un discreto **«Riavvia per aggiornare»** in alto. Cartelle di lavoro in `Documenti\Germano AI`, Vault (`extracted\deanonymize_vault.db` e la copia `deanonymize_vault.json`) e preferenze `config.json` restano intatti; se qualcosa non va, resta la versione in uso.
 
-In **Impostazioni › Aggiornamenti**, come nella pagina «Informazioni» di Chrome, si vede lo stato: «Germano AI è aggiornato (v1.00)» con l'ora dell'ultimo controllo, «Download dell'aggiornamento in background…» con la barra di avanzamento, «Riavvia Germano per applicare l'aggiornamento». Su macOS e Linux il pacchetto `.pkg` / `.deb` si scarica allo stesso modo e si apre con il programma di installazione del sistema quando lo decidi tu. Germano Client si aggiorna nello stesso modo.
+In **Impostazioni › Aggiornamenti**, come nella pagina «Informazioni» di Chrome, si vede lo stato: «Germano AI è aggiornato (v1.10)» con l'ora dell'ultimo controllo, «Download dell'aggiornamento in background…» con la barra di avanzamento, «Riavvia Germano per applicare l'aggiornamento». Su macOS e Linux il pacchetto `.pkg` / `.deb` si scarica allo stesso modo e si apre con il programma di installazione del sistema quando lo decidi tu. Germano Client si aggiorna nello stesso modo.
 
 Opzioni (in Impostazioni o in `config.json`): `"auto_update": false` si limita a segnalare la nuova versione, `"check_updates": false` disattiva il controllo. Durante il controllo non viene inviato alcun dato dei documenti né dei testi.
 
@@ -354,7 +367,7 @@ Questo repository GitHub contiene **esclusivamente il codice sorgente pulito** d
 ### Cosa scaricare prima di avviare il codice in locale:
 
 1. **Modelli di Intelligenza Artificiale (`models/`):**
-   - Germano richiede gli 8 modelli IA locali (filtro privacy, NER, EasyOCR, biometria facciale YuNet, rilevamento targhe e firme, Whisper per l'audio e Qwen3.5 per il Sistema 2).
+   - Germano richiede gli 11 modelli IA locali (ensemble testo Privacy Filter Q4 + Italian NER + GLiNER2-PII, ensemble OCR RapidOCR PP-OCRv5 + EasyOCR, biometria facciale YuNet, rilevamento targhe e firme, ensemble audio Parakeet TDT v3 + Whisper e Qwen3.5 per il Sistema 2).
    -  **[Scarica il pacchetto completo dei Modelli](https://download.germano.ai/)** ed estrailo nella cartella `models/` della piattaforma scelta (es. `windows/germano/models/` o `linux/germano/models/`).
    - *In alternativa:* puoi estrarre la cartella `models/` direttamente da qualsiasi installer ufficiale scaricato da [download.germano.ai](https://download.germano.ai).
 
@@ -392,13 +405,13 @@ python client.py
 
 ### Costruire gli installer
 
-Ogni release ha la stessa struttura: `sorgenti/{windows,linux,macos}/{germano,germano-client}` (il contenuto di questo repository), `modelli/` (gli 8 modelli), `dipendenze/{windows,linux,macos}` (Python e librerie per ogni sistema, llama.cpp, 7-Zip) e `releases/`. Gli script di `windows/germano/build/` si eseguono su Windows con il Python del runtime, con `-B` (nessuna cache nei sorgenti), e producono i sei pacchetti autosufficienti:
+Ogni release ha la stessa struttura: `sorgenti/{windows,linux,macos}/{germano,germano-client}` (il contenuto di questo repository), `modelli/` (gli 11 modelli locali), `dipendenze/{windows,linux,macos}` (Python e librerie per ogni sistema, llama.cpp, 7-Zip) e `releases/`. Gli script di `windows/germano/build/` si eseguono su Windows con il Python del runtime, con `-B` (nessuna cache nei sorgenti), e producono i sei pacchetti autosufficienti:
 
 ```bash
 python -B build/coerenza_sorgenti.py                    # sorgenti Linux e macOS identici a quelli Windows nei file comuni
-python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-1.00.exe e germano-client-1.00.exe
-python -B build/costruisci_deb.py tutti                 # releases/linux/germano-1.00.deb e germano-client-1.00.deb
-python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-1.00.pkg e germano-client-1.00.pkg
+python -B build/costruisci_installer_windows.py tutti   # releases/windows/germano-1.10.exe e germano-client-1.10.exe
+python -B build/costruisci_deb.py tutti                 # releases/linux/germano-1.10.deb e germano-client-1.10.deb
+python -B build/costruisci_pkg.py tutti                 # releases/macos/germano-1.10.pkg e germano-client-1.10.pkg
 python -B build/crea_version_json.py                    # releases/version.json: dimensioni e SHA-256 lette dai file
 ```
 
